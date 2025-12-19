@@ -77,7 +77,7 @@ class TestExternalFeatureGroupEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             id=10,
-            data_source=ds.DataSource(database="test", group="test", table="test")
+            data_source=ds.DataSource(database="test", group="test", table="test"),
         )
 
         mock_get_data.return_value = dsd.DataSourceData(features=[f])
@@ -110,7 +110,7 @@ class TestExternalFeatureGroupEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             id=10,
-            data_source=ds.DataSource(query="test")
+            data_source=ds.DataSource(query="test"),
         )
 
         mock_get_data.return_value = dsd.DataSourceData(features=[f])

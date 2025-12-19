@@ -455,7 +455,9 @@ class FeatureStore:
         Returns:
             `DataSource`. Data source object.
         """
-        return ds.DataSource(storage_connector=self._storage_connector_api.get(self._id, name))
+        return ds.DataSource(
+            storage_connector=self._storage_connector_api.get(self._id, name)
+        )
 
     def sql(
         self,
@@ -538,7 +540,9 @@ class FeatureStore:
         Returns:
             `DataSource`. JDBC data source to the Online Feature Store.
         """
-        return ds.DataSource(storage_connector=self._storage_connector_api.get_online_connector(self._id))
+        return ds.DataSource(
+            storage_connector=self._storage_connector_api.get_online_connector(self._id)
+        )
 
     @usage.method_logger
     def create_feature_group(
@@ -899,7 +903,9 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if not feature_group_object:
             if not data_source:
-                data_source = ds.DataSource(storage_connector=storage_connector, path=path)
+                data_source = ds.DataSource(
+                    storage_connector=storage_connector, path=path
+                )
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -1045,8 +1051,12 @@ class FeatureStore:
         """
         if not data_source:
             if not storage_connector:
-                raise ValueError("Data source must be provided to create an external feature group.")
-            data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
+                raise ValueError(
+                    "Data source must be provided to create an external feature group."
+                )
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, query=query, path=path
+            )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
@@ -1233,8 +1243,12 @@ class FeatureStore:
         """
         if not data_source:
             if not storage_connector:
-                raise ValueError("Data source must be provided to create an external feature group.")
-            data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
+                raise ValueError(
+                    "Data source must be provided to create an external feature group."
+                )
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, query=query, path=path
+            )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
@@ -1474,7 +1488,9 @@ class FeatureStore:
             The training dataset metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(storage_connector=storage_connector, path=location)
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         return training_dataset.TrainingDataset(
             name=name,
             version=version,

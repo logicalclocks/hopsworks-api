@@ -795,8 +795,7 @@ class FeatureGroupBase:
         data_source_provenance = self.get_storage_connector_provenance()
 
         if data_source_provenance and (
-            data_source_provenance.inaccessible
-            or data_source_provenance.deleted
+            data_source_provenance.inaccessible or data_source_provenance.deleted
         ):
             _logger.info(
                 "The parent data source is deleted or inaccessible. For more details access `get_data_source_provenance`"

@@ -206,7 +206,8 @@ class TestArrowFlightClient:
     def test_supports_unsupported(self):
         # Arrange
         external_feature_group = feature_group.ExternalFeatureGroup(
-            primary_key=[""], data_source=ds.DataSource(storage_connector=self.FakeConnector())
+            primary_key=[""],
+            data_source=ds.DataSource(storage_connector=self.FakeConnector()),
         )
 
         # Act
@@ -234,7 +235,8 @@ class TestArrowFlightClient:
     def test_supports_mixed_featuregroups_unsupported(self):
         # Arrange
         external_feature_group = feature_group.ExternalFeatureGroup(
-            primary_key=[""], data_source=ds.DataSource(storage_connector=self.FakeConnector())
+            primary_key=[""],
+            data_source=ds.DataSource(storage_connector=self.FakeConnector()),
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
 

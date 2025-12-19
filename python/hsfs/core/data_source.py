@@ -78,7 +78,9 @@ class DataSource:
 
     @classmethod
     def from_response_json(
-        cls, json_dict: dict[str, Any], storage_connector: sc.StorageConnector | None = None
+        cls,
+        json_dict: dict[str, Any],
+        storage_connector: sc.StorageConnector | None = None,
     ) -> DataSource:
         """Create a DataSource object (or list of objects) from a JSON response.
 

@@ -598,7 +598,9 @@ class TestSpark:
         )
 
         external_fg = feature_group.ExternalFeatureGroup(
-            id=10, location="test_location", data_source=ds.DataSource(storage_connector=jdbc_connector)
+            id=10,
+            location="test_location",
+            data_source=ds.DataSource(storage_connector=jdbc_connector),
         )
 
         # Act
@@ -784,7 +786,7 @@ class TestSpark:
         # Act
         with pytest.raises(TypeError) as e_info:
             spark_engine.convert_to_default_dataframe(
-                dataframe=list(),
+                dataframe=[],
             )
 
         # Assert
@@ -3632,7 +3634,7 @@ class TestSpark:
             transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
-        transformation_fn_dict = dict()
+        transformation_fn_dict = {}
 
         transformation_fn_dict["col_0"] = tf
 
@@ -4401,7 +4403,7 @@ class TestSpark:
 
         # Mock dataset API and file I/O for distribute=False case
         if distribute_arg is False:
-            mock_dataset_api.return_value.read_content.return_value.content = bytes()
+            mock_dataset_api.return_value.read_content.return_value.content = b""
             mocker.patch("builtins.open", mocker.mock_open())
 
         # Act
@@ -8454,7 +8456,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
         logging_features.append(feature.Feature("inference_helper_2", type="double"))
         logging_feature_group_features = meta_data_logging_columns + logging_features
         column_names["helper_columns"] = ["inference_helper_1", "inference_helper_2"]
@@ -8510,7 +8512,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
 
         logging_features.append(feature.Feature("inference_helper_2", type="double"))
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8569,7 +8571,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         inference_helper_features = ["inference_helper_1"]
@@ -9368,7 +9370,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
         spark_df = logging_test_dataframe.select("rp_1", "rp_2").withColumnRenamed(

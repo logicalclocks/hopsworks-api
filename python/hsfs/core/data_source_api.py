@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 
 
 class DataSourceApi:
-
     def get_databases(self, storage_connector: sc.StorageConnector) -> list[str]:
         _client = client.get_instance()
         path_params = [
@@ -43,7 +42,9 @@ class DataSourceApi:
 
         return _client._send_request("GET", path_params)
 
-    def get_tables(self, storage_connector: sc.StorageConnector, database: str) -> list[ds.DataSource]:
+    def get_tables(
+        self, storage_connector: sc.StorageConnector, database: str
+    ) -> list[ds.DataSource]:
         _client = client.get_instance()
         path_params = [
             "project",
@@ -59,7 +60,8 @@ class DataSourceApi:
         query_params = {"database": database}
 
         return ds.DataSource.from_response_json(
-            _client._send_request("GET", path_params, query_params), storage_connector=storage_connector
+            _client._send_request("GET", path_params, query_params),
+            storage_connector=storage_connector,
         )
 
     def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
@@ -80,7 +82,6 @@ class DataSourceApi:
         return dsd.DataSourceData.from_response_json(
             _client._send_request("GET", path_params, query_params)
         )
-
 
     def get_metadata(self, data_source: ds.DataSource) -> dict:
         _client = client.get_instance()

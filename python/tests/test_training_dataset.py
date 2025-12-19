@@ -59,7 +59,9 @@ class TestTrainingDataset:
         assert td.feature_store_id == 22
         assert td.train_split == "test_train_split"
         assert td.training_dataset_type == "HOPSFS_TRAINING_DATASET"
-        assert isinstance(td.data_source.storage_connector, storage_connector.HopsFSConnector)
+        assert isinstance(
+            td.data_source.storage_connector, storage_connector.HopsFSConnector
+        )
         assert len(td._features) == 1
         assert isinstance(
             td._features[0], training_dataset_feature.TrainingDatasetFeature
@@ -103,7 +105,9 @@ class TestTrainingDataset:
         assert td.feature_store_id == 22
         assert td.train_split == "test_train_split"
         assert td.training_dataset_type == "EXTERNAL_TRAINING_DATASET"
-        assert isinstance(td.data_source.storage_connector, storage_connector.S3Connector)
+        assert isinstance(
+            td.data_source.storage_connector, storage_connector.S3Connector
+        )
         assert len(td._features) == 1
         assert isinstance(
             td._features[0], training_dataset_feature.TrainingDatasetFeature
@@ -147,7 +151,9 @@ class TestTrainingDataset:
         assert td.feature_store_id == 22
         assert td.train_split is None
         assert td.training_dataset_type == "HOPSFS_TRAINING_DATASET"
-        assert isinstance(td.data_source.storage_connector, storage_connector.HopsFSConnector)
+        assert isinstance(
+            td.data_source.storage_connector, storage_connector.HopsFSConnector
+        )
         assert len(td._features) == 0
         assert len(td.splits) == 0
         assert isinstance(td.statistics_config, statistics_config.StatisticsConfig)

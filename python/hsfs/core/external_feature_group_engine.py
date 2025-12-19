@@ -32,18 +32,23 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
 
         if feature_group.features is None or len(feature_group.features) == 0:
             if (
-                feature_group.data_source.database and
-                feature_group.data_source.group and
-                feature_group.data_source.table) or feature_group.data_source.query:
+                feature_group.data_source.database
+                and feature_group.data_source.group
+                and feature_group.data_source.table
+            ) or feature_group.data_source.query:
                 # If the user provided a data source, we can use it to infer the schema
                 feature_group._features = [
-                    feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
+                    feature.Feature.from_response_json(feat)
+                    if isinstance(feat, dict)
+                    else feat
                     for feat in (feature_group.data_source.get_data().features or [])
                 ]
             else:
                 # If the user didn't specify the schema, parse it from the query
-                external_dataset = engine.get_instance().register_external_temporary_table(
-                    feature_group, "read_ondmd"
+                external_dataset = (
+                    engine.get_instance().register_external_temporary_table(
+                        feature_group, "read_ondmd"
+                    )
                 )
                 # if python engine user should pass features as we do not parse it in this case
                 if external_dataset is None:
@@ -53,8 +58,8 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                         + ". Alternatively use Spark kernel."
                     )
 
-                feature_group._features = engine.get_instance().parse_schema_feature_group(
-                    external_dataset
+                feature_group._features = (
+                    engine.get_instance().parse_schema_feature_group(external_dataset)
                 )
 
         # set primary, foreign and partition key columns

@@ -144,6 +144,7 @@ class StorageConnectorApi:
         links_json = _client._send_request("GET", path_params, query_params)
 
         from hsfs.core import explicit_provenance
+
         return explicit_provenance.Links.from_response_json(
             links_json,
             explicit_provenance.Links.Direction.DOWNSTREAM,
@@ -184,6 +185,7 @@ class StorageConnectorApi:
         links_json = _client._send_request("GET", path_params, query_params)
 
         from hsfs.core import explicit_provenance
+
         return explicit_provenance.Links.from_response_json(
             links_json,
             explicit_provenance.Links.Direction.DOWNSTREAM,

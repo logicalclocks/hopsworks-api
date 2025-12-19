@@ -149,8 +149,10 @@ def _is_query_supported_rec(query: query.Query):
         and query._left_feature_group.time_travel_format == "DELTA"
         and query._left_feature_group.data_source.storage_connector
         and (
-            query._left_feature_group.data_source.storage_connector.type == StorageConnector.S3
-            or query._left_feature_group.data_source.storage_connector.type == StorageConnector.GCS
+            query._left_feature_group.data_source.storage_connector.type
+            == StorageConnector.S3
+            or query._left_feature_group.data_source.storage_connector.type
+            == StorageConnector.GCS
         )
     )
 

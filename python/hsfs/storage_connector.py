@@ -291,7 +291,8 @@ class StorageConnector(ABC):
         training_datasets_provenance = self.get_training_datasets_provenance()
 
         if training_datasets_provenance and (
-            training_datasets_provenance.inaccessible or training_datasets_provenance.deleted
+            training_datasets_provenance.inaccessible
+            or training_datasets_provenance.deleted
         ):
             _logger.info(
                 "There are deleted or inaccessible training datasets. For more details access `get_training_datasets_provenance`"

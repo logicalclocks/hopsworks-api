@@ -1142,7 +1142,9 @@ class TestExternalFeatureGroup:
         fg = feature_group.ExternalFeatureGroup.from_response_json(json)
 
         # Assert
-        assert isinstance(fg.data_source.storage_connector, storage_connector.StorageConnector)
+        assert isinstance(
+            fg.data_source.storage_connector, storage_connector.StorageConnector
+        )
         assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
         assert fg.data_source.path == "test_path"
@@ -1176,7 +1178,9 @@ class TestExternalFeatureGroup:
         # Assert
         assert len(fg_list) == 1
         fg = fg_list[0]
-        assert isinstance(fg.data_source.storage_connector, storage_connector.StorageConnector)
+        assert isinstance(
+            fg.data_source.storage_connector, storage_connector.StorageConnector
+        )
         assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
         assert fg.data_source.path == "test_path"
@@ -1208,7 +1212,9 @@ class TestExternalFeatureGroup:
         fg = feature_group.ExternalFeatureGroup.from_response_json(json)
 
         # Assert
-        assert isinstance(fg.data_source.storage_connector, storage_connector.StorageConnector)
+        assert isinstance(
+            fg.data_source.storage_connector, storage_connector.StorageConnector
+        )
         assert fg.data_source.query is None
         assert fg.data_format is None
         assert fg.data_source.path is None

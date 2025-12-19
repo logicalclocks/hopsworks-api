@@ -1653,7 +1653,9 @@ class FeatureView:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if not data_source:
-            data_source = ds.DataSource(storage_connector=storage_connector, path=location)
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -1935,7 +1937,9 @@ class FeatureView:
             test_size=test_size, train_end=train_end, test_start=test_start
         )
         if not data_source:
-            data_source = ds.DataSource(storage_connector=storage_connector, path=location)
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -2213,7 +2217,9 @@ class FeatureView:
             test_start=test_start,
         )
         if not data_source:
-            data_source = ds.DataSource(storage_connector=storage_connector, path=location)
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
