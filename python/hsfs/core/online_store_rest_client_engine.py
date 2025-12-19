@@ -19,7 +19,7 @@ import base64
 import itertools
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from hsfs import training_dataset_feature as td_feature_mod
 from hsfs import util
@@ -43,12 +43,13 @@ class OnlineStoreRestClientEngine:
         feature_store_name: str,
         feature_view_name: str,
         feature_view_version: int,
-        features: List[td_feature_mod.TrainingDatasetFeature],
+        features: list[td_feature_mod.TrainingDatasetFeature],
     ):
-        """Initialize the Online Store Rest Client Engine. This class contains the logic to mediate
-        the interaction between the python client and the RonDB Rest Server Feature Store API.
+        """Initialize the Online Store Rest Client Engine.
 
-        # Arguments:
+        This class contains the logic to mediate the interaction between the python client and the RonDB Rest Server Feature Store API.
+
+        Parameters:
             feature_store_name: The name of the feature store in which the feature view is registered.
             feature_view_name: The name of the feature view from which to retrieve the feature vector.
             feature_view_version: The version of the feature view from which to retrieve the feature vector.
@@ -70,11 +71,11 @@ class OnlineStoreRestClientEngine:
         self._inference_helpers_feature_names = []
         self._no_helpers_feature_names = []
         self._is_inference_helpers_list = []
-        self._feature_names_per_fg_id: Dict[int, List[str]] = {}
+        self._feature_names_per_fg_id: dict[int, list[str]] = {}
         for feat in features:
             if not feat.label:
                 self._ordered_feature_names.append(feat.name)
-                if feat.feature_group.id not in self._feature_names_per_fg_id.keys():
+                if feat.feature_group.id not in self._feature_names_per_fg_id:
                     self._feature_names_per_fg_id[feat.feature_group.id] = [feat.name]
                 else:
                     self._feature_names_per_fg_id[feat.feature_group.id].append(
@@ -91,17 +92,17 @@ class OnlineStoreRestClientEngine:
             )
 
     def get_feature_to_decode(
-        self, features: List[td_feature_mod.TrainingDatasetFeature]
-    ) -> Dict[int, str]:
+        self, features: list[td_feature_mod.TrainingDatasetFeature]
+    ) -> dict[int, str]:
         """Get a mapping of feature indices to their types for features that need decoding.
 
         This method identifies features that have types requiring special decoding from the RonDB Rest Server
         response and maps their position in the ordered feature list to their type.
 
-        # Arguments
+        Parameters:
             features: List of TrainingDatasetFeature objects containing feature metadata
 
-        # Returns
+        Returns:
             Dict[int, str]: A dictionary mapping feature indices to their type strings for features
                 that require decoding. The indices correspond to the position in _ordered_feature_names.
         """
@@ -115,16 +116,16 @@ class OnlineStoreRestClientEngine:
 
     def build_base_payload(
         self,
-        metadata_options: Optional[Dict[str, bool]] = None,
+        metadata_options: dict[str, bool] | None = None,
         validate_passed_features: bool = False,
         include_detailed_status: bool = False,
-    ) -> Dict[str, Union[str, Dict[str, bool]]]:
+    ) -> dict[str, str | dict[str, bool]]:
         """Build the base payload for the RonDB REST Server Feature Store API.
 
         Check the RonDB Rest Server Feature Store API documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             validate_passed_features: Whether to validate the passed features against
                 the feature view schema on the RonDB Server.
             include_detailed_status: Whether to include detailed status information in the response.
@@ -160,13 +161,13 @@ class OnlineStoreRestClientEngine:
             _logger.debug(f"Base payload: {base_payload}")
         return base_payload
 
-    def decode_rdrs_feature_values(self, feature_values: List[Any]) -> List[Any]:
+    def decode_rdrs_feature_values(self, feature_values: list[Any]) -> list[Any]:
         """Decode binary and date values from the RonDB Rest Server response.
 
-        # Arguments:
+        Parameters:
             feature_values: List of feature values from the RonDB Rest Server
 
-        # Returns:
+        Returns:
             List of decoded feature values with binary values base64 decoded and date strings
             converted to datetime.date objects
         """
@@ -189,22 +190,21 @@ class OnlineStoreRestClientEngine:
 
     def get_single_feature_vector(
         self,
-        entry: Dict[str, Any],
-        passed_features: Optional[Dict[str, Any]] = None,
-        metadata_options: Optional[Dict[str, bool]] = None,
+        entry: dict[str, Any],
+        passed_features: dict[str, Any] | None = None,
+        metadata_options: dict[str, bool] | None = None,
         drop_missing: bool = False,
         inference_helpers_only: bool = False,
         return_type: str = RETURN_TYPE_FEATURE_VALUE_DICT,
-    ) -> Union[
-        Tuple[Union[List[Any], Dict[str, Any]], Optional[List[Dict[str, Any]]]],
-        Dict[str, Any],
-    ]:
+    ) -> (
+        tuple[list[Any] | dict[str, Any], list[dict[str, Any]] | None] | dict[str, Any]
+    ):
         """Get a single feature vector from the online feature store via RonDB Rest Server Feature Store API.
 
         Check the RonDB Rest Server Feature Store API documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             entry: A dictionary with the feature names as keys and the primary key as values.
             passed_features: A dictionary with the feature names as keys and the values to substitute for this specific vector.
             metadata_options: Whether to include feature metadata in the response.
@@ -213,7 +213,7 @@ class OnlineStoreRestClientEngine:
             inference_helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict", "feature_value_list" or "response_json".
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": The status pertinent to this single feature vector. One of COMPLETE, MISSING or ERROR.
@@ -223,9 +223,9 @@ class OnlineStoreRestClientEngine:
                 - "detailedStatus": A list of dictionaries with detailed status information for each read operations.
                     Keys include operationId, featureGroupId, httpStatus and message.
 
-        # Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the server response status code is not 200.
-            `ValueError`: If the length of the feature values and metadata in the reponse does not match.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the server response status code is not 200.
+            ValueError: If the length of the feature values and metadata in the reponse does not match.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -253,27 +253,23 @@ class OnlineStoreRestClientEngine:
                 inference_helpers_only=inference_helpers_only,
                 return_type=return_type,
             )
-        else:
-            return response
+        return response
 
     def get_batch_feature_vectors(
         self,
-        entries: List[Dict[str, Any]],
-        passed_features: Optional[List[Dict[str, Any]]] = None,
-        metadata_options: Optional[Dict[str, bool]] = None,
+        entries: list[dict[str, Any]],
+        passed_features: list[dict[str, Any]] | None = None,
+        metadata_options: dict[str, bool] | None = None,
         drop_missing: bool = False,
         inference_helpers_only: bool = False,
         return_type: str = RETURN_TYPE_FEATURE_VALUE_DICT,
-    ) -> Union[
-        Tuple[List[Union[List[Any], Dict[str, Any]]], List[Dict[str, Any]]],
-        Dict[str, Any],
-    ]:
+    ) -> tuple[list[list[Any] | dict[str, Any]], list[dict[str, Any]]] | dict[str, Any]:
         """Get a list of feature vectors from the online feature store via RonDB Rest Server Feature Store API.
 
         Check the RonDB Rest Server Feature Store API documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             entries: A list of dictionaries with the feature names as keys and the primary key as values.
             passed_features: A list of dictionaries with the feature names as keys and the values to substitute.
                 Note that the list should be ordered in the same way as the entries list.
@@ -283,7 +279,7 @@ class OnlineStoreRestClientEngine:
             helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict", "feature_value_list" or "response_json".
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": A list of the status for each feature vector retrieval.
@@ -294,9 +290,9 @@ class OnlineStoreRestClientEngine:
                 - "detailedStatus": A list of dictionaries with detailed status information for each read operations.
                     Keys include operationId, featureGroupId, httpStatus and message.
 
-        # Raises:
-            `hsfs.client.exceptions.RestAPIError`: If the server response status code is not 200.
-            `ValueError`: If the length of the passed features does not match the length of the entries.
+        Raises:
+            hsfs.client.exceptions.RestAPIError: If the server response status code is not 200.
+            ValueError: If the length of the passed features does not match the length of the entries.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -344,23 +340,22 @@ class OnlineStoreRestClientEngine:
                     response["features"], response.get("detailedStatus", []) or []
                 )
             ]
-        else:
-            return response
+        return response
 
     def convert_rdrs_response_to_feature_value_row(
         self,
-        row_feature_values: Union[List[Any], None],
+        row_feature_values: list[Any] | None,
         drop_missing: bool,
-        detailed_status: List[Dict[str, Any]] = None,
+        detailed_status: list[dict[str, Any]] = None,
         return_type: str = RETURN_TYPE_FEATURE_VALUE_LIST,
         inference_helpers_only: bool = False,
-    ) -> Union[List[Any], Dict[str, Any]]:
+    ) -> list[Any] | dict[str, Any]:
         """Convert the response from the RonDB Rest Server Feature Store API to a feature:value dict.
 
         When RonDB Server encounter an error it may send a null value for the feature vector. This function
         will handle this case and return a dictionary with None values for all feature names.
 
-        # Arguments:
+        Parameters:
             row_feature_values: A list of the feature values.
             drop_missing: Whether to drop missing features from the feature vector. Relies on detailed status.
             detailed_status: A list of dictionaries with detailed status information for each read operations.
@@ -368,7 +363,7 @@ class OnlineStoreRestClientEngine:
             helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict" or "feature_value_list".
 
-        # Returns:
+        Returns:
             A dictionary with the feature names as keys and the feature values as values. Values types are not guaranteed to
             match the feature type in the metadata. Timestamp SQL types are converted to python datetime.
         """
@@ -396,7 +391,7 @@ class OnlineStoreRestClientEngine:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug("Convert null feature vector to empty list.")
                 return []
-            elif row_feature_values is None:
+            if row_feature_values is None:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(
                         "Feature vector is null, returning None for all features."
@@ -406,7 +401,7 @@ class OnlineStoreRestClientEngine:
                     for is_helper in self.is_inference_helpers_list
                     if is_helper is inference_helpers_only
                 ]
-            elif drop_missing:
+            if drop_missing:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(
                         "Dropping missing features from the feature vector and return as list."
@@ -427,12 +422,12 @@ class OnlineStoreRestClientEngine:
                 _logger.debug("Returning feature vector as list.")
             return row_feature_values
 
-        elif return_type == self.RETURN_TYPE_FEATURE_VALUE_DICT:
+        if return_type == self.RETURN_TYPE_FEATURE_VALUE_DICT:
             if row_feature_values is None and drop_missing:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug("Convert null feature vector to empty dict.")
                 return {}
-            elif row_feature_values is None:
+            if row_feature_values is None:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(
                         "Feature vector is null, returning None for all features."
@@ -444,7 +439,7 @@ class OnlineStoreRestClientEngine:
                     )
                     if is_helper is inference_helpers_only
                 }
-            elif drop_missing:
+            if drop_missing:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(
                         "Dropping missing features from the feature vector and return as dict."
@@ -461,20 +456,18 @@ class OnlineStoreRestClientEngine:
                         and is_helper is inference_helpers_only
                     )
                 }
-            else:
-                if _logger.isEnabledFor(logging.DEBUG):
-                    _logger.debug("Returning feature vector as dict.")
-                return dict(
-                    {
-                        name: value
-                        for (name, value, is_helper) in zip(
-                            self.ordered_feature_names,
-                            row_feature_values,
-                            self.is_inference_helpers_list,
-                        )
-                        if is_helper is inference_helpers_only
-                    }
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("Returning feature vector as dict.")
+            return {
+                name: value
+                for (name, value, is_helper) in zip(
+                    self.ordered_feature_names,
+                    row_feature_values,
+                    self.is_inference_helpers_list,
                 )
+                if is_helper is inference_helpers_only
+            }
+        return None
 
     @property
     def feature_store_name(self) -> str:
@@ -489,19 +482,19 @@ class OnlineStoreRestClientEngine:
         return self._feature_view_version
 
     @property
-    def features(self) -> List[td_feature_mod.TrainingDatasetFeature]:
+    def features(self) -> list[td_feature_mod.TrainingDatasetFeature]:
         return self._features
 
     @property
-    def ordered_feature_names(self) -> List[str]:
+    def ordered_feature_names(self) -> list[str]:
         return self._ordered_feature_names
 
     @property
-    def is_inference_helpers_list(self) -> List[bool]:
+    def is_inference_helpers_list(self) -> list[bool]:
         return self._is_inference_helpers_list
 
     @property
-    def feature_names_per_fg_id(self) -> Dict[int, List[str]]:
+    def feature_names_per_fg_id(self) -> dict[int, list[str]]:
         return self._feature_names_per_fg_id
 
     @property

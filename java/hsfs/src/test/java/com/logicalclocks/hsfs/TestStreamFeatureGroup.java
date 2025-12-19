@@ -19,6 +19,8 @@ package com.logicalclocks.hsfs;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+
 import org.apache.log4j.Appender;
 import org.apache.log4j.spi.LoggingEvent;
 import org.junit.Assert;
@@ -34,6 +36,7 @@ class TestStreamFeatureGroup {
   void testParsingJson() throws JsonProcessingException {
     // Arrange
     Logger logger = Logger.getRootLogger();
+    logger.removeAllAppenders();
     Appender appender = Mockito.mock(Appender.class);
     logger.addAppender(appender);
 
@@ -54,6 +57,7 @@ class TestStreamFeatureGroup {
   void testParsingJsonWhenDeprecated() throws JsonProcessingException {
     // Arrange
     Logger logger = Logger.getRootLogger();
+    logger.removeAllAppenders();
     Appender appender = Mockito.mock(Appender.class);
     logger.addAppender(appender);
 

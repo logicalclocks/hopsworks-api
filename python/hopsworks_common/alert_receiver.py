@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -38,7 +38,7 @@ class EmailConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the email config as a dictionary"""
+        """Return the email config as a dictionary."""
         return {
             "to": self._to,
             "sendResolved": self._send_resolved,
@@ -60,19 +60,18 @@ class _EmailConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
-    def to(self) -> Optional[str]:
-        """return the email address of the email config"""
+    def to(self) -> str | None:
+        """Return the email address of the email config."""
         return self._to
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the email config as a dictionary"""
+        """Return the email config as a dictionary."""
         return {
             "to": self._to,
             "sendResolved": self._send_resolved,
@@ -102,7 +101,7 @@ class SlackConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the slack config as a dictionary"""
+        """Return the slack config as a dictionary."""
         return {
             "channel": self._channel,
             "sendResolved": self._send_resolved,
@@ -124,19 +123,18 @@ class _SlackConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
-    def channel(self) -> Optional[str]:
-        """return the channel of the slack config"""
+    def channel(self) -> str | None:
+        """Return the channel of the slack config."""
         return self._channel
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the slack config as a dictionary"""
+        """Return the slack config as a dictionary."""
         return {
             "channel": self._channel,
             "sendResolved": self._send_resolved,
@@ -170,7 +168,7 @@ class PagerDutyConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the pager duty config as a dictionary"""
+        """Return the pager duty config as a dictionary."""
         return {
             "serviceKey": self._service_key,
             "routingKey": self._routing_key,
@@ -195,24 +193,23 @@ class _PagerDutyConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
-    def service_key(self) -> Optional[str]:
-        """return the service key of the pager duty config"""
+    def service_key(self) -> str | None:
+        """Return the service key of the pager duty config."""
         return self._service_key
 
     @property
-    def routing_key(self) -> Optional[str]:
-        """return the routing key of the pager duty config"""
+    def routing_key(self) -> str | None:
+        """Return the routing key of the pager duty config."""
         return self._routing_key
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the pager duty config as a dictionary"""
+        """Return the pager duty config as a dictionary."""
         return {
             "serviceKey": self._service_key,
             "routingKey": self._routing_key,
@@ -243,7 +240,7 @@ class WebhookConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the webhook config as a dictionary"""
+        """Return the webhook config as a dictionary."""
         return {
             "url": self._url,
             "sendResolved": self._send_resolved,
@@ -265,19 +262,18 @@ class _WebhookConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
-    def url(self) -> Optional[str]:
-        """return the url of the webhook config"""
+    def url(self) -> str | None:
+        """Return the url of the webhook config."""
         return self._url
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the webhook config as a dictionary"""
+        """Return the webhook config as a dictionary."""
         return {
             "url": self._url,
             "sendResolved": self._send_resolved,
@@ -292,6 +288,7 @@ class _WebhookConfig:
 
 class AlertReceiver:
     NOT_FOUND_ERROR_CODE = 390003
+
     def __init__(
         self,
         name=None,
@@ -332,41 +329,39 @@ class AlertReceiver:
         if "count" in json_decamelized:
             if "items" in json_decamelized:
                 return [cls(**receiver) for receiver in json_decamelized["items"]]
-            else:
-                return []
-        else:
-            return cls(**json_decamelized)
+            return []
+        return cls(**json_decamelized)
 
     @property
-    def name(self) -> Optional[str]:
-        """return the name of the alert receiver"""
+    def name(self) -> str | None:
+        """Return the name of the alert receiver."""
         return self._name
 
     @property
-    def email_configs(self) -> Optional[list]:
-        """return the email configs of the alert receiver"""
+    def email_configs(self) -> list | None:
+        """Return the email configs of the alert receiver."""
         return self._email_configs
 
     @property
-    def slack_configs(self) -> Optional[list]:
-        """return the slack configs of the alert receiver"""
+    def slack_configs(self) -> list | None:
+        """Return the slack configs of the alert receiver."""
         return self._slack_configs
 
     @property
-    def pager_duty_configs(self) -> Optional[list]:
-        """return the pager duty configs of the alert receiver"""
+    def pager_duty_configs(self) -> list | None:
+        """Return the pager duty configs of the alert receiver."""
         return self._pager_duty_configs
 
     @property
-    def webhook_configs(self) -> Optional[list]:
-        """return the webhook configs of the alert receiver"""
+    def webhook_configs(self) -> list | None:
+        """Return the webhook configs of the alert receiver."""
         return self._webhook_configs
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the alert receiver as a dictionary"""
+        """Return the alert receiver as a dictionary."""
         dict = {
             "name": self._name,
         }
@@ -396,6 +391,7 @@ class AlertReceiver:
             return self._pager_duty_configs
         if self._webhook_configs:
             return self._webhook_configs
+        return None
 
     def __repr__(self):
         return f"AlertReceiver({self._name!r}, {self._get_config()!r})"

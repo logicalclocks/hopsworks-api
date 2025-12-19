@@ -15,7 +15,6 @@
 #
 
 from hopsworks_common.constants import (
-    ARTIFACT_VERSION,
     DEFAULT,
     DEPLOYABLE_COMPONENT,
     DEPLOYMENT,
@@ -44,7 +43,6 @@ from hopsworks_common.constants import (
 
 
 __all__ = [
-    "ARTIFACT_VERSION",
     "DEFAULT",
     "DEPLOYABLE_COMPONENT",
     "DEPLOYMENT",

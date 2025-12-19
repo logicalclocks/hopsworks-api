@@ -27,9 +27,7 @@ class TensorSchema:
         elif isinstance(tensor_obj, numpy.ndarray):
             self.tensors = self._convert_tensor_to_schema(tensor_obj)
         else:
-            raise TypeError(
-                "{} is not supported in a tensor schema.".format(type(tensor_obj))
-            )
+            raise TypeError(f"{type(tensor_obj)} is not supported in a tensor schema.")
 
     def _convert_tensor_to_schema(self, tensor_obj):
         return Tensor(tensor_obj.dtype, tensor_obj.shape)
@@ -37,10 +35,9 @@ class TensorSchema:
     def _convert_list_to_schema(self, tensor_obj):
         if len(tensor_obj) == 1:
             return [self._build_tensor(tensor_obj[0])]
-        else:
-            tensors = []
-            for tensor in tensor_obj:
-                tensors.append(self._build_tensor(tensor))
+        tensors = []
+        for tensor in tensor_obj:
+            tensors.append(self._build_tensor(tensor))
         return tensors
 
     def _build_tensor(self, tensor_obj):
@@ -59,15 +56,11 @@ class TensorSchema:
         if "type" in tensor_obj:
             type = tensor_obj["type"]
         else:
-            raise ValueError(
-                "Mandatory 'type' key missing from entry {}".format(tensor_obj)
-            )
+            raise ValueError(f"Mandatory 'type' key missing from entry {tensor_obj}")
 
         if "shape" in tensor_obj:
             shape = tensor_obj["shape"]
         else:
-            raise ValueError(
-                "Mandatory 'shape' key missing from entry {}".format(tensor_obj)
-            )
+            raise ValueError(f"Mandatory 'shape' key missing from entry {tensor_obj}")
 
         return Tensor(type, shape, name=name, description=description)

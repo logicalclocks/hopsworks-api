@@ -167,6 +167,10 @@ public abstract class FeatureGroupBase<T> {
     }
   }
 
+  public void setDataSource(DataSource dataSource) {
+    this.dataSource = dataSource;
+  }
+
   public void delete() throws FeatureStoreException, IOException {
     LOGGER.warn("JobWarning: All jobs associated to feature group `" + name + "`, version `"
         + version + "` will be removed.");

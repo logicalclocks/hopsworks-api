@@ -749,8 +749,8 @@ class FeatureGroupBase:
         For deleted and inaccessible storage connector, only minimal information is
         returned.
 
-        !!! warning "Deprecated"
-                    `get_storage_connector_provenance` method is deprecated. Use `get_data_source_provenance` instead.
+        # Warning "Deprecated"
+            `get_storage_connector_provenance` method is deprecated. Use `get_data_source_provenance` instead.
 
         # Returns
             `Links`: the storage connector used to generate this feature group or `None` if it does not exist.
@@ -758,13 +758,13 @@ class FeatureGroupBase:
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        return self.get_data_source_provenance()
+        return self._feature_group_engine.get_storage_connector_provenance(self)
 
     def get_data_source_provenance(self) -> Optional[explicit_provenance.Links]:
         """Get the parents of this feature group, based on explicit provenance.
-        Parents are data sources. These data sources can be accessible,
+        Parents are storage connectors. These storage connector can be accessible,
         deleted or inaccessible.
-        For deleted and inaccessible data sources, only minimal information is
+        For deleted and inaccessible storage connector, only minimal information is
         returned.
 
         # Returns
@@ -780,8 +780,8 @@ class FeatureGroupBase:
         provenance. Only the accessible storage connector is returned.
         For more items use the base method - get_storage_connector_provenance
 
-        !!! warning "Deprecated"
-                    `get_storage_connector` method is deprecated. Use `get_data_source` instead.
+        # Warning "Deprecated"
+            `get_storage_connector_provenance` method is deprecated. Use `get_data_source_provenance` instead.
 
         # Returns
             `StorageConnector`: Storage connector or `None` if it does not exist.
@@ -789,7 +789,20 @@ class FeatureGroupBase:
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        return self.get_data_source()
+        storage_connector_provenance = self.get_storage_connector_provenance()
+
+        if storage_connector_provenance and (
+            storage_connector_provenance.inaccessible
+            or storage_connector_provenance.deleted
+        ):
+            _logger.info(
+                "The parent storage connector is deleted or inaccessible. For more details access `get_storage_connector_provenance`"
+            )
+
+        if storage_connector_provenance and storage_connector_provenance.accessible:
+            return storage_connector_provenance.accessible[0]
+        else:
+            return None
 
     def get_data_source(self) -> Optional["ds.DataSource"]:
         """Get the data source using this feature group, based on explicit
@@ -2243,7 +2256,6 @@ class FeatureGroupBase:
 
     @property
     def location(self) -> Optional[str]:
-        """Storage specific location. Including data source path if specified."""
         return self._location
 
     @property
@@ -4352,7 +4364,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         fg = feature_store.create_external_feature_group(name="sales",
             version=1,
             description="Physical shop sales features",
-            query=query,
             data_source=ds,
             primary_key=['ss_store_sk'],
             event_time='sale_date'

@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Union
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.util import (
     FEATURE_STORE_NAME_SUFFIX,
@@ -66,34 +66,32 @@ FeatureStoreEncoder = Encoder
 
 
 def validate_feature(
-    ft: Union[str, feature.Feature, Dict[str, Any]],
+    ft: str | feature.Feature | dict[str, Any],
 ) -> feature.Feature:
     if isinstance(ft, feature.Feature):
         return ft
-    elif isinstance(ft, str):
+    if isinstance(ft, str):
         return feature.Feature(ft)
-    elif isinstance(ft, dict):
+    if isinstance(ft, dict):
         return feature.Feature(**ft)
+    raise TypeError("Feature must be a string, Feature object, or dictionary.")
 
 
 def parse_features(
-    feature_names: Union[
-        str, feature.Feature, List[Union[Dict[str, Any], str, feature.Feature]]
-    ],
-) -> List[feature.Feature]:
+    feature_names: str | feature.Feature | list[dict[str, Any] | str | feature.Feature],
+) -> list[feature.Feature]:
     if isinstance(feature_names, (str, feature.Feature)):
         return [validate_feature(feature_names)]
-    elif isinstance(feature_names, list) and len(feature_names) > 0:
+    if isinstance(feature_names, list) and len(feature_names) > 0:
         return [validate_feature(feat) for feat in feature_names]
-    else:
-        return []
+    return []
 
 
 def build_serving_keys_from_prepared_statements(
-    prepared_statements: List[serving_prepared_statement.ServingPreparedStatement],
+    prepared_statements: list[serving_prepared_statement.ServingPreparedStatement],
     feature_store_id: int,
     ignore_prefix: bool = False,
-) -> Set[serving_key.ServingKey]:
+) -> set[serving_key.ServingKey]:
     serving_keys = set()
     fg_api = feature_group_api.FeatureGroupApi()
     for statement in prepared_statements:

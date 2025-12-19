@@ -12,8 +12,7 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-
-from typing import Optional
+from __future__ import annotations
 
 import humps
 from hopsworks_common import util
@@ -26,13 +25,13 @@ class PredictorState:
     def __init__(
         self,
         available_predictor_instances: int,
-        available_transformer_instances: Optional[int],
+        available_transformer_instances: int | None,
         hopsworks_inference_path: str,
         model_server_inference_path: str,
-        internal_port: Optional[int],
-        revision: Optional[int],
-        deployed: Optional[bool],
-        condition: Optional[PredictorStateCondition],
+        internal_port: int | None,
+        revision: int | None,
+        deployed: bool | None,
+        condition: PredictorStateCondition | None,
         status: str,
         **kwargs,
     ):
@@ -47,7 +46,7 @@ class PredictorState:
         self._status = status
 
     def describe(self):
-        """Print a description of the deployment state"""
+        """Print a JSON description of the deployment state."""
         util.pretty_print(self)
 
     @classmethod
@@ -115,7 +114,7 @@ class PredictorState:
 
     @property
     def model_server_inference_path(self):
-        """Inference path in the model server"""
+        """Inference path in the model server."""
         return self._model_server_inference_path
 
     @property

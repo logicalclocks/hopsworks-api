@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -26,8 +26,8 @@ class PredictorStateCondition:
     def __init__(
         self,
         type: str,
-        status: Optional[bool] = None,
-        reason: Optional[str] = None,
+        status: bool | None = None,
+        reason: str | None = None,
         **kwargs,
     ):
         self._type = type
@@ -35,6 +35,7 @@ class PredictorStateCondition:
         self._reason = reason
 
     def describe(self):
+        """Print a JSON description of the predictor state condition."""
         util.pretty_print(self)
 
     @classmethod

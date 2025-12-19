@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
@@ -42,7 +44,7 @@ def setup_spark() -> SparkSession:
     return SparkSession.builder.enableHiveSupport().getOrCreate()
 
 
-def get_feature_store_handle(feature_store: str = "") -> hsfs.feature_store:
+def get_feature_store_handle(feature_store: str = "") -> hopsworks.hsfs.feature_store:
     project = hopsworks.login()
     return project.get_feature_store(feature_store)
 
@@ -264,7 +266,10 @@ def delta_vacuum_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
 
     entity.delta_vacuum()
 
-def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], initial_check_point_string: str) -> None:
+
+def offline_fg_materialization(
+    spark: SparkSession, job_conf: Dict[Any, Any], initial_check_point_string: str
+) -> None:
     """
     Run materialization job on a feature group.
     """
@@ -281,11 +286,13 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     offset_location = entity.prepare_spark_location() + "/kafka_offsets"
     try:
         if initial_check_point_string:
-            starting_offset_string = json.dumps(_build_offsets(initial_check_point_string))
+            starting_offset_string = json.dumps(
+                _build_offsets(initial_check_point_string)
+            )
         else:
             starting_offset_string = spark.read.json(offset_location).toJSON().first()
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"Failed to use existing offsets: {e}")
         # if all else fails read from the beggining
         initial_check_point_string = kafka_engine.kafka_get_offsets(
             topic_name=entity._online_topic_name,
@@ -319,8 +326,18 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     )
 
     # filter only the necassary entries
-    filtered_df = df.filter(expr("CAST(filter(headers, header -> header.key = 'featureGroupId')[0].value AS STRING)") == str(entity._id))
-    filtered_df = filtered_df.filter(expr("CAST(filter(headers, header -> header.key = 'subjectId')[0].value AS STRING)") == str(entity.subject["id"]))
+    filtered_df = df.filter(
+        expr(
+            "CAST(filter(headers, header -> header.key = 'featureGroupId')[0].value AS STRING)"
+        )
+        == str(entity._id)
+    )
+    filtered_df = filtered_df.filter(
+        expr(
+            "CAST(filter(headers, header -> header.key = 'subjectId')[0].value AS STRING)"
+        )
+        == str(entity.subject["id"])
+    )
 
     # limit the number of records ingested
     # default limit is 5M
@@ -336,31 +353,52 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     # de-duplicate records
     # timestamp cannot be relied on to order the records in case of duplicates, if they are produced together they would have the same timestamp.
     # Instead use offset to order the records, they are strictly increasing within a partition and since we use primary keys for generating Kafka message keys duplicates are guaranteed to be in the same partition.
-    partition_columns = [f"value.{key}" for key in entity.primary_key]
-    if entity.event_time:
-        partition_columns.append(f"value.{entity.event_time}")
-    window = Window.partitionBy(partition_columns) \
-                .orderBy(col("offset").desc())
-    deduped_df = deserialized_df.withColumn("row_num", row_number().over(window)) \
-                .filter("row_num = 1") \
-                .drop("row_num")
+    if entity.primary_key:
+        partition_columns = [f"value.{key}" for key in entity.primary_key]
+        if entity.event_time:
+            partition_columns.append(f"value.{entity.event_time}")
+        if entity.partition_key:
+            partition_columns.extend([f"value.{key}" for key in entity.partition_key])
+        window = Window.partitionBy(partition_columns).orderBy(col("offset").desc())
+        deduped_df = (
+            deserialized_df.withColumn("row_num", row_number().over(window))
+            .filter("row_num = 1")
+            .drop("row_num")
+        )
+    else:
+        deduped_df = deserialized_df
 
     # get only the feature values (remove kafka metadata)
     deduped_df = deduped_df.select("value.*")
 
     # get offsets (do it before inserting to avoid skipping records if data was deleted during the job execution)
-    df_offsets = (df if limit > filtered_df.count() else filtered_df).groupBy('partition').agg(max('offset').alias('offset')).collect()
+    df_offsets = (
+        (df if limit > filtered_df.count() else filtered_df)
+        .groupBy("partition")
+        .agg(max("offset").alias("offset"))
+        .collect()
+    )
     offset_dict = json.loads(starting_offset_string)
     for offset_row in df_offsets:
-        offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = offset_row.offset + 1
-
+        offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = (
+            offset_row.offset + 1
+        )
     # insert data
-    entity.stream = False # to make sure we dont write to kafka
-    entity.insert(deduped_df, storage="offline")
+    entity.stream = False  # to make sure we dont write to kafka
+
+    # Do not apply transformation function at this point since the data written to Kafka already has transformations applied.
+    entity.insert(
+        deduped_df,
+        storage="offline",
+        transform=False,
+        write_options=write_options,
+        validation_options={"schema_validation": False},
+    )
 
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])
     offset_df.coalesce(1).write.mode("overwrite").json(offset_location)
+
 
 def update_table_schema_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
     """
@@ -374,17 +412,22 @@ def update_table_schema_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> Non
     entity.stream = False
     engine.get_instance().update_table_schema(entity)
 
+
 def _build_offsets(initial_check_point_string: str):
     if not initial_check_point_string:
         return ""
 
     # Split the input string into the topic and partition-offset pairs
-    topic, offsets = initial_check_point_string.split(',', 1)
+    topic, offsets = initial_check_point_string.split(",", 1)
     # Split the offsets and build a dictionary from them
-    offsets_dict = {partition: int(offset) for partition, offset in (pair.split(':') for pair in offsets.split(','))}
+    offsets_dict = {
+        partition: int(offset)
+        for partition, offset in (pair.split(":") for pair in offsets.split(","))
+    }
     # Create the final dictionary structure
     result = {topic: offsets_dict}
     return result
+
 
 if __name__ == "__main__":
     # Setup spark first so it fails faster in case of args errors

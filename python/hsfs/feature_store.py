@@ -16,14 +16,10 @@
 #
 from __future__ import annotations
 
-import datetime
 import warnings
-from datetime import timedelta
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
-import pandas as pd
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     expectation_suite,
     feature,
@@ -34,7 +30,6 @@ from hsfs import (
     usage,
     util,
 )
-from hsfs.constructor.query import Query
 from hsfs.core import (
     data_source as ds,
 )
@@ -47,39 +42,49 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.decorators import typechecked
-from hsfs.embedding import EmbeddingIndex
-from hsfs.hopsworks_udf import HopsworksUdf
-from hsfs.online_config import OnlineConfig
-from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
 
 
-if HAS_NUMPY:
-    import numpy as np
+if TYPE_CHECKING:
+    from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 
-if HAS_POLARS:
-    import polars as pl
+    if HAS_NUMPY:
+        import numpy as np
+    if HAS_POLARS:
+        import polars as pl
+
+    import datetime
+    from datetime import timedelta
+
+    import pandas as pd
+    from hsfs.constructor.query import Query
+    from hsfs.embedding import EmbeddingIndex
+    from hsfs.hopsworks_udf import HopsworksUdf
+    from hsfs.online_config import OnlineConfig
+    from hsfs.statistics_config import StatisticsConfig
 
 
 @typechecked
 class FeatureStore:
+    """Feature Store class used to manage feature store entities, like feature groups and feature views."""
+
     DEFAULT_VERSION = 1
 
     def __init__(
         self,
         featurestore_id: int,
         featurestore_name: str,
-        created: Union[str, datetime.datetime],
+        created: str | datetime.datetime,
         project_name: str,
         project_id: int,
         offline_featurestore_name: str,
         online_enabled: bool,
-        num_feature_groups: Optional[int] = None,
-        num_training_datasets: Optional[int] = None,
-        num_storage_connectors: Optional[int] = None,
-        num_feature_views: Optional[int] = None,
-        online_featurestore_name: Optional[str] = None,
-        online_featurestore_size: Optional[int] = None,
+        num_feature_groups: int | None = None,
+        num_training_datasets: int | None = None,
+        num_storage_connectors: int | None = None,
+        num_feature_views: int | None = None,
+        online_featurestore_name: str | None = None,
+        online_featurestore_size: int | None = None,
         **kwargs,
     ) -> None:
         self._id = featurestore_id
@@ -118,7 +123,7 @@ class FeatureStore:
         )
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> FeatureStore:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureStore:
         json_decamelized = humps.decamelize(json_dict)
         # fields below are removed from 3.4. remove them for backward compatibility.
         json_decamelized.pop("hdfs_store_path", None)
@@ -128,18 +133,16 @@ class FeatureStore:
 
     def get_feature_group(
         self, name: str, version: int = None
-    ) -> Union[
-        feature_group.FeatureGroup,
-        feature_group.ExternalFeatureGroup,
-        feature_group.SpineGroup,
-    ]:
+    ) -> (
+        feature_group.FeatureGroup
+        | feature_group.ExternalFeatureGroup
+        | feature_group.SpineGroup
+    ):
         """Get a feature group entity from the feature store.
 
-        Getting a feature group from the Feature Store means getting its metadata handle
-        so you can subsequently read the data into a Spark or Pandas DataFrame or use
-        the `Query`-API to perform joins between feature groups.
+        Getting a feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -150,22 +153,19 @@ class FeatureStore:
                 )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to get.
-            version: Version of the feature group to retrieve, defaults to `None` and will
-                return the `version=1`.
+            version: Version of the feature group to retrieve, defaults to `None` and will return the `version=1`.
 
-        # Returns
-            `FeatureGroup`: The feature group metadata object or `None` if it does not exist.
+        Returns:
+            The feature group metadata object or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if version is None:
             warnings.warn(
-                "No version provided for getting feature group `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting feature group `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -177,20 +177,16 @@ class FeatureStore:
 
     def get_feature_groups(
         self, name: str | None = None
-    ) -> List[
-        Union[
-            feature_group.FeatureGroup,
-            feature_group.ExternalFeatureGroup,
-            feature_group.SpineGroup,
-        ]
+    ) -> list[
+        feature_group.FeatureGroup
+        | feature_group.ExternalFeatureGroup
+        | feature_group.SpineGroup
     ]:
         """Get all feature groups from the feature store, or all versions of a feature group specified by its name.
 
-        Getting a feature group from the Feature Store means getting its metadata handle
-        so you can subsequently read the data into a Spark or Pandas DataFrame or use
-        the `Query`-API to perform joins between feature groups.
+        Getting a feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -201,7 +197,7 @@ class FeatureStore:
                 )
             ```
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -210,14 +206,14 @@ class FeatureStore:
             fgs_list = fs.get_feature_groups()
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to get the versions of; by default it is `None` and all feature groups are returned.
 
-        # Returns
-            `list[FeatureGroup]`: List of feature group metadata objects.
+        Returns:
+            List of feature group metadata objects.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if name:
             feature_group_object = self._feature_group_api.get(self.id, name, None)
@@ -233,23 +229,21 @@ class FeatureStore:
     ) -> feature_group.ExternalFeatureGroup:
         """Get an external feature group entity from the feature store.
 
-        !!! warning "Deprecated"
-            `get_on_demand_feature_group` method is deprecated. Use the `get_external_feature_group` method instead.
+        Warning: Deprecated
+            `get_on_demand_feature_group` method is deprecated.
+            Use the `get_external_feature_group` method instead.
 
-        Getting an external feature group from the Feature Store means getting its
-        metadata handle so you can subsequently read the data into a Spark or
-        Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
+        Getting an external feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to get.
-            version: Version of the external feature group to retrieve,
-                defaults to `None` and will return the `version=1`.
+            version: Version of the external feature group to retrieve, defaults to `None` and will return the `version=1`.
 
-        # Returns
-            `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
+        Returns:
+            The external feature group metadata object or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self.get_external_feature_group(name, version)
 
@@ -259,34 +253,29 @@ class FeatureStore:
     ) -> feature_group.ExternalFeatureGroup:
         """Get an external feature group entity from the feature store.
 
-        Getting an external feature group from the Feature Store means getting its
-        metadata handle so you can subsequently read the data into a Spark or
-        Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
+        Getting an external feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
 
             external_fg = fs.get_external_feature_group("external_fg_test")
             ```
-        # Arguments
+
+        Parameters:
             name: Name of the external feature group to get.
-            version: Version of the external feature group to retrieve,
-                defaults to `None` and will return the `version=1`.
+            version: Version of the external feature group to retrieve, by defaults to `None` and will return the `version=1`.
 
-        # Returns
-            `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
+        Returns:
+            The external feature group metadata object or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         if version is None:
             warnings.warn(
-                "No version provided for getting feature group `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting feature group `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -303,38 +292,35 @@ class FeatureStore:
     @usage.method_logger
     def get_on_demand_feature_groups(
         self, name: str
-    ) -> List[feature_group.ExternalFeatureGroup]:
+    ) -> list[feature_group.ExternalFeatureGroup]:
         """Get a list of all versions of an external feature group entity from the feature store.
 
-        !!! warning "Deprecated"
-            `get_on_demand_feature_groups` method is deprecated. Use the `get_external_feature_groups` method instead.
+        Warning: Deprecated
+            `get_on_demand_feature_groups` method is deprecated.
+            Use the `get_external_feature_groups` method instead.
 
-        Getting an external feature group from the Feature Store means getting its
-        metadata handle so you can subsequently read the data into a Spark or
-        Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
+        Getting an external feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to get.
 
-        # Returns
-            `ExternalFeatureGroup`: List of external feature group metadata objects.
+        Returns:
+            List of external feature group metadata objects.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self.get_external_feature_groups(name)
 
     @usage.method_logger
     def get_external_feature_groups(
         self, name: str | None = None
-    ) -> List[feature_group.ExternalFeatureGroup]:
+    ) -> list[feature_group.ExternalFeatureGroup]:
         """Get a list of all external feature groups from the feature store, or all versions of an external feature group.
 
-        Getting an external feature group from the Feature Store means getting its
-        metadata handle so you can subsequently read the data into a Spark or
-        Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
+        Getting an external feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -342,7 +328,7 @@ class FeatureStore:
             external_fgs_list = fs.get_external_feature_groups("external_fg_test")
             ```
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -351,14 +337,14 @@ class FeatureStore:
             external_fgs_list = fs.get_external_feature_groups()
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to get the versions of; by default it is `None` and all external feature groups are returned.
 
-        # Returns
-            `list[ExternalFeatureGroup]`: List of external feature group metadata objects.
+        Returns:
+            List of external feature group metadata objects.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         fgs = self.get_feature_groups(name)
         return [fg for fg in fgs if isinstance(fg, feature_group.ExternalFeatureGroup)]
@@ -368,34 +354,27 @@ class FeatureStore:
     ) -> training_dataset.TrainingDataset:
         """Get a training dataset entity from the feature store.
 
-        !!! warning "Deprecated"
-            `TrainingDataset` is deprecated, use `FeatureView` instead. You can still retrieve old
-            training datasets using this method, but after upgrading the old training datasets will
-            also be available under a Feature View with the same name and version.
+        Warning: Deprecated
+            `TrainingDataset` is deprecated, use `FeatureView` instead.
+            You can still retrieve old training datasets using this method, but after upgrading the old training datasets will also be available under a Feature View with the same name and version.
 
-            It is recommended to use this method only for old training datasets that have been
-            created directly from Dataframes and not with Query objects.
+            It is recommended to use this method only for old training datasets that have been created directly from Dataframes and not with Query objects.
 
-        Getting a training dataset from the Feature Store means getting its metadata handle
-        so you can subsequently read the data into a Spark or Pandas DataFrame.
+        Getting a training dataset from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the training dataset to get.
-            version: Version of the training dataset to retrieve, defaults to `None` and will
-                return the `version=1`.
+            version: Version of the training dataset to retrieve, defaults to `None` and will return the `version=1`.
 
-        # Returns
-            `TrainingDataset`: The training dataset metadata object.
+        Returns:
+            The training dataset metadata object.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         if version is None:
             warnings.warn(
-                "No version provided for getting training dataset `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting training dataset `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -404,23 +383,22 @@ class FeatureStore:
 
     def get_training_datasets(
         self, name: str
-    ) -> List[training_dataset.TrainingDataset]:
+    ) -> list[training_dataset.TrainingDataset]:
         """Get a list of all versions of a training dataset entity from the feature store.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             `TrainingDataset` is deprecated, use `FeatureView` instead.
 
-        Getting a training dataset from the Feature Store means getting its metadata handle
-        so you can subsequently read the data into a Spark or Pandas DataFrame.
+        Getting a training dataset from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the training dataset to get.
 
-        # Returns
-            `TrainingDataset`: List of training dataset metadata objects.
+        Returns:
+            List of training dataset metadata objects.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._training_dataset_api.get(name, None)
 
@@ -428,18 +406,12 @@ class FeatureStore:
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
         """Get a previously created storage connector from the feature store.
 
-        Storage connectors encapsulate all information needed for the execution engine
-        to read and write to specific storage. This storage can be S3, a JDBC compliant
-        database or the distributed filesystem HOPSFS.
+        Storage connectors encapsulate all information needed for the execution engine to read and write to specific storage.
+        This storage can be S3, a JDBC compliant database or the distributed filesystem HOPSFS.
 
-        If you want to connect to the online feature store, see the
-        `get_online_storage_connector` method to get the JDBC connector for the Online
-        Feature Store.
+        If you want to connect to the online feature store, see the `get_online_storage_connector` method to get the JDBC connector for the Online Feature Store.
 
-        !!! warning "Deprecated"
-                    `get_storage_connector` method is deprecated. Use `get_data_source` instead.
-
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -447,11 +419,11 @@ class FeatureStore:
             sc = fs.get_storage_connector("demo_fs_meb10000_Training_Datasets")
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the storage connector to retrieve.
 
-        # Returns
-            `StorageConnector`. Storage connector object.
+        Returns:
+            Storage connector object.
         """
         return self.get_data_source(name).storage_connector
 
@@ -466,7 +438,10 @@ class FeatureStore:
         `get_online_data_source` method to get the JDBC connector for the Online
         Feature Store.
 
-        !!! example
+        Warning "Deprecated"
+                    `get_storage_connector` method is deprecated. Use `get_data_source` instead.
+
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -474,10 +449,10 @@ class FeatureStore:
             data_source = fs.get_data_source("test_data_source")
             ```
 
-        # Arguments
+        Arguments
             name: Name of the data source to retrieve.
 
-        # Returns
+        Returns
             `DataSource`. Data source object.
         """
         return ds.DataSource(storage_connector=self._storage_connector_api.get(self._id, name))
@@ -485,56 +460,55 @@ class FeatureStore:
     def sql(
         self,
         query: str,
-        dataframe_type: Optional[str] = "default",
-        online: Optional[bool] = False,
-        read_options: Optional[dict] = None,
-    ) -> Union[pd.DataFrame, pd.Series, np.ndarray, pl.DataFrame]:
-        """Execute SQL command on the offline or online feature store database
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+        online: bool = False,
+        read_options: dict | None = None,
+    ) -> pd.DataFrame | pd.Series | np.ndarray | pl.DataFrame:
+        """Execute SQL command on the offline or online feature store database.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
 
             # construct the query and show head rows
-            query_res_head = fs.sql(\"SELECT * FROM `fg_1`\").head()
+            query_res_head = fs.sql("SELECT * FROM `fg_1`").head()
             ```
 
-        # Arguments
+        Parameters:
             query: The SQL query to execute.
-            dataframe_type: str, optional. The type of the returned dataframe.
-                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
-                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            dataframe_type:
+                The type of the returned dataframe.
+                Defaults to `"default"`, which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             online: Set to true to execute the query against the online feature store.
-                Defaults to False.
-            read_options: Additional options as key/value pairs to pass to the execution engine.
+            read_options:
+                Additional options as key/value pairs to pass to the execution engine.
+
                 For spark engine: Dictionary of read options for Spark.
+
                 For python engine:
-                If running queries on the online feature store, users can provide an entry `{'external': True}`,
-                this instructs the library to use the `host` parameter in the [`hopsworks.login()`](login.md#login) to establish the connection to the online feature store.
-                If not set, or set to False, the online feature store storage connector is used which relies on
-                the private ip.
-                Defaults to `{}`.
+                If running queries on the online feature store, users can provide an entry `{'external': True}`, this instructs the library to use the `host` parameter in the [`hopsworks.login`][hopsworks.login] to establish the connection to the online feature store.
+                If not set, or set to False, the online feature store storage connector is used which relies on the private ip.
 
-        # Returns
-            `DataFrame`: DataFrame depending on the chosen type.
+        Returns:
+            DataFrame depending on the chosen type.
         """
-
         return self._feature_group_engine.sql(
             query, self._name, dataframe_type, online, read_options or {}
         )
 
     @usage.method_logger
     def get_online_storage_connector(self) -> storage_connector.StorageConnector:
-        """Get the storage connector for the Online Feature Store of the respective
-        project's feature store.
+        """Get the storage connector for the Online Feature Store of the respective project's feature store.
 
         The returned storage connector depends on the project that you are connected to.
 
-        !!! warning "Deprecated"
+        Warning "Deprecated"
                     `get_online_storage_connector` method is deprecated. Use `get_online_data_source` instead.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -542,8 +516,8 @@ class FeatureStore:
             online_storage_connector = fs.get_online_storage_connector()
             ```
 
-        # Returns
-            `StorageConnector`. JDBC storage connector to the Online Feature Store.
+        Returns:
+            JDBC storage connector to the Online Feature Store.
         """
         return self.get_online_data_source().storage_connector
 
@@ -571,55 +545,39 @@ class FeatureStore:
     def create_feature_group(
         self,
         name: str,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        online_enabled: Optional[bool] = False,
-        time_travel_format: Optional[str] = "HUDI",
-        partition_key: Optional[List[str]] = None,
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        hudi_precombine_key: Optional[str] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        event_time: Optional[str] = None,
-        stream: Optional[bool] = False,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
-        parents: Optional[List[feature_group.FeatureGroup]] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[
-            storage_connector.StorageConnector, Dict[str, Any]
-        ] = None,
-        path: Optional[str] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
+        version: int | None = None,
+        description: str = "",
+        online_enabled: bool = False,
+        time_travel_format: str | None = None,
+        partition_key: list[str] | None = None,
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        hudi_precombine_key: str | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        event_time: str | None = None,
+        stream: bool = False,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
+        parents: list[feature_group.FeatureGroup] | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        offline_backfill_every_hr: int | str | None = None,
+        storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
+        path: str | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -634,113 +592,118 @@ class FeatureStore:
                 return value + 2
 
             # construct list of "transformation functions" on features
-            transformation_functions = [plus_one("feature1"), plus_two("feature2"))]
+            transformation_functions = [plus_one("feature1"), plus_two("feature2")]
 
             fg = fs.create_feature_group(
-                    name='air_quality',
-                    description='Air Quality characteristics of each day',
-                    version=1,
-                    primary_key=['city','date'],
-                    online_enabled=True,
-                    event_time='date',
-                    transformation_functions=transformation_functions,
-                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
-                    online_disk=True, # Online data will be stored on disk instead of in memory
-                    ttl=timedelta(days=7)  # features will be deleted after 7 days
-                )
+                name='air_quality',
+                description='Air Quality characteristics of each day',
+                version=1,
+                primary_key=['city','date'],
+                online_enabled=True,
+                event_time='date',
+                transformation_functions=transformation_functions,
+                online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                online_disk=True,  # Online data will be stored on disk instead of in memory
+                ttl=timedelta(days=7)  # features will be deleted after 7 days
+            )
             ```
 
-        !!! note "Lazy"
-            This method is lazy and does not persist any metadata or feature data in the
-            feature store on its own. To persist the feature group and save feature data
-            along the metadata in the feature store, call the `save()` method with a
-            DataFrame.
+        Note: Lazy
+            This method is lazy and does not persist any metadata or feature data in the feature store on its own.
+            To persist the feature group and save feature data along the metadata in the feature store, call the `save()` method with a DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to create.
-            version: Version of the feature group to retrieve, defaults to `None` and
-                will create the feature group with incremented version from the last
-                version in the feature store.
-            description: A string describing the contents of the feature group to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            online_enabled: Define whether the feature group should be made available
-                also in the online feature store for low latency access, defaults to
-                `False`.
+            version: Version of the feature group to create, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
+            description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
+            online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
             time_travel_format: Format used for time travel, defaults to `"HUDI"`.
-            partition_key: A list of feature names to be used as partition key when
-                writing the feature data to the offline storage, defaults to empty list
-                `[]`.
-            primary_key: A list of feature names to be used as primary key for the
-                feature group. This primary key can be a composite key of multiple
-                features and will be used as joining key, if not specified otherwise.
+            partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
+            primary_key:
+                A list of feature names to be used as primary key for the feature group.
+                This primary key can be a composite key of multiple features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
-            foreign_key: A list of feature names to be used as foreign key for the feature group.
+            foreign_key:
+                A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
-            embedding_index: [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided,
-                vector database is used as online feature store. This enables similarity search by
-                using [`find_neighbors`](./feature_group_api.md#find_neighbors).
-                default to `None`
-            hudi_precombine_key: A feature name to be used as a precombine key for the `"HUDI"`
-                feature group. Defaults to `None`. If feature group has time travel format
-                `"HUDI"` and hudi precombine key was not specified then the first primary key of
-                the feature group will be used as hudi precombine key.
-            features: Optionally, define the schema of the feature group manually as a
-                list of `Feature` objects. Defaults to empty list `[]` and will use the
-                schema information of the DataFrame provided in the `save` method.
-            statistics_config: A configuration object, or a dictionary with keys
-                "`enabled`" to generally enable descriptive statistics computation for
-                this feature group, `"correlations`" to turn on feature correlation
-                computation, `"histograms"` to compute feature value frequencies and
-                `"exact_uniqueness"` to compute uniqueness, distinctness and entropy.
-                The values should be booleans indicating the setting. To fully turn off
-                statistics computation pass `statistics_config=False`. Defaults to
-                `None` and will compute only descriptive statistics.
-            event_time: Optionally, provide the name of the feature containing the event
-                time for the features in this feature group. If event_time is set
-                the feature group can be used for point-in-time joins. Defaults to `None`.
+            embedding_index:
+                [`EmbeddingIndex`][hsfs.embedding.EmbeddingIndex]. If an embedding index is provided, vector database is used as online feature store.
+                This enables similarity search by using [`FeatureGroup.find_neighbors`][hsfs.feature_group.FeatureGroup.find_neighbors].
+            hudi_precombine_key:
+                A feature name to be used as a precombine key for the `"HUDI"` feature group.
+                If feature group has time travel format `"HUDI"` and hudi precombine key was not specified then the first primary key of the feature group will be used as hudi precombine key.
+            features:
+                Optionally, define the schema of the feature group manually as a list of `Feature` objects.
+                Defaults to empty list `[]` and will use the schema information of the DataFrame provided in the `save` method.
+            statistics_config:
+                A configuration object, or a dictionary with keys:
 
-                !!! note "Event time data type restriction"
+                - `enabled` to generally enable descriptive statistics computation for this feature group,
+                - `correlations` to turn on feature correlation computation,
+                - `histograms` to compute feature value frequencies, and
+                - `exact_uniqueness` to compute uniqueness, distinctness and entropy.
+
+                The values should be booleans indicating the setting.
+                To fully turn off statistics computation pass `statistics_config=False`.
+                By default, it computes only descriptive statistics.
+            event_time:
+                Optionally, provide the name of the feature containing the event time for the features in this feature group.
+                If event_time is set the feature group can be used for point-in-time joins.
+
+                Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-            stream: Optionally, Define whether the feature group should support real time stream writing capabilities.
-                Stream enabled Feature Groups have unified single API for writing streaming features transparently
-                to both online and offline store.
-            expectation_suite: Optionally, attach an expectation suite to the feature
-                group which dataframes should be validated against upon insertion.
-                Defaults to `None`.
-            parents: Optionally, Define the parents of this feature group as the
-                origin where the data is coming from.
-            topic_name: Optionally, define the name of the topic used for data ingestion. If left undefined it
-                defaults to using project topic.
-            notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
-                are inserted or updated on the online feature store. If left undefined no notifications are sent.
-            transformation_functions: On-Demand Transformation functions attached to the feature group.
+            stream:
+                Optionally, define whether the feature group should support real time stream writing capabilities.
+                Stream enabled Feature Groups have unified single API for writing streaming features transparently to both online and offline store.
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
+            parents:
+                Optionally, define the parents of this feature group as the origin where the data is coming from.
+            topic_name:
+                Optionally, define the name of the topic used for data ingestion.
+                If left undefined it defaults to using project topic.
+            notification_topic_name:
+                Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
+                If left undefined no notifications are sent.
+            transformation_functions:
+                On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
             online_config: Optionally, define configuration which is used to configure online table.
-            offline_backfill_every_hr: Optional. If specified, the materialization job will be scheduled to run
-                periodically. The value can be either an integer representing the number of hours between each run
-                or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
-                job. Defaults to None (i.e no scheduling).
-            storage_connector: the storage connector used to establish connectivity
-                with the data source. **[DEPRECATED: Use `data_source` instead.]**
-            path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
-            data_source: The data source specifying the location of the data. Overrides the storage_connector and path arguments when specified.
+            offline_backfill_every_hr:
+                If specified, the materialization job will be scheduled to run periodically.
+                The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
+                Set the value to None to avoid scheduling the materialization job.
+                By default, no scheduling is done.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            data_source:
+                The data source specifying the location of the data.
+                Overrides the path and query arguments when specified.
+            ttl:
+                Optional time-to-live duration for features in this group.
+                Can be specified as:
 
-            ttl: Optional time-to-live duration for features in this group. Can be specified as:
                 - An integer or float representing seconds
                 - A timedelta object
+
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
-                The system time zone is in UTC. Defaults to None (no TTL).
-            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
-            online_disk: Optionally, specify online data storage for this feature group.
-                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                The system time zone is in UTC.
+
+                By default, no TTL is set.
+            ttl_enabled:
+                Optionally, enable TTL for this feature group.
+                Defaults to True if ttl is set.
+            online_disk:
+                Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory.
+                Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
-        # Returns
-            `FeatureGroup`. The feature group metadata object.
+
+        Returns:
+            The feature group metadata object.
         """
         if not data_source:
             data_source = ds.DataSource(storage_connector=storage_connector, path=path)
@@ -781,159 +744,158 @@ class FeatureStore:
         self,
         name: str,
         version: int,
-        description: Optional[str] = "",
-        online_enabled: Optional[bool] = False,
-        time_travel_format: Optional[str] = "HUDI",
-        partition_key: Optional[List[str]] = None,
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        hudi_precombine_key: Optional[str] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
-        event_time: Optional[str] = None,
-        stream: Optional[bool] = False,
-        parents: Optional[List[feature_group.FeatureGroup]] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        online_config: Optional[Union[OnlineConfig, Dict[str, Any]]] = None,
-        offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[
-            storage_connector.StorageConnector, Dict[str, Any]
-        ] = None,
-        path: Optional[str] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
-    ) -> Union[
-        feature_group.FeatureGroup,
-        feature_group.ExternalFeatureGroup,
-        feature_group.SpineGroup,
-    ]:
-        """Get feature group metadata object or create a new one if it doesn't exist. This method doesn't update existing feature group metadata object.
+        description: str | None = "",
+        online_enabled: bool | None = False,
+        time_travel_format: str | None = None,
+        partition_key: list[str] | None = None,
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        hudi_precombine_key: str | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
+        event_time: str | None = None,
+        stream: bool | None = False,
+        parents: list[feature_group.FeatureGroup] | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        offline_backfill_every_hr: int | str | None = None,
+        storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
+        path: str | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
+    ) -> (
+        feature_group.FeatureGroup
+        | feature_group.ExternalFeatureGroup
+        | feature_group.SpineGroup
+    ):
+        """Get feature group metadata object or create a new one if it doesn't exist.
 
-        !!! example
+        This method doesn't update existing feature group metadata object.
+
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
 
             fg = fs.get_or_create_feature_group(
-                    name="electricity_prices",
-                    version=1,
-                    description="Electricity prices from NORD POOL",
-                    primary_key=["day", "area"],
-                    online_enabled=True,
-                    event_time="timestamp",
-                    transformation_functions=transformation_functions,
-                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
-                    online_disk=True, # Online data will be stored on disk instead of in memory
-                    ttl=timedelta(days=30),
-                    )
+                name="electricity_prices",
+                version=1,
+                description="Electricity prices from NORD POOL",
+                primary_key=["day", "area"],
+                online_enabled=True,
+                event_time="timestamp",
+                transformation_functions=transformation_functions,
+                online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                online_disk=True, # Online data will be stored on disk instead of in memory
+                ttl=timedelta(days=30),
+            )
             ```
 
-        !!! note "Lazy"
-            This method is lazy and does not persist any metadata or feature data in the
-            feature store on its own. To persist the feature group and save feature data
-            along the metadata in the feature store, call the `insert()` method with a
-            DataFrame.
+        Note: Lazy
+            This method is lazy and does not persist any metadata or feature data in the feature store on its own.
+            To persist the feature group and save feature data along the metadata in the feature store, call the `insert()` method with a DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to create.
             version: Version of the feature group to retrieve or create.
-            description: A string describing the contents of the feature group to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            online_enabled: Define whether the feature group should be made available
-                also in the online feature store for low latency access, defaults to
-                `False`.
+            description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
+            online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
             time_travel_format: Format used for time travel, defaults to `"HUDI"`.
-            partition_key: A list of feature names to be used as partition key when
-                writing the feature data to the offline storage, defaults to empty list
-                `[]`.
-            primary_key: A list of feature names to be used as primary key for the
-                feature group. This primary key can be a composite key of multiple
-                features and will be used as joining key, if not specified otherwise.
+            partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
+            primary_key:
+                A list of feature names to be used as primary key for the feature group.
+                This primary key can be a composite key of multiple features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
-            foreign_key: A list of feature names to be used as foreign key for the feature group.
+            foreign_key:
+                A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
-            embedding_index: [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided,
-                the vector database is used as online feature store. This enables similarity search by
-                using [`find_neighbors`](./feature_group_api.md#find_neighbors).
-                default is `None`
-            hudi_precombine_key: A feature name to be used as a precombine key for the `"HUDI"`
-                feature group. Defaults to `None`. If feature group has time travel format
-                `"HUDI"` and hudi precombine key was not specified then the first primary key of
-                the feature group will be used as hudi precombine key.
-            features: Optionally, define the schema of the feature group manually as a
-                list of `Feature` objects. Defaults to empty list `[]` and will use the
-                schema information of the DataFrame provided in the `save` method.
-            statistics_config: A configuration object, or a dictionary with keys
-                "`enabled`" to generally enable descriptive statistics computation for
-                this feature group, `"correlations`" to turn on feature correlation
-                computation, `"histograms"` to compute feature value frequencies and
-                `"exact_uniqueness"` to compute uniqueness, distinctness and entropy.
-                The values should be booleans indicating the setting. To fully turn off
-                statistics computation pass `statistics_config=False`. Defaults to
-                `None` and will compute only descriptive statistics.
-            expectation_suite: Optionally, attach an expectation suite to the feature
-                group which dataframes should be validated against upon insertion.
-                Defaults to `None`.
-            event_time: Optionally, provide the name of the feature containing the event
-                time for the features in this feature group. If event_time is set
-                the feature group can be used for point-in-time joins. Defaults to `None`.
+            embedding_index:
+                [`EmbeddingIndex`][hsfs.embedding.EmbeddingIndex]. If an embedding index is provided, vector database is used as online feature store.
+                This enables similarity search by using [`FeatureGroup.find_neighbors`][hsfs.feature_group.FeatureGroup.find_neighbors].
+            hudi_precombine_key:
+                A feature name to be used as a precombine key for the `"HUDI"` feature group.
+                If feature group has time travel format `"HUDI"` and hudi precombine key was not specified then the first primary key of the feature group will be used as hudi precombine key.
+            features:
+                Optionally, define the schema of the feature group manually as a list of `Feature` objects.
+                Defaults to empty list `[]` and will use the schema information of the DataFrame provided in the `save` method.
+            statistics_config:
+                A configuration object, or a dictionary with keys:
 
-                !!! note "Event time data type restriction"
+                - `enabled` to generally enable descriptive statistics computation for this feature group,
+                - `correlations` to turn on feature correlation computation,
+                - `histograms` to compute feature value frequencies, and
+                - `exact_uniqueness` to compute uniqueness, distinctness and entropy.
+
+                The values should be booleans indicating the setting.
+                To fully turn off statistics computation pass `statistics_config=False`.
+                By default, it computes only descriptive statistics.
+            event_time:
+                Optionally, provide the name of the feature containing the event time for the features in this feature group.
+                If event_time is set the feature group can be used for point-in-time joins.
+
+                Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-            stream: Optionally, Define whether the feature group should support real time stream writing capabilities.
-                Stream enabled Feature Groups have unified single API for writing streaming features transparently
-                to both online and offline store.
-            parents: Optionally, Define the parents of this feature group as the
-                origin where the data is coming from.
-            topic_name: Optionally, define the name of the topic used for data ingestion. If left undefined it
-                defaults to using project topic.
-            notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
-                are inserted or updated on the online feature store. If left undefined no notifications are sent.
-            transformation_functions: On-Demand Transformation functions attached to the feature group.
+            stream:
+                Optionally, define whether the feature group should support real time stream writing capabilities.
+                Stream enabled Feature Groups have unified single API for writing streaming features transparently to both online and offline store.
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
+            parents:
+                Optionally, define the parents of this feature group as the origin where the data is coming from.
+            topic_name:
+                Optionally, define the name of the topic used for data ingestion.
+                If left undefined it defaults to using project topic.
+            notification_topic_name:
+                Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
+                If left undefined no notifications are sent.
+            transformation_functions:
+                On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
             online_config: Optionally, define configuration which is used to configure online table.
-            offline_backfill_every_hr: Optional. If specified, the materialization job will be scheduled to run
-                periodically. The value can be either an integer representing the number of hours between each run
-                or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
-                job. Defaults to None (i.e no automatic scheduling). Applies only on Feature Group creation.
-            storage_connector: the storage connector used to establish connectivity
-                with the data source. **[DEPRECATED: Use `data_source` instead.]**
-            path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
-            data_source: The data source specifying the location of the data. Overrides the storage_connector and path arguments when specified.
-            ttl: Optional time-to-live duration for features in this group. Can be specified as:
+            offline_backfill_every_hr:
+                If specified, the materialization job will be scheduled to run periodically.
+                The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
+                Set the value to None to avoid scheduling the materialization job.
+                By default, no scheduling is done.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            data_source:
+                The data source specifying the location of the data.
+                Overrides the path and query arguments when specified.
+            ttl:
+                Optional time-to-live duration for features in this group.
+                Can be specified as:
+
                 - An integer or float representing seconds
                 - A timedelta object
+
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
-                The system time zone is in UTC. Defaults to None (no TTL).
-            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
-            online_disk: Optionally, specify online data storage for this feature group.
-                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                The system time zone is in UTC.
+
+                By default, no TTL is set.
+            ttl_enabled:
+                Optionally, enable TTL for this feature group.
+                Defaults to True if ttl is set.
+            online_disk:
+                Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory.
+                Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
-        # Returns
-            `FeatureGroup`. The feature group metadata object.
+
+        Returns:
+            The feature group metadata object.
         """
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if not feature_group_object:
@@ -975,109 +937,112 @@ class FeatureStore:
     def create_on_demand_feature_group(
         self,
         name: str,
-        storage_connector: Optional[storage_connector.StorageConnector] = None,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        path: Optional[str] = "",
-        options: Optional[Dict[str, str]] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        event_time: Optional[str] = None,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
+        storage_connector: storage_connector.StorageConnector,
+        query: str | None = None,
+        data_format: str | None = None,
+        path: str | None = "",
+        options: dict[str, str] | None = None,
+        version: int | None = None,
+        description: str | None = "",
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        event_time: str | None = None,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         online_enabled: bool = False,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
-        !!! warning "Deprecated"
-            `create_on_demand_feature_group` method is deprecated. Use the `create_external_feature_group` method instead.
+        Warning: Deprecated
+            `create_on_demand_feature_group` method is deprecated.
+            Use the `create_external_feature_group` method instead.
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata in the
-            feature store on its own. To persist the feature group metadata in the feature store,
-            call the `save()` method.
+            feature store on its own.
+            To persist the feature group metadata in the feature store, call the `save()` method.
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to create.
-            storage_connector: the storage connector used to establish connectivity
-                with the data source. **[DEPRECATED: Use `data_source` instead.]**
-            query: A string containing a SQL query valid for the target data source.
-                the query will be used to pull data from the data sources when the
-                feature group is used. **[DEPRECATED: Use `data_source` instead.]**
-            data_format: If the external feature groups refers to a directory with data,
-                the data format to use when reading it
-            path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
-            options: Additional options to be used by the engine when reading data from the
-                specified storage connector. For example, `{"header": True}` when reading
-                CSV files with column names in the first row.
-            version: Version of the external feature group to retrieve, defaults to `None` and
-                will create the feature group with incremented version from the last
-                version in the feature store.
-            description: A string describing the contents of the external feature group to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            primary_key: A list of feature names to be used as primary key for the
-                feature group. This primary key can be a composite key of multiple
-                features and will be used as joining key, if not specified otherwise.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            query:
+                A string containing a SQL query valid for the target data source.
+                The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
+            data_format: If the external feature groups refers to a directory with data, the data format to use when reading it.
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            options:
+                Additional options to be used by the engine when reading data from the specified storage connector.
+                For example, `{"header": True}` when reading CSV files with column names in the first row.
+            version: Version of the external feature group to retrieve, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
+            description: A string describing the contents of the external feature group to improve discoverability for Data Scientists.
+            primary_key:
+                A list of feature names to be used as primary key for the feature group.
+                This primary key can be a composite key of multiple features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
-            foreign_key: A list of feature names to be used as foreign key for the feature group.
+            foreign_key:
+                A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
-            features: Optionally, define the schema of the external feature group manually as a
-                list of `Feature` objects. Defaults to empty list `[]` and will use the
-                schema information of the DataFrame resulting by executing the provided query
-                against the data source.
-            statistics_config: A configuration object, or a dictionary with keys
-                "`enabled`" to generally enable descriptive statistics computation for
-                this external feature group, `"correlations`" to turn on feature correlation
-                computation, `"histograms"` to compute feature value frequencies and
-                `"exact_uniqueness"` to compute uniqueness, distinctness and entropy.
-                The values should be booleans indicating the setting. To fully turn off
-                statistics computation pass `statistics_config=False`. Defaults to
-                `None` and will compute only descriptive statistics.
-            event_time: Optionally, provide the name of the feature containing the event
-                time for the features in this feature group. If event_time is set
-                the feature group can be used for point-in-time joins. Defaults to `None`.
-                !!! note "Event time data type restriction"
+            features:
+                Optionally, define the schema of the external feature group manually as a list of `Feature` objects.
+                Defaults to empty list `[]` and will use the schema information of the DataFrame resulting by executing the provided query against the data source.
+            statistics_config:
+                A configuration object, or a dictionary with keys:
+
+                - `"enabled"` to generally enable descriptive statistics computation for this external feature group,
+                - `"correlations"` to turn on feature correlation
+                computation,
+                - `"histograms"` to compute feature value frequencies, and
+                - `"exact_uniqueness"` to compute uniqueness, distinctness and entropy.
+
+                The values should be booleans indicating the setting.
+                To fully turn off statistics computation pass `statistics_config=False`.
+                Defaults to `None` and will compute only descriptive statistics.
+            event_time:
+                Optionally, provide the name of the feature containing the event time for the features in this feature group.
+                If event_time is set the feature group can be used for point-in-time joins.
+
+                Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
-            topic_name: Optionally, define the name of the topic used for data ingestion. If left undefined it
-                defaults to using project topic.
-            notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
-                are inserted or updated on the online feature store. If left undefined no notifications are sent.
-            expectation_suite: Optionally, attach an expectation suite to the feature
-                group which dataframes should be validated against upon insertion.
-                Defaults to `None`.
-            data_source: The data source specifying the location of the data. Overrides the storage_connector, path and query arguments when specified.
-            online_enabled: Define whether it should be possible to sync the feature group to
-                the online feature store for low latency access, defaults to `False`.
-            ttl: Optional time-to-live duration for features in this group. Can be specified as:
+
+            topic_name:
+                Optionally, define the name of the topic used for data ingestion.
+                If left undefined it defaults to using project topic.
+            notification_topic_name:
+                Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
+                If left undefined no notifications are sent.
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
+            data_source:
+                The data source specifying the location of the data.
+                Overrides the storage_connector, path and query arguments when specified.
+            online_enabled:
+                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
+            ttl:
+                Optional time-to-live duration for features in this group.
+
+                Can be specified as:
+
                 - An integer or float representing seconds
                 - A timedelta object
-                This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
-                The system time zone is in UTC. Defaults to None (no TTL).
-            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
 
-        # Returns
-            `ExternalFeatureGroup`. The external feature group metadata object.
+                This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
+                The system time zone is in UTC.
+                By default no TTL is set.
+            ttl_enabled:
+                Optionally, enable TTL for this feature group.
+                Defaults to True if ttl is set.
+
+        Returns:
+            The external feature group metadata object.
         """
         if not data_source:
             if not storage_connector:
@@ -1111,83 +1076,69 @@ class FeatureStore:
     def create_external_feature_group(
         self,
         name: str,
-        storage_connector: Optional[storage_connector.StorageConnector] = None,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        path: Optional[str] = "",
-        options: Optional[Dict[str, str]] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        event_time: Optional[str] = None,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
+        storage_connector: storage_connector.StorageConnector,
+        query: str | None = None,
+        data_format: str | None = None,
+        path: str | None = "",
+        options: dict[str, str] | None = None,
+        version: int | None = None,
+        description: str | None = "",
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        event_time: str | None = None,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
         online_enabled: bool = False,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
 
             external_fg = fs.create_external_feature_group(
-                                name="sales",
-                                version=1,
-                                description="Physical shop sales features",
-                                data_source=data_source,
-                                primary_key=['ss_store_sk'],
-                                event_time='sale_date',
-                                ttl=timedelta(days=30),
-                                )
+                name="sales",
+                version=1,
+                description="Physical shop sales features",
+                data_source=data_source,
+                primary_key=['ss_store_sk'],
+                event_time='sale_date',
+                ttl=timedelta(days=30),
+            )
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata in the
-            feature store on its own. To persist the feature group metadata in the feature store,
-            call the `save()` method.
+            feature store on its own.
+            To persist the feature group metadata in the feature store, call the `save()` method.
 
-        You can enable online storage for external feature groups, however, the sync from the
-        external storage to Hopsworks online storage needs to be done manually:
+        You can enable online storage for external feature groups, however, the sync from the external storage to Hopsworks online storage needs to be done manually:
 
         ```python
         external_fg = fs.create_external_feature_group(
-                    name="sales",
-                    version=1,
-                    description="Physical shop sales features",
-                    data_source=data_source,
-                    primary_key=['ss_store_sk'],
-                    event_time='sale_date',
-                    online_enabled=True,
-                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
-                    online_disk=True, # Online data will be stored on disk instead of in memory
-                    ttl=timedelta(days=30),
-                    )
+            name="sales",
+            version=1,
+            description="Physical shop sales features",
+            data_source=data_source,
+            primary_key=['ss_store_sk'],
+            event_time='sale_date',
+            online_enabled=True,
+            online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+            online_disk=True, # Online data will be stored on disk instead of in memory
+            ttl=timedelta(days=30),
+        )
         external_fg.save()
 
         # read from external storage and filter data to sync to online
@@ -1197,75 +1148,89 @@ class FeatureStore:
         external_fg.insert(df)
         ```
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to create.
-            storage_connector: the storage connector used to establish connectivity
-                with the data source. **[DEPRECATED: Use `data_source` instead.]**
-            query: A string containing a SQL query valid for the target data source.
-                the query will be used to pull data from the data sources when the
-                feature group is used. **[DEPRECATED: Use `data_source` instead.]**
-            data_format: If the external feature groups refers to a directory with data,
-                the data format to use when reading it
-            path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
-            options: Additional options to be used by the engine when reading data from the
-                specified storage connector. For example, `{"header": True}` when reading
-                CSV files with column names in the first row.
-            version: Version of the external feature group to retrieve, defaults to `None` and
-                will create the feature group with incremented version from the last
-                version in the feature store.
-            description: A string describing the contents of the external feature group to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            primary_key: A list of feature names to be used as primary key for the
-                feature group. This primary key can be a composite key of multiple
-                features and will be used as joining key, if not specified otherwise.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            query:
+                A string containing a SQL query valid for the target data source.
+                The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
+            data_format:
+                If the external feature groups refers to a directory with data, the data format to use when reading it.
+            path:
+                The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            options:
+                Additional options to be used by the engine when reading data from the specified storage connector.
+                For example, `{"header": True}` when reading CSV files with column names in the first row.
+            version:
+                Version of the external feature group to retrieve, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
+            description:
+                A string describing the contents of the external feature group to improve discoverability for Data Scientists.
+            primary_key:
+                A list of feature names to be used as primary key for the feature group.
+                This primary key can be a composite key of multiple features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
-            foreign_key: A list of feature names to be used as foreign key for the feature group.
+            foreign_key:
+                A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
-            features: Optionally, define the schema of the external feature group manually as a
-                list of `Feature` objects. Defaults to empty list `[]` and will use the
-                schema information of the DataFrame resulting by executing the provided query
-                against the data source.
-            statistics_config: A configuration object, or a dictionary with keys
-                "`enabled`" to generally enable descriptive statistics computation for
-                this external feature group, `"correlations`" to turn on feature correlation
-                computation, `"histograms"` to compute feature value frequencies and
-                `"exact_uniqueness"` to compute uniqueness, distinctness and entropy.
-                The values should be booleans indicating the setting. To fully turn off
-                statistics computation pass `statistics_config=False`. Defaults to
-                `None` and will compute only descriptive statistics.
-            event_time: Optionally, provide the name of the feature containing the event
-                time for the features in this feature group. If event_time is set
-                the feature group can be used for point-in-time joins. Defaults to `None`.
+            features:
+                Optionally, define the schema of the external feature group manually as a list of `Feature` objects.
+                Defaults to empty list `[]` and will use the schema information of the DataFrame resulting by executing the provided query against the data source.
+            statistics_config:
+                A configuration object, or a dictionary with keys:
 
-                !!! note "Event time data type restriction"
+                - `"enabled"` to generally enable descriptive statistics computation for this external feature group,
+                - `"correlations"` to turn on feature correlation
+                computation,
+                - `"histograms"` to compute feature value frequencies, and
+                - `"exact_uniqueness"` to compute uniqueness, distinctness and entropy.
+
+                The values should be booleans indicating the setting. To fully turn off statistics computation pass `statistics_config=False`.
+                Defaults to `None` and will compute only descriptive statistics.
+            event_time:
+                Optionally, provide the name of the feature containing the event time for the features in this feature group.
+                If event_time is set the feature group can be used for point-in-time joins.
+
+                Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-            online_enabled: Define whether it should be possible to sync the feature group to
-                the online feature store for low latency access, defaults to `False`.
-            expectation_suite: Optionally, attach an expectation suite to the feature
-                group which dataframes should be validated against upon insertion.
-                Defaults to `None`.
-            topic_name: Optionally, define the name of the topic used for data ingestion. If left undefined it
-                defaults to using project topic.
-            notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
-                are inserted or updated on the online feature store. If left undefined no notifications are sent.
-            online_config: Optionally, define configuration which is used to configure online table.
-            data_source: The data source specifying the location of the data. Overrides the storage_connector, path and query arguments when specified.
-            ttl: Optional time-to-live duration for features in this group. Can be specified as:
+            online_enabled:
+                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
+            topic_name:
+                Optionally, define the name of the topic used for data ingestion.
+                If left undefined it defaults to using project topic.
+            notification_topic_name:
+                Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
+                If left undefined no notifications are sent.
+            online_config:
+                Optionally, define configuration which is used to configure online table.
+            data_source:
+                The data source specifying the location of the data.
+                Overrides the storage_connector, path and query arguments when specified.
+            ttl:
+                Optional time-to-live duration for features in this group.
+
+                Can be specified as:
+
                 - An integer or float representing seconds
                 - A timedelta object
+
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
-                The system time zone is in UTC. Defaults to None (no TTL).
-            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
-            online_disk: Optionally, specify online data storage for this feature group.
-                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                The system time zone is in UTC.
+                By default no TTL is set.
+            ttl_enabled:
+                Optionally, enable TTL for this feature group.
+                Defaults to True if ttl is set.
+            online_disk:
+                Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory.
+                Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
 
-        # Returns
-            `ExternalFeatureGroup`. The external feature group metadata object.
+        Returns:
+            The external feature group metadata object.
         """
         if not data_source:
             if not storage_connector:
@@ -1302,19 +1267,17 @@ class FeatureStore:
     def get_or_create_spine_group(
         self,
         name: str,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        event_time: Optional[str] = None,
-        features: Optional[List[feature.Feature]] = None,
-        dataframe: Union[
-            pd.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ] = None,
+        version: int | None = None,
+        description: str | None = "",
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        event_time: str | None = None,
+        features: list[feature.Feature] | None = None,
+        dataframe: pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list] = None,
     ) -> feature_group.SpineGroup:
         """Create a spine group metadata object.
 
@@ -1322,7 +1285,7 @@ class FeatureStore:
         A Spine is essentially a metadata object similar to a feature group, however, the data is not materialized in the feature store.
         It only containes the needed metadata such as the relevant event time column and primary key columns to perform point-in-time correct joins.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1330,13 +1293,13 @@ class FeatureStore:
             spine_df = pd.Dataframe()
 
             spine_group = fs.get_or_create_spine_group(
-                                name="sales",
-                                version=1,
-                                description="Physical shop sales features",
-                                primary_key=['ss_store_sk'],
-                                event_time='sale_date',
-                                dataframe=spine_df,
-                                )
+                name="sales",
+                version=1,
+                description="Physical shop sales features",
+                primary_key=['ss_store_sk'],
+                event_time='sale_date',
+                dataframe=spine_df,
+            )
             ```
 
         Note that you can inspect the dataframe in the spine group, or replace the dataframe:
@@ -1349,20 +1312,14 @@ class FeatureStore:
 
         The spine can then be used to construct queries, with only one speciality:
 
-        !!! note
-            Spines can only be used on the left side of a feature join, as this is the base
-            set of entities for which features are to be fetched and the left side of the join
-            determines the event timestamps to compare against.
+        Note:
+            Spines can only be used on the left side of a feature join, as this is the base set of entities for which features are to be fetched and the left side of the join determines the event timestamps to compare against.
 
-        **If you want to use the query for a feature view to be used for online serving,
-        you can only select the label or target feature from the spine.**
-        For the online lookup, the label is not required, therefore it is important to only
-        select label from the left feature group, so that we don't need to provide a spine
-        for online serving.
+        **If you want to use the query for a feature view to be used for online serving, you can only select the label or target feature from the spine.**
+        For the online lookup, the label is not required, therefore it is important to only select label from the left feature group, so that we don't need to provide a spine for online serving.
 
-        These queries can then be used to create feature views. Since the dataframe contained in the
-        spine is not being materialized, every time you use a feature view created with spine to read data
-        you will have to provide a dataframe with the same structure again.
+        These queries can then be used to create feature views.
+        Since the dataframe contained in the spine is not being materialized, every time you use a feature view created with spine to read data you will have to provide a dataframe with the same structure again.
 
         For example, to generate training data:
 
@@ -1371,90 +1328,82 @@ class FeatureStore:
         ```
 
         Or to get batches of fresh data for batch scoring:
+
         ```python
         feature_view_spine.get_batch_data(spine=scoring_entities_df).show()
         ```
 
         Here you have the chance to pass a different set of entities to generate the training dataset.
 
-        Sometimes it might be handy to create a feature view with a regular feature group containing
-        the label, but then at serving time to use a spine in order to fetch features for example only
-        for a small set of primary key values. To do this, you can pass the spine group
-        instead of a dataframe. Just make sure it contains the needed primary key, event time and
-        label column.
+        Sometimes it might be handy to create a feature view with a regular feature group containing the label, but then at serving time to use a spine in order to fetch features for example only for a small set of primary key values.
+        To do this, you can pass the spine group instead of a dataframe.
+        Just make sure it contains the needed primary key, event time and label column.
 
         ```python
         feature_view.get_batch_data(spine=spine_group)
         ```
 
-        # Arguments
+        Parameters:
             name: Name of the spine group to create.
-            version: Version of the spine group to retrieve, defaults to `None` and
-                will create the spine group with incremented version from the last
-                version in the feature store.
-            description: A string describing the contents of the spine group to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            primary_key: A list of feature names to be used as primary key for the
-                spine group. This primary key can be a composite key of multiple
-                features and will be used as joining key, if not specified otherwise.
+            version: Version of the spine group to retrieve, defaults to `None` and will create the spine group with incremented version from the last version in the feature store.
+            description: A string describing the contents of the spine group to improve discoverability for Data Scientists.
+            primary_key:
+                A list of feature names to be used as primary key for the spine group.
+                This primary key can be a composite key of multiple features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the spine group won't have any primary key.
-            foreign_key: A list of feature names to be used as foreign key for the feature group.
+            foreign_key:
+                A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
-            event_time: Optionally, provide the name of the feature containing the event
-                time for the features in this spine group. If event_time is set
-                the spine group can be used for point-in-time joins. Defaults to `None`.
-            features: Optionally, define the schema of the spine group manually as a
-                list of `Feature` objects. Defaults to empty list `[]` and will use the
-                schema information of the DataFrame resulting by executing the provided query
-                against the data source.
+            event_time:
+                Optionally, provide the name of the feature containing the event time for the features in this spine group.
+                If event_time is set the spine group can be used for point-in-time joins.
+            features:
+                Optionally, define the schema of the spine group manually as a list of `Feature` objects.
+                Defaults to empty list `[]` and will use the schema information of the DataFrame resulting by executing the provided query against the data source.
 
-                !!! note "Event time data type restriction"
+                Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
+            dataframe: Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
 
-            dataframe: DataFrame, RDD, Ndarray, list. Spine dataframe with primary key, event time and
-                label column to use for point in time join when fetching features.
-
-        # Returns
-            `SpineGroup`. The spine group metadata object.
+        Returns:
+            The spine group metadata object.
         """
         spine = self._feature_group_api.get(self.id, name, version)
         if spine:
             spine.dataframe = dataframe
             spine.feature_store = self
             return spine
-        else:
-            spine = feature_group.SpineGroup(
-                name=name,
-                version=version,
-                description=description,
-                primary_key=primary_key or [],
-                foreign_key=foreign_key or [],
-                event_time=event_time,
-                features=features or [],
-                dataframe=dataframe,
-                featurestore_id=self._id,
-                featurestore_name=self._name,
-            )
-            spine.feature_store = self
-            return spine._save()
+        spine = feature_group.SpineGroup(
+            name=name,
+            version=version,
+            description=description,
+            primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
+            event_time=event_time,
+            features=features or [],
+            dataframe=dataframe,
+            featurestore_id=self._id,
+            featurestore_name=self._name,
+        )
+        spine.feature_store = self
+        return spine._save()
 
     def create_training_dataset(
         self,
         name: str,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        data_format: Optional[str] = "tfrecords",
-        coalesce: Optional[bool] = False,
-        storage_connector: Optional[storage_connector.StorageConnector] = None,
-        splits: Optional[Dict[str, float]] = None,
-        location: Optional[str] = "",
-        seed: Optional[int] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        label: Optional[List[str]] = None,
-        transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
+        version: int | None = None,
+        description: str | None = "",
+        data_format: str | None = "tfrecords",
+        coalesce: bool | None = False,
+        storage_connector: storage_connector.StorageConnector | None = None,
+        splits: dict[str, float] | None = None,
+        location: str | None = "",
+        seed: int | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        label: list[str] | None = None,
+        transformation_functions: dict[str, TransformationFunction] | None = None,
         train_split: str = None,
         data_source: Optional[
             Union[
@@ -1465,17 +1414,15 @@ class FeatureStore:
     ) -> "training_dataset.TrainingDataset":
         """Create a training dataset metadata object.
 
-        !!! warning "Deprecated"
-            `TrainingDataset` is deprecated, use `FeatureView` instead. From version 3.0
-            training datasets created with this API are not visibile in the API anymore.
+        Warning: Deprecated
+            `TrainingDataset` is deprecated, use `FeatureView` instead.
+            From version 3.0 training datasets created with this API are not visibile in the API anymore.
 
-        !!! note "Lazy"
-            This method is lazy and does not persist any metadata or feature data in the
-            feature store on its own. To materialize the training dataset and save
-            feature data along the metadata in the feature store, call the `save()`
-            method with a `DataFrame` or `Query`.
+        Note: Lazy
+            This method is lazy and does not persist any metadata or feature data in the feature store on its own.
+            To materialize the training dataset and save feature data along the metadata in the feature store, call the `save()` method with a `DataFrame` or `Query`.
 
-        !!! info "Data Formats"
+        Info: Data Formats
             The feature store currently supports the following data formats for
             training datasets:
 
@@ -1488,56 +1435,49 @@ class FeatureStore:
 
             Currently not supported petastorm, hdf5 and npy file formats.
 
-        # Arguments
+        Parameters:
             name: Name of the training dataset to create.
-            version: Version of the training dataset to retrieve, defaults to `None` and
-                will create the training dataset with incremented version from the last
-                version in the feature store.
-            description: A string describing the contents of the training dataset to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            data_format: The data format used to save the training dataset,
-                defaults to `"tfrecords"`-format.
-            coalesce: If true the training dataset data will be coalesced into
-                a single partition before writing. The resulting training dataset
-                will be a single file per split. Default False.
-            storage_connector: Storage connector defining the sink location for the
-                training dataset, defaults to `None`, and materializes training dataset
-                on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
-            splits: A dictionary defining training dataset splits to be created. Keys in
-                the dictionary define the name of the split as `str`, values represent
-                percentage of samples in the split as `float`. Currently, only random
-                splits are supported. Defaults to empty dict`{}`, creating only a single
-                training dataset without splits.
-            location: Path to complement the sink storage connector with, e.g if the
-                storage connector points to an S3 bucket, this path can be used to
-                define a sub-directory inside the bucket to place the training dataset.
-                Defaults to `""`, saving the training dataset at the root defined by the
-                storage connector. **[DEPRECATED: Use `data_source` instead.]**
-            seed: Optionally, define a seed to create the random splits with, in order
-                to guarantee reproducability, defaults to `None`.
-            statistics_config: A configuration object, or a dictionary with keys
-                "`enabled`" to generally enable descriptive statistics computation for
-                this feature group, `"correlations`" to turn on feature correlation
-                computation and `"histograms"` to compute feature value frequencies. The
-                values should be booleans indicating the setting. To fully turn off
-                statistics computation pass `statistics_config=False`. Defaults to
-                `None` and will compute only descriptive statistics.
-            label: A list of feature names constituting the prediction label/feature of
-                the training dataset. When replaying a `Query` during model inference,
-                the label features can be omitted from the feature vector retrieval.
+            version: Version of the training dataset to retrieve, defaults to `None` and will create the training dataset with incremented version from the last version in the feature store.
+            description: A string describing the contents of the training dataset to improve discoverability for Data Scientists.
+            data_format: The data format used to save the training dataset.
+            coalesce:
+                If true the training dataset data will be coalesced into a single partition before writing.
+                The resulting training dataset will be a single file per split.
+            storage_connector:
+                Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
+            splits:
+                A dictionary defining training dataset splits to be created.
+                Keys in the dictionary define the name of the split as `str`, values represent percentage of samples in the split as `float`.
+                Currently, only random splits are supported.
+                Defaults to empty dict`{}`, creating only a single training dataset without splits.
+            location:
+                Path to complement the sink storage connector with, e.g., if the storage connector points to an S3 bucket, this path can be used to define a sub-directory inside the bucket to place the training dataset.
+                Defaults to `""`, saving the training dataset at the root defined by the storage connector. **[DEPRECATED: Use `data_source` instead.]**
+            seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
+            statistics_config:
+                A configuration object, or a dictionary with keys:
+
+                - `"enabled"` to generally enable descriptive statistics computation for this feature group,
+                - `"correlations"` to turn on feature correlation computation, and
+                - `"histograms"` to compute feature value frequencies.
+
+                The values should be booleans indicating the setting.
+                To fully turn off statistics computation pass `statistics_config=False`.
+                Defaults to `None` and will compute only descriptive statistics.
+            label:
+                A list of feature names constituting the prediction label/feature of the training dataset.
+                When replaying a `Query` during model inference, the label features can be omitted from the feature vector retrieval.
                 Defaults to `[]`, no label.
-            transformation_functions: A dictionary mapping tansformation functions to
-                to the features they should be applied to before writing out the
-                training data and at inference time. Defaults to `{}`, no
-                transformations.
-            train_split: If `splits` is set, provide the name of the split that is going
-                to be used for training. The statistics of this split will be used for
-                transformation functions if necessary. Defaults to `None`.
+            transformation_functions:
+                A dictionary mapping transformation functions to the features they should be applied to before writing out the training data and at inference time.
+                Defaults to `{}`, no transformations.
+            train_split:
+                If `splits` is set, provide the name of the split that is going to be used for training.
+                The statistics of this split will be used for transformation functions if necessary.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
-        # Returns:
-            `TrainingDataset`: The training dataset metadata object.
+        Returns:
+            The training dataset metadata object.
         """
         if not data_source:
             data_source = ds.DataSource(storage_connector=storage_connector, path=location)
@@ -1561,11 +1501,11 @@ class FeatureStore:
     def create_transformation_function(
         self,
         transformation_function: HopsworksUdf,
-        version: Optional[int] = None,
+        version: int | None = None,
     ) -> TransformationFunction:
         """Create a transformation function metadata object.
 
-        !!! example
+        Example:
             ```python
             # define the transformation function as a Hopsworks's UDF
             @udf(int)
@@ -1582,16 +1522,15 @@ class FeatureStore:
             plus_one_meta.save()
             ```
 
-        !!! note "Lazy"
-            This method is lazy and does not persist the transformation function in the
-            feature store on its own. To materialize the transformation function and save
-            call the `save()` method of the transformation function metadata object.
+        Note: Lazy
+            This method is lazy and does not persist the transformation function in the feature store on its own.
+            To materialize the transformation function and save call the `save()` method of the transformation function metadata object.
 
-        # Arguments
+        Parameters:
             transformation_function: Hopsworks UDF.
 
-        # Returns:
-            `TransformationFunction`: The TransformationFunction metadata object.
+        Returns:
+            The TransformationFunction metadata object.
         """
         return TransformationFunction(
             featurestore_id=self._id,
@@ -1603,11 +1542,13 @@ class FeatureStore:
     def get_transformation_function(
         self,
         name: str,
-        version: Optional[int] = None,
+        version: int | None = None,
     ) -> TransformationFunction:
         """Get  transformation function metadata object.
 
-        !!! example "Get transformation function by name. This will default to version 1"
+        Example: Get transformation function by name
+            This will default to version 1.
+
             ```python
             # get feature store instance
             fs = ...
@@ -1616,7 +1557,7 @@ class FeatureStore:
             plus_one_fn = fs.get_transformation_function(name="plus_one")
             ```
 
-        !!! example "Get built-in transformation function min max scaler"
+        Example: Get built-in transformation function min max scaler
             ```python
             # get feature store instance
             fs = ...
@@ -1625,7 +1566,7 @@ class FeatureStore:
             min_max_scaler_fn = fs.get_transformation_function(name="min_max_scaler")
             ```
 
-        !!! example "Get transformation function by name and version"
+        Example: Get transformation function by name and version
             ```python
             # get feature store instance
             fs = ...
@@ -1637,7 +1578,7 @@ class FeatureStore:
         You can define in the feature view transformation functions as dict, where key is feature name and value is online transformation function instance.
         Then the transformation functions are applied when you read training data, get batch data, or get feature vector(s).
 
-        !!! example "Attach transformation functions to the feature view"
+        Example: Attach transformation functions to the feature view
             ```python
             # get feature store instance
             fs = ...
@@ -1661,7 +1602,7 @@ class FeatureStore:
         The only difference is that it will compute the necessary statistics for the specific function in the background.
         For example min and max values for `min_max_scaler`; mean and standard deviation for `standard_scaler` etc.
 
-        !!! example "Attach built-in transformation functions to the feature view"
+        Example: Attach built-in transformation functions to the feature view
             ```python
             # get feature store instance
             fs = ...
@@ -1689,21 +1630,22 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
-            name: name of transformation function.
-            version: version of transformation function. Optional, if not provided all functions that match to provided
-                name will be retrieved.
+        Parameters:
+            name: Name of transformation function.
+            version:
+                Version of transformation function.
+                Optional, if not provided all functions that match to provided name will be retrieved.
 
-        # Returns:
-            `TransformationFunction`: The TransformationFunction metadata object.
+        Returns:
+            The TransformationFunction metadata object.
         """
         return self._transformation_function_engine.get_transformation_fn(name, version)
 
     @usage.method_logger
-    def get_transformation_functions(self) -> List[TransformationFunction]:
+    def get_transformation_functions(self) -> list[TransformationFunction]:
         """Get  all transformation functions metadata objects.
 
-        !!! example "Get all transformation functions"
+        Example: Get all transformation functions
             ```python
             # get feature store instance
             fs = ...
@@ -1712,8 +1654,8 @@ class FeatureStore:
             list_transformation_fns = fs.get_transformation_functions()
             ```
 
-        # Returns:
-             `List[TransformationFunction]`. List of transformation function instances.
+        Returns:
+            List of transformation function instances.
         """
         return self._transformation_function_engine.get_transformation_fns()
 
@@ -1722,19 +1664,19 @@ class FeatureStore:
         self,
         name: str,
         query: Query,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        labels: Optional[List[str]] = None,
-        inference_helper_columns: Optional[List[str]] = None,
-        training_helper_columns: Optional[List[str]] = None,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        logging_enabled: Optional[bool] = False,
+        version: int | None = None,
+        description: str | None = "",
+        labels: list[str] | None = None,
+        inference_helper_columns: list[str] | None = None,
+        training_helper_columns: list[str] | None = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        logging_enabled: bool | None = False,
+        extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1762,7 +1704,7 @@ class FeatureStore:
             )
             ```
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -1782,46 +1724,45 @@ class FeatureStore:
             )
             ```
 
-        !!! warning
-            `as_of` argument in the `Query` will be ignored because
-            feature view does not support time travel query.
+        Warning:
+            `as_of` argument in the `Query` will be ignored because feature view does not support time travel query.
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to create.
             query: Feature store `Query`.
-            version: Version of the feature view to create, defaults to `None` and
-                will create the feature view with incremented version from the last
-                version in the feature store.
-            description: A string describing the contents of the feature view to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            labels: A list of feature names constituting the prediction label/feature of
-                the feature view. When replaying a `Query` during model inference,
-                the label features can be omitted from the feature vector retrieval.
+            version: Version of the feature view to create, defaults to `None` and will create the feature view with incremented version from the last version in the feature store.
+            description: A string describing the contents of the feature view to improve discoverability for Data Scientists.
+            labels:
+                A list of feature names constituting the prediction label/feature of the feature view.
+                When replaying a `Query` during model inference, the label features can be omitted from the feature vector retrieval.
                 Defaults to `[]`, no label.
-            inference_helper_columns: A list of feature names that are not used in training the model itself but can be
-                used during batch or online inference for extra information. Inference helper column name(s) must be
-                part of the `Query` object. If inference helper column name(s) belong to feature group that is part
-                of a `Join` with `prefix` defined, then this prefix needs to be prepended to the original column name
-                when defining `inference_helper_columns` list. When replaying a `Query` during model inference,
-                the inference helper columns optionally can be omitted during batch (`get_batch_data`) and will be
-                omitted during online  inference (`get_feature_vector(s)`). To get inference helper column(s) during
-                online inference use `get_inference_helper(s)` method. Defaults to `[], no helper columns.
-            training_helper_columns: A list of feature names that are not the part of the model schema itself but can be
-                used during training as a helper for extra information. Training helper column name(s) must be
-                part of the `Query` object. If training helper column name(s) belong to feature group that is part
-                of a `Join` with `prefix` defined, then this prefix needs to prepended to the original column name when
-                defining `training_helper_columns` list. When replaying a `Query` during model inference,
-                the training helper columns will be omitted during both batch and online inference.
-                Training helper columns can be optionally fetched with training data. For more details see
-                documentation for feature view's get training data methods.  Defaults to `[], no training helper
-                columns.
-            transformation_functions: Model Dependent Transformation functions attached to the feature view.
+            inference_helper_columns:
+                A list of feature names that are not used in training the model itself but can be used during batch or online inference for extra information.
+                Inference helper column name(s) must be part of the `Query` object.
+                If inference helper column name(s) belong to feature group that is part of a `Join` with `prefix` defined, then this prefix needs to be prepended to the original column name when defining `inference_helper_columns` list.
+                When replaying a `Query` during model inference, the inference helper columns optionally can be omitted during batch (`get_batch_data`) and will be omitted during online  inference (`get_feature_vector(s)`).
+                To get inference helper column(s) during online inference use `get_inference_helper(s)` method.
+                Defaults to `[], no helper columns.
+            training_helper_columns:
+                A list of feature names that are not the part of the model schema itself but can be used during training as a helper for extra information.
+                Training helper column name(s) must be part of the `Query` object.
+                If training helper column name(s) belong to feature group that is part of a `Join` with `prefix` defined, then this prefix needs to prepended to the original column name when defining `training_helper_columns` list.
+                When replaying a `Query` during model inference, the training helper columns will be omitted during both batch and online inference.
+                Training helper columns can be optionally fetched with training data.
+                For more details see documentation for feature view's get training data methods.
+                Defaults to `[]`, no training helper columns.
+            transformation_functions:
+                Model Dependent Transformation functions attached to the feature view.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            logging_enabled: If true, enable feature logging for the feature view.
+            extra_log_columns:
+                Extra columns to be logged in addition to the features used in the feature view.
+                It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
+                Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
 
-        # Returns:
-            `FeatureView`: The feature view metadata object.
+        Returns:
+            The feature view metadata object.
         """
         feat_view = feature_view.FeatureView(
             name=name,
@@ -1835,6 +1776,7 @@ class FeatureStore:
             transformation_functions=transformation_functions or {},
             featurestore_name=self._name,
             logging_enabled=logging_enabled,
+            extra_log_columns=extra_log_columns,
         )
         return self._feature_view_engine.save(feat_view)
 
@@ -1844,17 +1786,19 @@ class FeatureStore:
         name: str,
         query: Query,
         version: int,
-        description: Optional[str] = "",
-        labels: Optional[List[str]] = None,
-        inference_helper_columns: Optional[List[str]] = None,
-        training_helper_columns: Optional[List[str]] = None,
-        transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
-        logging_enabled: Optional[bool] = False,
+        description: str | None = "",
+        labels: list[str] | None = None,
+        inference_helper_columns: list[str] | None = None,
+        training_helper_columns: list[str] | None = None,
+        transformation_functions: dict[str, TransformationFunction] | None = None,
+        logging_enabled: bool | None = False,
+        extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
     ) -> feature_view.FeatureView:
-        """Get feature view metadata object or create a new one if it doesn't exist. This method doesn't update
-        existing feature view metadata object.
+        """Get feature view metadata object or create a new one if it doesn't exist.
 
-        !!! example
+        This method doesn't update existing feature view metadata object.
+
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1867,41 +1811,43 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to create.
             query: Feature store `Query`.
             version: Version of the feature view to create.
-            description: A string describing the contents of the feature view to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            labels: A list of feature names constituting the prediction label/feature of
-                the feature view. When replaying a `Query` during model inference,
-                the label features can be omitted from the feature vector retrieval.
+            description: A string describing the contents of the feature view to improve discoverability for Data Scientists.
+            labels:
+                A list of feature names constituting the prediction label/feature of the feature view.
+                When replaying a `Query` during model inference, the label features can be omitted from the feature vector retrieval.
                 Defaults to `[]`, no label.
-            inference_helper_columns: A list of feature names that are not used in training the model itself but can be
-                used during batch or online inference for extra information. Inference helper column name(s) must be
-                part of the `Query` object. If inference helper column name(s) belong to feature group that is part
-                of a `Join` with `prefix` defined, then this prefix needs to be prepended to the original column name
-                when defining `inference_helper_columns` list. When replaying a `Query` during model inference,
-                the inference helper columns optionally can be omitted during batch (`get_batch_data`) and will be
-                omitted during online  inference (`get_feature_vector(s)`). To get inference helper column(s) during
-                online inference use `get_inference_helper(s)` method. Defaults to `[], no helper columns.
-            training_helper_columns: A list of feature names that are not the part of the model schema itself but can be
-                used during training as a helper for extra information. Training helper column name(s) must be
-                part of the `Query` object. If training helper column name(s) belong to feature group that is part
-                of a `Join` with `prefix` defined, then this prefix needs to prepended to the original column name when
-                defining `training_helper_columns` list. When replaying a `Query` during model inference,
-                the training helper columns will be omitted during both batch and online inference.
-                Training helper columns can be optionally fetched with training data. For more details see
-                documentation for feature view's get training data methods.  Defaults to `[], no training helper
-                columns.
-            transformation_functions: Model Dependent Transformation functions attached to the feature view.
+            inference_helper_columns:
+                A list of feature names that are not used in training the model itself but can be used during batch or online inference for extra information.
+                Inference helper column name(s) must be part of the `Query` object.
+                If inference helper column name(s) belong to feature group that is part of a `Join` with `prefix` defined, then this prefix needs to be prepended to the original column name when defining `inference_helper_columns` list.
+                When replaying a `Query` during model inference, the inference helper columns optionally can be omitted during batch (`get_batch_data`) and will be omitted during online  inference (`get_feature_vector(s)`).
+                To get inference helper column(s) during online inference use `get_inference_helper(s)` method.
+                Defaults to `[], no helper columns.
+            training_helper_columns:
+                A list of feature names that are not the part of the model schema itself but can be used during training as a helper for extra information.
+                Training helper column name(s) must be part of the `Query` object.
+                If training helper column name(s) belong to feature group that is part of a `Join` with `prefix` defined, then this prefix needs to prepended to the original column name when defining `training_helper_columns` list.
+                When replaying a `Query` during model inference, the training helper columns will be omitted during both batch and online inference.
+                Training helper columns can be optionally fetched with training data.
+                For more details see documentation for feature view's get training data methods.
+                Defaults to `[]`, no training helper columns.
+            transformation_functions:
+                Model Dependent Transformation functions attached to the feature view.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
             logging_enabled: If true, enable feature logging for the feature view.
+            extra_log_columns:
+                Extra columns to be logged in addition to the features used in the feature view.
+                It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
+                Defaults to `None`, no extra log columns.
+                Setting this argument implicitly enables feature logging.
 
-        # Returns:
-            `FeatureView`: The feature view metadata object.
+        Returns:
+            The feature view metadata object.
         """
         fv_object = self._feature_view_engine.get(name, version)
         if not fv_object:
@@ -1915,6 +1861,7 @@ class FeatureStore:
                 training_helper_columns=training_helper_columns or [],
                 transformation_functions=transformation_functions or [],
                 logging_enabled=logging_enabled,
+                extra_log_columns=extra_log_columns,
             )
         return fv_object
 
@@ -1926,7 +1873,7 @@ class FeatureStore:
 
         Getting a feature view from the Feature Store means getting its metadata.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -1938,22 +1885,19 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to get.
-            version: Version of the feature view to retrieve, defaults to `None` and will
-                return the `version=1`.
+            version: Version of the feature view to retrieve, defaults to `None` and will return the `version=1`.
 
-        # Returns
-            `FeatureView`: The feature view metadata object or `None` if it does not exist.
+        Returns:
+            The feature view metadata object or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if version is None:
             warnings.warn(
-                "No version provided for getting feature view `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting feature view `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -1961,12 +1905,12 @@ class FeatureStore:
         return self._feature_view_engine.get(name, version)
 
     @usage.method_logger
-    def get_feature_views(self, name: str) -> List[feature_view.FeatureView]:
+    def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
         """Get a list of all versions of a feature view entity from the feature store.
 
         Getting a feature view from the Feature Store means getting its metadata.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -1977,14 +1921,14 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to get.
 
-        # Returns
-            `FeatureView`: List of feature view metadata objects.
+        Returns:
+            List of feature view metadata objects.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_view_engine.get(name)
 
@@ -2022,7 +1966,7 @@ class FeatureStore:
         return self._project_id
 
     @property
-    def online_featurestore_name(self) -> Optional[str]:
+    def online_featurestore_name(self) -> str | None:
         """Name of the online feature store database."""
         return self._online_feature_store_name
 

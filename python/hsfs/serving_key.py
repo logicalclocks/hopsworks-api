@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import humps
 from hsfs import feature_group as fg_mod
@@ -28,12 +28,13 @@ class ServingKey:
         self,
         feature_name: str,
         join_index: int,
-        feature_group: Optional[
-            Union[Dict[str, Any], fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup]
-        ] = None,
+        feature_group: dict[str, Any]
+        | fg_mod.FeatureGroup
+        | fg_mod.ExternalFeatureGroup
+        | None = None,
         required: bool = True,
         prefix: str = "",
-        join_on: Optional[Union[List[str], str]] = None,
+        join_on: list[str] | str | None = None,
         ignore_prefix: bool = False,
         **kwargs,
     ):
@@ -46,14 +47,14 @@ class ServingKey:
         self._ignore_prefix = ignore_prefix
 
     @classmethod
-    def from_response_json(cls, json_dict) -> Optional[ServingKey]:
+    def from_response_json(cls, json_dict) -> ServingKey | None:
         # late import, otherwise will result circular import
         from hsfs.feature_group import FeatureGroupBase
 
         if json_dict is None:
             return None
         json_decamelized = humps.decamelize(json_dict)
-        serving_key = cls(
+        return cls(
             feature_name=json_decamelized.get("feature_name", None),
             join_index=json_decamelized.get("join_index", None),
             feature_group=FeatureGroupBase.from_response_json(
@@ -63,9 +64,8 @@ class ServingKey:
             prefix=json_decamelized.get("prefix", ""),
             join_on=json_decamelized.get("join_on", None),
         )
-        return serving_key
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "feature_name": self._feature_name,
             "join_index": self._join_index,
@@ -91,10 +91,8 @@ class ServingKey:
         if self._required:
             if self._ignore_prefix:
                 return self._feature_name
-            else:
-                return self._prefix + self._feature_name
-        else:
-            return self._join_on
+            return self._prefix + self._feature_name
+        return self._join_on
 
     @property
     def feature_name(self) -> str:
@@ -105,7 +103,7 @@ class ServingKey:
         return self._join_index
 
     @property
-    def feature_group(self) -> Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup]:
+    def feature_group(self) -> fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup:
         return self._feature_group
 
     @property
@@ -117,5 +115,5 @@ class ServingKey:
         return self._prefix
 
     @property
-    def join_on(self) -> Union[List[str], str]:
+    def join_on(self) -> list[str] | str:
         return self._join_on

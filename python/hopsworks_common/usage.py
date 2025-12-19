@@ -76,7 +76,7 @@ class EnvironmentAttribute:
             hopsworks_dir = _create_hopsworks_dir_if_not_exist()
             user_id_file = join(hopsworks_dir, _USER_ID_FILE)
             if os.path.exists(user_id_file):
-                with open(user_id_file, "r") as fr:
+                with open(user_id_file) as fr:
                     self._user_id = fr.read().rstrip()
             else:
                 with open(user_id_file, "w") as fw:
@@ -132,12 +132,11 @@ class MethodCounter:
         cnt = self.get_count(m)
         if cnt < 100:
             return True
-        elif cnt < 1000:
+        if cnt < 1000:
             return random.random() < 0.1
-        elif cnt < 10000:
+        if cnt < 10000:
             return random.random() < 0.01
-        else:
-            return random.random() < 0.001
+        return random.random() < 0.001
 
     def _get_method_name(self, m):
         return m.__module__ + m.__name__
@@ -192,10 +191,8 @@ def _hash_string(input_string):
     if input_string:
         hash_object = hashlib.md5()
         hash_object.update(input_string.encode("utf-8"))
-        hashed_string = hash_object.hexdigest()
-        return hashed_string
-    else:
-        return ""
+        return hash_object.hexdigest()
+    return ""
 
 
 def _create_hopsworks_dir_if_not_exist():
@@ -208,8 +205,7 @@ def _generate_user_id():
     random_uuid = uuid.uuid4()
     # Convert the UUID to a hexadecimal string and remove hyphens
     uuid_hex = random_uuid.hex.replace("-", "")
-    short_uuid = "HOPSWORKSID=" + uuid_hex[:16]
-    return short_uuid
+    return "HOPSWORKSID=" + uuid_hex[:16]
 
 
 def _extract_method_name_line_and_file(e):
@@ -239,8 +235,7 @@ def method_logger(func):
         exception = None
         try:
             # Call the original method
-            result = func(*args, **kwargs)
-            return result
+            return func(*args, **kwargs)
         except Exception as e:
             exception = e
             raise e

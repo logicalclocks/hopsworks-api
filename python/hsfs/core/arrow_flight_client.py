@@ -21,7 +21,7 @@ import json
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
 
@@ -36,11 +36,14 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hsfs import feature_group
-from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
 from pyarrow.flight import FlightServerError
 from retrying import retry
+
+
+if TYPE_CHECKING:
+    from hsfs.constructor import query
 
 
 if HAS_POLARS:
@@ -88,9 +91,24 @@ def _is_no_commits_found_error(exception):
     ) and "No commits found" in str(exception)
 
 
+def _is_no_metadata_found_error(exception):
+    return isinstance(exception, pyarrow._flight.FlightServerError) and any(
+        msg in str(exception)
+        for msg in ["No hudi properties found", "No delta logs found"]
+    )
+
+
+def _is_no_data_found_error(exception):
+    # Error message: 'No data found for featuregroup fg_read_uvbhz.fg_polars_online_true_1. Detail: Failed....
+    return isinstance(
+        exception, pyarrow._flight.FlightServerError
+    ) and "No data found" in str(exception)
+
+
 def _should_retry_healthcheck(exception):
-    return isinstance(exception, pyarrow._flight.FlightUnavailableError) or isinstance(
-        exception, pyarrow._flight.FlightTimedOutError
+    return isinstance(
+        exception,
+        (pyarrow._flight.FlightUnavailableError, pyarrow._flight.FlightTimedOutError),
     )
 
 
@@ -101,19 +119,20 @@ def _should_retry_certificate_registration(exception):
 
 
 # Avoid unnecessary client init
-def is_data_format_supported(data_format: str, read_options: Optional[Dict[str, Any]]):
-    if data_format not in ArrowFlightClient.SUPPORTED_FORMATS:
+def is_data_format_supported(data_format: str, read_options: dict[str, Any] | None):
+    if (
+        data_format not in ArrowFlightClient.SUPPORTED_FORMATS
+        or read_options
+        and read_options.get("use_spark", False)
+    ):
         return False
-    elif read_options and read_options.get("use_spark", False):
-        return False
-    else:
-        return get_instance()._should_be_used()
+    return get_instance()._should_be_used()
 
 
 def _is_query_supported_rec(query: query.Query):
     hudi_no_time_travel = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
-        and query._left_feature_group.time_travel_format == "HUDI"
+        and query._left_feature_group.time_travel_format in ["HUDI", "DELTA"]
         and (
             query._left_feature_group_start_time is None
             or query._left_feature_group_start_time == 0
@@ -141,13 +160,14 @@ def _is_query_supported_rec(query: query.Query):
     return supported
 
 
-def is_query_supported(query: query.Query, read_options: Optional[Dict[str, Any]]):
-    if read_options and read_options.get("use_spark", False):
+def is_query_supported(query: query.Query, read_options: dict[str, Any] | None):
+    if (
+        read_options
+        and read_options.get("use_spark", False)
+        or not _is_query_supported_rec(query)
+    ):
         return False
-    elif not _is_query_supported_rec(query):
-        return False
-    else:
-        return get_instance()._should_be_used()
+    return get_instance()._should_be_used()
 
 
 class ArrowFlightClient:
@@ -177,19 +197,20 @@ class ArrowFlightClient:
         )
 
         self._enabled_on_cluster: bool = False
-        self._host_url: Optional[str] = None
-        self._connection: Optional[pyarrow.flight.FlightClient] = None
+        self._host_url: str | None = None
+        self._connection: pyarrow.flight.FlightClient | None = None
         if disabled_for_session:
             self._disable_for_session(on_purpose=True)
             return
-        else:
-            self._disabled_for_session: bool = False
+        self._disabled_for_session: bool = False
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
-        self._service_discovery_domain = self._variable_api.get_service_discovery_domain()
+        self._service_discovery_domain = (
+            self._variable_api.get_service_discovery_domain()
+        )
 
-        self._certificates_json: Optional[str] = None
+        self._certificates_json: str | None = None
 
         try:
             self._check_cluster_service_enabled()
@@ -245,7 +266,7 @@ class ArrowFlightClient:
             _logger.exception(e)
             self._enabled_on_cluster = False
 
-    def _retrieve_host_url(self) -> Optional[str]:
+    def _retrieve_host_url(self) -> str | None:
         _logger.debug("Retrieving host URL.")
         if client._is_external():
             external_domain = self._variable_api.get_loadbalancer_external_domain(
@@ -258,12 +279,14 @@ class ArrowFlightClient:
                     "Client could not get Hopsworks Query Service hostname from service_discovery_domain. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 )
-            host_url = f"grpc+tls://flyingduck.service.{self._service_discovery_domain}:5005"
+            host_url = (
+                f"grpc+tls://flyingduck.service.{self._service_discovery_domain}:5005"
+            )
         _logger.debug(f"Connecting to Hopsworks Query Service on host {host_url}")
         return host_url
 
     def _disable_for_session(
-        self, message: Optional[str] = None, on_purpose: bool = False
+        self, message: str | None = None, on_purpose: bool = False
     ) -> None:
         self._disabled_for_session = True
         if on_purpose:
@@ -326,6 +349,7 @@ class ArrowFlightClient:
             version = res.body.to_pybytes()
             _logger.debug(f"The HQS server is of version {version}.")
             return version
+        return None
 
     def _should_be_used(self):
         if not self._enabled_on_cluster:
@@ -347,9 +371,9 @@ class ArrowFlightClient:
         _logger.debug("Extracting client certificates.")
         with open(self._client._get_ca_chain_path(), "rb") as f:
             tls_root_certs = f.read()
-        with open(self._client._get_client_cert_path(), "r") as f:
+        with open(self._client._get_client_cert_path()) as f:
             cert_chain = f.read()
-        with open(self._client._get_client_key_path(), "r") as f:
+        with open(self._client._get_client_key_path()) as f:
             private_key = f.read()
         return tls_root_certs, cert_chain, private_key
 
@@ -408,14 +432,17 @@ class ArrowFlightClient:
                     ):
                         instance._register_certificates()
                         return func(instance, *args, **kw)
-                    elif _is_feature_query_service_queue_full_error(e):
+                    if _is_feature_query_service_queue_full_error(e):
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif _is_no_commits_found_error(e):
+                    if (
+                        _is_no_commits_found_error(e)
+                        or _is_no_metadata_found_error(e)
+                        or _is_no_data_found_error(e)
+                    ):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
-                    else:
-                        raise FeatureStoreException(user_message) from e
+                    raise FeatureStoreException(user_message) from e
 
             return afs_error_handler_wrapper
 
@@ -454,8 +481,7 @@ class ArrowFlightClient:
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
             return pl.from_arrow(reader.read_all())
-        else:
-            return reader.read_pandas()
+        return reader.read_pandas()
 
     # retry is handled in get_dataset
     @_handle_afs_exception(user_message=READ_ERROR)
@@ -537,43 +563,42 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [feat.name for feat in fg.features]
+            features[fg_name] = [
+                {"name": feat.name, "type": feat.type} for feat in fg.features
+            ]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
-        query = {
+        return {
             "query_string": _translate_to_duckdb(query, query_str),
             "features": features,
             "filters": filters,
             "connectors": connectors,
         }
-        return query
 
     def is_enabled(self):
-        if self._disabled_for_session or not self._enabled_on_cluster:
-            return False
-        return True
+        return not (self._disabled_for_session or not self._enabled_on_cluster)
 
     @property
-    def timeout(self) -> Union[int, float]:
+    def timeout(self) -> int | float:
         """Timeout in seconds for Hopsworks Query Service do_get or do_action operations, not including the healthcheck."""
         return self._timeout
 
     @timeout.setter
-    def timeout(self, value: Union[int, float]) -> None:
+    def timeout(self, value: float) -> None:
         self._timeout = value
 
     @property
-    def health_check_timeout(self) -> Union[int, float]:
+    def health_check_timeout(self) -> int | float:
         """Timeout in seconds for the healthcheck operation."""
         return self._health_check_timeout
 
     @health_check_timeout.setter
-    def health_check_timeout(self, value: Union[int, float]) -> None:
+    def health_check_timeout(self, value: float) -> None:
         self._health_check_timeout = value
 
     @property
-    def host_url(self) -> Optional[str]:
+    def host_url(self) -> str | None:
         """URL of Hopsworks Query Service."""
         return self._host_url
 
@@ -593,7 +618,8 @@ class ArrowFlightClient:
 
 
 def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
-    connector = {}
+    # Add feature_group_id to build cache key in flyingduck
+    connector = {"feature_group_id": fg.id}
     if isinstance(fg, feature_group.ExternalFeatureGroup):
         connector["time_travel_type"] = None
         connector["type"] = fg.data_source.storage_connector.type
@@ -626,8 +652,12 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
                     )
     elif fg.time_travel_format == "DELTA":
         connector["time_travel_type"] = "delta"
-        connector["type"] = fg.data_source.storage_connector.type
-        connector["options"] = _get_connector_options(fg)
+        if fg.storage_connector:
+            connector["type"] = fg.storage_connector.type
+            connector["options"] = _get_connector_options(fg)
+        else:
+            connector["type"] = ""
+            connector["options"] = {}
         connector["query"] = ""
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(
@@ -661,9 +691,13 @@ def _get_connector_options(fg):
         }
         if connector.password:
             option_map["password"] = connector.password
-        else:
+        elif connector.token:
             option_map["authenticator"] = "oauth"
             option_map["token"] = connector.token
+        else:
+            option_map["snowflake_private_key"] = connector.private_key
+            option_map["passphrase"] = connector.passphrase
+
         if connector.warehouse:
             option_map["warehouse"] = connector.warehouse
         if connector.application:
@@ -747,10 +781,9 @@ def _serialize_logic(logic, query, short_name):
 def _serialize_filter_or_logic(filter, logic, query, short_name):
     if filter:
         return _serialize_filter(filter, query, short_name)
-    elif logic:
+    if logic:
         return _serialize_logic(logic, query, short_name)
-    else:
-        return None
+    return None
 
 
 def _serialize_filter(filter, query, short_name):

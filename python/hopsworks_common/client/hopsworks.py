@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import contextlib
 import os
 from pathlib import Path
 
@@ -21,10 +22,8 @@ import requests
 from hopsworks_common.client import auth, base
 
 
-try:
+with contextlib.suppress(ImportError):
     import jks
-except ImportError:
-    pass
 
 
 class Client(base.Client):
@@ -48,13 +47,11 @@ class Client(base.Client):
         """Initializes a client being run from a job/notebook directly on Hopsworks."""
         self._base_url = self._get_hopsworks_rest_endpoint()
         self._host, self._port = self._get_host_port_pair()
-        self._secrets_dir = (
-            os.environ[self.SECRETS_DIR] if self.SECRETS_DIR in os.environ else ""
-        )
+        self._secrets_dir = os.environ.get(self.SECRETS_DIR, "")
         self._cert_key = self._get_cert_pw()
 
         self._hostname_verification = os.environ.get(
-            self.HOPSWORKS_HOSTNAME_VERIFICATION, "{}".format(hostname_verification)
+            self.HOPSWORKS_HOSTNAME_VERIFICATION, f"{hostname_verification}"
         ).lower() in ("true", "1", "y", "yes")
         self._hopsworks_ca_trust_store_path = self._materialize_ca_chain()
 
@@ -77,7 +74,7 @@ class Client(base.Client):
         self._write_pem_file(credentials["clientKey"], self._get_client_key_path())
 
     def _materialize_ca_chain(self):
-        """Convert truststore from jks to pem and return the location"""
+        """Convert truststore from jks to pem and return the location."""
         ca_chain_path = Path(self._get_ca_chain_path())
         if not ca_chain_path.exists():
             keystore_pw = self._cert_key
@@ -104,8 +101,7 @@ class Client(base.Client):
         return os.path.join("/tmp", "client_key.pem")
 
     def _get_jks_trust_store_path(self):
-        """
-        Get truststore location
+        """Get truststore location.
 
         Returns:
              truststore location
@@ -113,14 +109,12 @@ class Client(base.Client):
         t_certificate = Path(self.T_CERTIFICATE)
         if t_certificate.exists():
             return str(t_certificate)
-        else:
-            username = os.environ[self.HADOOP_USER_NAME]
-            material_directory = Path(os.environ[self.MATERIAL_DIRECTORY])
-            return str(material_directory.joinpath(username + self.TRUSTSTORE_SUFFIX))
+        username = os.environ[self.HADOOP_USER_NAME]
+        material_directory = Path(os.environ[self.MATERIAL_DIRECTORY])
+        return str(material_directory.joinpath(username + self.TRUSTSTORE_SUFFIX))
 
     def _get_jks_key_store_path(self):
-        """
-        Get keystore location
+        """Get keystore location.
 
         Returns:
              keystore location
@@ -128,10 +122,9 @@ class Client(base.Client):
         k_certificate = Path(self.K_CERTIFICATE)
         if k_certificate.exists():
             return str(k_certificate)
-        else:
-            username = os.environ[self.HADOOP_USER_NAME]
-            material_directory = Path(os.environ[self.MATERIAL_DIRECTORY])
-            return str(material_directory.joinpath(username + self.KEYSTORE_SUFFIX))
+        username = os.environ[self.HADOOP_USER_NAME]
+        material_directory = Path(os.environ[self.MATERIAL_DIRECTORY])
+        return str(material_directory.joinpath(username + self.KEYSTORE_SUFFIX))
 
     def _project_name(self):
         try:
@@ -142,8 +135,7 @@ class Client(base.Client):
         hops_user = self._project_user()
         # project users have username project__user:
         hops_user_split = hops_user.split("__")
-        project = hops_user_split[0]
-        return project
+        return hops_user_split[0]
 
     def _project_user(self):
         try:
@@ -153,8 +145,7 @@ class Client(base.Client):
         return hops_user
 
     def _get_cert_pw(self):
-        """
-        Get keystore password from local container
+        """Get keystore password from local container.
 
         Returns:
             Certificate password
@@ -169,9 +160,8 @@ class Client(base.Client):
             return f.read()
 
     def replace_public_host(self, url):
-        """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
-        ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
-        return ui_url
+        """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST."""
+        return url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
 
     def _is_external(self):
         return False

@@ -125,7 +125,7 @@ class TestS3Connector:
         result = sc._get_path("some/location")
 
         # assert
-        assert "s3://test-bucket/some/location" == result
+        assert result == "s3://test-bucket/some/location"
 
     def test_get_path_storage_connector_with_path(self, mocker):
         mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
@@ -141,7 +141,7 @@ class TestS3Connector:
         result = sc._get_path("some/location")
 
         # assert
-        assert "s3://test-bucket/abc/def/some/location" == result
+        assert result == "s3://test-bucket/abc/def/some/location"
 
 
 class TestRedshiftConnector:
@@ -348,6 +348,11 @@ class TestSnowflakeConnector:
         assert sc.warehouse == "test_warehouse"
         assert sc.application == "test_application"
         assert sc._options == {"test_name": "test_value"}
+        assert (
+            sc.private_key
+            == "-----BEGIN ENCRYPTED PRIVATE KEY-----\nranDomKey123\nAsdfsdfqweq9809==\n-----END ENCRYPTED PRIVATE KEY-----\n"
+        )
+        assert sc.passphrase == "test_passphrase"
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
@@ -374,6 +379,20 @@ class TestSnowflakeConnector:
         assert sc.warehouse is None
         assert sc.application is None
         assert sc._options == {}
+
+    def test_spark_options_private_key(self, mocker, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_snowflake"]["response"]
+        json.pop("password", None)
+        json.pop("token", None)
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        expected_bytes = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ12345678901234567890"
+        sc._read_private_key = mocker.Mock(return_value=expected_bytes)
+        # act
+        spark_options = sc.spark_options()
+        # assert
+        assert "pem_private_key" in spark_options
+        assert spark_options["pem_private_key"] == expected_bytes
 
 
 class TestJdbcConnector:

@@ -48,30 +48,29 @@ class GitProvider:
         json_decamelized = humps.decamelize(json_dict)
         if len(json_decamelized["items"]) == 0:
             return []
-        else:
-            return [cls(**provider) for provider in json_decamelized["items"]]
+        return [cls(**provider) for provider in json_decamelized["items"]]
 
     @property
     def username(self):
-        """Username set for the provider"""
+        """Username set for the provider."""
         return self._username
 
     @property
     def git_provider(self):
-        """Name of the provider, can be GitHub, GitLab or BitBucket"""
+        """Name of the provider, can be GitHub, GitLab or BitBucket."""
         return self._git_provider
 
     @property
     def host(self):
-        """Host of the provider, can be for example github.com for GitHub, gitlab.com for GitLab or bitbucket.org for BitBucket"""
+        """Host of the provider, can be for example github.com for GitHub, gitlab.com for GitLab or bitbucket.org for BitBucket."""
         return self._host
 
     @usage.method_logger
     def delete(self):
         """Remove the git provider configuration.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._git_provider_api._delete_provider(self.git_provider, self.host)
 
@@ -82,4 +81,6 @@ class GitProvider:
         return self.json()
 
     def __repr__(self):
-        return f"GitProvider({self._username!r}, {self._host!r}, {self._git_provider!r})"
+        return (
+            f"GitProvider({self._username!r}, {self._host!r}, {self._git_provider!r})"
+        )

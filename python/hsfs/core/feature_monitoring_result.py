@@ -16,40 +16,40 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
-from typing import Optional, Union
+from typing import TYPE_CHECKING
 
 import humps
 from hsfs import util
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 
+if TYPE_CHECKING:
+    from datetime import date, datetime
+
+
 class FeatureMonitoringResult:
+    # TODO: Add docstring
     NOT_FOUND_ERROR_CODE = 270233
 
     def __init__(
         self,
         feature_store_id: int,
         execution_id: int,
-        monitoring_time: Union[int, datetime, date, str],
+        monitoring_time: int | datetime | date | str,
         config_id: int,
         feature_name: str,
-        difference: Optional[float] = None,
+        difference: float | None = None,
         shift_detected: bool = False,
-        detection_statistics_id: Optional[int] = None,
-        reference_statistics_id: Optional[int] = None,
+        detection_statistics_id: int | None = None,
+        reference_statistics_id: int | None = None,
         empty_detection_window: bool = False,
         empty_reference_window: bool = False,
-        specific_value: Optional[float] = None,
+        specific_value: float | None = None,
         raised_exception: bool = False,
-        detection_statistics: Optional[
-            Union[FeatureDescriptiveStatistics, dict]
-        ] = None,
-        reference_statistics: Optional[
-            Union[FeatureDescriptiveStatistics, dict]
-        ] = None,
-        id: Optional[int] = None,
-        href: Optional[str] = None,
+        detection_statistics: FeatureDescriptiveStatistics | dict | None = None,
+        reference_statistics: FeatureDescriptiveStatistics | dict | None = None,
+        id: int | None = None,
+        href: str | None = None,
         **kwargs,
     ):
         self._id = id
@@ -76,8 +76,8 @@ class FeatureMonitoringResult:
 
     def _parse_descriptive_statistics(
         self,
-        statistics: Optional[Union[FeatureDescriptiveStatistics, dict]],
-    ) -> Optional[FeatureDescriptiveStatistics]:
+        statistics: FeatureDescriptiveStatistics | dict | None,
+    ) -> FeatureDescriptiveStatistics | None:
         if statistics is None:
             return None
         return (
@@ -93,8 +93,7 @@ class FeatureMonitoringResult:
             if json_decamelized["count"] == 0:
                 return []
             return [cls(**result) for result in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     def to_dict(self):
         the_dict = {
@@ -133,7 +132,7 @@ class FeatureMonitoringResult:
         return json.dumps(humps.decamelize(self.to_dict()), indent=2)
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Id of the feature monitoring result."""
         return self._id
 
@@ -148,27 +147,27 @@ class FeatureMonitoringResult:
         return self._feature_store_id
 
     @property
-    def detection_statistics_id(self) -> Optional[int]:
+    def detection_statistics_id(self) -> int | None:
         """Id of the feature descriptive statistics computed on the detection window."""
         return self._detection_statistics_id
 
     @property
-    def reference_statistics_id(self) -> Optional[int]:
+    def reference_statistics_id(self) -> int | None:
         """Id of the feature descriptive statistics computed on the reference window."""
         return self._reference_statistics_id
 
     @property
-    def detection_statistics(self) -> Optional[FeatureDescriptiveStatistics]:
+    def detection_statistics(self) -> FeatureDescriptiveStatistics | None:
         """Feature descriptive statistics computed on the detection window."""
         return self._detection_statistics
 
     @property
-    def reference_statistics(self) -> Optional[FeatureDescriptiveStatistics]:
+    def reference_statistics(self) -> FeatureDescriptiveStatistics | None:
         """Feature descriptive statistics computed on the reference window."""
         return self._reference_statistics
 
     @property
-    def execution_id(self) -> Optional[int]:
+    def execution_id(self) -> int | None:
         """Execution id of the feature monitoring job."""
         return self._execution_id
 
@@ -178,17 +177,13 @@ class FeatureMonitoringResult:
         return self._monitoring_time
 
     @property
-    def difference(self) -> Optional[float]:
-        """Difference between detection and reference values. It can be relative or absolute difference,
-        depending on the statistics comparison configuration provided in `relative` parameter passed to `compare_on()`
-        when enabling feature monitoring.
-        """
+    def difference(self) -> float | None:
+        """Difference between detection and reference values. It can be relative or absolute difference, depending on the statistics comparison configuration provided in `relative` parameter passed to `compare_on()` when enabling feature monitoring."""
         return self._difference
 
     @property
     def shift_detected(self) -> bool:
-        """Whether or not shift was detected in the detection window based on the computed statistics and the threshold provided in `compare_on()`
-        when enabling feature monitoring."""
+        """Whether or not shift was detected in the detection window based on the computed statistics and the threshold provided in `compare_on()` when enabling feature monitoring."""
         return self._shift_detected
 
     @property
@@ -207,6 +202,6 @@ class FeatureMonitoringResult:
         return self._empty_reference_window
 
     @property
-    def specific_value(self) -> Optional[float]:
+    def specific_value(self) -> float | None:
         """Specific value used as reference in the statistics comparison."""
         return self._specific_value

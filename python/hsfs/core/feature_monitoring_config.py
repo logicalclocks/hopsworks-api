@@ -16,9 +16,8 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -31,8 +30,14 @@ from hsfs.core import (
     monitoring_window_config_engine,
 )
 from hsfs.core import monitoring_window_config as mwc
-from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 from hsfs.core.job_schedule import JobSchedule
+
+
+if TYPE_CHECKING:
+    import builtins
+    from datetime import date, datetime
+
+    from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 
 
 MAX_LENGTH_DESCRIPTION = 2000
@@ -44,21 +49,20 @@ class FeatureMonitoringType(str, Enum):
     PROBABILITY_DENSITY_FUNCTION = "PROBABILITY_DENSITY_FUNCTION"  # data distributions
 
     @classmethod
-    def list_str(cls) -> List[str]:
-        return list(map(lambda c: c.value, cls))
+    def list_str(cls) -> builtins.list[str]:
+        return [c.value for c in cls]
 
     @classmethod
-    def list(cls) -> List["FeatureMonitoringType"]:
-        return list(map(lambda c: c, cls))
+    def list(cls) -> builtins.list[FeatureMonitoringType]:
+        return list(cls)
 
     @classmethod
-    def from_str(cls, value: str) -> "FeatureMonitoringType":
+    def from_str(cls, value: str) -> FeatureMonitoringType:
         if value in cls.list_str():
             return cls(value)
-        else:
-            raise ValueError(
-                f"Invalid value {value} for FeatureMonitoringType, allowed values are {cls.list_str()}"
-            )
+        raise ValueError(
+            f"Invalid value {value} for FeatureMonitoringType, allowed values are {cls.list_str()}"
+        )
 
     def __eq__(self, other):
         if isinstance(other, str):
@@ -75,31 +79,31 @@ class FeatureMonitoringType(str, Enum):
 
 
 class FeatureMonitoringConfig:
+    # TODO: Add docstring
     NOT_FOUND_ERROR_CODE = 270233
 
     def __init__(
         self,
         feature_store_id: int,
         name: str,
-        feature_name: Optional[str] = None,
-        feature_monitoring_type: Union[
-            FeatureMonitoringType, str
-        ] = FeatureMonitoringType.STATISTICS_COMPUTATION,
-        job_name: Optional[str] = None,
-        detection_window_config: Optional[
-            Union[mwc.MonitoringWindowConfig, Dict[str, Any]]
-        ] = None,
-        reference_window_config: Optional[
-            Union[mwc.MonitoringWindowConfig, Dict[str, Any]]
-        ] = None,
-        statistics_comparison_config: Optional[Dict[str, Any]] = None,
-        job_schedule: Optional[Union[Dict[str, Any], JobSchedule]] = None,
-        description: Optional[str] = None,
-        id: Optional[int] = None,
-        feature_group_id: Optional[int] = None,
-        feature_view_name: Optional[str] = None,
-        feature_view_version: Optional[int] = None,
-        href: Optional[str] = None,
+        feature_name: str | None = None,
+        feature_monitoring_type: FeatureMonitoringType
+        | str = FeatureMonitoringType.STATISTICS_COMPUTATION,
+        job_name: str | None = None,
+        detection_window_config: mwc.MonitoringWindowConfig
+        | dict[str, Any]
+        | None = None,
+        reference_window_config: mwc.MonitoringWindowConfig
+        | dict[str, Any]
+        | None = None,
+        statistics_comparison_config: dict[str, Any] | None = None,
+        job_schedule: dict[str, Any] | JobSchedule | None = None,
+        description: str | None = None,
+        id: int | None = None,
+        feature_group_id: int | None = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
+        href: str | None = None,
         **kwargs,
     ):
         self.name = name
@@ -147,8 +151,7 @@ class FeatureMonitoringConfig:
             if json_decamelized["count"] == 0:
                 return []
             return [cls(**config) for config in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     def to_dict(self):
         detection_window_config = (
@@ -219,12 +222,13 @@ class FeatureMonitoringConfig:
 
     def with_detection_window(
         self,
-        time_offset: Optional[str] = None,
-        window_length: Optional[str] = None,
-        row_percentage: Optional[float] = None,
-    ) -> "FeatureMonitoringConfig":
+        time_offset: str | None = None,
+        window_length: str | None = None,
+        row_percentage: float | None = None,
+    ) -> FeatureMonitoringConfig:
         """Sets the detection window of data to compute statistics on.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -248,11 +252,13 @@ class FeatureMonitoringConfig:
                 row_percentage=0.1,
             ).with_reference_window(...).compare_on(...).save()
             ```
-        # Arguments
+
+        Parameters:
             time_offset: The time offset from the current time to the start of the time window.
             window_length: The length of the time window.
             row_percentage: The fraction of rows to use when computing the statistics [0, 1.0].
-        # Returns
+
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
@@ -271,13 +277,15 @@ class FeatureMonitoringConfig:
 
     def with_reference_window(
         self,
-        time_offset: Optional[str] = None,
-        window_length: Optional[str] = None,
-        row_percentage: Optional[float] = None,
-    ) -> "FeatureMonitoringConfig":
+        time_offset: str | None = None,
+        window_length: str | None = None,
+        row_percentage: float | None = None,
+    ) -> FeatureMonitoringConfig:
         """Sets the reference window of data to compute statistics on.
+
         See also `with_reference_value(...)` and `with_reference_training_dataset(...)` for other reference options.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -290,14 +298,15 @@ class FeatureMonitoringConfig:
             ).compare_on(...).save()
             ```
 
-        !!! warning "Provide a comparison configuration"
+        Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
-        # Arguments
+        Parameters:
             time_offset: The time offset from the current time to the start of the time window.
             window_length: The length of the time window.
             row_percentage: The percentage of rows to use when computing the statistics. Defaults to 20%.
-        # Returns
+
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation and build monitoring window config object.
@@ -316,11 +325,13 @@ class FeatureMonitoringConfig:
 
     def with_reference_value(
         self,
-        value: Optional[Union[float, int]] = None,
-    ) -> "FeatureMonitoringConfig":
+        value: float | None = None,
+    ) -> FeatureMonitoringConfig:
         """Sets the reference value to compare statistics with.
+
         See also `with_reference_window(...)` and `with_reference_training_dataset(...)` for other reference options.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -332,12 +343,13 @@ class FeatureMonitoringConfig:
             ).compare_on(...).save()
             ```
 
-        !!! warning "Provide a comparison configuration"
+        Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
-        # Arguments
+        Parameters:
             value: A float value to use as reference.
-        # Returns
+
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
@@ -348,11 +360,13 @@ class FeatureMonitoringConfig:
 
     def with_reference_training_dataset(
         self,
-        training_dataset_version: Optional[int] = None,
-    ) -> "FeatureMonitoringConfig":
+        training_dataset_version: int | None = None,
+    ) -> FeatureMonitoringConfig:
         """Sets the reference training dataset to compare statistics with.
+
         See also `with_reference_value(...)` and `with_reference_window(...)` for other reference options.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -365,12 +379,13 @@ class FeatureMonitoringConfig:
             ).compare_on(...).save()
             ```
 
-        !!! warning "Provide a comparison configuration"
+        Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
-        # Arguments
+        Parameters:
             training_dataset_version: The version of the training dataset to use as reference.
-        # Returns
+
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
@@ -381,13 +396,14 @@ class FeatureMonitoringConfig:
 
     def compare_on(
         self,
-        metric: Optional[str],
-        threshold: Optional[float],
-        strict: Optional[bool] = False,
-        relative: Optional[bool] = False,
-    ) -> "FeatureMonitoringConfig":
+        metric: str | None,
+        threshold: float | None,
+        strict: bool | None = False,
+        relative: bool | None = False,
+    ) -> FeatureMonitoringConfig:
         """Sets the statistics comparison criteria for feature monitoring with a reference window.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -404,15 +420,16 @@ class FeatureMonitoringConfig:
             ).save()
             ```
 
-        !!! note
+        Note:
             Detection window and reference window/value/training_dataset must be set prior to comparison configuration.
 
-        # Arguments
+        Parameters:
             metric: The metric to use for comparison. Different metric are available for different feature type.
             threshold: The threshold to apply to the difference to potentially trigger an alert.
             strict: Whether to use a strict comparison (e.g. > or <) or a non-strict comparison (e.g. >= or <=).
             relative: Whether to use a relative comparison (e.g. relative mean) or an absolute comparison (e.g. absolute mean).
-        # Returns
+
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
@@ -427,7 +444,8 @@ class FeatureMonitoringConfig:
 
     def save(self):
         """Saves the feature monitoring configuration.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -436,7 +454,8 @@ class FeatureMonitoringConfig:
                 name="my_monitoring_config",
             ).save()
             ```
-        # Returns
+
+        Returns:
             `FeatureMonitoringConfig`. The saved FeatureMonitoringConfig object.
         """
         registered_config = self._feature_monitoring_config_engine.save(self)
@@ -458,7 +477,8 @@ class FeatureMonitoringConfig:
 
     def update(self):
         """Updates allowed fields of the saved feature monitoring configuration.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -468,14 +488,16 @@ class FeatureMonitoringConfig:
             my_monitoring_config.detection_window.row_percentage = 10
             my_monitoring_config.update()
             ```
-        # Returns
+
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         return self._feature_monitoring_config_engine.update(self)
 
     def run_job(self):
         """Trigger the feature monitoring job which computes and compares statistics on the detection and reference windows.
-        !!! example
+
+        Example:
             ```python3
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -485,13 +507,14 @@ class FeatureMonitoringConfig:
             my_monitoring_config.run_job()
             ```
 
-        !!! info
+        Info:
             The feature monitoring job will be triggered asynchronously and the method will return immediately.
             Calling this method does not affect the ongoing schedule.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
-        # Returns
+
+        Returns:
             `Job`. A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
@@ -505,7 +528,8 @@ class FeatureMonitoringConfig:
 
     def get_job(self):
         """Get the feature monitoring job which computes and compares statistics on the detection and reference windows.
-        !!! example
+
+        Example:
             ```python3
             # Fetch registered config by name via feature group or feature view
             my_monitoring_config = fg.get_feature_monitoring_configs(name="my_monitoring_config")
@@ -514,9 +538,10 @@ class FeatureMonitoringConfig:
             # Print job history and ongoing executions
             job.executions
             ```
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
-        # Returns
+
+        Returns:
             `Job`. A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
@@ -531,7 +556,8 @@ class FeatureMonitoringConfig:
 
     def delete(self):
         """Deletes the feature monitoring configuration.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -540,7 +566,8 @@ class FeatureMonitoringConfig:
             # Delete the feature monitoring config
             my_monitoring_config.delete()
             ```
-        # Raises
+
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         if not self._id:
@@ -552,7 +579,8 @@ class FeatureMonitoringConfig:
 
     def disable(self):
         """Disables the schedule of the feature monitoring job.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -561,15 +589,18 @@ class FeatureMonitoringConfig:
             # Disable the feature monitoring config
             my_monitoring_config.disable()
             ```
-        # Raises
+
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=False)
 
     def enable(self):
         """Enables the schedule of the feature monitoring job.
+
         The scheduler can be configured via the `job_schedule` property.
-        !!! example
+
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -578,7 +609,8 @@ class FeatureMonitoringConfig:
             # Enable the feature monitoring config
             my_monitoring_config.enable()
             ```
-        # Raises
+
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=True)
@@ -600,13 +632,13 @@ class FeatureMonitoringConfig:
 
     def get_history(
         self,
-        start_time: Union[datetime, date, str, int, None] = None,
-        end_time: Union[datetime, date, str, int, None] = None,
+        start_time: datetime | date | str | int | None = None,
+        end_time: datetime | date | str | int | None = None,
         with_statistics: bool = True,
-    ) -> List["FeatureMonitoringResult"]:
-        """
-        Fetch the history of the computed statistics and comparison results for this configuration.
-        !!! example
+    ) -> list[FeatureMonitoringResult]:
+        """Fetch the history of the computed statistics and comparison results for this configuration.
+
+        Example:
             ```python3
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -618,11 +650,13 @@ class FeatureMonitoringConfig:
                 end_time="2021-01-31",
             )
             ```
-        # Args:
+
+        Parameters:
             start_time: The start time of the time range to fetch the history for.
             end_time: The end time of the time range to fetch the history for.
             with_statistics: Whether to include the computed statistics in the results.
-        # Raises
+
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         if not self._id:
@@ -638,7 +672,7 @@ class FeatureMonitoringConfig:
         )
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Id of the feature monitoring configuration."""
         return self._id
 
@@ -648,37 +682,41 @@ class FeatureMonitoringConfig:
         return self._feature_store_id
 
     @property
-    def feature_group_id(self) -> Optional[int]:
+    def feature_group_id(self) -> int | None:
         """Id of the Feature Group to which this feature monitoring configuration is attached."""
         return self._feature_group_id
 
     @property
-    def feature_view_name(self) -> Optional[str]:
+    def feature_view_name(self) -> str | None:
         """Name of the Feature View to which this feature monitoring configuration is attached."""
         return self._feature_view_name
 
     @property
-    def feature_view_version(self) -> Optional[int]:
+    def feature_view_version(self) -> int | None:
         """Version of the Feature View to which this feature monitoring configuration is attached."""
         return self._feature_view_version
 
     @property
-    def feature_name(self) -> Optional[str]:
-        """The name of the feature to monitor. If not set, all features of the
+    def feature_name(self) -> str | None:
+        """The name of the feature to monitor.
+
+        If not set, all features of the
         Feature Group or Feature View are monitored, only available for scheduled statistics.
 
-        !!! info "This property is read-only"
-
+        Info:
+            This property is read-only
         """
         return self._feature_name
 
     @property
     def name(self) -> str:
         """The name of the feature monitoring config.
+
         A Feature Group or Feature View cannot have multiple feature monitoring configurations with the same name. The name of
         a feature monitoring configuration is limited to 63 characters.
 
-        !!! info "This property is read-only once the feature monitoring configuration has been saved."
+        Info:
+            This property is read-only once the feature monitoring configuration has been saved.
         """
         return self._name
 
@@ -686,7 +724,7 @@ class FeatureMonitoringConfig:
     def name(self, name: str):
         if hasattr(self, "_id"):
             raise AttributeError("The name of a registered config is read-only.")
-        elif not isinstance(name, str):
+        if not isinstance(name, str):
             raise TypeError("name must be of type str")
         if len(name) > FEATURES.MAX_LENGTH_NAME:
             raise ValueError(
@@ -695,60 +733,64 @@ class FeatureMonitoringConfig:
         self._name = name
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         """Description of the feature monitoring configuration."""
         return self._description
 
     @description.setter
-    def description(self, description: Optional[str]):
+    def description(self, description: str | None):
         if not isinstance(description, str) and description is not None:
             raise TypeError("description must be of type str")
-        elif isinstance(description, str) and len(description) > MAX_LENGTH_DESCRIPTION:
+        if isinstance(description, str) and len(description) > MAX_LENGTH_DESCRIPTION:
             raise ValueError(
                 "description must be less than {MAX_LENGTH_DESCRIPTION} characters"
             )
         self._description = description
 
     @property
-    def job_name(self) -> Optional[str]:
+    def job_name(self) -> str | None:
         """Name of the feature monitoring job."""
         return self._job_name
 
     @property
     def enabled(self) -> bool:
         """Controls whether or not this config is spawning new feature monitoring jobs.
+
         This field belongs to the scheduler configuration but is made transparent to the user for convenience.
         """
         return self.job_schedule.enabled
 
     @enabled.setter
     def enabled(self, enabled: bool):
-        """
-        Controls whether or not this config is spawning new feature monitoring jobs.
+        """Controls whether or not this config is spawning new feature monitoring jobs.
+
         This field belongs to the scheduler configuration but is made transparent to the user for convenience.
         """
         self.job_schedule.enabled = enabled
 
     @property
-    def feature_monitoring_type(self) -> Optional[str]:
+    def feature_monitoring_type(self) -> str | None:
         """The type of feature monitoring to perform. Used for internal validation.
+
         Options are:
             - STATISTICS_COMPUTATION if no reference window (and, therefore, comparison config) is provided
             - STATISTICS_COMPARISON if a reference window (and, therefore, comparison config) is provided.
 
-        !!! info "This property is read-only."
+        Info:
+            This property is read-only.
         """
         return self._feature_monitoring_type
 
     @property
     def job_schedule(self) -> JobSchedule:
         """Schedule of the feature monitoring job.
+
         This field belongs to the job configuration but is made transparent to the user for convenience.
         """
         return self._job_schedule
 
     @job_schedule.setter
-    def job_schedule(self, job_schedule: Union[JobSchedule, Dict[str, Any]]):
+    def job_schedule(self, job_schedule: JobSchedule | dict[str, Any]):
         if isinstance(job_schedule, JobSchedule):
             self._job_schedule = job_schedule
         elif isinstance(job_schedule, dict):
@@ -764,9 +806,7 @@ class FeatureMonitoringConfig:
     @detection_window_config.setter
     def detection_window_config(
         self,
-        detection_window_config: Optional[
-            Union[mwc.MonitoringWindowConfig, Dict[str, Any]]
-        ],
+        detection_window_config: mwc.MonitoringWindowConfig | dict[str, Any] | None,
     ):
         if isinstance(detection_window_config, mwc.MonitoringWindowConfig):
             self._detection_window_config = detection_window_config
@@ -791,9 +831,9 @@ class FeatureMonitoringConfig:
     @reference_window_config.setter
     def reference_window_config(
         self,
-        reference_window_config: Optional[
-            Union[mwc.MonitoringWindowConfig, Dict[str, Any]]
-        ] = None,
+        reference_window_config: mwc.MonitoringWindowConfig
+        | dict[str, Any]
+        | None = None,
     ):
         """Sets the reference window for monitoring."""
         # TODO: improve setter documentation
@@ -824,14 +864,14 @@ class FeatureMonitoringConfig:
     @property
     def statistics_comparison_config(
         self,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Configuration for the comparison of detection and reference statistics."""
         return self._statistics_comparison_config
 
     @statistics_comparison_config.setter
     def statistics_comparison_config(
         self,
-        statistics_comparison_config: Optional[Dict[str, Any]] = None,
+        statistics_comparison_config: dict[str, Any] | None = None,
     ):
         if (
             self._feature_monitoring_type

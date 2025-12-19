@@ -13,23 +13,24 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import os
 import tempfile
 import time
 import uuid
-from typing import Dict, List, Union
 
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.client.istio.utils.infer_type import InferInput
 from hopsworks_common.constants import (
     DEPLOYMENT,
+    MODEL_REGISTRY,
     MODEL_SERVING,
     PREDICTOR,
     PREDICTOR_STATE,
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.core import dataset_api
+from hopsworks_common.core import dataset_api, inode
 from hsml.core import serving_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
@@ -67,7 +68,7 @@ class ServingEngine:
                     update_progress(state, num_instances)
                 if state.status == status:
                     return state  # deployment reached desired status
-                elif (
+                if (
                     status == PREDICTOR_STATE.STATUS_RUNNING
                     and state.status == PREDICTOR_STATE.STATUS_FAILED
                 ):
@@ -91,9 +92,10 @@ class ServingEngine:
                     raise ModelServingException(error_msg)
             raise ModelServingException(
                 "Deployment has not reached the desired status within the expected awaiting time. Check the current status by using `.get_state()`, "
-                + "explore the server logs using `.get_logs()` or set a higher value for await_"
+                "explore the server logs using `.get_logs()` or set a higher value for await_"
                 + status.lower()
             )
+        return None
 
     def start(self, deployment_instance, await_status: int) -> bool:
         (done, state) = self._check_status(
@@ -315,25 +317,22 @@ class ServingEngine:
         n_dirs,
         n_files,
     ):
-        """Download model files from a model path in hdfs, recursively"""
-
-        for entry in self._dataset_api.list(from_hdfs_path, sort_by="NAME:desc")[
-            "items"
-        ]:
-            path_attr = entry["attributes"]
-            path = path_attr["path"]
-            basename = os.path.basename(path)
-
-            if path_attr.get("dir", False):
+        """Download model files from a model path in hdfs, recursively."""
+        count, items = self._dataset_api._list_dataset_path(
+            from_hdfs_path, inode.Inode, sort_by="NAME:desc"
+        )
+        for entry in items:
+            basename = os.path.basename(entry.path)
+            if entry.dir:
                 # otherwise, make a recursive call for the folder
                 if (
                     basename == MODEL_SERVING.ARTIFACTS_DIR_NAME
-                ):  # TODO: Not needed anymore
+                ):  # NOTE: Keep for backward compatibility (<4.6). Existing models during upgrade contain Artifacts folder
                     continue  # skip Artifacts subfolder
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
                 n_dirs, n_files = self._download_files_from_hopsfs_recursive(
-                    from_hdfs_path=path,
+                    from_hdfs_path=entry.path,
                     to_local_path=local_folder_path,
                     update_download_progress=update_download_progress,
                     n_dirs=n_dirs,
@@ -344,7 +343,7 @@ class ServingEngine:
             else:
                 # if it's a file, download it
                 local_file_path = os.path.join(to_local_path, basename)
-                self._engine.download(path, local_file_path)
+                self._engine.download(entry.path, local_file_path)
                 n_files += 1
                 update_download_progress(n_dirs=n_dirs, n_files=n_files)
 
@@ -353,8 +352,7 @@ class ServingEngine:
     def _download_files_from_hopsfs(
         self, from_hdfs_path: str, to_local_path: str, update_download_progress
     ):
-        """Download files from a model path in hdfs."""
-
+        """Download files from a deployment path in hdfs."""
         n_dirs, n_files = self._download_files_from_hopsfs_recursive(
             from_hdfs_path=from_hdfs_path,
             to_local_path=to_local_path,
@@ -369,28 +367,21 @@ class ServingEngine:
             raise ModelServingException(
                 "Deployment is not created yet. To create the deployment use `.save()`"
             )
-        if deployment_instance.artifact_version is None:
-            # model artifacts are not created in non-k8s installations
-            raise ModelServingException(
-                "Model artifacts not supported in non-k8s installations. \
-                 Download the model files by using `model.download()`"
-            )
 
         if local_path is None:
             local_path = os.path.join(
                 tempfile.gettempdir(),
                 str(uuid.uuid4()),
-                deployment_instance.model_name,
-                str(deployment_instance.model_version),
-                MODEL_SERVING.ARTIFACTS_DIR_NAME,
-                str(deployment_instance.artifact_version),
+                deployment_instance.name,
+                str(deployment_instance.version),
             )
         os.makedirs(local_path, exist_ok=True)
 
         def update_download_progress(n_dirs, n_files, done=False):
             print(
-                "Downloading artifact files (%s dirs, %s files)... %s"
-                % (n_dirs, n_files, "DONE" if done else ""),
+                "Downloading artifact files ({} dirs, {} files)... {}".format(
+                    n_dirs, n_files, "DONE" if done else ""
+                ),
                 end="\r",
             )
 
@@ -399,6 +390,25 @@ class ServingEngine:
             if from_hdfs_path.startswith("hdfs:/"):
                 projects_index = from_hdfs_path.find("/Projects", 0)
                 from_hdfs_path = from_hdfs_path[projects_index:]
+
+            # backward compatibility: running deployments during upgrade contain artifact files under /Models/name/version/Artifacts folder
+            # if the deployment scales out, this method is used by storage-initializer to pull the files. Therefore, we need to pull files
+            # from the legacy path if the deployment has not yet been migrated
+            if deployment_instance.has_model and not self._dataset_api.path_exists(
+                from_hdfs_path
+            ):
+                # legacy artifact version path under Models dataset
+                legacy_from_hdfs_path = "{}/{}/{}/{}/{}/{}/{}".format(
+                    "/Projects",
+                    deployment_instance.project_name,
+                    MODEL_REGISTRY.MODELS_DATASET,
+                    deployment_instance.model_name,
+                    str(deployment_instance.model_version),
+                    MODEL_SERVING.ARTIFACTS_DIR_NAME,
+                    str(deployment_instance.version),
+                )
+                if self._dataset_api.path_exists(legacy_from_hdfs_path):
+                    from_hdfs_path = legacy_from_hdfs_path
 
             self._download_files_from_hopsfs(
                 from_hdfs_path=from_hdfs_path,
@@ -449,7 +459,7 @@ class ServingEngine:
             # if starting, it cannot be updated yet
             raise ModelServingException(
                 "Deployment is starting, please wait until it is running before applying changes. \n"
-                + "Check the current status by using `.get_state()` or explore the server logs using `.get_logs()`"
+                "Check the current status by using `.get_state()` or explore the server logs using `.get_logs()`"
             )
         if (
             state.status == PREDICTOR_STATE.STATUS_RUNNING
@@ -462,15 +472,14 @@ class ServingEngine:
             state = self._poll_deployment_status(  # wait for status
                 deployment_instance, PREDICTOR_STATE.STATUS_RUNNING, await_update
             )
-            if state is not None:
-                if state.status == PREDICTOR_STATE.STATUS_RUNNING:
-                    print("Running instances updated successfully")
+            if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+                print("Running instances updated successfully")
             return
         if state.status == PREDICTOR_STATE.STATUS_UPDATING:
             # if updating, it cannot be updated yet
             raise ModelServingException(
                 "Deployment is updating, please wait until it is running before applying changes. \n"
-                + "Check the current status by using `.get_state()` or explore the server logs using `.get_logs()`"
+                "Check the current status by using `.get_state()` or explore the server logs using `.get_logs()`"
             )
         if state.status == PREDICTOR_STATE.STATUS_STOPPING:
             # if stopping, it cannot be updated yet
@@ -528,20 +537,20 @@ class ServingEngine:
     def get_logs(self, deployment_instance, component, tail):
         state = self.get_state(deployment_instance)
         if state is None:
-            return
+            return None
 
         if state.status == PREDICTOR_STATE.STATUS_STOPPING:
             print(
                 "Deployment is stopping, explore historical logs at "
                 + deployment_instance.get_url()
             )
-            return
+            return None
         if state.status == PREDICTOR_STATE.STATUS_STOPPED:
             print(
                 "Deployment not running, explore historical logs at "
                 + deployment_instance.get_url()
             )
-            return
+            return None
         if state.status == PREDICTOR_STATE.STATUS_STARTING:
             print("Deployment is starting, server logs might not be ready yet")
 
@@ -558,8 +567,8 @@ class ServingEngine:
     def predict(
         self,
         deployment_instance,
-        data: Union[Dict, List[InferInput]],
-        inputs: Union[Dict, List[Dict]],
+        data: dict | list[InferInput],
+        inputs: dict | list[dict],
     ):
         # validate user-provided payload
         if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
@@ -599,8 +608,8 @@ class ServingEngine:
     def _validate_inference_payload(
         self,
         api_protocol,
-        data: Union[Dict, List[InferInput]],
-        inputs: Union[Dict, List[Dict]],
+        data: dict | list[InferInput],
+        inputs: dict | list[dict],
     ):
         """Validates the user-provided inference payload. Either data or inputs parameter is expected, but both cannot be provided together."""
         # check null inputs
@@ -614,40 +623,40 @@ class ServingEngine:
         else:
             self._validate_inference_inputs(api_protocol, inputs)
 
-    def _validate_inference_data(
-        self, api_protocol, data: Union[Dict, List[InferInput]]
-    ):
-        """Validates the inference payload when provided through the `data` parameter. The data parameter contains the raw payload to be sent
+    def _validate_inference_data(self, api_protocol, data: dict | list[InferInput]):
+        """Validates the inference payload when provided through the `data` parameter.
+
+        The data parameter contains the raw payload to be sent
         in the inference request and should have the corresponding type and format depending on the API protocol.
         For the REST protocol, data should be a dictionary. For GRPC protocol, one or more InferInput objects is expected.
         """
         if api_protocol == IE.API_PROTOCOL_REST:  # REST protocol
-            if isinstance(data, Dict):
+            if isinstance(data, dict):
                 if "instances" not in data and "inputs" not in data:
                     raise ModelServingException(
                         "Inference data is missing 'instances' key."
                     )
 
                 payload = data["instances"] if "instances" in data else data["inputs"]
-                if not isinstance(payload, List):
+                if not isinstance(payload, list):
                     raise ModelServingException(
                         "Instances field should contain a 2-dim list."
                     )
-                elif len(payload) == 0:
+                if len(payload) == 0:
                     raise ModelServingException(
                         "Inference data cannot contain an empty list."
                     )
-                elif not isinstance(payload[0], List):
+                if not isinstance(payload[0], list):
                     raise ModelServingException(
                         "Instances field should contain a 2-dim list."
                     )
-                elif len(payload[0]) == 0:
+                if len(payload[0]) == 0:
                     raise ModelServingException(
                         "Inference data cannot contain an empty list."
                     )
             else:  # not Dict
                 if isinstance(data, InferInput) or (
-                    isinstance(data, List) and isinstance(data[0], InferInput)
+                    isinstance(data, list) and isinstance(data[0], InferInput)
                 ):
                     raise ModelServingException(
                         "Inference data cannot contain `InferInput` for deployments with gRPC protocol disabled. Use a dictionary instead."
@@ -657,12 +666,12 @@ class ServingEngine:
                 )
 
         else:  # gRPC protocol
-            if isinstance(data, Dict):
+            if isinstance(data, dict):
                 raise ModelServingException(
                     "Inference data cannot be a dictionary for deployments with gRPC protocol enabled. "
                     "Create a `InferInput` object or use the `inputs` parameter instead."
                 )
-            elif isinstance(data, List):
+            if isinstance(data, list):
                 if len(data) == 0:
                     raise ModelServingException(
                         "Inference data cannot contain an empty list."
@@ -677,23 +686,24 @@ class ServingEngine:
                 )
 
     def _validate_inference_inputs(
-        self, api_protocol, inputs: Union[Dict, List[Dict]], recursive_call=False
+        self, api_protocol, inputs: dict | list[dict], recursive_call=False
     ):
-        """Validates the inference payload when provided through the `inputs` parameter. The inputs parameter contains only the payload values,
-        which will be parsed when building the request payload. It can be either a dictionary or a list.
+        """Validates the inference payload when provided through the `inputs` parameter.
+
+        The inputs parameter contains only the payload values, which will be parsed when building the request payload.
+        It can be either a dictionary or a list.
         """
-        if isinstance(inputs, List):
+        if isinstance(inputs, list):
             if len(inputs) == 0:
                 raise ModelServingException("Inference inputs cannot be an empty list.")
-            else:
-                self._validate_inference_inputs(
-                    api_protocol, inputs[0], recursive_call=True
-                )
+            self._validate_inference_inputs(
+                api_protocol, inputs[0], recursive_call=True
+            )
         elif isinstance(inputs, InferInput):
             raise ModelServingException(
                 "Inference inputs cannot be of type `InferInput`. Use the `data` parameter instead."
             )
-        elif isinstance(inputs, Dict):
+        elif isinstance(inputs, dict):
             required_keys = ("name", "shape", "datatype", "data")
             if api_protocol == IE.API_PROTOCOL_GRPC and not all(
                 k in inputs for k in required_keys
@@ -711,44 +721,43 @@ class ServingEngine:
     def _build_inference_payload(
         self,
         api_protocol,
-        data: Union[Dict, List[InferInput]],
-        inputs: Union[Dict, List[Dict]],
+        data: dict | list[InferInput],
+        inputs: dict | list[dict],
     ):
-        """Build the inference payload for an inference request. If the 'data' parameter is provided, this method ensures
-        it has the correct format depending on the API protocol. Otherwise, if the 'inputs' parameter is provided, this method
-        builds the correct request payload depending on the API protocol.
+        """Build the inference payload for an inference request.
+
+        If the 'data' parameter is provided, this method ensures it has the correct format depending on the API protocol.
+        Otherwise, if the 'inputs' parameter is provided, this method builds the correct request payload depending on the API protocol.
         """
         if data is not None:
             # data contains the raw payload (dict or InferInput), nothing needs to be changed
             return data
-        else:  # parse inputs
-            return self._parse_inference_inputs(api_protocol, inputs)
+        # parse inputs
+        return self._parse_inference_inputs(api_protocol, inputs)
 
     def _parse_inference_inputs(
-        self, api_protocol, inputs: Union[Dict, List[Dict]], recursive_call=False
+        self, api_protocol, inputs: dict | list[dict], recursive_call=False
     ):
         if api_protocol == IE.API_PROTOCOL_REST:  # REST protocol
-            if not isinstance(inputs, List):
+            if not isinstance(inputs, list):
                 data = {"instances": [[inputs]]}  # wrap inputs in a 2-dim list
             else:
                 data = {"instances": inputs}  # use given inputs list by default
                 # check depth of the list: at least two levels are required for batch inference
                 # if the content is neither a list or dict, wrap it in an additional list
                 for i in inputs:
-                    if not isinstance(i, List) and not isinstance(i, Dict):
+                    if not isinstance(i, list) and not isinstance(i, dict):
                         # if there are no two levels, wrap inputs in a list
                         data = {"instances": [inputs]}
                         break
         else:  # gRPC protocol
-            if isinstance(inputs, Dict):  # Dict
+            if isinstance(inputs, dict):  # Dict
                 data = InferInput(
                     name=inputs["name"],
                     shape=inputs["shape"],
                     datatype=inputs["datatype"],
                     data=inputs["data"],
-                    parameters=(
-                        inputs["parameters"] if "parameters" in inputs else None
-                    ),
+                    parameters=(inputs.get("parameters", None)),
                 )
                 if not recursive_call:
                     # if inputs is of type Dict, return a singleton

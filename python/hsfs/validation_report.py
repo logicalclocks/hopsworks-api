@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 
 if TYPE_CHECKING:
@@ -39,21 +39,19 @@ class ValidationReport:
     def __init__(
         self,
         success: bool,
-        results: List[
-            Union[
-                ValidationResult,
-                Dict[str, Any],
-                great_expectations.core.expectation_validation_result.ExpectationValidationResult,
-            ]
+        results: list[
+            ValidationResult
+            | dict[str, Any]
+            | great_expectations.core.expectation_validation_result.ExpectationValidationResult
         ],
-        meta: Optional[Union[Dict[str, Any], str]],
-        statistics: Optional[Union[Dict[str, Any], str]],
-        evaluation_parameters: Optional[Union[Dict[str, Any], str]] = None,
-        id: Optional[int] = None,
-        full_report_path: Optional[str] = None,
-        featurestore_id: Optional[int] = None,
-        featuregroup_id: Optional[int] = None,
-        validation_time: Optional[str] = None,
+        meta: dict[str, Any] | str | None,
+        statistics: dict[str, Any] | str | None,
+        evaluation_parameters: dict[str, Any] | str | None = None,
+        id: int | None = None,
+        full_report_path: str | None = None,
+        featurestore_id: int | None = None,
+        featuregroup_id: int | None = None,
+        validation_time: str | None = None,
         ingestion_result: Literal[
             "ingested", "rejected", "unknown", "experiment", "fg_data"
         ] = "unknown",
@@ -74,8 +72,8 @@ class ValidationReport:
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    ) -> Union[List[ValidationReport], ValidationReport]:
+        cls, json_dict: dict[str, Any]
+    ) -> list[ValidationReport] | ValidationReport:
         json_decamelized = humps.decamelize(json_dict)
         if (
             "count" in json_decamelized
@@ -86,13 +84,12 @@ class ValidationReport:
                 cls(**validation_report)
                 for validation_report in json_decamelized["items"]
             ]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Union[int, str, bool]]:
+    def to_dict(self) -> dict[str, int | str | bool]:
         return {
             "id": self._id,
             "success": self.success,
@@ -103,7 +100,7 @@ class ValidationReport:
             "ingestionResult": self._ingestion_result.upper(),
         }
 
-    def to_json_dict(self) -> Dict[str, Any]:
+    def to_json_dict(self) -> dict[str, Any]:
         return {
             "id": self._id,
             "success": self.success,
@@ -115,6 +112,7 @@ class ValidationReport:
 
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuiteValidationResult:
+        """Convert to Great Expectations ExpectationSuiteValidationResult type."""
         return great_expectations.core.ExpectationSuiteValidationResult(
             success=self.success,
             statistics=self.statistics,
@@ -124,17 +122,17 @@ class ValidationReport:
         )
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Id of the validation report, set by backend."""
         return self._id
 
     @id.setter
-    def id(self, id: Optional[int]) -> None:
+    def id(self, id: int | None) -> None:
         self._id = id
 
     @property
     def success(self) -> bool:
-        """Overall success of the validation step"""
+        """Overall success of the validation step."""
         return self._success
 
     @success.setter
@@ -142,19 +140,17 @@ class ValidationReport:
         self._success = success
 
     @property
-    def results(self) -> List[ValidationResult]:
+    def results(self) -> list[ValidationResult]:
         """List of expectation results obtained after validation."""
         return self._results
 
     @results.setter
     def results(
         self,
-        results: List[
-            Union[
-                ValidationResult,
-                Dict[str, Any],
-                great_expectations.core.expectation_validation_result.ExpectationValidationResult,
-            ]
+        results: list[
+            ValidationResult
+            | dict[str, Any]
+            | great_expectations.core.expectation_validation_result.ExpectationValidationResult
         ],
     ) -> None:
         if len(results) == 0:
@@ -172,12 +168,12 @@ class ValidationReport:
             ]
 
     @property
-    def meta(self) -> Optional[Dict[str, Any]]:
+    def meta(self) -> dict[str, Any] | None:
         """Meta field of the validation report to store additional informations."""
         return self._meta
 
     @meta.setter
-    def meta(self, meta: Optional[Union[Dict[str, Any], str]]) -> None:
+    def meta(self, meta: dict[str, Any] | str | None) -> None:
         if meta is None:
             self._meta = None
         elif isinstance(meta, dict):
@@ -188,13 +184,12 @@ class ValidationReport:
             raise ValueError("Meta field must be stringified json or dict.")
 
     @property
-    def statistics(self) -> Optional[Dict[str, Any]]:
-        """Statistics field of the validation report which store overall statistics
-        about the validation result, e.g number of failing/successful expectations."""
+    def statistics(self) -> dict[str, Any] | None:
+        """Statistics field of the validation report which store overall statistics about the validation result, e.g number of failing/successful expectations."""
         return self._statistics
 
     @statistics.setter
-    def statistics(self, statistics: Optional[Union[str, Dict[str, Any]]]) -> None:
+    def statistics(self, statistics: str | dict[str, Any] | None) -> None:
         if statistics is None:
             self._statistics = None
         elif isinstance(statistics, dict):
@@ -205,13 +200,13 @@ class ValidationReport:
             raise ValueError("Statistics field must be stringified json or dict")
 
     @property
-    def evaluation_parameters(self) -> Optional[Dict[str, Any]]:
+    def evaluation_parameters(self) -> dict[str, Any] | None:
         """Evaluation parameters field of the validation report which store kwargs of the validation."""
         return self._evaluation_parameters
 
     @evaluation_parameters.setter
     def evaluation_parameters(
-        self, evaluation_parameters: Optional[Union[Dict[str, Any], str]]
+        self, evaluation_parameters: dict[str, Any] | str | None
     ) -> None:
         if evaluation_parameters is None:
             self._evaluation_parameters = None
@@ -226,16 +221,16 @@ class ValidationReport:
 
     @property
     def ingestion_result(self) -> str:
-        """Overall success of the validation run together with the ingestion
-        validation policy. Indicating if dataframe was ingested or rejected."""
+        """Overall success of the validation run together with the ingestion validation policy, indicating if dataframe was ingested or rejected."""
         return self._ingestion_result
 
     @ingestion_result.setter
     def ingestion_result(
         self,
-        ingestion_result: Optional[
-            Literal["ingested", "rejected", "experiment", "unknown", "fg_data"]
-        ],
+        ingestion_result: Literal[
+            "ingested", "rejected", "experiment", "unknown", "fg_data"
+        ]
+        | None,
     ) -> None:
         if ingestion_result is None:
             ingestion_result = "UNKNOWN"
@@ -245,7 +240,7 @@ class ValidationReport:
         else:
             raise ValueError(
                 f"Invalid Value {ingestion_result} for ingestion_result."
-                + f"Allowed values are {', '.join(allowed_values)}."
+                f"Allowed values are {', '.join(allowed_values)}."
             )
 
     def __str__(self) -> str:
@@ -254,6 +249,6 @@ class ValidationReport:
     def __repr__(self) -> str:
         return (
             f"ValidationReport(success: {self._success}, "
-            + f"{self._statistics}, {len(self._results)} results"
-            + f" , {self._meta}, {self._full_report_path})"
+            f"{self._statistics}, {len(self._results)} results"
+            f" , {self._meta}, {self._full_report_path})"
         )

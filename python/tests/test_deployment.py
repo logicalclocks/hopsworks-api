@@ -788,10 +788,10 @@ class TestDeployment:
             id=p_json["id"],
             name=p_json["name"],
             description=p_json["description"],
+            version=p_json["version"],
             model_name=p_json["model_name"],
             model_path=p_json["model_path"],
             model_version=p_json["model_version"],
             model_framework=p_json["model_framework"],
             model_server=p_json["model_server"],
-            artifact_version=p_json["artifact_version"],
         )

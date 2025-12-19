@@ -85,3 +85,16 @@ polars_not_installed_message = (
 # SQL packages
 HAS_SQLALCHEMY: bool = importlib.util.find_spec("sqlalchemy") is not None
 HAS_AIOMYSQL: bool = importlib.util.find_spec("aiomysql") is not None
+
+# Delta Lake
+HAS_DELTALAKE_PYTHON: bool = importlib.util.find_spec("deltalake") is not None
+deltalake_not_installed_message = (
+    "Delta Lake (deltalake) and its dependencies are required for non-Spark operations. "
+    "Install 'hops-deltalake' to enable Delta RS features."
+)
+
+HAS_DELTALAKE_SPARK: bool = importlib.util.find_spec("delta") is not None
+deltalake_spark_not_installed_message = (
+    "Delta Lake (delta) is required for Spark operations. "
+    "Install 'delta-spark' to enable Delta Spark features."
+)

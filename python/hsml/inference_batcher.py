@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -24,21 +24,22 @@ from hopsworks_common.constants import INFERENCE_BATCHER
 class InferenceBatcher:
     """Configuration of an inference batcher for a predictor.
 
-    # Arguments
+    Parameters:
         enabled: Whether the inference batcher is enabled or not. The default value is `false`.
         max_batch_size: Maximum requests batch size.
         max_latency: Maximum latency for request batching.
         timeout: Maximum waiting time for request batching.
-    # Returns
+
+    Returns:
         `InferenceLogger`. Configuration of an inference logger.
     """
 
     def __init__(
         self,
-        enabled: Optional[bool] = None,
-        max_batch_size: Optional[int] = None,
-        max_latency: Optional[int] = None,
-        timeout: Optional[int] = None,
+        enabled: bool | None = None,
+        max_batch_size: int | None = None,
+        max_latency: int | None = None,
+        timeout: int | None = None,
         **kwargs,
     ):
         self._enabled = enabled if enabled is not None else INFERENCE_BATCHER.ENABLED
@@ -47,7 +48,7 @@ class InferenceBatcher:
         self._timeout = timeout if timeout is not None else None
 
     def describe(self):
-        """Print a description of the inference batcher"""
+        """Print a JSON description of the inference batcher."""
         util.pretty_print(self)
 
     @classmethod

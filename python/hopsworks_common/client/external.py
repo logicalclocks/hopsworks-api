@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import logging
 import os
 
@@ -26,10 +27,8 @@ from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
 
 
-try:
+with contextlib.suppress(ImportError):
     from pyspark.sql import SparkSession
-except ImportError:
-    pass
 
 
 _logger = logging.getLogger(__name__)
@@ -113,7 +112,6 @@ class Client(base.Client):
             self._validate_spark_configuration(_spark_session)
             with open(
                 _spark_session.conf.get("spark.hadoop.hops.ssl.keystores.passwd.name"),
-                "r",
             ) as f:
                 self._cert_key = f.read()
 
@@ -172,6 +170,9 @@ class Client(base.Client):
         self._write_pem_file(res["clientCert"], self._get_client_cert_path())
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
         return res
+
+    def get_certs_folder(self):
+        return os.path.join(self._cert_folder_base, self._host, self._project_name)
 
     def _materialize_certs(self):
         self._cert_folder = os.path.join(
@@ -322,13 +323,11 @@ class Client(base.Client):
     def _cleanup_file(self, file_path):
         """Removes local files with `file_path`."""
         _logger.debug(f"Cleaning up file {file_path}")
-        try:
+        with contextlib.suppress(OSError):
             os.remove(file_path)
-        except OSError:
-            pass
 
     def replace_public_host(self, url):
-        """no need to replace as we are already in external client"""
+        """No need to replace as we are already in external client."""
         return url
 
     def _is_external(self):
@@ -337,3 +336,7 @@ class Client(base.Client):
     @property
     def host(self):
         return self._host
+
+    @property
+    def project_name(self):
+        return self._project_name

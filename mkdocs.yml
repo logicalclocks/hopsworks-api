@@ -1,119 +1,115 @@
 site_name: "Hopsworks Documentation"
 site_description: "Official documentation for Hopsworks and its Feature Store - an open source data-intensive AI platform used for the development and operation of machine learning models at scale."
-site_author: "Logical Clocks"
-site_url: "https://docs.hopsworks.ai/hopsworks-api/latest"
+site_author: "Hopsworks"
+site_url: "https://docs.hopsworks.ai/"
 
 # Repository
-edit_uri: ""
+edit_uri: "https://github.com/logicalclocks/hopsworks-api"
 
 nav:
-  - Home: https://docs.hopsworks.ai/
-  - Getting Started ↗: https://docs.hopsworks.ai/
-  - Tutorials: https://docs.hopsworks.ai/
-  - Concepts: https://docs.hopsworks.ai/
-  - Guides: https://docs.hopsworks.ai/
-  - Setup and Administration: https://docs.hopsworks.ai/
-  - API<div class="dropdown"><button class="dropbtn"> API </button> <div id="myDropdown" class="dropdown-content"> <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Hopsworks API</a> <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/hopsworks-api/latest/javadoc">Feature Store JavaDoc</a> </div></div>:
-    - Login: generated/api/login.md
-    - Platform API:
-      - Alerts: generated/api/alerts.md
-      - Datasets: generated/api/datasets.md
-      - Environment: generated/api/environment.md
-      - Executions: generated/api/executions.md
-      - FlinkCluster: generated/api/flink_cluster.md
-      - GitProvider: generated/api/git_provider.md 
-      - GitRemote: generated/api/git_remote.md
-      - GitRepo: generated/api/git_repo.md
-      - Jobs: generated/api/jobs.md
-      - KafkaSchema: generated/api/kafka_schema.md
-      - KafkaTopic: generated/api/kafka_topic.md
-      - OpenSearch: generated/api/opensearch.md
-      - Projects: generated/api/projects.md
-      - Secrets: generated/api/secrets.md
-      - Search: generated/api/search.md
-    - Feature Store API:
-      - Embedding:
-        - EmbeddingFeature: generated/api/embedding_feature_api.md
-        - EmbeddingIndex: generated/api/embedding_index_api.md
-        - SimilarityFunctionType: generated/api/similarity_function_type_api.md
-      - ExpectationSuite: generated/api/expectation_suite_api.md
-      - ExternalFeatureGroup: generated/api/external_feature_group_api.md
-      - Feature: generated/api/feature_api.md
-      - Feature Monitoring:
-        - Configuration: generated/api/feature_monitoring_config_api.md
-        - Result: generated/api/feature_monitoring_result_api.md
-        - Window: generated/api/feature_monitoring_window_config_api.md
-      - FeatureGroup: generated/api/feature_group_api.md
-      - FeatureStore: generated/api/feature_store_api.md
-      - FeatureView: generated/api/feature_view_api.md
-      - Provenance Links: generated/api/links.md
-      - Query: generated/api/query_api.md
-      - SpineGroup: generated/api/spine_group_api.md
-      - Statistics:
-        - Feature descriptive statistics: generated/api/feature_descriptive_statistics_api.md
-        - Split Statistics: generated/api/split_statistics_api.md
-        - Statistics: generated/api/statistics_api.md
-      - Storage Connector: generated/api/storage_connector_api.md
-      - Data Source: generated/api/data_source_api.md
-      - TrainingDataset: generated/api/training_dataset_api.md
-      - Transformation Functions:
-        - HopsworksUDF: generated/api/hopsworks_udf.md
-        - Transformation Statistics:
-          - FeatureTransformationStatistics: generated/api/feature_transformation_statistics.md
-          - TransformationStatistics: generated/api/transformation_statistics.md
-        - TransformationFunction: generated/api/transformation_functions_api.md
-        - UDF: generated/api/udf.md
-      - ValidationReport: generated/api/validation_report_api.md
-      - Online Ingestion: generated/api/online_ingestion.md
-      - Online Ingestion Result: generated/api/online_ingestion_result.md
-    - Machine Learning API:
-      - Model Registry:
-        - Model: generated/model-registry/model_api.md
-        - Model Registry: generated/model-registry/model_registry_api.md
-        - Model Schema: generated/model-registry/model_schema_api.md
-      - Model Serving:
-        - Deployment: generated/model-serving/deployment_api.md
-        - Deployment state: generated/model-serving/predictor_state_api.md
-        - Deployment state condition: generated/model-serving/predictor_state_condition_api.md
-        - Inference Batcher: generated/model-serving/inference_batcher_api.md
-        - Inference Logger: generated/model-serving/inference_logger_api.md
-        - Model Serving: generated/model-serving/model_serving_api.md
-        - Predictor: generated/model-serving/predictor_api.md
-        - Resources: generated/model-serving/resources_api.md
-        - Transformer: generated/model-serving/transformer_api.md
-    # Added to allow navigation using the side drawer
-    - Feature Store JavaDoc: https://docs.hopsworks.ai/feature-store-javadoc/latest/
-    - Contributing: CONTRIBUTING.md
-  - Community ↗: https://community.hopsworks.ai/
+  - Login: login.md
+  - Platform API:
+    - Alerts: alerts.md
+    - Datasets: datasets.md
+    - Environment: environment.md
+    - Executions: executions.md
+    - FlinkCluster: flink_cluster.md
+    - GitProvider: git_provider.md
+    - GitRemote: git_remote.md
+    - GitRepo: git_repo.md
+    - Jobs: jobs.md
+    - KafkaSchema: kafka_schema.md
+    - KafkaTopic: kafka_topic.md
+    - OpenSearch: opensearch.md
+    - Projects: projects.md
+    - Secrets: secrets.md
+    - Search: search.md
+  - Feature Store API:
+    - Embedding:
+      - EmbeddingFeature: embedding_feature_api.md
+      - EmbeddingIndex: embedding_index_api.md
+      - SimilarityFunctionType: similarity_function_type_api.md
+    - ExpectationSuite: expectation_suite_api.md
+    - ExternalFeatureGroup: external_feature_group_api.md
+    - Feature: feature_api.md
+    - Feature Monitoring:
+      - Configuration: feature_monitoring_config_api.md
+      - Result: feature_monitoring_result_api.md
+      - Window: feature_monitoring_window_config_api.md
+    - FeatureGroup: feature_group_api.md
+    - FeatureStore: feature_store_api.md
+    - FeatureView: feature_view_api.md
+    - Provenance Links: links.md
+    - Query: query_api.md
+    - SpineGroup: spine_group_api.md
+    - Statistics:
+      - Feature descriptive statistics: feature_descriptive_statistics_api.md
+      - Split Statistics: split_statistics_api.md
+      - Statistics: statistics_api.md
+      - Statistics Configuration: statistics_config_api.md
+    - Storage Connector: storage_connector_api.md
+    - Data Source: data_source_api.md
+    - TrainingDataset: training_dataset_api.md
+    - Transformation Functions:
+      - HopsworksUDF: hopsworks_udf.md
+      - Transformation Statistics:
+        - FeatureTransformationStatistics: feature_transformation_statistics.md
+        - TransformationStatistics: transformation_statistics.md
+      - TransformationFunction: transformation_functions_api.md
+      - UDF: udf.md
+    - ValidationReport: validation_report_api.md
+    - Online Ingestion: online_ingestion.md
+    - Online Ingestion Result: online_ingestion_result.md
+  - Machine Learning API:
+    - Model Registry:
+      - Model: model_api.md
+      - Model Registry: model_registry_api.md
+      - Model Schema: model_schema_api.md
+      - Provenance Links: model_links.md
+    - Model Serving:
+      - Deployment: deployment_api.md
+      - Deployment state: predictor_state_api.md
+      - Deployment state condition: predictor_state_condition_api.md
+      - Inference Batcher: inference_batcher_api.md
+      - Inference Logger: inference_logger_api.md
+      - Model Serving: model_serving_api.md
+      - Predictor: predictor_api.md
+      - Resources: resources_api.md
+      - Transformer: transformer_api.md
+  - Contributing: CONTRIBUTING.md
 
 theme:
   name: material
-  custom_dir: docs/overrides
-  favicon: assets/images/favicon.ico
-  logo: assets/images/hops-logo.png
   icon:
     repo: fontawesome/brands/github
   font:
     text: "Roboto"
     code: "IBM Plex Mono"
   palette:
-    accent: teal
-    scheme: hopsworks
+    - scheme: hopsworks
+      media: "(prefers-color-scheme: light)"
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      media: "(prefers-color-scheme: dark)"
+      primary: hopsworks
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
     - navigation.indexes
 
-
 extra:
-  analytics:
-    provider: google
-    property: G-64FEEXPSDN
-  generator: false
   version:
-    - provider: mike
-    - default: latest
+    provider: mike
+    default: latest
+  generator: false
   social:
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/hopsworks
@@ -123,26 +119,52 @@ extra:
       link: https://community.hopsworks.ai/
     - icon: fontawesome/brands/linkedin
       link: https://www.linkedin.com/company/hopsworks/
+    - icon: fontawesome/brands/slack
+      link: https://bit.ly/publichopsworks
+  analytics:
+    provider: google
+    property: G-64FEEXPSDN
 
 extra_css:
   - css/custom.css
-  - css/version-select.css
-  - css/dropdown.css
   - css/marctech.css
 
 extra_javascript:
-  - js/version-select.js
-  - js/inject-api-links.js
-  - js/dropdown.js
+  - js/quickstart-fullscreen.js
 
 plugins:
   - search
   - minify:
-        minify_html: true
-        minify_css: true
-        minify_js: true
+      minify_html: true
+      minify_css: true
+      minify_js: true
   - mike:
-        canonical_version: latest
+      canonical_version: latest
+  - multirepo
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
+            show_root_full_path: false
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_source: false
+            link_source: true
+            docstring_section_style: spacy
+            annotations_path: source
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://pandas.pydata.org/docs/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://docs.python-requests.org/en/latest/objects.inv
+            - https://docs.pydantic.dev/latest/objects.inv
+            - https://fastapi.tiangolo.com/objects.inv
+            - https://scikit-learn.org/stable/objects.inv
+            - https://docs.pola.rs/api/python/stable/objects.inv
 
 markdown_extensions:
   - admonition
@@ -159,9 +181,11 @@ markdown_extensions:
   - pymdownx.critic
   - attr_list
   - md_in_html
+  - def_list
   - toc:
       permalink: "#"
   - pymdownx.tasklist:
       custom_checkbox: true
-  - markdown_include.include:
-      base_path: docs
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg

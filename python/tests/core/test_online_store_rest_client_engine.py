@@ -262,6 +262,10 @@ class TestOnlineRestClientEngine:
     ):
         # Arrange
         payload = backend_fixtures["rondb_server"]["get_batch_vector_payload"].copy()
+        # No passed features in active call
+        payload["passedFeatures"] = []
+        # No need for detailed status if drop_missing is False
+        payload["options"]["includeDetailedStatus"] = False
 
         mock_online_rest_api = mocker.patch(
             ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS,
@@ -278,6 +282,7 @@ class TestOnlineRestClientEngine:
         )
 
         # Assert
+        mock_online_rest_api.assert_called_once_with(payload=payload)
         # Check that the response was not converted to a feature vector if return_type is response json
         assert (
             response_json
@@ -285,7 +290,6 @@ class TestOnlineRestClientEngine:
                 "get_batch_vector_response_json_complete"
             ]
         )
-        assert mock_online_rest_api.called_once_with(payload=payload)
 
     @pytest.mark.parametrize(
         "fixture_key",
@@ -303,6 +307,10 @@ class TestOnlineRestClientEngine:
     ):
         # Arrange
         payload = backend_fixtures["rondb_server"]["get_batch_vector_payload"].copy()
+        # No passed features in active call
+        payload["passedFeatures"] = []
+        # No need for detailed status if drop_missing is False
+        payload["options"]["includeDetailedStatus"] = False
         mock_online_rest_api = mocker.patch(
             ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS,
             return_value=backend_fixtures["rondb_server"][fixture_key],
@@ -331,8 +339,8 @@ class TestOnlineRestClientEngine:
         )
 
         # Assert
+        mock_online_rest_api.assert_called_once_with(payload=payload)
         assert feature_vector_dict == reference_batch_vectors
-        assert mock_online_rest_api.called_once_with(payload=payload)
 
     def test_get_batch_feature_partial_pk_missing_vectors_as_dict(
         self,
@@ -342,6 +350,9 @@ class TestOnlineRestClientEngine:
     ):
         # Arrange
         payload = backend_fixtures["rondb_server"]["get_batch_vector_payload"].copy()
+        # No passed features in active call
+        payload["passedFeatures"] = []
+
         mock_online_rest_api = mocker.patch(
             ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS,
             return_value=backend_fixtures["rondb_server"][
@@ -367,14 +378,16 @@ class TestOnlineRestClientEngine:
         )
 
         # Assert
+        mock_online_rest_api.assert_called_once_with(payload=payload)
         assert feature_vector_dict == reference_batch_vectors
-        assert mock_online_rest_api.called_once_with(payload=payload)
 
     def test_get_batch_feature_partial_error(
         self, mocker, backend_fixtures, rest_client_engine_ticker
     ):
         # Arrange
         payload = backend_fixtures["rondb_server"]["get_batch_vector_payload"].copy()
+        # No passed features in active call
+        payload["passedFeatures"] = []
         mock_online_rest_api = mocker.patch(
             ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS,
             return_value=backend_fixtures["rondb_server"][
@@ -405,5 +418,5 @@ class TestOnlineRestClientEngine:
         )
 
         # Assert
+        mock_online_rest_api.assert_called_once_with(payload=payload)
         assert batch_vectors == reference_batch_vectors
-        assert mock_online_rest_api.called_once_with(payload=payload)

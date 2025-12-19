@@ -7,7 +7,7 @@
     <groupId>com.logicalclocks</groupId>
     <artifactId>hsfs-parent</artifactId>
     <packaging>pom</packaging>
-    <version>4.6.0-SNAPSHOT</version>
+    <version>4.7.0-SNAPSHOT</version>
     <modules>
         <module>hsfs</module>
         <module>spark</module>
@@ -306,7 +306,6 @@
                 <deequ.version>2.0.7-spark-3.5</deequ.version>
                 <artifact.spark.version>spark3.5</artifact.spark.version>
                 <fasterxml.jackson.databind.version>2.15.2</fasterxml.jackson.databind.version>
-                <avro.version>1.11.4</avro.version>
                 <kafka.version>3.4.1</kafka.version>
             </properties>
         </profile>

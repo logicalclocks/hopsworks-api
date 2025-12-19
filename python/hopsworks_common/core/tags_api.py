@@ -125,15 +125,13 @@ class TagsApi:
                     training_dataset_version,
                     "tags",
                 ]
-            else:
-                return path + ["tags"]
-        else:
-            return [
-                "project",
-                _client._project_id,
-                "featurestores",
-                self._feature_store_id,
-                self._entity_type,
-                metadata_instance.id,
-                "tags",
-            ]
+            return path + ["tags"]
+        return [
+            "project",
+            _client._project_id,
+            "featurestores",
+            self._feature_store_id,
+            self._entity_type,
+            metadata_instance.id,
+            "tags",
+        ]

@@ -17,46 +17,37 @@
 
 package com.logicalclocks.hsfs.spark.engine;
 
-import com.amazon.deequ.profiles.ColumnProfilerRunBuilder;
-import com.amazon.deequ.profiles.ColumnProfilerRunner;
-import com.amazon.deequ.profiles.ColumnProfiles;
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.logicalclocks.hsfs.engine.EngineBase;
-import com.logicalclocks.hsfs.metadata.DatasetApi;
-import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
-import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
-import com.logicalclocks.hsfs.spark.constructor.Query;
-import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
-import com.logicalclocks.hsfs.DataFormat;
-import com.logicalclocks.hsfs.DataSource;
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.HudiOperationType;
-import com.logicalclocks.hsfs.Split;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.constructor.FeatureGroupAlias;
-import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
-import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.metadata.HopsworksClient;
-import com.logicalclocks.hsfs.metadata.OnDemandOptions;
-import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
-import com.logicalclocks.hsfs.metadata.Option;
-import com.logicalclocks.hsfs.util.Constants;
-import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
 import static com.logicalclocks.hsfs.FeatureType.BIGINT;
 import static com.logicalclocks.hsfs.FeatureType.DATE;
 import static com.logicalclocks.hsfs.FeatureType.TIMESTAMP;
+import static org.apache.spark.sql.avro.functions.from_avro;
+import static org.apache.spark.sql.avro.functions.to_avro;
+import static org.apache.spark.sql.functions.array;
+import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.concat;
+import static org.apache.spark.sql.functions.from_json;
+import static org.apache.spark.sql.functions.lit;
+import static org.apache.spark.sql.functions.struct;
 
-import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
-import com.logicalclocks.hsfs.spark.TrainingDataset;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.text.ParseException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-import com.logicalclocks.hsfs.TrainingDatasetFeature;
-
-import com.logicalclocks.hsfs.spark.util.StorageConnectorUtils;
-import lombok.Getter;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
 import org.apache.commons.io.FileUtils;
@@ -92,35 +83,43 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.TimestampType;
 import org.json.JSONObject;
+
+import com.amazon.deequ.profiles.ColumnProfilerRunBuilder;
+import com.amazon.deequ.profiles.ColumnProfilerRunner;
+import com.amazon.deequ.profiles.ColumnProfiles;
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.logicalclocks.hsfs.DataFormat;
+import com.logicalclocks.hsfs.DataSource;
+import com.logicalclocks.hsfs.Feature;
+import com.logicalclocks.hsfs.FeatureGroupBase;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.HudiOperationType;
+import com.logicalclocks.hsfs.Split;
+import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.TimeTravelFormat;
+import com.logicalclocks.hsfs.TrainingDatasetFeature;
+import com.logicalclocks.hsfs.constructor.FeatureGroupAlias;
+import com.logicalclocks.hsfs.engine.EngineBase;
+import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
+import com.logicalclocks.hsfs.metadata.DatasetApi;
+import com.logicalclocks.hsfs.metadata.HopsworksClient;
+import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
+import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
+import com.logicalclocks.hsfs.metadata.OnDemandOptions;
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
+import com.logicalclocks.hsfs.metadata.Option;
+import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
+import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
+import com.logicalclocks.hsfs.spark.TrainingDataset;
+import com.logicalclocks.hsfs.spark.constructor.Query;
+import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
+import com.logicalclocks.hsfs.spark.util.StorageConnectorUtils;
+import com.logicalclocks.hsfs.util.Constants;
+
+import lombok.Getter;
 import scala.collection.JavaConverters;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.text.ParseException;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeoutException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
-import static org.apache.spark.sql.avro.functions.from_avro;
-import static org.apache.spark.sql.avro.functions.to_avro;
-import static org.apache.spark.sql.functions.array;
-import static org.apache.spark.sql.functions.col;
-import static org.apache.spark.sql.functions.concat;
-import static org.apache.spark.sql.functions.from_json;
-import static org.apache.spark.sql.functions.lit;
-import static org.apache.spark.sql.functions.struct;
 
 public class SparkEngine extends EngineBase {
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
@@ -758,7 +757,17 @@ public class SparkEngine extends EngineBase {
     }
     if (storageConnector.sparkOptions().containsKey(Constants.S3_ENDPOINT)) {
       sparkSession.sparkContext().hadoopConfiguration()
-      .set(Constants.S3_ENDPOINT, storageConnector.sparkOptions().get(Constants.S3_ENDPOINT));
+          .set(Constants.S3_ENDPOINT, storageConnector.sparkOptions().get(Constants.S3_ENDPOINT));
+    }
+    if (storageConnector.sparkOptions().containsKey(Constants.S3_PATH_STYLE_ACCESS)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_PATH_STYLE_ACCESS,
+          storageConnector.sparkOptions().get(Constants.S3_PATH_STYLE_ACCESS));
+    }
+    if (storageConnector.sparkOptions().containsKey(Constants.S3_CONNECTION_USE_SSL)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_CONNECTION_USE_SSL,
+          storageConnector.sparkOptions().get(Constants.S3_CONNECTION_USE_SSL));
     }
   }
 

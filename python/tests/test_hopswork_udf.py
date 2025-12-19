@@ -145,10 +145,13 @@ class TestHopsworksUdf:
     def test_extract_source_code(self):
         from .test_helpers.transformation_test_helper import test_function
 
-        assert """import pandas as pd
+        assert (
+            HopsworksUdf._extract_source_code(test_function).strip()
+            == """import pandas as pd
 from hsfs.transformation_statistics import TransformationStatistics
 def test_function():
-    return True""" == HopsworksUdf._extract_source_code(test_function).strip()
+    return True"""
+        )
 
     def test_extract_function_arguments_no_arguments(self):
         from .test_helpers.transformation_test_helper import test_function
@@ -811,7 +814,7 @@ def test_function():
             == "`test_func_col1_0` bigint, `test_func_col1_1` double, `test_func_col1_2` string, `test_func_col1_3` date, `test_func_col1_4` timestamp, `test_func_col1_5` timestamp, `test_func_col1_6` boolean"
         )
 
-    def test_pandas_udf_wrapper_single_output(self):
+    def test_pandas_udf_wrapper_single_output_return_series(self):
         test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
 
         @udf(int)
@@ -822,6 +825,20 @@ def test_function():
         renaming_wrapper_function = test_func.pandas_udf_wrapper()
 
         result = renaming_wrapper_function(test_dataframe["col1"])
+
+        assert result.name == "test_func_col1_"
+        assert result.values.tolist() == [2, 3, 4, 5]
+
+    def test_pandas_udf_wrapper_single_output_return_dataframe(self):
+        @udf(int)
+        def test_func(col1):
+            return pd.DataFrame({"out1": col1 + 1})
+
+        test_func.output_column_names = ["test_func_col1_"]
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+
+        test_dataframe = pd.DataFrame({"column1": [1, 2, 3, 4]})
+        result = renaming_wrapper_function(test_dataframe["column1"])
 
         assert result.name == "test_func_col1_"
         assert result.values.tolist() == [2, 3, 4, 5]
@@ -1429,7 +1446,7 @@ def test_function():
         scope = test_func._prepare_transformation_function_scope()
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert "_output_col_names" in scope.keys()
+        assert "_output_col_names" in scope
 
     def test_prepare_transformation_function_scope_no_kwargs_no_statistics_context(
         self,
@@ -1449,7 +1466,7 @@ def test_function():
         assert scope["_output_col_names"] == ["test_func_feature_"]
         assert scope["context"] == {"test_value": 100}
         assert all(
-            value in scope.keys()
+            value in scope
             for value in {
                 "_output_col_names",
                 "context",
@@ -1472,8 +1489,7 @@ def test_function():
         assert scope["context"] == {"test_value": 100}
         assert scope["statistics"] == 10
         assert all(
-            value in scope.keys()
-            for value in {"_output_col_names", "context", "statistics"}
+            value in scope for value in {"_output_col_names", "context", "statistics"}
         )
 
     def test_prepare_transformation_function_scope_kwargs_statistics_context(self):
@@ -1493,6 +1509,6 @@ def test_function():
         assert scope["statistics"] == 10
         assert scope["test"] == "values"
         assert all(
-            value in scope.keys()
+            value in scope
             for value in {"_output_col_names", "context", "statistics", "test"}
         )

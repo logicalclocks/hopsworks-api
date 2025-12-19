@@ -17,14 +17,17 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, TypeVar
 
 from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import feature_group, feature_view, util
 from hsfs.core import monitoring_window_config as mwc
 from hsfs.core import statistics_engine
-from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.training_dataset_split import TrainingDatasetSplit
+
+
+if TYPE_CHECKING:
+    from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 
 class MonitoringWindowConfigEngine:
@@ -42,13 +45,13 @@ class MonitoringWindowConfigEngine:
 
     def validate_monitoring_window_config(
         self,
-        time_offset: Optional[str] = None,
-        window_length: Optional[str] = None,
-        training_dataset_version: Optional[int] = None,
-        specific_value: Optional[Union[int, float]] = None,
-        row_percentage: Optional[float] = None,
-    ) -> "mwc.WindowConfigType":
-        if isinstance(specific_value, int) or isinstance(specific_value, float):
+        time_offset: str | None = None,
+        window_length: str | None = None,
+        training_dataset_version: int | None = None,
+        specific_value: float | None = None,
+        row_percentage: float | None = None,
+    ) -> mwc.WindowConfigType:
+        if isinstance(specific_value, (int, float)):
             if any(
                 [
                     time_offset is not None,
@@ -85,14 +88,14 @@ class MonitoringWindowConfigEngine:
 
     def build_monitoring_window_config(
         self,
-        id: Optional[int] = None,
-        window_config_type: Optional[Union["mwc.WindowConfigType", str]] = None,
-        time_offset: Optional[str] = None,
-        window_length: Optional[str] = None,
-        training_dataset_version: Optional[int] = None,
-        specific_value: Optional[Union[int, float]] = None,
-        row_percentage: Optional[float] = None,
-    ) -> "mwc.MonitoringWindowConfig":
+        id: int | None = None,
+        window_config_type: mwc.WindowConfigType | str | None = None,
+        time_offset: str | None = None,
+        window_length: str | None = None,
+        training_dataset_version: int | None = None,
+        specific_value: float | None = None,
+        row_percentage: float | None = None,
+    ) -> mwc.MonitoringWindowConfig:
         """Builds a monitoring window config.
 
         Args:
@@ -116,7 +119,6 @@ class MonitoringWindowConfigEngine:
         Returns:
             MonitoringWindowConfig The monitoring window configuration.
         """
-
         detected_window_config_type = self.validate_monitoring_window_config(
             time_offset=time_offset,
             window_length=window_length,
@@ -151,7 +153,7 @@ class MonitoringWindowConfigEngine:
         )
 
     def time_range_str_to_time_delta(
-        self, time_range: str, field_name: Optional[str] = "time_offset"
+        self, time_range: str, field_name: str | None = "time_offset"
     ) -> timedelta:
         # sanitize input
         value_error_message = f"Invalid {field_name} format: {time_range}. Use format: 1w2d3h for 1 week, 2 days and 3 hours."
@@ -189,8 +191,8 @@ class MonitoringWindowConfigEngine:
 
     def get_window_start_end_times(
         self,
-        monitoring_window_config: "mwc.MonitoringWindowConfig",
-    ) -> Tuple[Optional[int], int]:
+        monitoring_window_config: mwc.MonitoringWindowConfig,
+    ) -> tuple[int | None, int]:
         end_time = datetime.now()
         if monitoring_window_config.window_config_type not in [
             mwc.WindowConfigType.ROLLING_TIME,
@@ -230,10 +232,10 @@ class MonitoringWindowConfigEngine:
 
     def run_single_window_monitoring(
         self,
-        entity: Union[feature_group.FeatureGroup, "feature_view.FeatureView"],
-        monitoring_window_config: "mwc.MonitoringWindowConfig",
-        feature_name: Optional[str] = None,
-    ) -> List[FeatureDescriptiveStatistics]:
+        entity: feature_group.FeatureGroup | feature_view.FeatureView,
+        monitoring_window_config: mwc.MonitoringWindowConfig,
+        feature_name: str | None = None,
+    ) -> list[FeatureDescriptiveStatistics]:
         """Fetch the entity data based on monitoring window configuration and compute statistics.
 
         Args:
@@ -311,19 +313,19 @@ class MonitoringWindowConfigEngine:
                 )
             )
 
-        assert (
-            registered_stats.feature_descriptive_statistics is not None
-        ), "statistics should contain the feature descriptive statistics"
+        assert registered_stats.feature_descriptive_statistics is not None, (
+            "statistics should contain the feature descriptive statistics"
+        )
 
         return registered_stats.feature_descriptive_statistics
 
     def fetch_entity_data_in_monitoring_window(
         self,
-        entity: Union[feature_group.FeatureGroup, "feature_view.FeatureView"],
-        start_time: Optional[int],
-        end_time: Optional[int],
+        entity: feature_group.FeatureGroup | feature_view.FeatureView,
+        start_time: int | None,
+        end_time: int | None,
         row_percentage: float,
-        feature_name: Optional[str] = None,
+        feature_name: str | None = None,
     ) -> TypeVar("pyspark.sql.DataFrame"):
         """Fetch the entity data based on time window and row percentage.
 
@@ -367,17 +369,16 @@ class MonitoringWindowConfigEngine:
                 import pandas as pd
 
                 return pd.DataFrame(columns=[feat.name for feat in entity.schema])
-            else:
-                raise e
+            raise e
 
         return entity_df
 
     def fetch_feature_view_data(
         self,
-        entity: "feature_view.FeatureView",
-        feature_name: Optional[str] = None,
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
+        entity: feature_view.FeatureView,
+        feature_name: str | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
     ) -> TypeVar("pyspark.sql.DataFrame"):
         """Fetch the feature view data based on time window and row percentage.
 
@@ -390,7 +391,6 @@ class MonitoringWindowConfigEngine:
         Returns:
             `pyspark.sql.DataFrame`. A Spark DataFrame with the entity data
         """
-
         # TODO: This fails for FV on non-time-travel FGs.
         entity_df = entity.query.as_of(
             exclude_until=start_time, wallclock_time=end_time
@@ -404,9 +404,9 @@ class MonitoringWindowConfigEngine:
     def fetch_feature_group_data(
         self,
         entity: feature_group.FeatureGroup,
-        feature_name: Optional[str] = None,
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
+        feature_name: str | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
     ) -> TypeVar("pyspark.sql.Dataframe"):
         """Fetch the feature group data based on time window.
 
@@ -416,16 +416,11 @@ class MonitoringWindowConfigEngine:
             start_time: int: Window start commit time.
             end_time: int: Window end commit time.
         """
-        if feature_name:
-            pre_df = entity.select(features=[feature_name])
-        else:
-            pre_df = entity
+        pre_df = entity.select(features=[feature_name]) if feature_name else entity
 
-        full_df = pre_df.as_of(exclude_until=start_time, wallclock_time=end_time).read()
+        return pre_df.as_of(exclude_until=start_time, wallclock_time=end_time).read()
 
-        return full_df
-
-    def round_and_convert_event_time(self, event_time: datetime) -> Optional[int]:
+    def round_and_convert_event_time(self, event_time: datetime) -> int | None:
         """Round event time to the latest hour and convert to timestamp.
 
         Args:

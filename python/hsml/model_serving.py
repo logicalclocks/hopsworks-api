@@ -13,22 +13,26 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import os
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING
 
 from hopsworks_common import usage, util
-from hopsworks_common.constants import ARTIFACT_VERSION, PREDICTOR_STATE
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks_common.constants import PREDICTOR_STATE
 from hsml.core import serving_api
 from hsml.deployment import Deployment
-from hsml.inference_batcher import InferenceBatcher
-from hsml.inference_endpoint import InferenceEndpoint
-from hsml.inference_logger import InferenceLogger
-from hsml.model import Model
 from hsml.predictor import Predictor
-from hsml.resources import PredictorResources
 from hsml.transformer import Transformer
+
+
+if TYPE_CHECKING:
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_endpoint import InferenceEndpoint
+    from hsml.inference_logger import InferenceLogger
+    from hsml.model import Model
+    from hsml.resources import PredictorResources
 
 
 class ModelServing:
@@ -46,12 +50,12 @@ class ModelServing:
         self._serving_api = serving_api.ServingApi()
 
     @usage.method_logger
-    def get_deployment_by_id(self, id: int) -> Optional[Deployment]:
+    def get_deployment_by_id(self, id: int) -> Deployment | None:
         """Get a deployment by id from Model Serving.
-        Getting a deployment from Model Serving means getting its metadata handle
-        so you can subsequently operate on it (e.g., start or stop).
 
-        !!! example
+        Getting a deployment from Model Serving means getting its metadata handle so you can subsequently operate on it (e.g., start or stop).
+
+        Example:
             ```python
             # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
 
@@ -59,21 +63,22 @@ class ModelServing:
             my_deployment = ms.get_deployment_by_id(1)
             ```
 
-        # Arguments
+        Parameters:
             id: Id of the deployment to get.
-        # Returns
-            `Deployment`: The deployment metadata object or `None` if it does not exist.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
-        """
 
+        Returns:
+            `Deployment`: The deployment metadata object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
+        """
         return self._serving_api.get_by_id(id)
 
     @usage.method_logger
-    def get_deployment(self, name: str = None) -> Optional[Deployment]:
+    def get_deployment(self, name: str = None) -> Deployment | None:
         """Get a deployment by name from Model Serving.
 
-        !!! example
+        Example:
             ```python
             # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
 
@@ -84,14 +89,15 @@ class ModelServing:
         Getting a deployment from Model Serving means getting its metadata handle
         so you can subsequently operate on it (e.g., start or stop).
 
-        # Arguments
+        Parameters:
             name: Name of the deployment to get.
-        # Returns
-            `Deployment`: The deployment metadata object or `None` if it does not exist.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
-        """
 
+        Returns:
+            `Deployment`: The deployment metadata object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
+        """
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
         return self._serving_api.get(name)
@@ -99,9 +105,10 @@ class ModelServing:
     @usage.method_logger
     def get_deployments(
         self, model: Model = None, status: str = None
-    ) -> List[Deployment]:
+    ) -> list[Deployment]:
         """Get all deployments from model serving.
-        !!! example
+
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -119,15 +126,15 @@ class ModelServing:
             for deployment in list_deployments:
                 print(deployment.get_state())
             ```
-        # Arguments
+        Parameters:
             model: Filter by model served in the deployments
             status: Filter by status of the deployments
-        # Returns
+        Returns:
             `List[Deployment]`: A list of deployments.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployments from model serving.
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployments from model serving.
+        """
         model_name = model._get_default_serving_name() if model is not None else None
         if status is not None:
             self._validate_deployment_status(status)
@@ -145,33 +152,34 @@ class ModelServing:
             )
         return status
 
-    def get_inference_endpoints(self) -> List[InferenceEndpoint]:
+    def get_inference_endpoints(self) -> list[InferenceEndpoint]:
         """Get all inference endpoints available in the current project.
 
-        # Returns
+        Returns:
             `List[InferenceEndpoint]`: Inference endpoints for model inference
         """
-
         return self._serving_api.get_inference_endpoints()
 
     @usage.method_logger
     def create_predictor(
         self,
         model: Model,
-        name: Optional[str] = None,
-        artifact_version: Optional[str] = ARTIFACT_VERSION.CREATE,
-        serving_tool: Optional[str] = None,
-        script_file: Optional[str] = None,
-        config_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,
-        inference_logger: Optional[Union[InferenceLogger, dict, str]] = None,
-        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
-        transformer: Optional[Union[Transformer, dict]] = None,
-        api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
+        name: str | None = None,
+        artifact_version: str
+        | None = None,  # deprecated, kept for backward compatibility
+        serving_tool: str | None = None,
+        script_file: str | None = None,
+        config_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        inference_logger: InferenceLogger | dict | str | None = None,
+        inference_batcher: InferenceBatcher | dict | None = None,
+        transformer: Transformer | dict | None = None,
+        api_protocol: str | None = IE.API_PROTOCOL_REST,
+        environment: str | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -189,14 +197,14 @@ class ModelServing:
             my_deployment = my_predictor.deploy()
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata or deploy any model on its own.
             To create a deployment using this predictor, call the `deploy()` method.
 
-        # Arguments
+        Parameters:
             model: Model to be deployed.
             name: Name of the predictor.
-            artifact_version: Version number of the model artifact to deploy, `CREATE` to create a new model artifact
+            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
@@ -208,18 +216,17 @@ class ModelServing:
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            environment: The project Python environment to use
 
-        # Returns
+        Returns:
             `Predictor`. The predictor metadata object.
         """
-
         if name is None:
             name = model._get_default_serving_name()
 
         return Predictor.for_model(
             model,
             name=name,
-            artifact_version=artifact_version,
             serving_tool=serving_tool,
             script_file=script_file,
             config_file=config_file,
@@ -228,17 +235,18 @@ class ModelServing:
             inference_batcher=inference_batcher,
             transformer=transformer,
             api_protocol=api_protocol,
+            environment=environment,
         )
 
     @usage.method_logger
     def create_transformer(
         self,
-        script_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,
+        script_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
     ) -> Transformer:
         """Create a Transformer metadata object.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -274,7 +282,7 @@ class ModelServing:
             my_transformer = Transformer(script_file)
             ```
 
-        !!! example "Create a deployment with the transformer"
+        Example: Create a deployment with the transformer
             ```python
 
             my_predictor = ms.create_predictor(transformer=my_transformer)
@@ -285,29 +293,82 @@ class ModelServing:
             my_deployment.save()
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata or deploy any transformer. To create a deployment using this transformer, set it in the `predictor.transformer` property.
 
-        # Arguments
+        Parameters:
             script_file: Path to a custom predictor script implementing the Transformer class.
             resources: Resources to be allocated for the transformer.
 
-        # Returns
+        Returns:
             `Transformer`. The transformer metadata object.
         """
-
         return Transformer(script_file=script_file, resources=resources)
+
+    @usage.method_logger
+    def create_endpoint(
+        self,
+        name: str,
+        script_file: str,
+        description: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        inference_logger: InferenceLogger | dict | str | None = None,
+        inference_batcher: InferenceBatcher | dict | None = None,
+        api_protocol: str | None = IE.API_PROTOCOL_REST,
+        environment: str | None = None,
+    ) -> Predictor:
+        """Create an Entrypoint metadata object.
+
+        Example:
+            ```python
+            # login into Hopsworks using hopsworks.login()
+
+            # get Hopsworks Model Registry handle
+            ms = project.get_model_serving()
+
+            my_endpoint = ms.create_entrypoint(name="feature_server", entrypoint_file="feature_server.py")
+
+            my_deployment = my_endpoint.deploy()
+            ```
+
+        Note: Lazy
+            This method is lazy and does not persist any metadata or deploy any endpoint on its own.
+            To create a deployment using this endpoint, call the `deploy()` method.
+
+        Parameters:
+            name: Name of the endpoint.
+            script_file: Path to a custom script file implementing a HTTP server.
+            description: Description of the endpoint.
+            resources: Resources to be allocated for the predictor.
+            inference_logger: Inference logger configuration.
+            inference_batcher: Inference batcher configuration.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            environment: The project Python environment to use
+
+        Returns:
+            `Predictor`. The predictor metadata object.
+        """
+        return Predictor.for_server(
+            name=name,
+            script_file=script_file,
+            description=description,
+            resources=resources,
+            inference_logger=inference_logger,
+            inference_batcher=inference_batcher,
+            api_protocol=api_protocol,
+            environment=environment,
+        )
 
     @usage.method_logger
     def create_deployment(
         self,
         predictor: Predictor,
-        name: Optional[str] = None,
-        environment: Optional[str] = None,
+        name: str | None = None,
+        environment: str | None = None,
     ) -> Deployment:
         """Create a Deployment metadata object.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -326,7 +387,7 @@ class ModelServing:
             my_deployment.save()
             ```
 
-        !!! example "Using the model object"
+        Example: Using the model object
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -341,7 +402,7 @@ class ModelServing:
             my_deployment.get_state().describe()
             ```
 
-        !!! example "Using the Model Serving handle"
+        Example: Using the Model Serving handle
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -361,19 +422,18 @@ class ModelServing:
             my_deployment.get_state().describe()
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata or deploy any model. To create a deployment, call the `save()` method.
 
-        # Arguments
+        Parameters:
             predictor: predictor to be used in the deployment
             name: name of the deployment
-            environment: The inference environment to use
+            environment: (**Deprecated**) The project Python environment to use. This argument will be ignored, use the argument `environment` in the `create_predictor()` or `create_endpoint()` methods instead.
 
-        # Returns
+        Returns:
             `Deployment`. The deployment metadata object.
         """
-
-        return Deployment(predictor=predictor, name=name, environment=environment)
+        return Deployment(predictor=predictor, name=name)
 
     @property
     def project_name(self):
@@ -383,7 +443,7 @@ class ModelServing:
     @property
     def project_path(self):
         """Path of the project the registry is connected to."""
-        return "/Projects/{}".format(self._project_name)
+        return f"/Projects/{self._project_name}"
 
     @property
     def project_id(self):

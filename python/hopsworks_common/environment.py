@@ -13,14 +13,19 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import client, command, usage, util
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.library import Library
 
 
 class Environment:
@@ -61,30 +66,30 @@ class Environment:
         json_decamelized = humps.decamelize(json_dict)
         if "count" in json_decamelized:
             return [cls(**env) for env in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @property
     def python_version(self):
-        """Python version of the environment"""
+        """Python version of the environment."""
         return self._python_version
 
     @property
     def name(self):
-        """Name of the environment"""
+        """Name of the environment."""
         return self._name
 
     @property
     def description(self):
-        """Description of the environment"""
+        """Description of the environment."""
         return self._description
 
     @usage.method_logger
-    def install_wheel(self, path: str, await_installation: Optional[bool] = True):
-        """Install a python library packaged in a wheel file
+    def install_wheel(
+        self, path: str, await_installation: bool | None = True
+    ) -> Library:
+        """Install a python library packaged in a wheel file.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -98,18 +103,18 @@ class Environment:
         env = env_api.get_environment("my_custom_environment")
 
         env.install_wheel(whl_path)
-
         ```
 
-        # Arguments
-            path: str. The path on Hopsworks where the wheel file is located
-            await_installation: bool. If True the method returns only when the installation finishes. Default True
-        # Returns
-            `Library`: The library object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
+        Parameters:
+            path: The path in Hopsworks where the wheel file is located.
+            await_installation: If `True` the method returns only when the installation finishes.
 
+        Returns:
+            The library object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         # Wait for any ongoing environment operations
         self._environment_engine.await_environment_command(self.name)
 
@@ -135,12 +140,11 @@ class Environment:
 
     @usage.method_logger
     def install_requirements(
-        self, path: str, await_installation: Optional[bool] = True
-    ):
-        """Install libraries specified in a requirements.txt file
+        self, path: str, await_installation: bool | None = True
+    ) -> Library:
+        """Install libraries specified in a `requirements.txt` file.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -153,20 +157,19 @@ class Environment:
         env_api = project.get_environment_api()
         env = env_api.get_environment("my_custom_environment")
 
-
         env.install_requirements(requirements_path)
-
         ```
 
-        # Arguments
-            path: str. The path on Hopsworks where the requirements.txt file is located
-            await_installation: bool. If True the method returns only when the installation is finished. Default True
-        # Returns
-            `Library`: The library object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
+        Parameters:
+            path: The path in Hopsworks where the `requirements.txt` file is located.
+            await_installation: If `True` the method returns only when the installation is finished.
 
+        Returns:
+            The library object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         # Wait for any ongoing environment operations
         self._environment_engine.await_environment_command(self.name)
 
@@ -192,11 +195,13 @@ class Environment:
 
     @usage.method_logger
     def delete(self):
-        """Delete the environment
-        !!! danger "Potentially dangerous operation"
+        """Delete the environment.
+
+        Danger: Potentially dangerous operation
             This operation deletes the python environment.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._environment_api._delete(self.name)
 

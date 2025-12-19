@@ -67,6 +67,7 @@ class TestPredictor:
         assert p.id == p_json["id"]
         assert p.name == p_json["name"]
         assert p.description == p_json["description"]
+        assert p.version == p_json["version"]
         assert p.created_at == p_json["created"]
         assert p.creator == p_json["creator"]
         assert p.model_path == p_json["model_path"]
@@ -76,7 +77,6 @@ class TestPredictor:
         assert p.model_server == p_json["model_server"]
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
-        assert p.artifact_version == p_json["artifact_version"]
         assert p.environment == p_json["environment_dto"]["name"]
         assert p.script_file == p_json["predictor"]
         assert p.config_file == p_json["config_file"]
@@ -111,6 +111,7 @@ class TestPredictor:
             assert p.id == p_json["id"]
             assert p.name == p_json["name"]
             assert p.description == p_json["description"]
+            assert p.version == p_json["version"]
             assert p.created_at == p_json["created"]
             assert p.creator == p_json["creator"]
             assert p.model_path == p_json["model_path"]
@@ -121,7 +122,6 @@ class TestPredictor:
             assert p.serving_tool == p_json["serving_tool"]
             assert p.api_protocol == p_json["api_protocol"]
             assert p.environment == p_json["environment_dto"]["name"]
-            assert p.artifact_version == p_json["artifact_version"]
             assert p.script_file == p_json["predictor"]
             assert p.config_file == p_json["config_file"]
             assert isinstance(p.resources, resources.PredictorResources)
@@ -150,6 +150,7 @@ class TestPredictor:
         assert p.id == p_json["id"]
         assert p.name == p_json["name"]
         assert p.description == p_json["description"]
+        assert p.version == p_json["version"]
         assert p.created_at == p_json["created"]
         assert p.creator == p_json["creator"]
         assert p.model_path == p_json["model_path"]
@@ -160,7 +161,6 @@ class TestPredictor:
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
         assert p.environment == p_json["environment_dto"]["name"]
-        assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
         assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
@@ -203,6 +203,7 @@ class TestPredictor:
             id=p_json["id"],
             name=p_json["name"],
             description=p_json["description"],
+            version=p_json["version"],
             created_at=p_json["created"],
             creator=p_json["creator"],
             model_path=p_json["model_path"],
@@ -213,7 +214,6 @@ class TestPredictor:
             serving_tool=p_json["serving_tool"],
             api_protocol=p_json["api_protocol"],
             environment=p_json["environment_dto"]["name"],
-            artifact_version=p_json["artifact_version"],
             script_file=p_json["predictor"],
             config_file=p_json["config_file"],
             resources=p_json["predictor_resources"],
@@ -232,6 +232,7 @@ class TestPredictor:
         assert p.id == p_json["id"]
         assert p.name == p_json["name"]
         assert p.description == p_json["description"]
+        assert p.version == p_json["version"]
         assert p.created_at == p_json["created"]
         assert p.creator == p_json["creator"]
         assert p.model_path == p_json["model_path"]
@@ -242,7 +243,6 @@ class TestPredictor:
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
         assert p.environment == p_json["environment_dto"]["name"]
-        assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
         assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
@@ -651,13 +651,13 @@ class TestPredictor:
         assert kwargs["id"] == p_json["id"]
         assert kwargs["name"] == p_json["name"]
         assert kwargs["description"] == p_json["description"]
+        assert kwargs["version"] == p_json["version"]
         assert kwargs["created_at"] == p_json["created"]
         assert kwargs["creator"] == p_json["creator"]
         assert kwargs["model_name"] == p_json["model_name"]
         assert kwargs["model_path"] == p_json["model_path"]
         assert kwargs["model_version"] == p_json["model_version"]
         assert kwargs["model_framework"] == p_json["model_framework"]
-        assert kwargs["artifact_version"] == p_json["artifact_version"]
         assert kwargs["model_server"] == p_json["model_server"]
         assert kwargs["serving_tool"] == p_json["serving_tool"]
         assert kwargs["script_file"] == p_json["predictor"]

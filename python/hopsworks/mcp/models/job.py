@@ -13,9 +13,15 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
-from hopsworks_common.job import Job as BaseJob
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.job import Job as BaseJob
 
 
 class Execution(BaseModel):
@@ -72,25 +78,19 @@ def to_base_model_job(job: BaseJob) -> Job:
                 id=exec["id"],
                 state=exec["state"],
                 final_status=exec["final_status"],
-                submission_time=exec["submission_time"]
-                if "submission_time" in exec
-                else None,
-                stderr_path=exec["stderr_path"] if "stderr_path" in exec else None,
-                stdout_path=exec["stdout_path"] if "stdout_path" in exec else None,
-                app_id=exec["app_id"] if "app_id" in exec else None,
-                hdfs_user=exec["hdfs_user"] if "hdfs_user" in exec else None,
-                args=exec["args"] if "args" in exec else None,
-                progress=exec["progress"] if "progress" in exec else None,
-                user=exec["user"] if "user" in exec else None,
-                files_to_remove=exec["files_to_remove"]
-                if "files_to_remove" in exec
-                else None,
-                duration=exec["duration"] if "duration" in exec else None,
-                flink_master_url=exec["flink_master_url"]
-                if "flink_master_url" in exec
-                else None,
-                monitoring=exec["monitoring"] if "monitoring" in exec else None,
-                type=exec["type"] if "type" in exec else None,
+                submission_time=exec.get("submission_time", None),
+                stderr_path=exec.get("stderr_path", None),
+                stdout_path=exec.get("stdout_path", None),
+                app_id=exec.get("app_id", None),
+                hdfs_user=exec.get("hdfs_user", None),
+                args=exec.get("args", None),
+                progress=exec.get("progress", None),
+                user=exec.get("user", None),
+                files_to_remove=exec.get("files_to_remove", None),
+                duration=exec.get("duration", None),
+                flink_master_url=exec.get("flink_master_url", None),
+                monitoring=exec.get("monitoring", None),
+                type=exec.get("type", None),
             )
             for exec in job["executions"]
         ],

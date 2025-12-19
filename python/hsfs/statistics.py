@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import humps
 from hsfs import util
@@ -25,6 +25,7 @@ from hsfs.split_statistics import SplitStatistics
 
 
 class Statistics:
+    # TODO: Add docstring
     DEFAULT_ROW_PERCENTAGE = 1.0
     NOT_FOUND_ERROR_CODE = 270228
 
@@ -32,30 +33,25 @@ class Statistics:
         self,
         computation_time: int,
         row_percentage: float = 1.0,
-        feature_descriptive_statistics: Optional[
-            Union[
-                FeatureDescriptiveStatistics,
-                List[FeatureDescriptiveStatistics],
-                Dict[str, Any],
-            ]
-        ] = None,
+        feature_descriptive_statistics: FeatureDescriptiveStatistics
+        | list[FeatureDescriptiveStatistics]
+        | dict[str, Any]
+        | None = None,
         # feature group
-        feature_group_id: Optional[int] = None,
-        window_start_commit_time: Optional[int] = None,
-        window_end_commit_time: Optional[int] = None,
+        feature_group_id: int | None = None,
+        window_start_commit_time: int | None = None,
+        window_end_commit_time: int | None = None,
         # training dataset
-        feature_view_name: Optional[str] = None,
-        feature_view_version: Optional[int] = None,
-        training_dataset_version: Optional[int] = None,
-        split_statistics: Optional[
-            Union[List[Dict[str, Any]], List[SplitStatistics]]
-        ] = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
+        training_dataset_version: int | None = None,
+        split_statistics: list[dict[str, Any]] | list[SplitStatistics] | None = None,
         before_transformation: bool = False,
-        href: Optional[str] = None,
-        expand: Optional[str] = None,
-        items: Optional[Dict[str, Any]] = None,
-        count: Optional[int] = None,
-        type: Optional[str] = None,
+        href: str | None = None,
+        expand: str | None = None,
+        items: dict[str, Any] | None = None,
+        count: int | None = None,
+        type: str | None = None,
         **kwargs,
     ) -> None:
         self._computation_time = computation_time
@@ -76,25 +72,23 @@ class Statistics:
 
     def _parse_descriptive_statistics(
         self,
-        desc_statistics: Union[
-            Dict[str, Any],
-            FeatureDescriptiveStatistics,
-            List[Dict[str, Any]],
-            List[FeatureDescriptiveStatistics],
-        ],
-    ) -> Optional[List[FeatureDescriptiveStatistics]]:
+        desc_statistics: dict[str, Any]
+        | FeatureDescriptiveStatistics
+        | list[dict[str, Any]]
+        | list[FeatureDescriptiveStatistics],
+    ) -> list[FeatureDescriptiveStatistics] | None:
         if desc_statistics is None:
             return None
-        elif isinstance(desc_statistics, FeatureDescriptiveStatistics):
+        if isinstance(desc_statistics, FeatureDescriptiveStatistics):
             return [desc_statistics]
-        elif isinstance(desc_statistics, dict) and "items" not in desc_statistics:
+        if isinstance(desc_statistics, dict) and "items" not in desc_statistics:
             return [FeatureDescriptiveStatistics.from_response_json(desc_statistics)]
-        elif isinstance(desc_statistics, dict) and "items" in desc_statistics:
+        if isinstance(desc_statistics, dict) and "items" in desc_statistics:
             return [
                 FeatureDescriptiveStatistics.from_response_json(fds)
                 for fds in desc_statistics["items"]
             ]
-        elif isinstance(desc_statistics, list):
+        if isinstance(desc_statistics, list):
             return [
                 (
                     fds
@@ -103,15 +97,14 @@ class Statistics:
                 )
                 for fds in desc_statistics
             ]
-        else:
-            raise ValueError(
-                "Descriptive statistics must be a FeatureDescriptiveStatistics object or a dictionary"
-            )
+        raise ValueError(
+            "Descriptive statistics must be a FeatureDescriptiveStatistics object or a dictionary"
+        )
 
     def _parse_split_statistics(
         self,
-        split_statistics: Optional[Union[List[Dict[str, Any]], List[SplitStatistics]]],
-    ) -> Optional[List[SplitStatistics]]:
+        split_statistics: list[dict[str, Any]] | list[SplitStatistics] | None,
+    ) -> list[SplitStatistics] | None:
         if split_statistics is None:
             return None
         return [
@@ -125,20 +118,18 @@ class Statistics:
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    ) -> Optional[Union["Statistics", List["Statistics"]]]:
+        cls, json_dict: dict[str, Any]
+    ) -> Statistics | list[Statistics] | None:
         json_decamelized: dict = humps.decamelize(json_dict)
         # for consistency, if the json dict contains "count" and "items", we return a list
         # even when there is a single statistics in the list
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0 or len(json_decamelized["items"]) == 0:
                 return None
-            else:
-                return [cls(**config) for config in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+            return [cls(**config) for config in json_decamelized["items"]]
+        return cls(**json_decamelized)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         # fg_id, fv_name, fv_version and td_version are already defined in the URI
         _dict = {
             "computationTime": self._computation_time,
@@ -175,8 +166,8 @@ class Statistics:
         return self._row_percentage
 
     @row_percentage.setter
-    def row_percentage(self, row_percentage: Optional[float]):
-        if isinstance(row_percentage, int) or isinstance(row_percentage, float):
+    def row_percentage(self, row_percentage: float | None):
+        if isinstance(row_percentage, (int, float)):
             row_percentage = float(row_percentage)
             if row_percentage <= 0.0 or row_percentage > 1.0:
                 raise ValueError("Row percentage must be a float between 0 and 1.")
@@ -189,42 +180,42 @@ class Statistics:
     @property
     def feature_descriptive_statistics(
         self,
-    ) -> Optional[List[FeatureDescriptiveStatistics]]:
+    ) -> list[FeatureDescriptiveStatistics] | None:
         """List of feature descriptive statistics."""
         return self._feature_descriptive_statistics
 
     @property
-    def feature_group_id(self) -> Optional[int]:
+    def feature_group_id(self) -> int | None:
         """Id of the feature group on whose data the statistics were computed."""
         return self._feature_group_id
 
     @property
-    def feature_view_name(self) -> Optional[str]:
+    def feature_view_name(self) -> str | None:
         """Name of the feature view whose query was used to retrieve the data on which the statistics were computed."""
         return self._feature_view_name
 
     @property
-    def feature_view_version(self) -> Optional[int]:
+    def feature_view_version(self) -> int | None:
         """Id of the feature view whose query was used to retrieve the data on which the statistics were computed."""
         return self._feature_view_version
 
     @property
-    def window_start_commit_time(self) -> Optional[int]:
+    def window_start_commit_time(self) -> int | None:
         """Start time of the window of data on which statistics were computed."""
         return self._window_start_commit_time
 
     @property
-    def window_end_commit_time(self) -> Optional[int]:
+    def window_end_commit_time(self) -> int | None:
         """End time of the window of data on which statistics were computed."""
         return self._window_end_commit_time
 
     @property
-    def training_dataset_version(self) -> Optional[int]:
+    def training_dataset_version(self) -> int | None:
         """Version of the training dataset on which statistics were computed."""
         return self._training_dataset_version
 
     @property
-    def split_statistics(self) -> Optional[List[SplitStatistics]]:
+    def split_statistics(self) -> list[SplitStatistics] | None:
         """List of statistics computed on each split of a training dataset."""
         return self._split_statistics
 

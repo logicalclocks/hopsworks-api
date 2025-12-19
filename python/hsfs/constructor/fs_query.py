@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Any, TypeVar
 
 import humps
 from hsfs import engine
@@ -26,16 +26,16 @@ class FsQuery:
     def __init__(
         self,
         query: str,
-        on_demand_feature_groups: Optional[List[Dict[str, Any]]],
-        hudi_cached_feature_groups: Optional[List[Dict[str, Any]]],
-        query_online: Optional[str] = None,
-        pit_query: Optional[str] = None,
-        pit_query_asof: Optional[str] = None,
-        href: Optional[str] = None,
-        expand: Optional[List[str]] = None,
-        items: Optional[List[Dict[str, Any]]] = None,
-        type: Optional[str] = None,
-        delta_cached_feature_groups: Optional[List[Dict[str, Any]]] = None,
+        on_demand_feature_groups: list[dict[str, Any]] | None,
+        hudi_cached_feature_groups: list[dict[str, Any]] | None,
+        query_online: str | None = None,
+        pit_query: str | None = None,
+        pit_query_asof: str | None = None,
+        href: str | None = None,
+        expand: list[str] | None = None,
+        items: list[dict[str, Any]] | None = None,
+        type: str | None = None,
+        delta_cached_feature_groups: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         self._query = query
@@ -70,7 +70,7 @@ class FsQuery:
             self._delta_cached_feature_groups = []
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "FsQuery":
+    def from_response_json(cls, json_dict: dict[str, Any]) -> FsQuery:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
@@ -79,34 +79,32 @@ class FsQuery:
         return self._query
 
     @property
-    def query_online(self) -> Optional[str]:
+    def query_online(self) -> str | None:
         return self._query_online
 
     @property
-    def pit_query(self) -> Optional[str]:
+    def pit_query(self) -> str | None:
         return self._pit_query
 
     @property
-    def pit_query_asof(self) -> Optional[str]:
+    def pit_query_asof(self) -> str | None:
         return self._pit_query_asof
 
     @property
     def on_demand_fg_aliases(
         self,
-    ) -> List["external_feature_group_alias.ExternalFeatureGroupAlias"]:
+    ) -> list[external_feature_group_alias.ExternalFeatureGroupAlias]:
         return self._on_demand_fg_aliases
 
     @property
     def hudi_cached_feature_groups(
         self,
-    ) -> List["hudi_feature_group_alias.HudiFeatureGroupAlias"]:
+    ) -> list[hudi_feature_group_alias.HudiFeatureGroupAlias]:
         return self._hudi_cached_feature_groups
 
     def register_external(
         self,
-        spine: Optional[
-            Union[TypeVar("pyspark.sql.DataFrame"), TypeVar("pyspark.RDD")]
-        ] = None,
+        spine: TypeVar("pyspark.sql.DataFrame") | TypeVar("pyspark.RDD") | None = None,
     ) -> None:
         if self._on_demand_fg_aliases is None:
             return
@@ -123,7 +121,7 @@ class FsQuery:
         self,
         feature_store_id: int,
         feature_store_name: str,
-        read_options: Optional[Dict[str, Any]],
+        read_options: dict[str, Any] | None,
     ) -> None:
         for hudi_fg in self._hudi_cached_feature_groups:
             engine.get_instance().register_hudi_temporary_table(
@@ -134,9 +132,14 @@ class FsQuery:
         self,
         feature_store_id: int,
         feature_store_name: str,
-        read_options: Optional[Dict[str, Any]],
+        read_options: dict[str, Any] | None,
+        is_cdc_query: bool = False,
     ) -> None:
-        for hudi_fg in self._delta_cached_feature_groups:
+        for delta_fg in self._delta_cached_feature_groups:
             engine.get_instance().register_delta_temporary_table(
-                hudi_fg, feature_store_id, feature_store_name, read_options
+                delta_fg_alias=delta_fg,
+                feature_store_id=feature_store_id,
+                feature_store_name=feature_store_name,
+                read_options=read_options,
+                is_cdc_query=is_cdc_query,
             )

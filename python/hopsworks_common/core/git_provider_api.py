@@ -37,12 +37,11 @@ class GitProviderApi:
         providers = self._get_providers()
         if providers is None or len(providers) == 0:
             raise GitException("No git provider is configured")
-        elif len(providers) == 1:
+        if len(providers) == 1:
             return providers[0].git_provider
-        else:
-            raise GitException(
-                "Multiple git providers are configured. Set the provider keyword to specify the provider to use"
-            )
+        raise GitException(
+            "Multiple git providers are configured. Set the provider keyword to specify the provider to use"
+        )
 
     def _get_provider(self, provider: str, host: str = None):
         _client = client.get_instance()
@@ -53,12 +52,13 @@ class GitProviderApi:
         )
         matching = []
         for p in providers:
-            if p.git_provider.lower() == provider.lower():
-                if host is None or p.host == host:
-                    matching.append(p)
+            if p.git_provider.lower() == provider.lower() and (
+                host is None or p.host == host
+            ):
+                matching.append(p)
         if len(matching) == 1:
             return matching[0]
-        elif len(matching) > 1:
+        if len(matching) > 1:
             raise GitException(
                 "Multiple git providers are configured. Set the host keyword to specify the provider to use"
             )
@@ -84,7 +84,11 @@ class GitProviderApi:
 
     def _delete_provider(self, provider: str, host: str):
         _client = client.get_instance()
-        path_params = ["users", "secrets", "{}_token_{}".format(provider.lower(), host)]
+        path_params = ["users", "secrets", f"{provider.lower()}_token_{host}"]
         _client._send_request("DELETE", path_params)
-        path_params = ["users", "secrets", "{}_username_{}".format(provider.lower(), host)]
+        path_params = [
+            "users",
+            "secrets",
+            f"{provider.lower()}_username_{host}",
+        ]
         _client._send_request("DELETE", path_params)

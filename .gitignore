@@ -135,7 +135,6 @@ delombok/
 # mkdocs intemediate files
 docs/generated
 
-docs/CONTRIBUTING.md
 docs/index.md
 
 # Test artifacts
@@ -145,3 +144,6 @@ gcs.json
 # Dev directories
 dev_tools/
 dev_scripts/
+
+# uv lock file
+uv.lock

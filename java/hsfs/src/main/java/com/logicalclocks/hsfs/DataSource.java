@@ -20,6 +20,11 @@ package com.logicalclocks.hsfs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Strings;
+import com.logicalclocks.hsfs.StorageConnector.BigqueryConnector;
+import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+import com.logicalclocks.hsfs.StorageConnector.RedshiftConnector;
+import com.logicalclocks.hsfs.StorageConnector.SnowflakeConnector;
 import com.logicalclocks.hsfs.metadata.RestDto;
 
 import lombok.AllArgsConstructor;
@@ -57,4 +62,55 @@ public class DataSource extends RestDto<DataSource> {
   @Setter
   private StorageConnector storageConnector = null;
 
+  public void updateStorageConnector(StorageConnector storageConnector) {
+    if (storageConnector == null) {
+      return;
+    }
+    switch (storageConnector.getStorageConnectorType()) {
+      case REDSHIFT:
+        RedshiftConnector redshiftConnector = (RedshiftConnector) storageConnector;
+        if (!Strings.isNullOrEmpty(database)) {
+          redshiftConnector.setDatabaseName(database);
+        }
+        if (!Strings.isNullOrEmpty(group)) {
+          redshiftConnector.setDatabaseGroup(group);
+        }
+        if (!Strings.isNullOrEmpty(table)) {
+          redshiftConnector.setTableName(table);
+        }
+        break;
+      case SNOWFLAKE:
+        SnowflakeConnector snowflakeConnector = (SnowflakeConnector) storageConnector;
+        if (!Strings.isNullOrEmpty(database)) {
+          snowflakeConnector.setDatabase(database);
+        }
+        if (!Strings.isNullOrEmpty(group)) {
+          snowflakeConnector.setSchema(group);
+        }
+        if (!Strings.isNullOrEmpty(table)) {
+          snowflakeConnector.setTable(table);
+        }
+        break;
+      case BIGQUERY:
+        BigqueryConnector bigqueryConnector = (BigqueryConnector) storageConnector;
+        if (!Strings.isNullOrEmpty(database)) {
+          bigqueryConnector.setQueryProject(database);
+        }
+        if (!Strings.isNullOrEmpty(group)) {
+          bigqueryConnector.setDataset(group);
+        }
+        if (!Strings.isNullOrEmpty(table)) {
+          bigqueryConnector.setQueryTable(table);
+        }
+        break;
+      case RDS:
+        RdsConnector rdsConnector = (RdsConnector) storageConnector;
+        if (!Strings.isNullOrEmpty(database)) {
+          rdsConnector.setDatabase(database);
+        }
+        break;
+      default:
+        break;
+    }
+  }
 }

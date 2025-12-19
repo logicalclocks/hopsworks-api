@@ -1,0 +1,3 @@
+# EmbeddingIndex
+
+::: hsfs.embedding.EmbeddingIndex

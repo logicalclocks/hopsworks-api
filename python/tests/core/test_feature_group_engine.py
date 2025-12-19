@@ -148,7 +148,134 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
 
-    def test_insert(self, mocker):
+    def test_save_empty_table_creates_delta_table_for_delta_format(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        delta_engine_mock = mocker.Mock()
+        delta_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine",
+            return_value=delta_engine_mock,
+        )
+
+        # Act
+        fg_engine.save_empty_table(fg)
+
+        # Assert
+        delta_engine_cls.assert_called_once_with(
+            fg.feature_store_id,
+            fg.feature_store_name,
+            fg,
+            "spark",
+            "context",
+        )
+        delta_engine_mock.save_empty_table.assert_called_once_with(write_options=None)
+
+    def test_save_empty_table_noop_for_non_delta(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="HUDI",
+        )
+        delta_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine"
+        )
+
+        # Act
+        result = fg_engine.save_empty_table(fg)
+
+        # Assert
+        assert result is None
+        delta_engine_cls.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "online_enabled,validation_options,should_validate_schema",
+        [
+            # Online enabled
+            (True, None, True),
+            (True, {}, True),
+            (True, {"online_schema_validation": False}, False),
+            (True, {"schema_validation": False}, False),
+            # Not enabled
+            (False, None, True),
+            (False, {}, True),
+            (False, {"online_schema_validation": False}, False),
+            (False, {"schema_validation": False}, False),
+        ],
+    )
+    def test_insert(
+        self, online_enabled, validation_options, should_validate_schema, mocker
+    ):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mock_validate_schema = mocker.patch(
+            "hsfs.core.schema_validation.DataFrameValidator.validate_schema"
+        )
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_enabled=online_enabled,
+        )
+
+        # Act
+        fg_engine.insert(
+            feature_group=fg,
+            feature_dataframe=None,
+            overwrite=None,
+            operation=None,
+            storage=None,
+            write_options=None,
+            validation_options=validation_options,
+        )
+
+        # Assert
+        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_fg_api.return_value.delete_content.call_count == 0
+        assert mock_validate_schema.called == should_validate_schema
+
+    def test_insert_storage(self, mocker):
         # Arrange
         feature_store_id = 99
 
@@ -177,18 +304,22 @@ class TestFeatureGroupEngine:
         )
 
         # Act
-        fg_engine.insert(
-            feature_group=fg,
-            feature_dataframe=None,
-            overwrite=None,
-            operation=None,
-            storage=None,
-            write_options=None,
-        )
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            fg_engine.insert(
+                feature_group=fg,
+                feature_dataframe=None,
+                overwrite=None,
+                operation=None,
+                storage="online",
+                write_options=None,
+            )
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert (
+            str(e_info.value) == "Online storage is not enabled for this feature group."
+        )
 
     def test_insert_transformation_functions(self, mocker):
         # Arrange
@@ -342,52 +473,6 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
-
-    def test_insert_storage(self, mocker):
-        # Arrange
-        feature_store_id = 99
-
-        mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
-        )
-        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
-        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-
-        fg_engine = feature_group_engine.FeatureGroupEngine(
-            feature_store_id=feature_store_id
-        )
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=feature_store_id,
-            primary_key=[],
-            foreign_key=[],
-            partition_key=[],
-        )
-
-        # Act
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            fg_engine.insert(
-                feature_group=fg,
-                feature_dataframe=None,
-                overwrite=None,
-                operation=None,
-                storage="online",
-                write_options=None,
-            )
-
-        # Assert
-        assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
-        assert (
-            str(e_info.value) == "Online storage is not enabled for this feature group."
-        )
 
     def test_insert_overwrite(self, mocker):
         # Arrange
@@ -1284,6 +1369,9 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mock_save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
         mocker.patch(
             "hsfs.util.get_feature_group_url",
             return_value=feature_group_url,
@@ -1322,6 +1410,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
+        mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_features(self, mocker):
         # Arrange
@@ -1333,6 +1422,9 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mock_save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
         mocker.patch(
             "hsfs.util.get_feature_group_url",
             return_value=feature_group_url,
@@ -1372,6 +1464,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
+        mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
     def test_save_feature_group_metadata_primary_partition_precombine(self, mocker):
         # Arrange
@@ -1383,6 +1476,9 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mock_save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
         mocker.patch(
             "hsfs.util.get_feature_group_url",
             return_value=feature_group_url,
@@ -1422,6 +1518,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
+        mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_primary_partition_precombine_event_error(
         self, mocker
@@ -1533,6 +1630,58 @@ class TestFeatureGroupEngine:
             == "Provided event_time feature feature_name doesn't exist in feature dataframe"
         )
 
+    def test_save_feature_group_metadata_no_schema_does_not_create_empty_table(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 99
+        feature_group_url = "test_url"
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mock_save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
+        mocker.patch(
+            "hsfs.util.get_feature_group_url",
+            return_value=feature_group_url,
+        )
+        mock_print = mocker.patch("builtins.print")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            features=[],
+        )
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg,
+            dataframe_features=[feature.Feature(name="f", type="str")],
+            write_options=None,
+        )
+
+        # Assert
+        assert mock_fg_api.return_value.save.call_count == 1
+        assert mock_print.call_count == 1
+        assert mock_print.call_args[0][
+            0
+        ] == "Feature Group created successfully, explore it at \n{}".format(
+            feature_group_url
+        )
+        mock_save_empty_table.assert_not_called()
+
     def test_save_feature_group_metadata_write_options(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -1544,6 +1693,9 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mock_save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
         mocker.patch(
             "hsfs.util.get_feature_group_url",
             return_value=feature_group_url,
@@ -1583,6 +1735,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
+        mock_save_empty_table.assert_not_called()
 
     def test_update_feature_group_schema_on_demand_transformations(self, mocker):
         # Arrange

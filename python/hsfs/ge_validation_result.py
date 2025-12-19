@@ -15,9 +15,10 @@
 #
 from __future__ import annotations
 
+import contextlib
 import datetime
 import json
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 
 if TYPE_CHECKING:
@@ -41,15 +42,15 @@ class ValidationResult:
     def __init__(
         self,
         success: bool,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         expectation_config: str,
-        exception_info: Dict[str, Any],
-        meta: Optional[Dict[str, Any]] = None,
-        id: Optional[int] = None,
-        observed_value: Optional[Any] = None,
-        expectation_id: Optional[int] = None,
-        validation_report_id: Optional[int] = None,
-        validation_time: Optional[int] = None,
+        exception_info: dict[str, Any],
+        meta: dict[str, Any] | None = None,
+        id: int | None = None,
+        observed_value: Any | None = None,
+        expectation_id: int | None = None,
+        validation_report_id: int | None = None,
+        validation_time: int | None = None,
         ingestion_result: Literal[
             "unknown", "ingested", "rejected", "fg_data", "experiment"
         ] = "UNKNOWN",
@@ -69,7 +70,7 @@ class ValidationResult:
         self.validation_time = validation_time
         self.ingestion_result = ingestion_result
 
-        if (observed_value is None) and ("observed_value" in self.result.keys()):
+        if (observed_value is None) and ("observed_value" in self.result):
             self._observed_value = self.result["observed_value"]
 
     @classmethod
@@ -82,8 +83,7 @@ class ValidationResult:
                 cls(**validation_result)
                 for validation_result in json_decamelized["items"]
             ]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -98,7 +98,7 @@ class ValidationResult:
             "meta": json.dumps(self._meta),
         }
 
-    def to_json_dict(self) -> Dict[str, Any]:
+    def to_json_dict(self) -> dict[str, Any]:
         return {
             "id": self._id,
             "success": self.success,
@@ -110,6 +110,7 @@ class ValidationResult:
 
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationValidationResult:
+        """Convert to Great Expectations ExpectationValidationResult type."""
         return great_expectations.core.ExpectationValidationResult(
             success=self.success,
             exception_info=self.exception_info,
@@ -119,12 +120,12 @@ class ValidationResult:
         )
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Id of the validation report, set by backend."""
         return self._id
 
     @id.setter
-    def id(self, id: Optional[int] = None) -> None:
+    def id(self, id: int | None = None) -> None:
         self._id = id
 
     @property
@@ -137,12 +138,12 @@ class ValidationResult:
         self._success = success
 
     @property
-    def result(self) -> Dict[str, Any]:
+    def result(self) -> dict[str, Any]:
         """Result of the expectation after validation."""
         return self._result
 
     @result.setter
-    def result(self, result: Dict[str, Any]) -> None:
+    def result(self, result: dict[str, Any]) -> None:
         if isinstance(result, dict):
             self._result = result
         elif isinstance(result, str):
@@ -151,12 +152,12 @@ class ValidationResult:
             raise ValueError("Result field must be stringified json or dict.")
 
     @property
-    def meta(self) -> Dict[str, Any]:
+    def meta(self) -> dict[str, Any]:
         """Meta field of the validation report to store additional informations."""
         return self._meta
 
     @meta.setter
-    def meta(self, meta: Dict[str, Any] = None):
+    def meta(self, meta: dict[str, Any] = None):
         if meta is None:
             self._meta = {}
         if isinstance(meta, dict):
@@ -167,12 +168,12 @@ class ValidationResult:
             raise ValueError("Meta field must be stringified json or dict")
 
     @property
-    def exception_info(self) -> Dict[str, Any]:
+    def exception_info(self) -> dict[str, Any]:
         """Exception info which can be raised when running validation."""
         return self._exception_info
 
     @exception_info.setter
-    def exception_info(self, exception_info: Dict[str, Any]) -> None:
+    def exception_info(self, exception_info: dict[str, Any]) -> None:
         if isinstance(exception_info, dict):
             self._exception_info = exception_info
         elif isinstance(exception_info, str):
@@ -181,12 +182,12 @@ class ValidationResult:
             raise ValueError("Exception info field must be stringified json or dict.")
 
     @property
-    def expectation_config(self) -> Dict[str, Any]:
+    def expectation_config(self) -> dict[str, Any]:
         """Expectation configuration used when running validation."""
         return self._expectation_config
 
     @expectation_config.setter
-    def expectation_config(self, expectation_config: Dict[str, Any]) -> None:
+    def expectation_config(self, expectation_config: dict[str, Any]) -> None:
         if isinstance(expectation_config, dict):
             self._expectation_config = expectation_config
         elif isinstance(expectation_config, str):
@@ -197,28 +198,26 @@ class ValidationResult:
             )
 
     @property
-    def validation_time(self) -> Optional[int]:
+    def validation_time(self) -> int | None:
         return self._validation_time
 
     @validation_time.setter
     def validation_time(
-        self, validation_time: Union[str, int, datetime.datetime, datetime.date, None]
+        self, validation_time: str | int | datetime.datetime | datetime.date | None
     ) -> None:
-        """
-        Time at which validation was run using Great Expectations.
+        """Time at which validation was run using Great Expectations.
 
-        # Arguments
-            validation_time: The time at which validation was performed.
-            Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
+        Parameters:
+            validation_time:
+                The time at which validation was performed.
+                Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
         """
         if isinstance(validation_time, str):
-            try:
+            with contextlib.suppress(ValueError):
                 # returns a datemtime to be converted to timestamp below
                 validation_time = dateutil.parser.parse(validation_time).astimezone(
                     datetime.timezone.utc
                 )
-            except ValueError:
-                pass
         # use the same function as the rest of the client to deal with conversion to timestamps
         # from various types
         if validation_time:
@@ -247,7 +246,7 @@ class ValidationResult:
         else:
             raise ValueError(
                 f"Invalid Value {ingestion_result} for ingestion_result."
-                + f"Allowed values are {', '.join(allowed_values)}."
+                f"Allowed values are {', '.join(allowed_values)}."
             )
 
     def __str__(self) -> str:

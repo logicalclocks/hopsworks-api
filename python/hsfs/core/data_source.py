@@ -49,11 +49,11 @@ class DataSource:
 
     def __init__(
         self,
-        query: Optional[str] = None,
-        database: Optional[str] = None,
-        group: Optional[str] = None,
-        table: Optional[str] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        database: str | None = None,
+        group: str | None = None,
+        table: str | None = None,
+        path: str | None = None,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
         **kwargs,
     ):
@@ -98,7 +98,7 @@ class DataSource:
             DataSource or List[DataSource] or None: The created object(s), or None if input is None.
         """
         if json_dict is None:
-            return None
+            return None  # TODO: change to [] and fix the tests
 
         json_decamelized: dict = humps.decamelize(json_dict)
 
@@ -125,7 +125,7 @@ class DataSource:
             "database": self._database,
             "group": self._group,
             "table": self._table,
-            "path": self._path
+            "path": self._path,
         }
         if self._storage_connector:
             ds_meta_dict["storageConnector"] = self._storage_connector.to_dict()
@@ -353,3 +353,39 @@ class DataSource:
             `List[TrainingDataset]`: List of training datasets.
         """
         return self._storage_connector.get_training_datasets()
+
+    def _update_storage_connector(self, storage_connector: sc.StorageConnector):
+        """Update the storage connector configuration using DataSource.
+
+        This internal method updates the connectors target database, schema,
+        and table to match the information stored in the provided DataSource object.
+
+        Parameters:
+            storage_connector: A StorageConnector instance to be updated depending on the connector type.
+        """
+        if not storage_connector:
+            return
+
+        if storage_connector.type == sc.StorageConnector.REDSHIFT:
+            if self.database:
+                storage_connector._database_name = self.database
+            if self.group:
+                storage_connector._database_group = self.group
+            if self.table:
+                storage_connector._table_name = self.table
+        if storage_connector.type == sc.StorageConnector.SNOWFLAKE:
+            if self.database:
+                storage_connector._database = self.database
+            if self.group:
+                storage_connector._schema = self.group
+            if self.table:
+                storage_connector._table = self.table
+        if storage_connector.type == sc.StorageConnector.BIGQUERY:
+            if self.database:
+                storage_connector._query_project = self.database
+            if self.group:
+                storage_connector._dataset = self.group
+            if self.table:
+                storage_connector._query_table = self.table
+        if storage_connector.type == sc.StorageConnector.RDS and self.database:
+            storage_connector._database = self.database

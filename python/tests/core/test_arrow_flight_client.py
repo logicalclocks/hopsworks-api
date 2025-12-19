@@ -108,7 +108,7 @@ class TestArrowFlightClient:
         inode_path = mocker.MagicMock()
         inode_path.path = "/path/test.parquet"
         mocker.patch(
-            "hsfs.core.dataset_api.DatasetApi.list_files",
+            "hsfs.core.dataset_api.DatasetApi._list_dataset_path",
             return_value=(1, [inode_path]),
         )
         mocker.patch("hsfs.engine.python.Engine.split_labels", return_value=None)
@@ -215,7 +215,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": ["intt", "stringt"]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "AND",
@@ -257,11 +262,14 @@ class TestArrowFlightClient:
                     "right_filter": None,
                 },
             },
-            "connectors": {"test.fg_test_1": {"time_travel_type": "hudi"}},
+            "connectors": {
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
+            },
         }
 
         query_object["features"] = {
-            key: sorted(value) for key, value in query_object["features"].items()
+            key: sorted(value, key=lambda obj: obj["name"])
+            for key, value in query_object["features"].items()
         }
 
         assert str(query_object_reference) == str(query_object)
@@ -286,7 +294,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": ["intt", "stringt"]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "SINGLE",
@@ -298,11 +311,14 @@ class TestArrowFlightClient:
                 },
                 "right_filter": None,
             },
-            "connectors": {"test.fg_test_1": {"time_travel_type": "hudi"}},
+            "connectors": {
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
+            },
         }
 
         query_object["features"] = {
-            key: sorted(value) for key, value in query_object["features"].items()
+            key: sorted(value, key=lambda obj: obj["name"])
+            for key, value in query_object["features"].items()
         }
 
         assert str(query_object_reference) == str(query_object)
@@ -324,7 +340,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": ["intt", "stringt"]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "SINGLE",
@@ -336,11 +357,14 @@ class TestArrowFlightClient:
                 },
                 "right_filter": None,
             },
-            "connectors": {"test.fg_test_1": {"time_travel_type": "hudi"}},
+            "connectors": {
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
+            },
         }
 
         query_object["features"] = {
-            key: sorted(value) for key, value in query_object["features"].items()
+            key: sorted(value, key=lambda obj: obj["name"])
+            for key, value in query_object["features"].items()
         }
 
         assert str(query_object_reference) == str(query_object)
@@ -362,7 +386,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": ["intt", "stringt"]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "SINGLE",
@@ -374,11 +403,14 @@ class TestArrowFlightClient:
                 },
                 "right_filter": None,
             },
-            "connectors": {"test.fg_test_1": {"time_travel_type": "hudi"}},
+            "connectors": {
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
+            },
         }
 
         query_object["features"] = {
-            key: sorted(value) for key, value in query_object["features"].items()
+            key: sorted(value, key=lambda obj: obj["name"])
+            for key, value in query_object["features"].items()
         }
 
         assert str(query_object_reference) == str(query_object)
@@ -412,14 +444,14 @@ class TestArrowFlightClient:
             "query_string": "SELECT * FROM...",
             "features": {
                 "test.tpch1snowflake_1": [
-                    "c_acctbal",
-                    "c_address",
-                    "c_comment",
-                    "c_custkey",
-                    "c_mktsegment",
-                    "c_name",
-                    "c_nationkey",
-                    "c_phone",
+                    {"name": "c_acctbal", "type": "decimal(12,2)"},
+                    {"name": "c_address", "type": "string"},
+                    {"name": "c_comment", "type": "string"},
+                    {"name": "c_custkey", "type": "decimal(38,0)"},
+                    {"name": "c_mktsegment", "type": "string"},
+                    {"name": "c_name", "type": "string"},
+                    {"name": "c_nationkey", "type": "decimal(38,0)"},
+                    {"name": "c_phone", "type": "string"},
                 ]
             },
             "filters": {
@@ -435,6 +467,7 @@ class TestArrowFlightClient:
             },
             "connectors": {
                 "test.tpch1snowflake_1": {
+                    "feature_group_id": 13,
                     "time_travel_type": None,
                     "type": "SNOWFLAKE",
                     "options": {
@@ -463,7 +496,8 @@ class TestArrowFlightClient:
         }
 
         query_object["features"] = {
-            key: sorted(value) for key, value in query_object["features"].items()
+            key: sorted(value, key=lambda obj: obj["name"])
+            for key, value in query_object["features"].items()
         }
 
         assert str(query_object_reference) == str(query_object)

@@ -17,10 +17,13 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any
 
-import requests
 from requests.exceptions import SSLError
+
+
+if TYPE_CHECKING:
+    import requests
 
 
 class RestAPIError(Exception):
@@ -36,7 +39,7 @@ class RestAPIError(Exception):
         FEATURE_GROUP_COMMIT_NOT_FOUND = 270227
         STATISTICS_NOT_FOUND = 270228
 
-        def __eq__(self, other: Union[int, Any]) -> bool:
+        def __eq__(self, other: int | Any) -> bool:
             if isinstance(other, int):
                 return self.value == other
             if isinstance(other, self.__class__):
@@ -76,7 +79,13 @@ class UnknownSecretStorageError(Exception):
 
 
 class FeatureStoreException(Exception):
-    """Generic feature store exception"""
+    """Generic feature store exception."""
+
+    DUPLICATE_RECORD_ERROR_MESSAGE = (
+        "Duplicate records detected: The dataset contains multiple rows that share identical values "
+        "across all available columns from primary_key, and if defined: event_time and partition_key. "
+        "Please remove or deduplicate these records before inserting."
+    )
 
 
 class VectorDatabaseException(Exception):
@@ -115,9 +124,9 @@ class ExternalClientError(TypeError):
 
     def __init__(self, missing_argument: str) -> None:
         message = (
-            "{0} cannot be of type NoneType, {0} is a non-optional "
+            f"{missing_argument} cannot be of type NoneType, {missing_argument} is a non-optional "
             "argument to connect to hopsworks from an external environment."
-        ).format(missing_argument)
+        )
         super().__init__(message)
 
 
@@ -136,43 +145,43 @@ class HopsworksSSLClientError(SSLError):
 
 
 class GitException(Exception):
-    """Generic git exception"""
+    """Generic git exception."""
 
 
 class JobException(Exception):
-    """Generic job exception"""
+    """Generic job exception."""
 
 
 class EnvironmentException(Exception):
-    """Generic python environment exception"""
+    """Generic python environment exception."""
 
 
 class KafkaException(Exception):
-    """Generic kafka exception"""
+    """Generic kafka exception."""
 
 
 class DatasetException(Exception):
-    """Generic dataset exception"""
+    """Generic dataset exception."""
 
 
 class ProjectException(Exception):
-    """Generic project exception"""
+    """Generic project exception."""
 
 
 class OpenSearchException(Exception):
-    """Generic opensearch exception"""
+    """Generic opensearch exception."""
 
 
 class JobExecutionException(Exception):
-    """Generic job executions exception"""
+    """Generic job executions exception."""
 
 
 class ModelRegistryException(Exception):
-    """Generic model registry exception"""
+    """Generic model registry exception."""
 
 
 class ModelServingException(Exception):
-    """Generic model serving exception"""
+    """Generic model serving exception."""
 
     ERROR_CODE_SERVING_NOT_FOUND = 240000
     ERROR_CODE_ILLEGAL_ARGUMENT = 240001
