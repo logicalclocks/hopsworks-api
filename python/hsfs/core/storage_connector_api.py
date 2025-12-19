@@ -15,10 +15,14 @@
 #
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common import client
 from hsfs import decorators, storage_connector
+
+
+if TYPE_CHECKING:
+    from hsfs.core.explicit_provenance import Links
 
 
 class StorageConnectorApi:
@@ -146,9 +150,10 @@ class StorageConnectorApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
-    def get_training_datasets_provenance(self, storage_connector_instance) -> "Links":
-        """Get the generated training datasets using this storage connector, based on explicit
-        provenance. These training datasets can be accessible or inaccessible. Explicit
+    def get_training_datasets_provenance(self, storage_connector_instance) -> Links:
+        """Get the generated training datasets using this storage connector, based on explicit provenance.
+
+        These training datasets can be accessible or inaccessible. Explicit
         provenance does not track deleted generated training dataset links, so deleted
         will always be empty.
         For inaccessible training datasets, only a minimal information is returned.

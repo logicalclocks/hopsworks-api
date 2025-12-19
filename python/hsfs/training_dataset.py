@@ -307,7 +307,7 @@ class TrainingDatasetBase:
         self._coalesce = coalesce
 
     @property
-    def data_source(self) -> "ds.DataSource":
+    def data_source(self) -> ds.DataSource:
         return self._data_source
 
     @data_source.setter
@@ -323,10 +323,11 @@ class TrainingDatasetBase:
 
     @property
     def storage_connector(self) -> StorageConnector:
-        """"
-            !!! warning "Deprecated"
-                    `storage_connector` method is deprecated. Use
-                    `data_source` instead.
+        """Get the storage connector.
+
+        !!! warning "Deprecated"
+            `storage_connector` method is deprecated. Use
+            `data_source` instead.
         """
         return self._data_source.storage_connector
 
@@ -894,13 +895,13 @@ class TrainingDataset(TrainingDatasetBase):
                 cls._rewrite_location(td)
                 tds.append(cls(**td))
             return tds
-        elif isinstance(json_decamelized, dict):
+        if isinstance(json_decamelized, dict):
             return cls(**json_decamelized)
-        else:  # backwards compatibility
-            for td in json_decamelized:
-                _ = td.pop("type", None)
-                cls._rewrite_location(td)
-            return [cls(**td) for td in json_decamelized]
+        # backwards compatibility
+        for td in json_decamelized:
+            _ = td.pop("type", None)
+            cls._rewrite_location(td)
+        return [cls(**td) for td in json_decamelized]
 
     @classmethod
     def from_response_json_single(cls, json_dict):

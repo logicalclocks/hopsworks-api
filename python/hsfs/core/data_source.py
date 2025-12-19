@@ -16,12 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import (
-    Any,
-    Dict,
-    Optional,
-    Union,
-)
+from typing import Any
 
 import humps
 from hopsworks_common import util
@@ -31,8 +26,7 @@ from hsfs.core import data_source_data as dsd
 
 
 class DataSource:
-    """
-    Metadata object used to provide data source information.
+    """Metadata object used to provide data source information.
 
     The DataSource class encapsulates the details of a data source that can be used
     for reading or writing data. It supports various types of sources,
@@ -54,11 +48,10 @@ class DataSource:
         group: str | None = None,
         table: str | None = None,
         path: str | None = None,
-        storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
+        storage_connector: sc.StorageConnector | dict[str, Any] | None = None,
         **kwargs,
     ):
-        """
-        Initialize a DataSource object.
+        """Initialize a DataSource object.
 
         Args:
             query (Optional[str]): SQL query string for the data source, if applicable.
@@ -81,14 +74,13 @@ class DataSource:
                 storage_connector
             )
         else:
-            self._storage_connector: "sc.StorageConnector" = storage_connector
+            self._storage_connector: sc.StorageConnector = storage_connector
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any], storage_connector: Optional[sc.StorageConnector] = None
-    ) -> "DataSource":
-        """
-        Create a DataSource object (or list of objects) from a JSON response.
+        cls, json_dict: dict[str, Any], storage_connector: sc.StorageConnector | None = None
+    ) -> DataSource:
+        """Create a DataSource object (or list of objects) from a JSON response.
 
         Args:
             json_dict (Dict[str, Any]): The JSON dictionary from the API response.
@@ -107,15 +99,14 @@ class DataSource:
             if storage_connector is not None:
                 data_source.storage_connector = storage_connector
             return data_source
-        else:
-            return [
-                DataSource.from_response_json(item, storage_connector)
-                for item in json_decamelized["items"]
-            ]
+
+        return [
+            DataSource.from_response_json(item, storage_connector)
+            for item in json_decamelized["items"]
+        ]
 
     def to_dict(self):
-        """
-        Convert the DataSource object to a dictionary.
+        """Convert the DataSource object to a dictionary.
 
         Returns:
             dict: Dictionary representation of the object.
@@ -132,8 +123,7 @@ class DataSource:
         return ds_meta_dict
 
     def json(self):
-        """
-        Serialize the DataSource object to a JSON string.
+        """Serialize the DataSource object to a JSON string.
 
         Returns:
             str: JSON string representation of the object.
@@ -141,9 +131,8 @@ class DataSource:
         return json.dumps(self, cls=util.Encoder)
 
     @property
-    def query(self) -> Optional[str]:
-        """
-        Get or set the SQL query string for the data source.
+    def query(self) -> str | None:
+        """Get or set the SQL query string for the data source.
 
         Returns:
             Optional[str]: The SQL query string.
@@ -155,9 +144,8 @@ class DataSource:
         self._query = query
 
     @property
-    def database(self) -> Optional[str]:
-        """
-        Get or set the database name for the data source.
+    def database(self) -> str | None:
+        """Get or set the database name for the data source.
 
         Returns:
             Optional[str]: The database name.
@@ -169,9 +157,8 @@ class DataSource:
         self._database = database
 
     @property
-    def group(self) -> Optional[str]:
-        """
-        Get or set the group/schema name for the data source.
+    def group(self) -> str | None:
+        """Get or set the group/schema name for the data source.
 
         Returns:
             Optional[str]: The group or schema name.
@@ -183,9 +170,8 @@ class DataSource:
         self._group = group
 
     @property
-    def table(self) -> Optional[str]:
-        """
-        Get or set the table name for the data source.
+    def table(self) -> str | None:
+        """Get or set the table name for the data source.
 
         Returns:
             Optional[str]: The table name.
@@ -197,9 +183,8 @@ class DataSource:
         self._table = table
 
     @property
-    def path(self) -> Optional[str]:
-        """
-        Get or set the file system path for the data source.
+    def path(self) -> str | None:
+        """Get or set the file system path for the data source.
 
         Returns:
             Optional[str]: The file system path.
@@ -211,9 +196,8 @@ class DataSource:
         self._path = path
 
     @property
-    def storage_connector(self) -> Optional[sc.StorageConnector]:
-        """
-        Get or set the storage connector for the data source.
+    def storage_connector(self) -> sc.StorageConnector | None:
+        """Get or set the storage connector for the data source.
 
         Returns:
             Optional[StorageConnector]: The storage connector object.
@@ -225,8 +209,7 @@ class DataSource:
         self._storage_connector = storage_connector
 
     def get_databases(self) -> list[str]:
-        """
-        Retrieve the list of available databases.
+        """Retrieve the list of available databases.
 
         !!! example
             ```python
@@ -244,8 +227,7 @@ class DataSource:
         return self._storage_connector.get_databases()
 
     def get_tables(self, database: str = None) -> list[DataSource]:
-        """
-        Retrieve the list of tables from the specified database.
+        """Retrieve the list of tables from the specified database.
 
         !!! example
             ```python
@@ -267,8 +249,7 @@ class DataSource:
         return self._storage_connector.get_tables(database)
 
     def get_data(self) -> dsd.DataSourceData:
-        """
-        Retrieve the data from the data source.
+        """Retrieve the data from the data source.
 
         !!! example
             ```python
@@ -286,8 +267,7 @@ class DataSource:
         return self._storage_connector.get_data(self)
 
     def get_metadata(self) -> dict:
-        """
-        Retrieve metadata information about the data source.
+        """Retrieve metadata information about the data source.
 
         !!! example
             ```python
@@ -305,8 +285,9 @@ class DataSource:
         return self._storage_connector.get_metadata(self)
 
     def get_feature_groups_provenance(self):
-        """Get the generated feature groups using this data source, based on explicit
-        provenance. These feature groups can be accessible or inaccessible. Explicit
+        """Get the generated feature groups using this data source, based on explicit provenance.
+
+        These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
         will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
@@ -320,9 +301,10 @@ class DataSource:
         return self._storage_connector.get_feature_groups_provenance()
 
     def get_feature_groups(self):
-        """Get the feature groups using this data source, based on explicit
-        provenance. Only the accessible feature groups are returned.
-        For more items use the base method - get_feature_groups_provenance
+        """Get the feature groups using this data source, based on explicit provenance.
+
+        Only the accessible feature groups are returned.
+        For more items use the base method - get_feature_groups_provenance.
 
         # Returns
             `List[FeatureGroup]`: List of feature groups.
@@ -330,8 +312,9 @@ class DataSource:
         return self._storage_connector.get_feature_groups()
 
     def get_training_datasets_provenance(self):
-        """Get the generated training datasets using this data source, based on explicit
-        provenance. These training datasets can be accessible or inaccessible. Explicit
+        """Get the generated training datasets using this data source, based on explicit provenance.
+
+        These training datasets can be accessible or inaccessible. Explicit
         provenance does not track deleted generated training dataset links, so deleted
         will always be empty.
         For inaccessible training datasets, only a minimal information is returned.
@@ -345,9 +328,10 @@ class DataSource:
         return self._storage_connector.get_training_datasets_provenance()
 
     def get_training_datasets(self):
-        """Get the training datasets using this data source, based on explicit
-        provenance. Only the accessible training datasets are returned.
-        For more items use the base method - get_training_datasets_provenance
+        """Get the training datasets using this data source, based on explicit provenance.
+
+        Only the accessible training datasets are returned.
+        For more items use the base method - get_training_datasets_provenance.
 
         # Returns
             `List[TrainingDataset]`: List of training datasets.

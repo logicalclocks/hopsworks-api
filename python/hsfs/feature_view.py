@@ -1477,12 +1477,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1710,12 +1705,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -2003,12 +1993,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.

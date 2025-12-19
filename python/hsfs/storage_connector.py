@@ -23,7 +23,6 @@ import re
 import warnings
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -262,8 +261,9 @@ class StorageConnector(ABC):
         return []
 
     def get_training_datasets_provenance(self):
-        """Get the generated training datasets using this storage connector, based on explicit
-        provenance. These training datasets can be accessible or inaccessible. Explicit
+        """Get the generated training datasets using this storage connector, based on explicit provenance.
+
+        These training datasets can be accessible or inaccessible. Explicit
         provenance does not track deleted generated training dataset links, so deleted
         will always be empty.
         For inaccessible training datasets, only a minimal information is returned.
@@ -277,11 +277,13 @@ class StorageConnector(ABC):
         links = self._storage_connector_api.get_training_datasets_provenance(self)
         if not links.is_empty():
             return links
+        return None
 
     def get_training_datasets(self):
-        """Get the training datasets using this storage connector, based on explicit
-        provenance. Only the accessible training datasets are returned.
-        For more items use the base method - get_training_datasets_provenance
+        """Get the training datasets using this storage connector, based on explicit provenance.
+
+        Only the accessible training datasets are returned.
+        For more items use the base method - get_training_datasets_provenance.
 
         # Returns
             `List[TrainingDataset]`: List of training datasets.

@@ -523,12 +523,11 @@ class FeatureStore:
 
     @usage.method_logger
     def get_online_data_source(self) -> ds.DataSource:
-        """Get the data source for the Online Feature Store of the respective
-        project's feature store.
+        """Get the data source for the Online Feature Store of the respective project's feature store.
 
         The returned data source depends on the project that you are connected to.
 
-        Example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -536,7 +535,7 @@ class FeatureStore:
             online_data_source = fs.get_online_data_source()
             ```
 
-        Returns
+        Returns:
             `DataSource`. JDBC data source to the Online Feature Store.
         """
         return ds.DataSource(storage_connector=self._storage_connector_api.get_online_connector(self._id))
@@ -1405,12 +1404,7 @@ class FeatureStore:
         label: list[str] | None = None,
         transformation_functions: dict[str, TransformationFunction] | None = None,
         train_split: str = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
     ) -> training_dataset.TrainingDataset:
         """Create a training dataset metadata object.
 

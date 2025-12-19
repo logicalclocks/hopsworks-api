@@ -15,10 +15,15 @@
 #
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from hopsworks_common import client
-from hsfs import storage_connector as sc
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_data as dsd
+
+
+if TYPE_CHECKING:
+    from hsfs import storage_connector as sc
 
 
 class DataSourceApi:

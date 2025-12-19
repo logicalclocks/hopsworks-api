@@ -735,23 +735,9 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
-    def get_data_source_provenance(self) -> Optional[explicit_provenance.Links]:
+    def get_data_source_provenance(self) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
-        Parents are storage connectors. These storage connector can be accessible,
-        deleted or inaccessible.
-        For deleted and inaccessible storage connector, only minimal information is
-        returned.
 
-        # Returns
-            `Links`: the data source used to generate this feature group or `None` if it does not exist.
-
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        return self._feature_group_engine.get_storage_connector_provenance(self)
-
-    def get_data_source_provenance(self) -> Optional[explicit_provenance.Links]:
-        """Get the parents of this feature group, based on explicit provenance.
         Parents are storage connectors. These storage connector can be accessible,
         deleted or inaccessible.
         For deleted and inaccessible storage connector, only minimal information is
@@ -794,10 +780,11 @@ class FeatureGroupBase:
             return storage_connector_provenance.accessible[0]
         return None
 
-    def get_data_source(self) -> Optional["ds.DataSource"]:
-        """Get the data source using this feature group, based on explicit
-        provenance. Only the accessible data source is returned.
-        For more items use the base method - get_data_source_provenance
+    def get_data_source(self) -> ds.DataSource | None:
+        """Get the data source using this feature group, based on explicit provenance.
+
+        Only the accessible data source is returned.
+        For more items use the base method - get_data_source_provenance.
 
         # Returns
             `DataSource`: Data source or `None` if it does not exist.
@@ -817,8 +804,8 @@ class FeatureGroupBase:
 
         if data_source_provenance and data_source_provenance.accessible:
             return data_source_provenance.accessible[0]
-        else:
-            return None
+
+        return None
 
     def get_generated_feature_views(self) -> explicit_provenance.Links | None:
         """Get the generated feature view using this feature group, based on explicit provenance.
@@ -2297,15 +2284,16 @@ class FeatureGroupBase:
 
     @property
     def storage_connector(self) -> sc.StorageConnector:
-        """"
-            !!! warning "Deprecated"
-                    `storage_connector` method is deprecated. Use
-                    `data_source` instead.
+        """Get the storage connector.
+
+        !!! warning "Deprecated"
+            `storage_connector` method is deprecated. Use
+            `data_source` instead.
         """
         return self._data_source.storage_connector
 
     @property
-    def data_source(self) -> "ds.DataSource":
+    def data_source(self) -> ds.DataSource:
         return self._data_source
 
     def prepare_spark_location(self) -> str:

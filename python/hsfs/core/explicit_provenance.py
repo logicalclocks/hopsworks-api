@@ -265,28 +265,7 @@ class Links:
         return links
 
     @staticmethod
-    def __parse_training_datasets(links_json: dict, artifacts: Set[str]):
-        links = Links()
-        for link_json in links_json:
-            if link_json["node"]["artifact_type"] in artifacts:
-                if link_json["node"].get("exception_cause") is not None:
-                    links._faulty.append(Artifact.from_response_json(link_json["node"]))
-                elif bool(link_json["node"]["accessible"]):
-                    links.accessible.append(
-                        training_dataset.TrainingDataset.from_response_json(
-                            link_json["node"]["artifact"]
-                        )
-                    )
-                elif bool(link_json["node"]["deleted"]):
-                    links.deleted.append(Artifact.from_response_json(link_json["node"]))
-                else:
-                    links.inaccessible.append(
-                        Artifact.from_response_json(link_json["node"])
-                    )
-        return links
-
-    @staticmethod
-    def __parse_training_datasets(links_json: dict, artifacts: Set[str]):
+    def __parse_training_datasets(links_json: dict, artifacts: set[str]):
         links = Links()
         for link_json in links_json:
             if link_json["node"]["artifact_type"] in artifacts:
@@ -416,25 +395,26 @@ class Links:
                 )
             return Links()
 
-            if direction == Links.Direction.DOWNSTREAM:
-                if artifact == Links.Type.FEATURE_GROUP:
-                    return Links.__parse_feature_groups(
-                        links_json["downstream"],
-                        {
-                            "FEATURE_GROUP",
-                            "EXTERNAL_FEATURE_GROUP",
-                        },
-                    )
-                elif artifact == Links.Type.FEATURE_VIEW:
-                    return Links.__parse_feature_views(
-                        links_json["downstream"], {"FEATURE_VIEW"}
-                    )
-                elif artifact == Links.Type.TRAINING_DATASET:
-                    return Links.__parse_training_datasets(
-                        links_json["downstream"], {"TRAINING_DATASET"}
-                    )
-                else:
-                    return Links()
+        if direction == Links.Direction.DOWNSTREAM:
+            if artifact == Links.Type.FEATURE_GROUP:
+                return Links.__parse_feature_groups(
+                    links_json["downstream"],
+                    {
+                        "FEATURE_GROUP",
+                        "EXTERNAL_FEATURE_GROUP",
+                    },
+                )
+            if artifact == Links.Type.FEATURE_VIEW:
+                return Links.__parse_feature_views(
+                    links_json["downstream"], {"FEATURE_VIEW"}
+                )
+            if artifact == Links.Type.TRAINING_DATASET:
+                return Links.__parse_training_datasets(
+                    links_json["downstream"], {"TRAINING_DATASET"}
+                )
+            return Links()
+
+        return Links()
 
 
 class ProvenanceEncoder(json.JSONEncoder):
