@@ -543,7 +543,7 @@ class ArrowFlightClient:
         training_dataset["fv_name"] = feature_view_obj.name
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version
-        training_dataset["query"] = query_obj
+        training_dataset["query"] = json.loads(query_obj.hqs_payload)
         _logger.debug(f"Creating training dataset: {training_dataset}")
         try:
             training_dataset_encoded = json.dumps(training_dataset).encode("ascii")
