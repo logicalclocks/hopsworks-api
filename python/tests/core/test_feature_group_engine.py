@@ -1405,10 +1405,9 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1459,10 +1458,9 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
@@ -1513,10 +1511,9 @@ class TestFeatureGroupEngine:
         assert f.partition is True
         assert f.hudi_precombine_key is True
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1675,10 +1672,9 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1730,10 +1726,9 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 

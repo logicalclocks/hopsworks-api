@@ -260,7 +260,49 @@ class StorageConnector(ABC):
             return feature_groups_provenance.accessible
         return []
 
-    def get_databases(self) -> list[str]:
+    def get_training_datasets_provenance(self):
+        """Get the generated training datasets using this storage connector, based on explicit provenance.
+
+        These training datasets can be accessible or inaccessible. Explicit
+        provenance does not track deleted generated training dataset links, so deleted
+        will always be empty.
+        For inaccessible training datasets, only a minimal information is returned.
+
+        # Returns
+            `Links`: the training datasets generated using this storage connector or `None` if none were created
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        """
+        links = self._storage_connector_api.get_training_datasets_provenance(self)
+        if not links.is_empty():
+            return links
+        return None
+
+    def get_training_datasets(self):
+        """Get the training datasets using this storage connector, based on explicit provenance.
+
+        Only the accessible training datasets are returned.
+        For more items use the base method - get_training_datasets_provenance.
+
+        # Returns
+            `List[TrainingDataset]`: List of training datasets.
+        """
+        training_datasets_provenance = self.get_training_datasets_provenance()
+
+        if training_datasets_provenance and (
+            training_datasets_provenance.inaccessible
+            or training_datasets_provenance.deleted
+        ):
+            _logger.info(
+                "There are deleted or inaccessible training datasets. For more details access `get_training_datasets_provenance`"
+            )
+
+        if training_datasets_provenance and training_datasets_provenance.accessible:
+            return training_datasets_provenance.accessible
+        return []
+
+    def get_databases(self):
         """Retrieve the list of available databases.
 
         !!! example
@@ -278,7 +320,7 @@ class StorageConnector(ABC):
         """
         return self._data_source_api.get_databases(self._featurestore_id, self._name)
 
-    def get_tables(self, database: str = None) -> list[ds.DataSource]:
+    def get_tables(self, database: str):
         """Retrieve the list of tables from the specified database.
 
         !!! example
@@ -312,9 +354,7 @@ class StorageConnector(ABC):
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
-        return self._data_source_api.get_tables(
-            self._featurestore_id, self._name, database
-        )
+        return self._data_source_api.get_tables(self, database)
 
     def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
         """Retrieve the data from the data source.
@@ -337,9 +377,7 @@ class StorageConnector(ABC):
         Returns:
             DataSourceData: An object containing the data retrieved from the data source.
         """
-        return self._data_source_api.get_data(
-            self._featurestore_id, self._name, data_source
-        )
+        return self._data_source_api.get_data(data_source)
 
     def get_metadata(self, data_source: ds.DataSource) -> dict:
         """Retrieve metadata information about the data source.
@@ -362,9 +400,7 @@ class StorageConnector(ABC):
         Returns:
             dict: A dictionary containing metadata about the data source.
         """
-        return self._data_source_api.get_metadata(
-            self._featurestore_id, self._name, data_source
-        )
+        return self._data_source_api.get_metadata(data_source)
 
 
 class HopsFSConnector(StorageConnector):

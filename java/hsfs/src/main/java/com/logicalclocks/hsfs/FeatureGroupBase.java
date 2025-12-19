@@ -137,9 +137,6 @@ public abstract class FeatureGroupBase<T> {
 
   @Getter
   @Setter
-  protected StorageConnector storageConnector;
-
-  @Getter
   protected DataSource dataSource;
 
   @JsonIgnore
@@ -172,9 +169,6 @@ public abstract class FeatureGroupBase<T> {
 
   public void setDataSource(DataSource dataSource) {
     this.dataSource = dataSource;
-    if (this.dataSource != null) {
-      this.dataSource.updateStorageConnector(this.storageConnector);
-    }
   }
 
   public void delete() throws FeatureStoreException, IOException {

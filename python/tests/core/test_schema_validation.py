@@ -88,7 +88,7 @@ def spark_df():
 def feature_group_data():
     with mock.patch("hopsworks_common.client.get_instance"):
         engine.init("python")
-    fg = feature_group.FeatureGroup(
+    return feature_group.FeatureGroup(
         name="test_fg",
         version=1,
         online_enabled=True,
@@ -101,14 +101,13 @@ def feature_group_data():
             Feature("string_col", "string", online_type="varchar(200)"),
         ],
     )
-    return fg
 
 
 @pytest.fixture
 def feature_group_created():
     with mock.patch("hopsworks_common.client.get_instance"):
         engine.init("python")
-    fg_existing = feature_group.FeatureGroup(
+    return feature_group.FeatureGroup(
         name="test_existing_fg",
         id=1,
         version=1,
@@ -122,7 +121,6 @@ def feature_group_created():
             Feature("string_col", "string", online_type="varchar(100)"),
         ],
     )
-    return fg_existing
 
 
 # Base class for common test behavior
@@ -363,7 +361,7 @@ class TestPandasDataframe(BaseDataFrameTest):
 
         # Assert
         # validate that only 'val' is detected as a string column
-        assert ["string1", "string2"] == string_cols
+        assert string_cols == ["string1", "string2"]
 
 
 @pytest.mark.skipif(not HAS_POLARS, reason="polars not installed")
