@@ -17,6 +17,7 @@
 import copy
 
 import pytest
+from hopsworks_common.constants import SCALING_CONFIG
 from hsml import resources, transformer
 from hsml.constants import RESOURCES
 
@@ -54,6 +55,21 @@ class TestTransformer:
         assert t.resources.limits.memory == tr_resources["limits"]["memory"]
         assert t.resources.limits.gpus == tr_resources["limits"]["gpus"]
 
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert (
+            t.scaling_configuration.min_instances
+            == json["transformer_scaling_config"]["min_instances"]
+        )
+        assert (
+            t.scaling_configuration.scale_metric.value
+            == json["transformer_scaling_config"]["scale_metric"]
+        )
+        assert (
+            t.scaling_configuration.target
+            == json["transformer_scaling_config"]["target"]
+        )
+
     def test_from_response_json_with_script_file_field(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -76,6 +92,21 @@ class TestTransformer:
         assert t.resources.limits.cores == tr_resources["limits"]["cores"]
         assert t.resources.limits.memory == tr_resources["limits"]["memory"]
         assert t.resources.limits.gpus == tr_resources["limits"]["gpus"]
+
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert (
+            t.scaling_configuration.min_instances
+            == json["transformer_scaling_config"]["min_instances"]
+        )
+        assert (
+            t.scaling_configuration.scale_metric.value
+            == json["transformer_scaling_config"]["scale_metric"]
+        )
+        assert (
+            t.scaling_configuration.target
+            == json["transformer_scaling_config"]["target"]
+        )
 
     def test_from_response_json_empty(self, mocker, backend_fixtures):
         # Arrange
@@ -106,7 +137,7 @@ class TestTransformer:
         assert isinstance(t, transformer.Transformer)
         assert t.script_file == json["script_file"]
 
-        assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert t.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
         assert t.resources.requests.gpus == RESOURCES.GPUS
@@ -131,7 +162,7 @@ class TestTransformer:
         # Assert
         assert t.script_file == json["script_file"]
 
-        assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert t.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
         assert t.resources.requests.gpus == RESOURCES.GPUS
@@ -225,7 +256,7 @@ class TestTransformer:
         num_instances = transformer.Transformer._get_default_num_instances()
 
         # Assert
-        assert num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_num_instances_with_scale_to_zero(self, mocker):
         # Arrange
@@ -252,7 +283,7 @@ class TestTransformer:
 
         # Assert
         assert isinstance(res, resources.TransformerResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_with_scale_to_zero(self, mocker):
         # Arrange
@@ -268,7 +299,6 @@ class TestTransformer:
         assert res.num_instances == 0
 
     # extract fields from json
-
     def test_extract_fields_from_json(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -278,7 +308,7 @@ class TestTransformer:
         json_copy = copy.deepcopy(json)
 
         # Act
-        sf, rc = transformer.Transformer.extract_fields_from_json(json_copy)
+        sf, rc, sc = transformer.Transformer.extract_fields_from_json(json_copy)
 
         # Assert
         assert sf == json["transformer"]
@@ -293,8 +323,40 @@ class TestTransformer:
         assert rc.limits.memory == tr_resources["limits"]["memory"]
         assert rc.limits.gpus == tr_resources["limits"]["gpus"]
 
-    # auxiliary methods
+        assert isinstance(sc, transformer.TransformerScalingConfig)
+        assert sc.min_instances == json["transformer_scaling_config"]["min_instances"]
+        assert (
+            sc.scale_metric.value == json["transformer_scaling_config"]["scale_metric"]
+        )
+        assert sc.target == json["transformer_scaling_config"]["target"]
 
+    def test_constructor_scaling_configuration_none(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+
+        script_file = "transformer_file_name"
+
+        # Act
+        t = transformer.Transformer(
+            script_file=script_file,
+            resources=None,
+            scaling_configuration=None,
+        )
+
+        # Assert
+        assert t.script_file == script_file
+
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert t.scaling_configuration.min_instances == 0
+        assert (
+            t.scaling_configuration.scale_metric.value
+            == SCALING_CONFIG.SCALE_METRIC_CONCURRENCY
+        )
+
+    # auxiliary methods
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):
         mocker.patch(
             "hopsworks_common.client.get_serving_num_instances_limits",

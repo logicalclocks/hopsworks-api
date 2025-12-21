@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from hsml.inference_logger import InferenceLogger
     from hsml.model import Model
     from hsml.resources import PredictorResources
+    from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
 
 
 class ModelServing:
@@ -176,6 +177,7 @@ class ModelServing:
         transformer: Transformer | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
+        scaling_configuration: PredictorScalingConfig | dict | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -217,6 +219,7 @@ class ModelServing:
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The project Python environment to use
+            scaling_configuration: Scaling configuration for the predictor.
 
         Returns:
             `Predictor`. The predictor metadata object.
@@ -236,6 +239,7 @@ class ModelServing:
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
+            scaling_configuration=scaling_configuration,
         )
 
     @usage.method_logger
@@ -243,6 +247,7 @@ class ModelServing:
         self,
         script_file: str | None = None,
         resources: PredictorResources | dict | None = None,
+        scaling_configuration: TransformerScalingConfig | dict | None = None,
     ) -> Transformer:
         """Create a Transformer metadata object.
 
@@ -303,7 +308,7 @@ class ModelServing:
         Returns:
             `Transformer`. The transformer metadata object.
         """
-        return Transformer(script_file=script_file, resources=resources)
+        return Transformer(script_file=script_file, resources=resources, scaling_configuration=scaling_configuration)
 
     @usage.method_logger
     def create_endpoint(
@@ -316,6 +321,7 @@ class ModelServing:
         inference_batcher: InferenceBatcher | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
+        scaling_configuration: PredictorScalingConfig | dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -344,6 +350,7 @@ class ModelServing:
             inference_batcher: Inference batcher configuration.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The project Python environment to use
+            scaling_configuration: Scaling configuration for the predictor.
 
         Returns:
             `Predictor`. The predictor metadata object.
@@ -357,6 +364,7 @@ class ModelServing:
             inference_batcher=inference_batcher,
             api_protocol=api_protocol,
             environment=environment,
+            scaling_configuration=scaling_configuration,
         )
 
     @usage.method_logger
