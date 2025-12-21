@@ -1800,8 +1800,15 @@ class FeatureGroupBase:
                 "Features are accessible by name."
             )
         feature = [f for f in self.__getattribute__("_features") if f.name == name]
+        transformations = [
+            tf.hopsworks_udf
+            for tf in self.__getattribute__("_transformation_functions")
+            if tf.hopsworks_udf.function_name == name
+        ]
         if len(feature) == 1:
             return feature[0]
+        if len(transformations) == 1:
+            return transformations[0]
         raise KeyError(f"'FeatureGroup' object has no feature called '{name}'.")
 
     @property
@@ -4079,6 +4086,34 @@ class FeatureGroup(FeatureGroupBase):
             self._time_travel_format is not None
             and self._time_travel_format.upper() != "NONE"
         )
+
+    def execute_odts(
+        self,
+        data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+    ) -> list[dict[str, Any]] | pd.DataFrame:
+        """Apply on-demand transformations to the passed dataframe or list of dictionaries.
+
+        # Arguments
+            feature_group: `FeatureGroup`. The feature group to apply the on-demand transformations to.
+        # Returns
+            `Union[List[Dict[str, Any]], pd.DataFrame, pl.DataFrame]`: The feature group with the on-demand transformations applied.
+        """
+        if self.transformation_functions:
+            df = self._feature_group_engine.apply_on_demand_transformations(
+                transformation_functions=self.transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+            )
+        else:
+            _logger.info(
+                "No on-demand transformation functions attached to the feature group, no transformations applied."
+            )
+        return df
 
     @property
     def id(self) -> int | None:

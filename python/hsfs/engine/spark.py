@@ -1198,9 +1198,10 @@ class Engine:
         transformation_context: dict[str, Any] = None,
     ):
         # apply transformation functions (they are applied separately to each split)
-        feature_dataframe = self._apply_transformation_function(
-            transformation_functions,
-            dataset=feature_dataframe,
+        feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            transformation_functions=transformation_functions,
+            data=feature_dataframe,
+            online=False,
             transformation_context=transformation_context,
         )
         if to_df:
@@ -1618,6 +1619,7 @@ class Engine:
         transformation_functions: list[transformation_function.TransformationFunction],
         dataset: DataFrame,
         transformation_context: dict[str, Any] = None,
+        expected_features: set[str] = None,
     ):
         """Apply transformation function to the dataframe.
 
@@ -1644,25 +1646,16 @@ class Engine:
             # Setting transformation function context variables.
             hopsworks_udf.transformation_context = transformation_context
 
-            missing_features = set(hopsworks_udf.transformation_features) - set(
-                dataset.columns
-            )
-
-            if missing_features:
-                if (
-                    tf.transformation_type
-                    == transformation_function.TransformationType.ON_DEMAND
-                ):
-                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
-                    raise FeatureStoreException(
-                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
-                        "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
-                    )
-                raise FeatureStoreException(
-                    f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
-                )
             if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(hopsworks_udf.dropped_features)
+                dropped_features.update(
+                    {
+                        f
+                        for f in hopsworks_udf.dropped_features
+                        if f not in expected_features
+                    }
+                    if expected_features
+                    else hopsworks_udf.dropped_features
+                )
 
             # Add to dropped features if the feature need to overwritten to avoid ambiguous columns.
             if len(hopsworks_udf.return_types) == 1 and (

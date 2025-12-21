@@ -318,6 +318,21 @@ class TransformationFunction:
 
         return output_col_names
 
+    def execute(self, *args, statistics=None, context=None, online=False):
+        """Execute the transformation function.
+
+        # Arguments
+            args: `Tuple`. Arguments to be passed to the transformation function.
+            statistics: `TransformationStatistics`. Statistics to be passed to the transformation function.
+            context: `Dict[str, Any]`. Context to be passed to the transformation function.
+            online: `bool`. Specify if the transformation function is to be executed online.
+        # Returns
+            `Any`: Result of the transformation function.
+        """
+        return self.hopsworks_udf.execute(
+            *args, statistics=statistics, context=context, online=online
+        )
+
     @staticmethod
     def _validate_transformation_type(
         transformation_type: TransformationType, hopsworks_udf: HopsworksUdf
