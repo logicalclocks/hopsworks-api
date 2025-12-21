@@ -25,6 +25,7 @@ from hsfs.hopsworks_udf import (
     UDFExecutionMode,
     udf,
 )
+from hsfs.transformation_statistics import TransformationStatistics
 
 
 class TestHopsworksUdf:
@@ -1555,3 +1556,24 @@ def test_function():
         assert add_one.transformation_statistics is None
         assert add_one.transformation_context == {}
         assert add_one.output_column_names == []
+
+    def test_execute_statistics_and_context(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        stats = TransformationStatistics("feature")
+
+        @udf(int, mode="pandas")
+        def add_statistics_data(feature, context, statistics=stats):
+            return feature + statistics.feature.mean + context["test_value"]
+
+        data = pd.Series([1, 2, 3])
+
+        statistics = TransformationStatistics("feature")
+        statistics.set_statistics("feature", {"feature_name": "feature", "mean": 10})
+
+        assert add_statistics_data.executor(
+            statistics=statistics, context={"test_value": 10}
+        ).execute(data).values.tolist() == [21, 22, 23]
+
+        assert add_statistics_data.executor(
+            statistics={"feature": {"mean": 100}}, context={"test_value": 10}
+        ).execute(data).values.tolist() == [111, 112, 113]

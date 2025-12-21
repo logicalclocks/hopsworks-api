@@ -169,16 +169,21 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         self,
         transformation_functions: list[TransformationFunction],
         data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
-        online: bool | None = None,
+        online: bool = False,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
-        """Apply on-demand transformations to the passed dataframe or list of dictionaries.
+        """Function to apply on demand transformations to the passed dataframe or list of dictionaries.
 
-        # Arguments
-            feature_group: fg.FeatureGroup. The feature group to apply the on-demand transformations to.
-        # Returns
-            `Union[List[Dict[str, Any]], pd.DataFrame, pl.DataFrame]`: The feature group with the on-demand transformations applied.
+        Parameters:
+            transformation_functions: List of transformation functions to apply.
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
         """
         try:
             df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(

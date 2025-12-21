@@ -847,27 +847,25 @@ def renaming_wrapper(*args):
     def executor(
         self,
         statistics: TransformationStatistics = None,
-        transformation_context: dict[str, Any] = None,
+        context: dict[str, Any] = None,
         online: bool = False,
     ) -> Any:
-        """Execute a UDF to obtains the resulting values.
+        """Function that returns an callable object that can be executed to obtain the resulting values of the UDF.
 
-        # Arguments
-            args: `Tuple`. Arguments to be passed to the UDF.
-            statistics: `TransformationStatistics`. Statistics to be passed to the UDF.
-            context: `Dict[str, Any]`. Context to be passed to the UDF.
-            online: `bool`. Specify if the UDF is to be executed online.
-        # Returns
-            `Any`: Result of the UDF.
+        The function allows the user to set the information in the UDF like transformation statistics and transformation context and then execute it.
+
+        Parameters:
+            statistics: Statistics to be passed to the UDF.
+            context: Transformation context to be passed to the UDF.
+            online: Apply the UDF for online or offline usecase. This parameter is applicable when a UDF is defined using the `default` execution mode.
+
+        Returns:
+            A callable object that can be executed to obtain the resulting values of the UDF.
         """
         # Fetch existing stateful information in the UDF.
         udf = copy.deepcopy(self)
 
-        udf.transformation_context = (
-            transformation_context
-            if transformation_context
-            else udf.transformation_context
-        )
+        udf.transformation_context = context if context else udf.transformation_context
         if statistics:
             udf.transformation_statistics = statistics
         udf.output_column_names = (
@@ -882,8 +880,19 @@ def renaming_wrapper(*args):
 
         return executable
 
-    def execute(self, *args, **kwargs) -> Any:
-        return self.executor().execute(*args, **kwargs)
+    def execute(self, *args) -> Any:
+        """Function to execute the UDF with the passed arguments.
+
+        This function execute the UDF in the offline mode with no transformation statistics and transformation context.
+        To execute the UDF in the online mode with transformation statistics and transformation context, use the `executor` function.
+
+        Parameters:
+            *args: The arguments to be passed to the UDF.
+
+        Returns:
+            The resulting values of the UDF.
+        """
+        return self.executor().execute(*args)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert class into a dictionary.

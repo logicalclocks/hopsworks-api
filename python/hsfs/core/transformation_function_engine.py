@@ -93,7 +93,7 @@ class TransformationFunctionEngine:
         """Get all the transformation functions in the feature store.
 
         Returns:
-            `list[transformation_function.TransformationFunction]` : A list of transformation functions.
+            A list of transformation functions.
         """
         transformation_fn_instances = (
             self._transformation_function_api.get_transformation_fn(
@@ -113,6 +113,16 @@ class TransformationFunctionEngine:
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         request_parameters: dict[str, Any] = None,
     ) -> None:
+        """Function to validate if all arguments required to execute the transformation functions are present are present in the passed data or request parameters.
+
+        Parameters:
+            transformation_functions: List of transformation functions to validate.
+            data: The dataframe or list of dictionaries to validate the transformation functions against.
+            request_parameters: Request parameters to validate the transformation functions against.
+
+        Raises:
+            exceptions.TransformationFunctionException: If the arguments required to execute the transformation functions are not present in the passed data or request parameters.
+        """
         for tf in transformation_functions:
             if engine.get_instance().check_supported_dataframe(data):
                 missing_features = set(tf.hopsworks_udf.transformation_features) - set(
@@ -152,6 +162,22 @@ class TransformationFunctionEngine:
         request_parameters: dict[str, Any] = None,
         expected_features: set[str] = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
+        """Function to apply the transformation functions to the passed data.
+
+        This function validates the arguments and calls the required function to apply the transformation functions to the passed data.
+        For spark engine, the transformation functions are pushed down to Spark and is completely handled by the Spark engine.
+
+        Parameters:
+            transformation_functions: List of transformation functions to apply.
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+            expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
         TransformationFunctionEngine._validate_transformation_function_arguments(
             transformation_functions=transformation_functions,
             data=data,
@@ -185,6 +211,21 @@ class TransformationFunctionEngine:
         request_parameters: dict[str, Any] = None,
         expected_features: set[str] = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
+        """Function to apply the transformation functions to the passed dataframe or list of dictionaries.
+
+        This function is only used when the engine is python or if the passed data is a dictionary.
+
+        Parameters:
+            transformation_functions: List of transformation functions to apply.
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+            expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
         dropped_features: set[str] = set()
 
         if isinstance(data, dict):
@@ -228,6 +269,18 @@ class TransformationFunctionEngine:
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
+        """Function to execute the UDF used to defined a transformation function on passed data.
+
+        The functions pushes the execution of Pandas and Python Dataframes to the Python Engine and handles the execution dictionaries.
+
+        Parameters:
+            udf: The transformation function to execute.
+            data: The dataframe or list of dictionaries to execute the transformation function on.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
         execution_engine = engine.get_instance()
         if execution_engine.check_supported_dataframe(data):
             return execution_engine.apply_udf_on_dataframe(
@@ -247,6 +300,18 @@ class TransformationFunctionEngine:
         data: dict[str, Any],
         online: bool | None = True,
     ) -> dict[str, Any]:
+        """Function to apply the UDF used to defined a transformation function on a dictionary.
+
+        The function is not pushed to the Python Engine since it should be executed this function in both the Python and Spark Kernel.
+
+        Parameters:
+            udf: The transformation function to execute.
+            data: The dictionary to execute the transformation function on.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+
+        Returns:
+            The updated dictionary with the transformations applied.
+        """
         features = []
 
         if not online and engine.get_type() == "spark":
@@ -316,14 +381,14 @@ class TransformationFunctionEngine:
         """Compute the statistics required for a training dataset object.
 
         Parameters:
-            training_dataset_obj `TrainingDataset`: The training dataset for which the statistics is to be computed.
-            statistics_features `list[str]`: The list of features for which the statistics should be computed.
-            label_encoder_features `list[str]`: Features used for label encoding.
-            feature_dataframe `Union[pd.DataFrame, pl.DataFrame, ps.DataFrame]`: The dataframe that contains the data for which the statistics must be computed.
-            feature_view_obj `FeatureView`: The feature view in which the training data is being created.
+            training_dataset_obj : The training dataset for which the statistics is to be computed.
+            statistics_features : The list of features for which the statistics should be computed.
+            label_encoder_features : Features used for label encoding.
+            feature_dataframe : The dataframe that contains the data for which the statistics must be computed.
+            feature_view_obj : The feature view in which the training data is being created.
 
         Returns:
-            `Statistics` : The statistics object that contains the statistics for each features.
+            The statistics object that contains the statistics for each features.
         """
         return training_dataset_obj._statistics_engine.compute_transformation_fn_statistics(
             td_metadata_instance=training_dataset_obj,
@@ -398,10 +463,10 @@ class TransformationFunctionEngine:
 
         The function assigns the statistics computed to hopsworks UDF object so that the statistics can be used when UDF is executed.
 
-        # Argument
-            training_dataset_obj `TrainingDataset`: The training dataset for which the statistics is to be computed.
-            feature_view `FeatureView`: The feature view in which the training data is being created.
-            dataset `Union[dict[str,  Union[pd.DataFrame, pl.DataFrame, ps.DataFrame]],  Union[pd.DataFrame, pl.DataFrame, ps.DataFrame]]`: A dataframe that conqtains the training data or a dictionary that contains both the training and test data.
+        Parameters:
+            training_dataset : The training dataset for which the statistics is to be computed.
+            feature_view_obj : The feature view in which the training data is being created.
+            dataset : A dataframe that contains the training data or a dictionary that contains both the training and test data.
         """
         statistics_features: set[str] = set()
         label_encoder_features: set[str] = set()

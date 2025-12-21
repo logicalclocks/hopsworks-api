@@ -4089,17 +4089,21 @@ class FeatureGroup(FeatureGroupBase):
 
     def execute_odts(
         self,
-        data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
+        data: pd.DataFrame | pl.DataFrame | dict[str, Any],
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
-        """Apply on-demand transformations to the passed dataframe or list of dictionaries.
+        """Apply on-demand transformations attached to the feature group on the passed dataframe or dictionary.
 
-        # Arguments
-            feature_group: `FeatureGroup`. The feature group to apply the on-demand transformations to.
-        # Returns
-            `Union[List[Dict[str, Any]], pd.DataFrame, pl.DataFrame]`: The feature group with the on-demand transformations applied.
+        Parameters:
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+
+        Returns:
+            The updated dataframe or dictionary with the transformations applied.
         """
         if self.transformation_functions:
             df = self._feature_group_engine.apply_on_demand_transformations(
