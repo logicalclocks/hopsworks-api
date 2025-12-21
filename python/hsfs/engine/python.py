@@ -1288,6 +1288,8 @@ class Engine:
                     transformation_context=transformation_context,
                     request_parameters=None,
                 )
+                if feature_view_obj.transformation_functions
+                else result_dfs.get(split_name)
             )
 
         return result_dfs
@@ -1604,7 +1606,7 @@ class Engine:
                     )
                     dataframe = dataframe[cols]
         elif HAS_POLARS and (
-            isinstance(dataframe, pl.DataFrame, pl.dataframe.frame.DataFrame)
+            isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
             # Dynamically creating lambda function so that we do not need to loop though to extract features required for the udf.
             # This is done because polars 'map_rows' provides rows as tuples to the udf.

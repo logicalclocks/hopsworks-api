@@ -1512,3 +1512,46 @@ def test_function():
             value in scope
             for value in {"_output_col_names", "context", "statistics", "test"}
         )
+
+    @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
+    def test_execute(self, mocker, execution_mode):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int, mode=execution_mode)
+        def add_one(feature):
+            return feature + 1
+
+        if execution_mode == "default":
+            online_test_data = 1
+            offline_test_data = pd.Series(data=[1, 2, 3])
+        elif execution_mode == "python":
+            online_test_data = offline_test_data = 1
+        elif execution_mode == "pandas":
+            online_test_data = offline_test_data = pd.Series(data=[1, 2, 3])
+
+        expected_online_value = online_test_data + 1
+        offline_expected_data = offline_test_data + 1
+
+        if isinstance(online_test_data, pd.Series):
+            assert (
+                add_one.executor(online=True).execute(online_test_data).values.tolist()
+                == expected_online_value.values.tolist()
+            )
+        else:
+            assert (
+                add_one.executor(online=True).execute(online_test_data)
+                == expected_online_value
+            )
+
+        if isinstance(offline_test_data, pd.Series):
+            assert (
+                add_one.execute(offline_test_data).values.tolist()
+                == offline_expected_data.values.tolist()
+            )
+        else:
+            assert add_one.execute(offline_test_data) == expected_online_value
+
+        # Post execution checks to ensure the state is maintained after execution.
+        assert add_one.transformation_statistics is None
+        assert add_one.transformation_context == {}
+        assert add_one.output_column_names == []
