@@ -15,7 +15,6 @@
 #
 
 import pytest
-
 from hsfs.core import rest_endpoint
 
 

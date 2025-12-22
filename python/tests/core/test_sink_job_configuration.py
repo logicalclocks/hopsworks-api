@@ -15,7 +15,6 @@
 #
 
 import pytest
-
 from hopsworks_common.core import sink_job_configuration
 from hopsworks_common.job_schedule import JobSchedule
 
@@ -176,7 +175,9 @@ class TestSinkJobConfiguration:
             },
         }
 
-        config = sink_job_configuration.SinkJobConfiguration.from_response_json(json_dict)
+        config = sink_job_configuration.SinkJobConfiguration.from_response_json(
+            json_dict
+        )
 
         assert config.name == "sink_job"
         assert config.batch_size == 123
