@@ -654,8 +654,7 @@ class FeatureStore:
                 Enable automatic ingestion from the configured data source using a sink job.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
-                Accepts either a job configuration object or a dictionary with a `job_conf` entry
-                plus optional `name` and `job_schedule` values.
+                Accepts either a job configuration object or a dictionary.
         Returns:
             The feature group metadata object.
         """
@@ -1225,8 +1224,6 @@ class FeatureStore:
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
-            sink_enabled=sink_enabled,
-            sink_job_conf=sink_job_conf,
         )
         feature_group_object.feature_store = self
         return feature_group_object

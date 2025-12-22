@@ -146,9 +146,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             engine.get_instance().save_dataframe(
                 feature_group,
                 feature_dataframe,
-                hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                if feature_group.time_travel_format in ["HUDI", "DELTA"]
-                else None,
+                (
+                    hudi_engine.HudiEngine.HUDI_BULK_INSERT
+                    if feature_group.time_travel_format in ["HUDI", "DELTA"]
+                    else None
+                ),
                 feature_group.online_enabled,
                 None,
                 offline_write_options,
@@ -454,9 +456,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 engine.get_instance().save_dataframe(
                     feature_group,
                     engine.get_instance().create_empty_df(dataframe),
-                    hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                    if feature_group.time_travel_format == "HUDI"
-                    else None,
+                    (
+                        hudi_engine.HudiEngine.HUDI_BULK_INSERT
+                        if feature_group.time_travel_format == "HUDI"
+                        else None
+                    ),
                     feature_group.online_enabled,
                     None,
                     offline_write_options,
@@ -591,16 +595,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def _create_sink_job_if_needed(
         self, feature_group: fg.FeatureGroup, is_new_feature_group: bool
     ) -> None:
-        if (
-            not is_new_feature_group
-            or not feature_group.sink_enabled
-        ):
+        if not is_new_feature_group or not feature_group.sink_enabled:
             return
-        self._validate_sink(feature_group)
-        print("Creating sink job...")
-        print("Feature group id:", feature_group.id)
-        print("Feature store id:", feature_group.feature_store_id)
-        print("Storage connector id:", feature_group.storage_connector.id)
         sink_job_conf = feature_group.sink_job_conf or SinkJobConfiguration()
         job_name = sink_job_conf.name
         job_name = job_name or self._get_default_ingestion_job_name(feature_group)
@@ -612,27 +608,17 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.storage_connector.type == StorageConnector.REST
             and feature_group.data_source.rest_endpoint
         ):
-            kwargs["endpoint_config"] = feature_group.data_source.rest_endpoint.to_dict()
+            kwargs["endpoint_config"] = (
+                feature_group.data_source.rest_endpoint.to_dict()
+            )
         sink_job_conf.set_extra_params(**kwargs)
 
         job = self._job_api.create(job_name, sink_job_conf)
         print(f"Sink job created successfully, explore it at {job.get_url()}")
         if sink_job_conf.schedule_config:
-            self._job_api.create_or_update_schedule_job(job_name, sink_job_conf.schedule_config)
-
-    def _validate_sink(self, feature_group: fg.FeatureGroup) -> None:
-        """Validate the feature group for sink"""
-        if not feature_group.sink_enabled:
-            return
-
-        if feature_group.time_travel_format != "DELTA":
-            raise exceptions.FeatureStoreException(
-                "Sink feature is only supported for Delta feature groups."
+            self._job_api.create_or_update_schedule_job(
+                job_name, sink_job_conf.schedule_config
             )
-        if feature_group.storage_connector is None:
-            raise exceptions.FeatureStoreException(
-                "Storage connector must be provided for to enable sink."
-            )
-    
+
     def _get_default_ingestion_job_name(self, feature_group: fg.FeatureGroup) -> str:
         return f"{feature_group.storage_connector.name}_to_{util.feature_group_name(feature_group)}"
