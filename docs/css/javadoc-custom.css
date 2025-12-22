@@ -1,0 +1,572 @@
+/* 
+ * Hopsworks JavaDoc Theme
+ * This CSS matches the MkDocs Material theme used in Hopsworks documentation
+ */
+
+/* Light mode variables */
+:root {
+  --md-hopsworks-primary: #1eb382;
+  --md-hopsworks-secondary: #188a64;
+  --md-hopsworks-text: #333333;
+  --md-hopsworks-text-light: #666666;
+  --md-hopsworks-border: #e5e5e5;
+  --md-hopsworks-background: #f5f5f5;
+  --md-hopsworks-card-bg: #ffffff;
+  --md-hopsworks-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  --md-hopsworks-radius: 0px;
+  --md-hopsworks-code-bg: #f6f8fa;
+  --md-hopsworks-table-header-bg: #f6f8fa;
+  --md-hopsworks-inline-code-bg: rgba(188, 188, 188, 0.2);
+  
+  /* JavaDoc specific variables */
+  --text-color: var(--md-hopsworks-text);
+  --text-light: var(--md-hopsworks-text-light);
+  --border-color: var(--md-hopsworks-border);
+  --code-bg: var(--md-hopsworks-code-bg);
+  --link-color: var(--md-hopsworks-primary);
+  --header-bg: var(--md-hopsworks-primary);
+  --header-text: #ffffff;
+}
+
+body {
+  font-family: "Roboto", -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  color: var(--text-color);
+  margin: 0;
+  padding: 0;
+  background: var(--md-hopsworks-background);
+}
+
+/* Header */
+.hopsworks-header {
+  background-color: var(--md-hopsworks-card-bg);
+  color: var(--text-color);
+  padding: 0.7rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--md-hopsworks-shadow);
+}
+
+.hopsworks-header .logo {
+  font-size: 1.1rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.hopsworks-header .logo img {
+  height: 32px;
+  vertical-align: middle;
+  margin-right: 0.8rem;
+}
+
+.hopsworks-header .nav-links {
+  display: flex;
+}
+
+.hopsworks-header .nav-links a {
+  color: var(--text-color);
+  margin-left: 1.5rem;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.hopsworks-header .nav-links a:hover {
+  color: var(--link-color);
+  opacity: 1;
+  text-decoration: none;
+}
+
+/* Navigation */
+.topNav {
+  background: var(--md-hopsworks-card-bg);
+  color: var(--text-color);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0.5rem 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--md-hopsworks-shadow);
+}
+
+.topNav a {
+  color: var(--text-color);
+}
+
+.topNav a:hover {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.navList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+
+.navList li {
+  margin-right: 1rem;
+}
+
+.navList a {
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.navList a:hover {
+  opacity: 1;
+}
+
+/* Content */
+.contentContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  background-color: var(--md-hopsworks-card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--md-hopsworks-radius);
+  box-shadow: var(--md-hopsworks-shadow);
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Method signature */
+.methodSignature {
+  font-family: "IBM Plex Mono", SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  background: var(--code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+/* Source link */
+.source {
+  float: right;
+  color: var(--link-color);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.source:hover {
+  text-decoration: underline;
+}
+
+/* Parameters */
+.parameters dt {
+  font-weight: 600;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.parameters dd {
+  margin: 0.25rem 0 0 1rem;
+  color: var(--text-light);
+  font-size: 0.85rem;
+}
+
+/* Description */
+.description {
+  color: var(--text-light);
+  font-size: 0.85rem;
+  margin: 1rem 0;
+  line-height: 1.6;
+}
+
+/* Title */
+.title {
+  font-size: 2rem;
+  font-weight: 500;
+  margin: 0 0 1rem;
+  color: var(--text-color);
+}
+
+/* Tables */
+.memberSummary {
+  width: 100%;
+  margin: 1rem 0;
+  border-spacing: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--md-hopsworks-radius);
+  font-size: 0.85rem;
+  background: var(--md-hopsworks-card-bg);
+}
+
+.memberSummary th {
+  text-align: left;
+  padding: 0.6rem 1rem;
+  background: var(--md-hopsworks-table-header-bg);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.memberSummary td {
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Block lists */
+.blockList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.blockList > li {
+  margin: 1rem 0;
+}
+
+/* Details */
+.details {
+  margin: 1rem 0;
+}
+
+.details .blockList {
+  margin: 0;
+  padding: 0;
+}
+
+/* Subnavigation */
+.subNav {
+  background-color: var(--md-hopsworks-background);
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--md-hopsworks-radius);
+}
+
+.subNav div {
+  display: inline-block;
+  margin-right: 1rem;
+  font-size: 0.85rem;
+}
+
+/* Package hierarchy */
+.hierarchy {
+  margin: 1rem 0;
+}
+
+.hierarchy .circle {
+  display: none;
+}
+
+/* Type signature */
+.typeSignature {
+  color: var(--text-light);
+  font-size: 0.85rem;
+  font-family: "IBM Plex Mono", SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+}
+
+/* Inheritance */
+.inheritance {
+  margin: 1rem 0;
+}
+
+.inheritance .circle {
+  display: none;
+}
+
+/* Frame overrides */
+html.main-page {
+  margin: 0;
+  padding: 0;
+}
+
+.main-page body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Links */
+a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Admonition-like blocks */
+.block {
+  margin: 1em 0;
+  padding: 1em;
+  border-left: 4px solid var(--md-hopsworks-primary);
+  background-color: rgba(30, 179, 130, 0.1);
+  border-radius: 0 4px 4px 0;
+}
+
+/* Code blocks */
+pre {
+  font-family: "IBM Plex Mono", SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+  background: var(--code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+code {
+  font-family: "IBM Plex Mono", SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+  background: var(--md-hopsworks-inline-code-bg);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 85%;
+}
+
+/* Navigation bar header */
+.navBarCell1Rev {
+  background-color: var(--md-hopsworks-primary);
+  color: white;
+  border-radius: 0;
+  padding: 0.4rem 0.8rem;
+}
+
+/* Footer */
+.bottomNav {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+  color: var(--text-light);
+  font-size: 0.85rem;
+}
+
+/* Search box */
+#search {
+  margin: 1rem 0;
+}
+
+#search input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background-color: var(--md-hopsworks-background);
+}
+
+/* Index */
+.indexContainer {
+  margin: 1rem 0;
+}
+
+.indexContainer h2 {
+  font-size: 1.5rem;
+  font-weight: 500;
+  margin: 1.5rem 0 1rem;
+  color: var(--text-color);
+}
+
+/* All Classes page */
+.allClassesContainer {
+  margin: 1rem 0;
+}
+
+.allClassesContainer ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.allClassesContainer li {
+  margin: 0.5rem 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .contentContainer {
+    padding: 1rem;
+  }
+  
+  .navList {
+    flex-wrap: wrap;
+  }
+  
+  .navList li {
+    margin-bottom: 0.5rem;
+  }
+  
+  .methodSignature {
+    padding: 0.75rem;
+  }
+  
+  .hopsworks-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .hopsworks-header .nav-links {
+    margin-top: 0.5rem;
+  }
+  
+  .hopsworks-header .nav-links a {
+    margin-left: 0;
+    margin-right: 1rem;
+  }
+}
+
+/* Remove frame-specific elements */
+frameset, frame {
+  display: none;
+}
+
+/* Custom styles for javadoc elements */
+.contentContainer h2 {
+  color: var(--text-color);
+  font-weight: 500;
+  margin-top: 2rem;
+  font-size: 1.4rem;
+}
+
+.contentContainer h3 {
+  color: var(--text-color);
+  font-weight: 500;
+  font-size: 1.2rem;
+}
+
+/* Tab-like navigation */
+.subNav ul {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.subNav li {
+  margin-right: 1rem;
+  padding: 0.5rem 0;
+}
+
+.subNav li.navBarCell1Rev {
+  border-bottom: 2px solid var(--md-hopsworks-primary);
+  background-color: transparent;
+  color: var(--md-hopsworks-primary);
+}
+
+.subNav a {
+  text-decoration: none;
+  color: var(--text-color);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.subNav a:hover {
+  color: var(--link-color);
+}
+
+/* Package list styling */
+.packageHierarchyLabel {
+  font-weight: 500;
+  margin: 1rem 0 0.5rem;
+}
+
+.packages {
+  margin: 0.5rem 0;
+  list-style: none;
+  padding: 0;
+}
+
+.packages li {
+  margin: 0.25rem 0;
+}
+
+/* Class/interface styling */
+.typeNameLink {
+  font-weight: 500;
+}
+
+/* Summary sections */
+.summary {
+  margin: 1.5rem 0;
+}
+
+.summary .blockList {
+  margin-top: 0.5rem;
+}
+
+/* Improve spacing in details */
+.details .blockList li {
+  margin-bottom: 2rem;
+}
+
+/* Improve method details */
+.memberSignature {
+  font-family: "IBM Plex Mono", SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+  font-size: 0.85rem;
+  background-color: var(--code-bg);
+  padding: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  margin: 0.5rem 0;
+}
+
+/* Improve deprecated items */
+.deprecatedLabel {
+  color: #d73a49;
+  font-weight: 600;
+}
+
+.deprecationComment {
+  font-style: italic;
+  margin: 0.5rem 0;
+}
+
+/* Improve constant values display */
+.constantValuesContainer {
+  margin: 1rem 0;
+}
+
+.constantValuesContainer h2 {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+}
+
+/* Improve serialized form display */
+.serializedFormContainer {
+  margin: 1rem 0;
+}
+
+.serializedFormContainer h2 {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+}
+
+/* Main page styling */
+.indexContainer .contentContainer {
+  max-width: 1000px;
+}
+
+/* Improve overview frame */
+.overviewSummary {
+  width: 100%;
+}
+
+/* Improve package frame */
+.packagesSummary {
+  width: 100%;
+}
+
+/* Override any remaining Material theme inconsistencies */
+body, .contentContainer, .subNav, .memberSummary {
+  font-family: "Roboto", -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif !important;
+}
+
+code, pre, .methodSignature, .memberSignature, .typeSignature {
+  font-family: "IBM Plex Mono", SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace !important;
+}

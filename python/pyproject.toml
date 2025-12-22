@@ -60,6 +60,7 @@ dependencies = [
 
 [project.scripts]
 hopsworks-mcp = "hopsworks.mcp.main:main"
+hopsworks-cli = "hopsworks_cli.main:main"
 
 [project.optional-dependencies]
 python = [
@@ -107,6 +108,12 @@ mcp=[
     "httpx",
     "pydantic>=2.11.7",
 ]
+cli=[
+    "click>=8.0",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+    "pyarrow>=17.0",
+]
 
 [dependency-groups]
 docs = [
@@ -146,6 +153,7 @@ include = [
     "hsfs*",
     "hsml*",
     "hopsworks_common*",
+    "hopsworks_cli*",
 ]
 
 [tool.setuptools.dynamic]

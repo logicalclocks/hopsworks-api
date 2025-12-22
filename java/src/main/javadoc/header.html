@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="hopsworks-header">
+        <div class="logo">
+            <img src="../images/hops-logo.png" alt="Hopsworks Logo">
+            <span>Hopsworks API</span>
+        </div>
+        <div class="nav-links">
+            <a href="https://docs.hopsworks.ai" target="_blank">Documentation</a>
+            <a href="https://docs.hopsworks.ai/hopsworks-api/dev" target="_blank">API</a>
+            <a href="https://github.com/logicalclocks/hopsworks" target="_blank">GitHub</a>
+        </div>
+    </div>
+    <script>
+        // Ensure the header is properly applied to all frames
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add the custom header to the top of the body
+            if (!document.querySelector('.hopsworks-header')) {
+                var header = document.createElement('div');
+                header.className = 'hopsworks-header';
+                header.innerHTML = `
+                    <div class="logo">
+                        <img src="../images/hops-logo.png" alt="Hopsworks Logo">
+                        <span>Hopsworks API</span>
+                    </div>
+                    <div class="nav-links">
+                        <a href="https://docs.hopsworks.ai" target="_blank">Documentation</a>
+                        <a href="https://docs.hopsworks.ai/hopsworks-api/dev" target="_blank">API</a>
+                        <a href="https://github.com/logicalclocks/hopsworks" target="_blank">GitHub</a>
+                    </div>
+                `;
+                
+                // Insert at the beginning of the body
+                var body = document.body;
+                if (body) {
+                    body.insertBefore(header, body.firstChild);
+                }
+            }
+            
+            // Fix navigation bar styling
+            var topNav = document.querySelector('.topNav');
+            if (topNav) {
+                topNav.style.backgroundColor = 'var(--md-hopsworks-card-bg)';
+                topNav.style.color = 'var(--text-color)';
+                
+                // Update navigation links
+                var navLinks = topNav.querySelectorAll('a');
+                navLinks.forEach(function(link) {
+                    link.style.color = 'var(--text-color)';
+                });
+            }
+            
+            // Apply Material theme styling to tables
+            var tables = document.querySelectorAll('.memberSummary');
+            tables.forEach(function(table) {
+                table.style.borderRadius = 'var(--md-hopsworks-radius)';
+                table.style.boxShadow = 'var(--md-hopsworks-shadow)';
+            });
+            
+            // Apply Material theme styling to content containers
+            var contentContainers = document.querySelectorAll('.contentContainer');
+            contentContainers.forEach(function(container) {
+                container.style.backgroundColor = 'var(--md-hopsworks-card-bg)';
+                container.style.borderRadius = 'var(--md-hopsworks-radius)';
+                container.style.boxShadow = 'var(--md-hopsworks-shadow)';
+            });
+        });
+    </script>
+</body>
+</html>
