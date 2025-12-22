@@ -24,9 +24,10 @@ class FeatureColumnMapping:
             "featureName": self.feature_name,
         }
 
-    def from_response_json(self, json_dict):
+    @classmethod
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        return FeatureColumnMapping(**json_decamelized)
+        return cls(**json_decamelized)
 
     def to_json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -39,6 +40,14 @@ class FeatureColumnMapping:
     def source_column(self, source_column: str) -> None:
         self._source_column = source_column
 
+    @property
+    def feature_name(self) -> str:
+        return self._feature_name
+
+    @feature_name.setter
+    def feature_name(self, feature_name: str) -> None:
+        self._feature_name = feature_name
+
 
 class LoadingConfig:
     def __init__(
@@ -47,11 +56,22 @@ class LoadingConfig:
         source_cursor_field: str | None = None,
         initial_value: str | None = None,
     ):
-        self._loading_strategy = (
-            loading_strategy
-            if isinstance(loading_strategy, LoadingStrategy)
-            else LoadingStrategy(loading_strategy)
-        )
+        if isinstance(loading_strategy, LoadingStrategy):
+            self._loading_strategy = loading_strategy
+        elif isinstance(loading_strategy, str):
+            try:
+                self._loading_strategy = LoadingStrategy(loading_strategy)
+            except ValueError as exc:
+                valid_values = ", ".join(strategy.value for strategy in LoadingStrategy)
+                raise ValueError(
+                    f"Invalid loading_strategy '{loading_strategy}'. "
+                    f"Valid values: {valid_values}."
+                ) from exc
+        else:
+            raise TypeError(
+                "loading_strategy must be a LoadingStrategy or str, "
+                f"got {type(loading_strategy).__name__}."
+            )
         self._source_cursor_field = source_cursor_field
         self._initial_value = initial_value
 
@@ -74,9 +94,10 @@ class LoadingConfig:
             ),
         }
 
-    def from_response_json(self, json_dict):
+    @classmethod
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        return LoadingConfig(**json_decamelized)
+        return cls(**json_decamelized)
 
     def to_json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -95,8 +116,22 @@ class SinkJobConfiguration:
     ):
         self._name = name
         self._batch_size = batch_size
-        self._loading_config = loading_config or LoadingConfig()
-        self._column_mappings = column_mappings or []
+        if isinstance(loading_config, dict):
+            self._loading_config = LoadingConfig.from_response_json(loading_config)
+        else:
+            self._loading_config = loading_config or LoadingConfig()
+
+        if column_mappings:
+            self._column_mappings = [
+                (
+                    FeatureColumnMapping.from_response_json(mapping)
+                    if isinstance(mapping, dict)
+                    else mapping
+                )
+                for mapping in column_mappings
+            ]
+        else:
+            self._column_mappings = []
         self._featuregroup_id = None
         self._featurestore_id = None
         self._storage_connector_id = None
@@ -129,20 +164,25 @@ class SinkJobConfiguration:
             "featurestoreId": self._featurestore_id,
             "storageConnectorId": self._storage_connector_id,
             "endpointConfig": self._endpoint_config,
-            "jobSchedule": self._schedule_config,
+            "jobSchedule": (
+                self._schedule_config.to_dict()
+                if isinstance(self._schedule_config, JobSchedule)
+                else self._schedule_config
+            ),
         }
         return config
 
     def json(self):
         return json.dumps(self.to_dict())
 
-    def from_response_json(self, json_dict):
+    @classmethod
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        loading_config = LoadingConfig().from_response_json(
+        loading_config = LoadingConfig.from_response_json(
             json_decamelized.get("loading_config", {})
         )
         column_mappings = [
-            FeatureColumnMapping().from_response_json(mapping)
+            FeatureColumnMapping.from_response_json(mapping)
             for mapping in json_decamelized.get("column_mappings", [])
         ]
         job_schedule = json_decamelized.get("job_schedule", None)
@@ -151,7 +191,9 @@ class SinkJobConfiguration:
             name=json_decamelized.get("name", None),
             loading_config=loading_config,
             column_mappings=column_mappings,
-            schedule_config=JobSchedule.from_response_json(job_schedule) if job_schedule else None,
+            schedule_config=(
+                JobSchedule.from_response_json(job_schedule) if job_schedule else None
+            ),
         )
 
     def set_extra_params(self, **kwargs) -> None:

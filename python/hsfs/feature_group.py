@@ -1844,7 +1844,7 @@ class FeatureGroupBase:
             raise TypeError(
                 f"The argument `statistics_config` has to be `None` of type `StatisticsConfig, `bool` or `dict`, but is of type: `{type(statistics_config)}`"
             )
-        
+
     def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
         """Retrieve the latest online ingestion operation for this feature group.
 
@@ -2539,7 +2539,7 @@ class FeatureGroupBase:
         self._feature_group_engine.update_ttl(self, None, False)
         return self
 
-    
+
 @typechecked
 class FeatureGroup(FeatureGroupBase):
     # TODO: Add docstring
@@ -2777,7 +2777,7 @@ class FeatureGroup(FeatureGroupBase):
         )
 
     def _resolve_sink_enabled(self):
-        """Check if sink enabled must be based based on storage connector."""
+        """Check if sink enabled must enabled based on storage connector."""
         self._sink_enabled = self._storage_connector is not None and (
             self._storage_connector.type == sc.StorageConnector.CRM
             or self._storage_connector.type == sc.StorageConnector.REST
@@ -3154,6 +3154,10 @@ class FeatureGroup(FeatureGroupBase):
         if self._sink_enabled and self._data_source is None:
             raise FeatureStoreException(
                 "Sink cannot be enabled for the feature group without a data source."
+            )
+        if self._sink_enabled and self.time_travel_format != "DELTA":
+            raise FeatureStoreException(
+                "Sink can only be enabled for feature groups with time travel format DELTA."
             )
 
         if write_options is None:
@@ -4291,7 +4295,7 @@ class FeatureGroup(FeatureGroupBase):
     def sink_job(self) -> job.Job | None:
         """Return the sink job created for this feature group, if any."""
         return self._sink_job
-    
+
     @property
     def sink_job_conf(self) -> SinkJobConfiguration:
         """Sink job configuration object defining the settings for sink job of the feature group."""
@@ -4309,7 +4313,7 @@ class FeatureGroup(FeatureGroupBase):
             self._sink_job_conf = SinkJobConfiguration()
         else:
             raise TypeError(
-                f"The argument `sink_job_conf` has to be `None` of type `SinkJobConfiguration` or `dict`, but is of type: `{type(sink_job_conf)}`"
+                f"The argument `sink_job_conf` has to be of type `SinkJobConfiguration` or `dict`, or be `None`, but is of type: `{type(sink_job_conf)}`"
             )
 
 

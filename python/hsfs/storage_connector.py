@@ -336,7 +336,7 @@ class StorageConnector(ABC):
             self._featurestore_id, self._name, database
         )
 
-    def get_data(self, data_source: ds.DataSource, table: str = None) -> DataSourceData:
+    def get_data(self, data_source: ds.DataSource) -> DataSourceData:
         """Retrieve the data from the data source.
 
         !!! example
