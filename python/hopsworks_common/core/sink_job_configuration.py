@@ -1,7 +1,10 @@
-from enum import Enum
+from __future__ import annotations
+
 import json
-from hopsworks_common import util
+from enum import Enum
+
 import humps
+from hopsworks_common import util
 from hopsworks_common.job_schedule import JobSchedule
 
 
@@ -143,7 +146,7 @@ class SinkJobConfiguration:
         )
 
     def to_dict(self):
-        config = {
+        return {
             "type": self.DTO_TYPE,
             "name": self._name,
             "batchSize": self._batch_size,
@@ -170,7 +173,6 @@ class SinkJobConfiguration:
                 else self._schedule_config
             ),
         }
-        return config
 
     def json(self):
         return json.dumps(self.to_dict())
@@ -197,10 +199,10 @@ class SinkJobConfiguration:
         )
 
     def set_extra_params(self, **kwargs) -> None:
-        self._featuregroup_id = kwargs.get("featuregroup_id", None)
-        self._featurestore_id = kwargs.get("featurestore_id", None)
-        self._storage_connector_id = kwargs.get("storage_connector_id", None)
-        self._endpoint_config = kwargs.get("endpoint_config", None)
+        self._featuregroup_id = kwargs.get("featuregroup_id")
+        self._featurestore_id = kwargs.get("featurestore_id")
+        self._storage_connector_id = kwargs.get("storage_connector_id")
+        self._endpoint_config = kwargs.get("endpoint_config")
         self._name = kwargs.get("name", self._name)
 
     @property
