@@ -189,5 +189,6 @@ class ModelServingException(Exception):
 
     ERROR_CODE_DEPLOYMENT_NOT_RUNNING = 250001
 
+
 class DataSourceException(Exception):
-    """Generic data source exception"""
+    """Generic data source exception."""
