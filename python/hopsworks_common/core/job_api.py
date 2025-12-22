@@ -28,13 +28,13 @@ from hopsworks_common import (
     usage,
     util,
 )
-from hopsworks_common.core import sink_job_configuration
 
 
 if TYPE_CHECKING:
     from hopsworks_common.core import (
         ingestion_job_conf,
         job_configuration,
+        sink_job_configuration,
     )
 
 
@@ -236,8 +236,11 @@ class JobApi:
     def create(
         self,
         name: str,
-        job_conf: job_configuration.JobConfiguration
-        | ingestion_job_conf.IngestionJobConf | sink_job_configuration.SinkJobConfiguration,
+        job_conf: (
+            job_configuration.JobConfiguration
+            | ingestion_job_conf.IngestionJobConf
+            | sink_job_configuration.SinkJobConfiguration
+        ),
     ) -> job.Job:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name]

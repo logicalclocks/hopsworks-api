@@ -115,9 +115,9 @@ class FeatureStore:
             feature_group_engine.FeatureGroupEngine(self._id)
         )
 
-        self._transformation_function_engine: transformation_function_engine.TransformationFunctionEngine = transformation_function_engine.TransformationFunctionEngine(
-            self._id
-        )
+        self._transformation_function_engine: (
+            transformation_function_engine.TransformationFunctionEngine
+        ) = transformation_function_engine.TransformationFunctionEngine(self._id)
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
         )
@@ -505,14 +505,17 @@ class FeatureStore:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         event_time: str | None = None,
         stream: bool = False,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         parents: list[feature_group.FeatureGroup] | None = None,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
-        transformation_functions: list[TransformationFunction | HopsworksUdf]
-        | None = None,
+        transformation_functions: (
+            list[TransformationFunction | HopsworksUdf] | None
+        ) = None,
         online_config: OnlineConfig | dict[str, Any] | None = None,
         offline_backfill_every_hr: int | str | None = None,
         storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
@@ -655,6 +658,7 @@ class FeatureStore:
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
                 Accepts either a job configuration object or a dictionary.
+
         Returns:
             The feature group metadata object.
         """
@@ -710,16 +714,19 @@ class FeatureStore:
         hudi_precombine_key: str | None = None,
         features: list[feature.Feature] | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         event_time: str | None = None,
         stream: bool | None = False,
         parents: list[feature_group.FeatureGroup] | None = None,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
-        transformation_functions: list[TransformationFunction | HopsworksUdf]
-        | None = None,
+        transformation_functions: (
+            list[TransformationFunction | HopsworksUdf] | None
+        ) = None,
         online_config: OnlineConfig | dict[str, Any] | None = None,
         offline_backfill_every_hr: int | str | None = None,
         storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
@@ -914,9 +921,11 @@ class FeatureStore:
         features: list[feature.Feature] | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         event_time: str | None = None,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
@@ -1053,9 +1062,11 @@ class FeatureStore:
         features: list[feature.Feature] | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         event_time: str | None = None,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         online_enabled: bool = False,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
@@ -1238,11 +1249,13 @@ class FeatureStore:
         foreign_key: list[str] | None = None,
         event_time: str | None = None,
         features: list[feature.Feature] | None = None,
-        dataframe: pd.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[list] = None,
+        dataframe: (
+            pd.DataFrame
+            | TypeVar("pyspark.sql.DataFrame")
+            | TypeVar("pyspark.RDD")
+            | np.ndarray
+            | list[list]
+        ) = None,
     ) -> feature_group.SpineGroup:
         """Create a spine group metadata object.
 
@@ -1626,8 +1639,9 @@ class FeatureStore:
         labels: list[str] | None = None,
         inference_helper_columns: list[str] | None = None,
         training_helper_columns: list[str] | None = None,
-        transformation_functions: list[TransformationFunction | HopsworksUdf]
-        | None = None,
+        transformation_functions: (
+            list[TransformationFunction | HopsworksUdf] | None
+        ) = None,
         logging_enabled: bool | None = False,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
     ) -> feature_view.FeatureView:

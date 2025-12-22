@@ -17,6 +17,7 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
+from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.client import exceptions
@@ -29,7 +30,6 @@ from hsfs.core import (
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hsfs.core.schema_validation import DataFrameValidator
 from hsfs.storage_connector import StorageConnector
-from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
