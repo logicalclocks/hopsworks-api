@@ -16,7 +16,6 @@
 
 import hopsworks_common
 import pandas as pd
-import polars as pl
 import pytest
 from hopsworks_common.client import exceptions
 from hopsworks_common.core.constants import HAS_POLARS
@@ -32,6 +31,10 @@ from hsfs.core import transformation_function_engine
 from hsfs.engine import python, spark
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_function import TransformationType
+
+
+if HAS_POLARS:
+    import polars as pl
 
 
 fg1 = feature_group.FeatureGroup(
@@ -691,6 +694,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
+        mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker_engine.check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
 
@@ -698,7 +702,11 @@ class TestTransformationFunctionEngine:
             feature_store_id=99
         )
 
-        mocker.patch.object(tf_engine, "execute_udf", return_value={"col1": 2})
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "execute_udf",
+            return_value={"col1": 2},
+        )
 
         tf1 = transformation_function.TransformationFunction(
             featurestore_id=99,
@@ -720,7 +728,10 @@ class TestTransformationFunctionEngine:
             online=False,
         )
 
-        assert tf_engine.execute_udf.call_count == 2
+        assert (
+            transformation_function_engine.TransformationFunctionEngine.execute_udf.call_count
+            == 2
+        )
 
     def test_apply_transformation_functions_unsupported_dataframe(self, mocker):
         # Arrange
@@ -830,7 +841,11 @@ class TestTransformationFunctionEngine:
             feature_store_id=99
         )
         mocker_return_df = mocker.Mock()
-        mocker.patch.object(tf_engine, "execute_udf", return_value=mocker_return_df)
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "execute_udf",
+            return_value=mocker_return_df,
+        )
 
         tf1 = transformation_function.TransformationFunction(
             featurestore_id=99,
@@ -2055,6 +2070,10 @@ class TestTransformationFunctionEngine:
             ("default", True),
             ("default", False),
         ],
+    )
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
     )
     def test_apply_transformation_function_polars_udf_input_dataframe_python_engine(
         self, mocker, python_engine, execution_mode, online

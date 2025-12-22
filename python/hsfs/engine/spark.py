@@ -1614,6 +1614,9 @@ class Engine:
             location
         )
 
+    def shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
+        return dataframe.copy(deep=False)
+
     def _apply_transformation_function(
         self,
         transformation_functions: list[transformation_function.TransformationFunction],

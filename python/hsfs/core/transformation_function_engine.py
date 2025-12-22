@@ -178,6 +178,8 @@ class TransformationFunctionEngine:
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
+        if not transformation_functions or data is None:
+            return data
         TransformationFunctionEngine._validate_transformation_function_arguments(
             transformation_functions=transformation_functions,
             data=data,
