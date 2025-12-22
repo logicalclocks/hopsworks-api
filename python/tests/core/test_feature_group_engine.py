@@ -1407,10 +1407,103 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
+
+    def test_save_feature_group_metadata_creates_sink_job(self, mocker):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+        mock_job_api.create.return_value = mocker.Mock(name="sink_job")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        job_conf = mocker.Mock()
+        job_conf.json.return_value = "{}"
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            sink_job_conf={"name": "custom_sink_job", "job_conf": job_conf},
+        )
+
+        dataframe_feature = feature.Feature(name="f", type="str")
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[dataframe_feature], write_options=None
+        )
+
+        # Assert
+        mock_job_api.create.assert_called_once_with("custom_sink_job", job_conf)
+        assert fg._sink_job is mock_job_api.create.return_value
+        assert fg._sink_job_configuration is None
+
+    def test_save_feature_group_metadata_skips_sink_job_when_disabled(self, mocker):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=False,
+        )
+
+        dataframe_feature = feature.Feature(name="f", type="str")
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[dataframe_feature], write_options=None
+        )
+
+        # Assert
+        mock_job_api.create.assert_not_called()
 
     def test_save_feature_group_metadata_features(self, mocker):
         # Arrange
@@ -1461,9 +1554,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
     def test_save_feature_group_metadata_primary_partition_precombine(self, mocker):
@@ -1515,9 +1606,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_primary_partition_precombine_event_error(
@@ -1677,9 +1766,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_write_options(self, mocker):
@@ -1732,9 +1819,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
 
     def test_update_feature_group_schema_on_demand_transformations(self, mocker):
