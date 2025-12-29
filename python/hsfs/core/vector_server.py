@@ -155,6 +155,12 @@ class VectorServer:
         self._on_demand_transformation_functions: list[
             transformation_function.TransformationFunction
         ] = []
+        self.__on_demand_transformation_functions_execution_graph: list[
+            list[transformation_function.TransformationFunction]
+        ] = None
+        self.__model_dependent_transformation_functions_execution_graph: list[
+            list[transformation_function.TransformationFunction]
+        ] = None
         self._sql_client = None
 
         self._rest_client_engine = None
@@ -247,6 +253,12 @@ class VectorServer:
                 options=options,
             )
         self._serving_initialized = True
+        self.__on_demand_transformation_functions_execution_graph = (
+            entity.on_demand_transformation_execution_graph
+        )
+        self.__model_dependent_transformation_functions_execution_graph = (
+            entity.model_dependent_transformation_execution_graph
+        )
 
     def init_batch_scoring(
         self,
@@ -963,10 +975,10 @@ class VectorServer:
         transformed_feature_vectors = []
         for feature_vector in feature_vectors:
             transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                execution_graph=self.__model_dependent_transformation_functions_execution_graph,
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
-                transformation_functions=self.model_dependent_transformation_functions,
                 expected_features=set(self.transformed_feature_vector_col_name),
             )
             transformed_feature_vectors.append(
@@ -1046,11 +1058,11 @@ class VectorServer:
             feature_vectors, request_parameters
         ):
             on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                execution_graph=self.__on_demand_transformation_functions_execution_graph,
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
                 request_parameters=request_parameter,
-                transformation_functions=self.on_demand_transformation_functions,
                 expected_features=set(self._on_demand_feature_vector_col_name),
             )
             on_demand_feature_vectors.append(
@@ -1399,7 +1411,7 @@ class VectorServer:
                 online=True,
                 transformation_context=transformation_context,
                 request_parameters=request_parameter,
-                transformation_functions=self.on_demand_transformation_functions,
+                execution_graph=self.__on_demand_transformation_functions_execution_graph,
                 expected_features=set(self._on_demand_feature_vector_col_name),
             )
             if logging_meta_data:
@@ -1413,10 +1425,10 @@ class VectorServer:
         if transform or logging_meta_data:
             # Apply model dependent transformations
             encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                execution_graph=self.__model_dependent_transformation_functions_execution_graph,
                 data=feature_dict,
                 online=True,
                 transformation_context=transformation_context,
-                transformation_functions=self.model_dependent_transformation_functions,
                 expected_features=set(self.transformed_feature_vector_col_name),
             )
             if logging_meta_data:

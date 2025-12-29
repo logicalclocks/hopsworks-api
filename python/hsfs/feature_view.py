@@ -249,25 +249,19 @@ class FeatureView:
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
 
+        self._on_demand_transformation_execution_graph: list[
+            list[TransformationFunction]
+        ] = None  # Initialized when the features are retrieved from the backend.
+
         try:
             self._model_dependent_transformation_execution_graph: list[
                 list[TransformationFunction]
-            ] = self._transformation_function_engine.build_transformation_function_execution_graph(
+            ] = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
                 self.transformation_functions
             )
         except TransformationFunctionException as e:
             raise FeatureStoreException(
                 "Cyclic dependency detected in model-dependent transformation functions, attached to the feature view. Please verify that the transformation functions do not have cyclic dependencies."
-            ) from e
-        try:
-            self._on_demand_transformation_execution_graph: list[
-                list[TransformationFunction]
-            ] = self._transformation_function_engine.build_transformation_function_execution_graph(
-                self._on_demand_transformation_functions
-            )
-        except TransformationFunctionException as e:
-            raise FeatureStoreException(
-                "Cyclic dependency detected in on-demand transformation functions, present in the feature view. Please verify that the on-demand features present in the feature view do not have cyclic dependencies."
             ) from e
 
     def get_last_accessed_training_dataset(self):
@@ -3859,6 +3853,16 @@ class FeatureView:
                 )
                 features[feature_index] = feature
         fv.schema = features
+
+        try:
+            fv._on_demand_transformation_execution_graph = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+                fv._on_demand_transformation_functions
+            )
+        except TransformationFunctionException as e:
+            raise FeatureStoreException(
+                "Cyclic dependency detected in on-demand transformation functions, present in the feature view. Please verify that the on-demand features present in the feature view do not have cyclic dependencies."
+            ) from e
+
         fv.labels = [feature.name for feature in features if feature.label]
         fv.inference_helper_columns = [
             feature.name for feature in features if feature.inference_helper_column
@@ -5005,3 +5009,17 @@ class FeatureView:
                 else []
             )
         return self.__extra_logging_column_names
+
+    @property
+    def on_demand_transformation_execution_graph(
+        self,
+    ) -> list[list[TransformationFunction]]:
+        """Get the execution graph for the on-demand transformations."""
+        return self._on_demand_transformation_execution_graph
+
+    @property
+    def model_dependent_transformation_execution_graph(
+        self,
+    ) -> list[list[TransformationFunction]]:
+        """Get the execution graph for the model-dependent transformations."""
+        return self._model_dependent_transformation_execution_graph

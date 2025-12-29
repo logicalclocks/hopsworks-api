@@ -215,7 +215,6 @@ class TransformationFunctionEngine:
         if not execution_graph or data is None:
             return data
 
-        # TODO : Handle the case where one a transformation function is passed as a parameter to the other transformation function.
         TransformationFunctionEngine._validate_transformation_function_arguments(
             execution_graph=execution_graph,
             data=data,
@@ -613,6 +612,8 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def print_transformation_function_execution_graph(execution_graph):
+        if not execution_graph:
+            return
         udfs = [[tf.hopsworks_udf for tf in tfs] for tfs in execution_graph]
         max_len = max([len(str(udf)) for udf in udfs])
         tf_strings = [str(udf).center(max_len) for udf in udfs]
