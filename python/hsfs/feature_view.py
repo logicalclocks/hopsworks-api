@@ -31,7 +31,10 @@ from typing import (
 import humps
 import pandas as pd
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    TransformationFunctionException,
+)
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
@@ -246,16 +249,26 @@ class FeatureView:
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
 
-        self._model_dependent_transformation_execution_graph: list[
-            list[TransformationFunction]
-        ] = self._transformation_function_engine.build_transformation_function_execution_graph(
-            self.transformation_functions
-        )
-        self._on_demand_transformation_execution_graph: list[
-            list[TransformationFunction]
-        ] = self._transformation_function_engine.build_transformation_function_execution_graph(
-            self._on_demand_transformation_functions
-        )
+        try:
+            self._model_dependent_transformation_execution_graph: list[
+                list[TransformationFunction]
+            ] = self._transformation_function_engine.build_transformation_function_execution_graph(
+                self.transformation_functions
+            )
+        except TransformationFunctionException as e:
+            raise FeatureStoreException(
+                "Cyclic dependency detected in model-dependent transformation functions, attached to the feature view. Please verify that the transformation functions do not have cyclic dependencies."
+            ) from e
+        try:
+            self._on_demand_transformation_execution_graph: list[
+                list[TransformationFunction]
+            ] = self._transformation_function_engine.build_transformation_function_execution_graph(
+                self._on_demand_transformation_functions
+            )
+        except TransformationFunctionException as e:
+            raise FeatureStoreException(
+                "Cyclic dependency detected in on-demand transformation functions, present in the feature view. Please verify that the on-demand features present in the feature view do not have cyclic dependencies."
+            ) from e
 
     def get_last_accessed_training_dataset(self):
         """Get the last accessed training dataset version used for this feature view.

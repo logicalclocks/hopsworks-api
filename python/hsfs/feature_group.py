@@ -31,7 +31,11 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    RestAPIError,
+    TransformationFunctionException,
+)
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
     HAS_DELTALAKE_PYTHON,
@@ -2736,11 +2740,16 @@ class FeatureGroup(FeatureGroupBase):
                     self._transformation_functions
                 )
             )
-            self._transformation_function_execution_graph: list[
-                list[TransformationFunction]
-            ] = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
-                self.transformation_functions
-            )
+            try:
+                self._transformation_function_execution_graph: list[
+                    list[TransformationFunction]
+                ] = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+                    self.transformation_functions
+                )
+            except TransformationFunctionException as e:
+                raise FeatureStoreException(
+                    "Cyclic dependency detected in on-demand transformation functions, present in the feature group. Please verify that the on-demand features present in the feature group do not have cyclic dependencies."
+                ) from e
 
     def _init_time_travel_and_stream(
         self,

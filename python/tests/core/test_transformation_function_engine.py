@@ -2433,3 +2433,176 @@ class TestTransformationFunctionEngine:
 
         # Assert
         assert result["add_one"] == 11
+
+    def test_build_transformation_function_execution_graph_no_dependencies(
+        self, mocker
+    ):
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.transformation_function_api.TransformationFunctionApi")
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        @udf(int)
+        def add_two(col1):
+            return col1 + 2
+
+        tf1 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_two,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        execution_graph = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+            [tf1, tf2]
+        )
+        expected_execution_graph = [[tf1, tf2]]
+
+        # Check if each level in the execution graph contains the same transformation functions as the expected execution graph. The order of the transformation functions in the level is not important.
+        for i in range(len(execution_graph)):
+            for tf in execution_graph[i]:
+                assert tf in expected_execution_graph[i]
+
+    def test_build_transformation_function_execution_graph_with_dependencies(
+        self, mocker
+    ):
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.transformation_function_api.TransformationFunctionApi")
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        @udf(int)
+        def add_two(col1):
+            return col1 + 2
+
+        @udf(int)
+        def add_three(add_one, add_two):
+            return add_one + add_two
+
+        tf1 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_two,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf3 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_three,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        execution_graph = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+            [tf1, tf2, tf3]
+        )
+        expected_execution_graph = [[tf1, tf2], [tf3]]
+
+        for i in range(len(execution_graph)):
+            for tf in execution_graph[i]:
+                assert tf in expected_execution_graph[i]
+
+    def test_build_transformation_function_execution_graph_with_dependencies_aliased(
+        self, mocker
+    ):
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.transformation_function_api.TransformationFunctionApi")
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        @udf(int)
+        def add_two(col1):
+            return col1 + 2
+
+        @udf(int)
+        def add(add_one, add_two):
+            return add_one + add_two
+
+        tf1 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_two,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf3 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        tf1 = tf1.alias("odt1")
+        tf2 = tf2("odt1").alias("odt2")
+        tf3 = tf3("odt1", "odt2")
+
+        execution_graph = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+            [tf1, tf2, tf3]
+        )
+        expected_execution_graph = [[tf1], [tf2], [tf3]]
+
+        for i in range(len(execution_graph)):
+            for tf in execution_graph[i]:
+                assert tf in expected_execution_graph[i]
+
+    def test_build_transformation_function_execution_graph_with_dependencies_cyclic_dependency(
+        self, mocker
+    ):
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.transformation_function_api.TransformationFunctionApi")
+
+        @udf(int)
+        def add_one(col1, add_three):
+            return col1 + 1
+
+        @udf(int)
+        def add_two(add_one):
+            return add_one + 2
+
+        @udf(int)
+        def add_three(add_two, add_one):
+            return add_two + add_one
+
+        tf1 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_two,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf3 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_three,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        with pytest.raises(exceptions.TransformationFunctionException) as e_info:
+            _ = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+                [tf1, tf2, tf3]
+            )
+
+        assert (
+            str(e_info.value)
+            == "Cyclic dependency detected in transformation functions."
+        )

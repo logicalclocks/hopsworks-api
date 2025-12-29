@@ -598,7 +598,9 @@ class TransformationFunctionEngine:
         while G.nodes:
             ready = {n for n, d in G.in_degree() if d == 0}
             if not ready:
-                raise ValueError("Dependency cycle detected")
+                raise exceptions.TransformationFunctionException(
+                    "Cyclic dependency detected in transformation functions."
+                )
             level = []
             for n in ready:
                 tf = funcs.get(n)
