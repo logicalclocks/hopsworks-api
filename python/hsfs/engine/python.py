@@ -1562,6 +1562,27 @@ class Engine:
             f"Dataframe type {type(dataframe)} not supported in the Python engine."
         )
 
+    def concat_dataframes(
+        self, dataframes: list[pd.DataFrame | pl.DataFrame]
+    ) -> pd.DataFrame | pl.DataFrame:
+        if HAS_POLARS and (isinstance(dataframes[0], pl.DataFrame)):
+            dataframes = [
+                pl.from_pandas(df)
+                if HAS_PANDAS and isinstance(df, pd.DataFrame)
+                else df
+                for df in dataframes
+            ]
+            return pl.concat(dataframes, how="horizontal")
+        if HAS_PANDAS and (isinstance(dataframes[0], pd.DataFrame)):
+            dataframes = [
+                pl.to_pandas(df) if HAS_POLARS and isinstance(df, pl.DataFrame) else df
+                for df in dataframes
+            ]
+            return pd.concat(dataframes, axis=1)
+        raise ValueError(
+            f"Dataframes type {type(dataframes)} not supported in the Python engine."
+        )
+
     def apply_udf_on_dataframe(
         self,
         udf: HopsworksUdf,
@@ -1607,26 +1628,26 @@ class Engine:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         udf = hopsworks_udf.get_udf(online=online, engine_type=engine_type)
+
+        transformed_data = (
+            pd.DataFrame() if isinstance(dataframe, pd.DataFrame) else pl.DataFrame()
+        )
+
         if isinstance(dataframe, pd.DataFrame):
             if len(hopsworks_udf.return_types) > 1:
-                dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
+                transformed_data[hopsworks_udf.output_column_names] = dataframe.apply(
                     lambda x: udf(*x[hopsworks_udf.transformation_features]),
                     axis=1,
                     result_type="expand",
                 )
             else:
-                dataframe[hopsworks_udf.output_column_names[0]] = dataframe.apply(
-                    lambda x: udf(*x[hopsworks_udf.transformation_features]),
-                    axis=1,
-                    result_type="expand",
-                )
-                if hopsworks_udf.output_column_names[0] in dataframe.columns:
-                    # Overwriting features so reordering dataframe to move overwritten column to the end of the dataframe
-                    cols = dataframe.columns.tolist()
-                    cols.append(
-                        cols.pop(cols.index(hopsworks_udf.output_column_names[0]))
+                transformed_data[hopsworks_udf.output_column_names[0]] = (
+                    dataframe.apply(
+                        lambda x: udf(*x[hopsworks_udf.transformation_features]),
+                        axis=1,
+                        result_type="expand",
                     )
-                    dataframe = dataframe[cols]
+                )
         elif HAS_POLARS and (
             isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
@@ -1642,7 +1663,7 @@ class Engine:
                 f"lambda x: udf({transformation_features})", locals()
             )
             transformed_features = dataframe.map_rows(feature_mapping_wrapper)
-            dataframe = dataframe.with_columns(
+            transformed_data = transformed_data.with_columns(
                 transformed_features.rename(
                     dict(
                         zip(
@@ -1652,7 +1673,7 @@ class Engine:
                     )
                 )
             )
-        return dataframe
+        return transformed_data
 
     def _apply_pandas_udf(
         self,
@@ -1685,8 +1706,10 @@ class Engine:
             else:
                 dataframe = dataframe.to_pandas(use_pyarrow_extension_array=False)
 
+        transformed_data = pd.DataFrame()
+
         if len(hopsworks_udf.return_types) > 1:
-            dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
+            transformed_data[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
                 online=online, engine_type=engine_type
             )(
                 *(
@@ -1699,24 +1722,17 @@ class Engine:
                 dataframe.index
             )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
         else:
-            dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
-                online=online, engine_type=engine_type
-            )(
-                *(
-                    [
-                        dataframe[feature]
-                        for feature in hopsworks_udf.transformation_features
-                    ]
-                )
-            ).set_axis(
-                dataframe.index
+            transformed_data[hopsworks_udf.output_column_names[0]] = (
+                hopsworks_udf.get_udf(online=online, engine_type=engine_type)(
+                    *(
+                        [
+                            dataframe[feature]
+                            for feature in hopsworks_udf.transformation_features
+                        ]
+                    )
+                ).set_axis(dataframe.index)
             )  # Index is set to the input dataframe index so that pandas would merge the new column without reordering it.
-            if hopsworks_udf.output_column_names[0] in dataframe.columns:
-                # Overwriting features also reordering dataframe to move overwritten column to the end of the dataframe
-                cols = dataframe.columns.tolist()
-                cols.append(cols.pop(cols.index(hopsworks_udf.output_column_names[0])))
-                dataframe = dataframe[cols]
-        return dataframe
+        return transformed_data
 
     @staticmethod
     def get_unique_values(

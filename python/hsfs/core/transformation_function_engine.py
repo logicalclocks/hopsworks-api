@@ -304,30 +304,14 @@ class TransformationFunctionEngine:
                     engine_type=engine.get_type(),
                 )
             )
-
         for future in as_completed(futures):
-            # TODO: This code is utter garbage. Fix this.
             result = future.result()
-            if isinstance(result, dict):
-                for col in result:
-                    if col not in transformed_data:
-                        transformed_data[col] = result[col]
+            if isinstance(transformed_data, dict):
+                transformed_data.update(result)
             else:
-                for col in result.columns:
-                    if col not in transformed_data.columns:
-                        import polars as pl
-
-                        if isinstance(transformed_data, pl.DataFrame):
-                            if isinstance(result[col], pd.Series):
-                                transformed_data = transformed_data.with_columns(
-                                    pl.from_pandas(result[col])
-                                )
-                            else:
-                                transformed_data = transformed_data.with_columns(
-                                    result[col]
-                                )
-                        else:
-                            transformed_data[col] = result[col]
+                transformed_data = execution_engine.concat_dataframes(
+                    [transformed_data, result]
+                )
 
         if isinstance(transformed_data, dict):
             transformed_data = {
