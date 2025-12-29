@@ -959,7 +959,7 @@ class Engine:
                 dataset = dataset.coalesce(1)
             path = training_dataset.location + "/" + training_dataset.name
             return self._write_training_dataset_single(
-                feature_view_obj.transformation_functions,
+                feature_view_obj._model_dependent_transformation_execution_graph,
                 dataset,
                 training_dataset.storage_connector,
                 training_dataset.data_format,
@@ -993,7 +993,7 @@ class Engine:
             write_options,
             save_mode,
             to_df=to_df,
-            transformation_functions=feature_view_obj.transformation_functions,
+            execution_graph=feature_view_obj._model_dependent_transformation_execution_graph,
             transformation_context=transformation_context,
         )
 
@@ -1164,15 +1164,13 @@ class Engine:
         write_options,
         save_mode,
         to_df=False,
-        transformation_functions: list[
-            transformation_function.TransformationFunction
-        ] = None,
+        execution_graph: list[transformation_function.TransformationFunction] = None,
         transformation_context: dict[str, Any] = None,
     ):
         for split_name, feature_dataframe in feature_dataframes.items():
             split_path = training_dataset.location + "/" + str(split_name)
             feature_dataframes[split_name] = self._write_training_dataset_single(
-                transformation_functions,
+                execution_graph,
                 feature_dataframe,
                 training_dataset.storage_connector,
                 training_dataset.data_format,
@@ -1189,7 +1187,7 @@ class Engine:
 
     def _write_training_dataset_single(
         self,
-        transformation_functions,
+        execution_graph,
         feature_dataframe,
         storage_connector,
         data_format,
@@ -1201,7 +1199,7 @@ class Engine:
     ):
         # apply transformation functions (they are applied separately to each split)
         feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-            transformation_functions=transformation_functions,
+            execution_graph=execution_graph,
             data=feature_dataframe,
             online=False,
             transformation_context=transformation_context,

@@ -1171,7 +1171,7 @@ class Engine:
         #        training_dataset_obj, feature_view_obj, training_dataset_version
         #    )
         return transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-            transformation_functions=feature_view_obj.transformation_functions,
+            execution_graph=feature_view_obj._model_dependent_transformation_execution_graph,
             data=df,
             online=False,
             transformation_context=transformation_context,
@@ -1186,7 +1186,7 @@ class Engine:
     ) -> tuple[pd.DataFrame | pl.DataFrame, pd.DataFrame | pl.DataFrame | None]:
         if labels:
             labels_df = df[labels]
-            df_new = df.drop(columns=labels)
+            df_new = self.drop_columns(df, [labels])
             return (
                 self._return_dataframe_type(df_new, dataframe_type),
                 self._return_dataframe_type(labels_df, dataframe_type),
@@ -1296,7 +1296,7 @@ class Engine:
         for split_name in result_dfs:
             result_dfs[split_name] = (
                 transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=feature_view_obj.transformation_functions,
+                    execution_graph=feature_view_obj._model_dependent_transformation_execution_graph,
                     data=result_dfs.get(split_name),
                     online=False,
                     transformation_context=transformation_context,
@@ -1567,6 +1567,7 @@ class Engine:
         udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
+        engine_type: str | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a udf to a dataframe."""
         if (
@@ -1574,10 +1575,16 @@ class Engine:
             == UDFExecutionMode.PANDAS
         ):
             return self._apply_pandas_udf(
-                hopsworks_udf=udf, dataframe=dataframe, online=online
+                hopsworks_udf=udf,
+                dataframe=dataframe,
+                online=online,
+                engine_type=engine_type,
             )
         return self._apply_python_udf(
-            hopsworks_udf=udf, dataframe=dataframe, online=online
+            hopsworks_udf=udf,
+            dataframe=dataframe,
+            online=online,
+            engine_type=engine_type,
         )
 
     def _apply_python_udf(
@@ -1585,6 +1592,7 @@ class Engine:
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
+        engine_type: str | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a python udf to a dataframe.
 
@@ -1598,7 +1606,7 @@ class Engine:
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        udf = hopsworks_udf.get_udf(online=online)
+        udf = hopsworks_udf.get_udf(online=online, engine_type=engine_type)
         if isinstance(dataframe, pd.DataFrame):
             if len(hopsworks_udf.return_types) > 1:
                 dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
@@ -1651,6 +1659,7 @@ class Engine:
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
+        engine_type: str | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a pandas udf to a dataframe.
 
@@ -1678,7 +1687,7 @@ class Engine:
 
         if len(hopsworks_udf.return_types) > 1:
             dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
-                online=online
+                online=online, engine_type=engine_type
             )(
                 *(
                     [
@@ -1691,7 +1700,7 @@ class Engine:
             )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
         else:
             dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
-                online=online
+                online=online, engine_type=engine_type
             )(
                 *(
                     [

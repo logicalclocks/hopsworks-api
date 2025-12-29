@@ -31,6 +31,7 @@ import humps
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
+from hopsworks_common.version import __version__ as current_version
 from hsfs import engine, util
 from hsfs.decorators import typechecked
 from hsfs.transformation_statistics import TransformationStatistics
@@ -791,7 +792,7 @@ def renaming_wrapper(*args):
             for _ in range(len(self.transformation_statistics.feature.unique_values))
         ]
 
-    def get_udf(self, online: bool = False) -> Callable:
+    def get_udf(self, online: bool = False, engine_type: str | None = None) -> Callable:
         """Function that checks the current engine type, execution type and returns the appropriate UDF.
 
         If the execution mode is `"default"`:
@@ -815,11 +816,12 @@ def renaming_wrapper(*args):
         Returns:
             Pandas UDF in the spark engine otherwise returns a python function for the UDF.
         """
+        engine_type = engine_type or engine.get_type()
         if (
             self.execution_mode.get_current_execution_mode(online)
             == UDFExecutionMode.PANDAS
         ):
-            if engine.get_type() in ["python", "training"] or online:
+            if engine_type in ["python", "training"] or online:
                 return self.pandas_udf_wrapper()
             from pyspark.sql.functions import pandas_udf
 
@@ -831,7 +833,7 @@ def renaming_wrapper(*args):
             self.execution_mode.get_current_execution_mode(online)
             == UDFExecutionMode.PYTHON
         ):
-            if engine.get_type() in ["python", "training"] or online:
+            if engine_type in ["python", "training"] or online:
                 # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
                 return self.python_udf_wrapper(rename_outputs=False)
             from pyspark.sql.functions import udf as pyspark_udf
@@ -1029,7 +1031,11 @@ def renaming_wrapper(*args):
         Returns:
             Dictionary that contains all data required to json serialize the object.
         """
-        backend_version = client.get_connection().backend_version
+        backend_version = (
+            client.get_connection().backend_version
+            if client.get_connection()
+            else current_version
+        )
 
         return {
             "sourceCode": self._function_source,

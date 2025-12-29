@@ -3605,7 +3605,7 @@ class TestSpark:
             write_options=None,
             save_mode=None,
             to_df=False,
-            transformation_functions=[tf("col_0")],
+            execution_graph=[[[tf("col_0")]]],
         )
 
         # Assert
@@ -3660,7 +3660,7 @@ class TestSpark:
             write_options=None,
             save_mode=None,
             to_df=True,
-            transformation_functions=[tf("col_0")],
+            execution_graph=[[[tf("col_0")]]],
         )
 
         # Assert
@@ -3691,7 +3691,7 @@ class TestSpark:
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
+            execution_graph=[[[tf]]],
             feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="csv",
@@ -3738,7 +3738,7 @@ class TestSpark:
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
+            execution_graph=[[[tf]]],
             feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="tsv",
@@ -3785,7 +3785,7 @@ class TestSpark:
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
+            execution_graph=[[[tf]]],
             feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format=None,

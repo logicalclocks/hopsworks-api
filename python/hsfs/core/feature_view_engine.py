@@ -890,7 +890,7 @@ class FeatureViewEngine:
 
     def apply_transformations(
         self,
-        transformation_functions: list[TransformationFunction],
+        execution_graph: list[list[TransformationFunction]],
         data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
@@ -910,7 +910,7 @@ class FeatureViewEngine:
         """
         try:
             df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                transformation_functions=transformation_functions,
+                execution_graph=execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,

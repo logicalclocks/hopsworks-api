@@ -246,6 +246,17 @@ class FeatureView:
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
 
+        self._model_dependent_transformation_execution_graph: list[
+            list[TransformationFunction]
+        ] = self._transformation_function_engine.build_transformation_function_execution_graph(
+            self.transformation_functions
+        )
+        self._on_demand_transformation_execution_graph: list[
+            list[TransformationFunction]
+        ] = self._transformation_function_engine.build_transformation_function_execution_graph(
+            self._on_demand_transformation_functions
+        )
+
     def get_last_accessed_training_dataset(self):
         """Get the last accessed training dataset version used for this feature view.
 
@@ -4442,7 +4453,7 @@ class FeatureView:
         """
         if self._on_demand_transformation_functions:
             data = self._feature_view_engine.apply_transformations(
-                transformation_functions=self._on_demand_transformation_functions,
+                execution_graph=self._on_demand_transformation_execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
@@ -4507,7 +4518,7 @@ class FeatureView:
         """
         if self.transformation_functions:
             data = self._feature_view_engine.apply_transformations(
-                transformation_functions=self.transformation_functions,
+                execution_graph=self._model_dependent_transformation_execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
@@ -4619,6 +4630,16 @@ class FeatureView:
         """
         return self._feature_view_engine.get_training_dataset_schema(
             self, training_dataset_version
+        )
+
+    def print_mdt_execution_graph(self):
+        transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
+            self._model_dependent_transformation_execution_graph
+        )
+
+    def print_odt_execution_graph(self):
+        transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
+            self._on_demand_transformation_execution_graph
         )
 
     @property

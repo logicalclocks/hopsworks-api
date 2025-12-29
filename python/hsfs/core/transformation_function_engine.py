@@ -15,8 +15,11 @@
 #
 from __future__ import annotations
 
+import atexit
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, TypeVar
 
+import networkx as nx
 import pandas as pd
 from hopsworks_common.client import exceptions
 from hsfs import (
@@ -49,11 +52,14 @@ class TransformationFunctionEngine:
     )
     FEATURE_NOT_EXIST_ERROR = "Provided feature '{}' in transformation functions do not exist in any of the feature groups."
 
+    __process_pool = None
+
     def __init__(self, feature_store_id: int):
         self._feature_store_id = feature_store_id
         self._transformation_function_api: transformation_function_api.TransformationFunctionApi = transformation_function_api.TransformationFunctionApi(
             feature_store_id
         )
+        atexit.register(TransformationFunctionEngine.shutdown_process_pool)
 
     def save(
         self, transformation_fn_instance: transformation_function.TransformationFunction
@@ -108,8 +114,22 @@ class TransformationFunctionEngine:
         return transformation_fns
 
     @staticmethod
+    def shutdown_process_pool():
+        if TransformationFunctionEngine.__process_pool:
+            TransformationFunctionEngine.__process_pool.shutdown(wait=True)
+            TransformationFunctionEngine.__process_pool = None
+
+    @staticmethod
+    def create_process_pool(n_processes: int = None):
+        if TransformationFunctionEngine.__process_pool:
+            TransformationFunctionEngine.shutdown_process_pool()
+        TransformationFunctionEngine.__process_pool = ProcessPoolExecutor(
+            max_workers=n_processes
+        )
+
+    @staticmethod
     def _validate_transformation_function_arguments(
-        transformation_functions: list[transformation_function.TransformationFunction],
+        execution_graph: list[list[transformation_function.TransformationFunction]],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         request_parameters: dict[str, Any] = None,
     ) -> None:
@@ -123,44 +143,57 @@ class TransformationFunctionEngine:
         Raises:
             exceptions.TransformationFunctionException: If the arguments required to execute the transformation functions are not present in the passed data or request parameters.
         """
-        for tf in transformation_functions:
-            if engine.get_instance().check_supported_dataframe(data):
-                missing_features = set(tf.hopsworks_udf.transformation_features) - set(
-                    data.columns
-                )
-            elif isinstance(data, dict):
-                missing_features = set(tf.hopsworks_udf.transformation_features) - set(
-                    data.keys()
-                )
-            else:
-                raise exceptions.FeatureStoreException(
-                    f"Dataframe type {type(data)} not supported in the engine."
+        transformation_function_output_feature = set()
+        for transformation_functions in execution_graph:
+            for tf in transformation_functions:
+                if engine.get_instance().check_supported_dataframe(data):
+                    missing_features = set(
+                        tf.hopsworks_udf.transformation_features
+                    ) - set(data.columns)
+                elif isinstance(data, dict):
+                    missing_features = set(
+                        tf.hopsworks_udf.transformation_features
+                    ) - set(data.keys())
+                else:
+                    raise exceptions.FeatureStoreException(
+                        f"Dataframe type {type(data)} not supported in the engine."
+                    )
+
+                if request_parameters:
+                    missing_features = missing_features - set(request_parameters.keys())
+                    if tf.hopsworks_udf.feature_name_prefix:
+                        missing_features = missing_features - {
+                            tf.hopsworks_udf.feature_name_prefix + feature
+                            for feature in request_parameters
+                        }
+                missing_features = (
+                    missing_features - transformation_function_output_feature
                 )
 
-            if request_parameters:
-                missing_features = missing_features - set(request_parameters.keys())
-                if tf.hopsworks_udf.feature_name_prefix:
-                    missing_features = missing_features - {
-                        tf.hopsworks_udf.feature_name_prefix + feature
-                        for feature in request_parameters
-                    }
-
-            if missing_features:
-                raise exceptions.TransformationFunctionException(
-                    message=f"The following feature(s): `{', '.join(missing_features)}`, required for the transformation function '{tf.hopsworks_udf.function_name}' are not available.",
-                    missing_features=missing_features,
-                    transformation_function_name=tf.hopsworks_udf.function_name,
-                    transformation_type=tf.transformation_type.value,
-                )
+                if missing_features:
+                    raise exceptions.TransformationFunctionException(
+                        message=f"The following feature(s): `{', '.join(missing_features)}`, required for the transformation function '{tf.hopsworks_udf.function_name}' are not available.",
+                        missing_features=missing_features,
+                        transformation_function_name=tf.hopsworks_udf.function_name,
+                        transformation_type=tf.transformation_type.value,
+                    )
+            transformation_function_output_feature.update(
+                {
+                    output_column_name
+                    for tf in transformation_functions
+                    for output_column_name in tf.hopsworks_udf.output_column_names
+                }
+            )
 
     @staticmethod
     def apply_transformation_functions(
-        transformation_functions: list[transformation_function.TransformationFunction],
+        execution_graph: list[list[transformation_function.TransformationFunction]],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] = None,
         expected_features: set[str] = None,
+        n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Function to apply the transformation functions to the passed data.
 
@@ -178,31 +211,36 @@ class TransformationFunctionEngine:
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
-        if not transformation_functions or data is None:
+        if not execution_graph or data is None:
             return data
+
+        # TODO : Handle the case where one a transformation function is passed as a parameter to the other transformation function.
         TransformationFunctionEngine._validate_transformation_function_arguments(
-            transformation_functions=transformation_functions,
+            execution_graph=execution_graph,
             data=data,
             request_parameters=request_parameters,
         )
 
-        if isinstance(data, dict) or engine.get_type() != "spark":
-            # If the data is a dictionary or if the engine is not spark, we execute the transformation functions using.
-            return TransformationFunctionEngine._apply_transformation_functions(
-                transformation_functions=transformation_functions,
-                data=data,
-                online=online,
-                transformation_context=transformation_context,
-                request_parameters=request_parameters,
-                expected_features=expected_features,
-            )
-        # In the case of spark, we execute the transformation functions using the spark engine since the transformations are pushed down to Spark and are not executed in Python.
-        return engine.get_instance()._apply_transformation_function(
-            transformation_functions=transformation_functions,
-            dataset=data,
-            transformation_context=transformation_context,
-            expected_features=expected_features,
-        )
+        for transformation_functions in execution_graph:
+            if isinstance(data, dict) or engine.get_type() != "spark":
+                # If the data is a dictionary or if the engine is not spark, we execute the transformation functions using.
+                data = TransformationFunctionEngine._apply_transformation_functions(
+                    transformation_functions=transformation_functions,
+                    data=data,
+                    online=online,
+                    transformation_context=transformation_context,
+                    request_parameters=request_parameters,
+                    expected_features=expected_features,
+                )
+            else:
+                # In the case of spark, we execute the transformation functions using the spark engine since the transformations are pushed down to Spark and are not executed in Python.
+                data = engine.get_instance()._apply_transformation_function(
+                    transformation_functions=transformation_functions,
+                    dataset=data,
+                    transformation_context=transformation_context,
+                    expected_features=expected_features,
+                )
+        return data
 
     @staticmethod
     def _apply_transformation_functions(
@@ -212,6 +250,7 @@ class TransformationFunctionEngine:
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] = None,
         expected_features: set[str] = None,
+        n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Function to apply the transformation functions to the passed dataframe or list of dictionaries.
 
@@ -228,6 +267,9 @@ class TransformationFunctionEngine:
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
+        if not TransformationFunctionEngine.__process_pool:
+            TransformationFunctionEngine.create_process_pool(n_processes)
+
         dropped_features: set[str] = set()
 
         if isinstance(data, dict):
@@ -239,6 +281,8 @@ class TransformationFunctionEngine:
             for key in request_parameters:
                 transformed_data[key] = request_parameters[key]
 
+        futures = []
+        execution_engine = engine.get_instance()
         for tf in transformation_functions:
             udf = tf.hopsworks_udf
             udf.transformation_context = transformation_context
@@ -250,9 +294,40 @@ class TransformationFunctionEngine:
                     else udf.dropped_features
                 )  # Drop features that are not expected, this is required to avoid dropping features having same name that are available from other feature groups.
 
-            transformed_data = TransformationFunctionEngine.execute_udf(
-                udf=udf, data=transformed_data, online=online
+            futures.append(
+                TransformationFunctionEngine.__process_pool.submit(
+                    TransformationFunctionEngine.execute_udf,
+                    udf=udf,
+                    data=transformed_data,
+                    online=online,
+                    execution_engine=execution_engine,
+                    engine_type=engine.get_type(),
+                )
             )
+
+        for future in as_completed(futures):
+            # TODO: This code is utter garbage. Fix this.
+            result = future.result()
+            if isinstance(result, dict):
+                for col in result:
+                    if col not in transformed_data:
+                        transformed_data[col] = result[col]
+            else:
+                for col in result.columns:
+                    if col not in transformed_data.columns:
+                        import polars as pl
+
+                        if isinstance(transformed_data, pl.DataFrame):
+                            if isinstance(result[col], pd.Series):
+                                transformed_data = transformed_data.with_columns(
+                                    pl.from_pandas(result[col])
+                                )
+                            else:
+                                transformed_data = transformed_data.with_columns(
+                                    result[col]
+                                )
+                        else:
+                            transformed_data[col] = result[col]
 
         if isinstance(transformed_data, dict):
             transformed_data = {
@@ -269,6 +344,8 @@ class TransformationFunctionEngine:
     def execute_udf(
         udf: HopsworksUdf,
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
+        execution_engine,
+        engine_type: str | None = None,
         online: bool = False,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Function to execute the UDF used to defined a transformation function on passed data.
@@ -283,14 +360,13 @@ class TransformationFunctionEngine:
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
-        execution_engine = engine.get_instance()
         if execution_engine.check_supported_dataframe(data):
             return execution_engine.apply_udf_on_dataframe(
-                udf=udf, dataframe=data, online=online
+                udf=udf, dataframe=data, online=online, engine_type=engine_type
             )
         if isinstance(data, dict):
             return TransformationFunctionEngine.apply_udf_on_dict(
-                udf=udf, data=data, online=online
+                udf=udf, data=data, online=online, engine_type=engine_type
             )
         raise exceptions.FeatureStoreException(
             f"Dataframe type {type(data)} not supported in the engine."
@@ -301,6 +377,7 @@ class TransformationFunctionEngine:
         udf: HopsworksUdf,
         data: dict[str, Any],
         online: bool | None = True,
+        engine_type: str | None = None,
     ) -> dict[str, Any]:
         """Function to apply the UDF used to defined a transformation function on a dictionary.
 
@@ -316,7 +393,7 @@ class TransformationFunctionEngine:
         """
         features = []
 
-        if not online and engine.get_type() == "spark":
+        if not online and engine_type == "spark":
             raise exceptions.FeatureStoreException(
                 "Cannot apply transformation functions on a dictionary in offline mode when the engine is spark. Please use the python engine or use the online mode."
             )
@@ -337,7 +414,11 @@ class TransformationFunctionEngine:
             else:
                 features.append(feature_value)
 
-        transformed_result = udf.get_udf(online=online)(*features)
+        transformed_result = udf.get_udf(online=online, engine_type=engine_type)(
+            *features
+        )
+
+        transformed_dict = {}
 
         if (
             udf.execution_mode.get_current_execution_mode(online=online)
@@ -345,19 +426,19 @@ class TransformationFunctionEngine:
         ):
             # Pandas UDF return can return a pandas series or a pandas dataframe, so we need to cast it back to a dictionary.
             if isinstance(transformed_result, pd.Series):
-                data[transformed_result.name] = transformed_result.values[0]
+                transformed_dict[transformed_result.name] = transformed_result.values[0]
             else:
                 for col in transformed_result:
-                    data[col] = transformed_result[col].values[0]
+                    transformed_dict[col] = transformed_result[col].values[0]
         else:
             # Python UDF return can return a tuple or a list, so we need to cast it back to a dictionary.
             if isinstance(transformed_result, (tuple, list)):
                 for index, result in enumerate(transformed_result):
-                    data[udf.output_column_names[index]] = result
+                    transformed_dict[udf.output_column_names[index]] = result
             else:
-                data[udf.output_column_names[0]] = transformed_result
+                transformed_dict[udf.output_column_names[0]] = transformed_result
 
-        return data
+        return transformed_dict
 
     def delete(
         self,
@@ -508,6 +589,48 @@ class TransformationFunctionEngine:
             # Set statistics computed in the hopsworks UDF
             for tf in feature_view_obj.transformation_functions:
                 tf.transformation_statistics = stats.feature_descriptive_statistics
+
+    @staticmethod
+    def build_transformation_function_execution_graph(transformation_functions):
+        funcs = {
+            output_column_name: tf
+            for tf in transformation_functions
+            for output_column_name in tf.hopsworks_udf.output_column_names
+        }
+        G = nx.DiGraph()
+
+        # Add nodes
+        G.add_nodes_from(funcs)
+
+        # Add edges: dependency -> dependent
+        for name, tf in funcs.items():
+            transformation_features = tf.hopsworks_udf.transformation_features
+            for transformation_feature in transformation_features:
+                if transformation_feature in funcs:
+                    G.add_edge(transformation_feature, name)
+
+        levels = []
+
+        while G.nodes:
+            ready = {n for n, d in G.in_degree() if d == 0}
+            if not ready:
+                raise ValueError("Dependency cycle detected")
+            level = []
+            for n in ready:
+                tf = funcs.get(n)
+                if tf not in level:
+                    level.append(tf)
+            levels.append(level)
+            G.remove_nodes_from(ready)
+
+        return levels
+
+    @staticmethod
+    def print_transformation_function_execution_graph(execution_graph):
+        udfs = [[tf.hopsworks_udf for tf in tfs] for tfs in execution_graph]
+        max_len = max([len(str(udf)) for udf in udfs])
+        tf_strings = [str(udf).center(max_len) for udf in udfs]
+        print(f"\n{'↓'.center(max_len)}\n".join(tf_strings))
 
     @staticmethod
     def get_and_set_feature_statistics(
