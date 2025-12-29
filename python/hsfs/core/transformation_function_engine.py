@@ -580,6 +580,9 @@ class TransformationFunctionEngine:
             for tf in transformation_functions
             for output_column_name in tf.hopsworks_udf.output_column_names
         }
+        order_index = {
+            str(func): index for index, func in enumerate(transformation_functions)
+        }
         G = nx.DiGraph()
 
         # Add nodes
@@ -605,7 +608,7 @@ class TransformationFunctionEngine:
                 tf = funcs.get(n)
                 if tf not in level:
                     level.append(tf)
-            levels.append(level)
+            levels.append(sorted(level, key=lambda x: order_index[str(x)]))
             G.remove_nodes_from(ready)
 
         return levels
