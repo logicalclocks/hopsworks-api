@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import atexit
+import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -124,7 +125,7 @@ class TransformationFunctionEngine:
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.shutdown_process_pool()
         TransformationFunctionEngine.__process_pool = ProcessPoolExecutor(
-            max_workers=n_processes
+            max_workers=n_processes, mp_context=multiprocessing.get_context("fork")
         )
 
     @staticmethod
@@ -300,7 +301,6 @@ class TransformationFunctionEngine:
                     udf=udf,
                     data=transformed_data,
                     online=online,
-                    execution_engine=execution_engine,
                     engine_type=engine.get_type(),
                 )
             )
@@ -328,7 +328,6 @@ class TransformationFunctionEngine:
     def execute_udf(
         udf: HopsworksUdf,
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
-        execution_engine,
         engine_type: str | None = None,
         online: bool = False,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
@@ -344,6 +343,7 @@ class TransformationFunctionEngine:
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
+        execution_engine = engine.get_instance()
         if execution_engine.check_supported_dataframe(data):
             return execution_engine.apply_udf_on_dataframe(
                 udf=udf, dataframe=data, online=online, engine_type=engine_type

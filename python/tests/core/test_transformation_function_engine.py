@@ -528,7 +528,6 @@ class TestTransformationFunctionEngine:
             udf=add_one,
             data=pd.DataFrame(data={"col1": [1, 2, 3]}),
             online=False,
-            execution_engine=python_engine,
         )
 
         # Assert
@@ -549,9 +548,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            tf_engine.execute_udf(
-                udf=add_one, data=1, online=False, execution_engine=python_engine
-            )
+            tf_engine.execute_udf(udf=add_one, data=1, online=False)
 
         # Assert
         assert (
@@ -580,7 +577,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine.execute_udf(
-            udf=add_one, data=data, online=False, execution_engine=python_engine
+            udf=add_one,
+            data=data,
+            online=False,
         )
 
         # Assert
