@@ -276,6 +276,7 @@ class TransformationFunctionEngine:
             transformed_data = data.copy()
         else:
             transformed_data = engine.get_instance().shallow_copy_dataframe(data)
+            transformed_data_columns = transformed_data.columns.tolist()
 
         if request_parameters:
             for key in request_parameters:
@@ -286,6 +287,10 @@ class TransformationFunctionEngine:
         for tf in transformation_functions:
             udf = tf.hopsworks_udf
             udf.transformation_context = transformation_context
+            for col in udf.output_column_names:
+                if col in transformed_data_columns:
+                    transformed_data_columns.remove(col)
+                transformed_data_columns.append(col)
 
             if udf.dropped_features:
                 dropped_features.update(
@@ -317,6 +322,7 @@ class TransformationFunctionEngine:
                 k: v for k, v in transformed_data.items() if k not in dropped_features
             }
         else:
+            transformed_data = transformed_data[transformed_data_columns]
             transformed_data = engine.get_instance().drop_columns(
                 transformed_data, dropped_features
             )
