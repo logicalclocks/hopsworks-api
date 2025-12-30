@@ -24,6 +24,7 @@ import humps
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
+from hopsworks_common.version import __version__ as current_version
 from hsfs import util
 from hsfs.core import transformation_function_engine
 from hsfs.decorators import typechecked
@@ -237,7 +238,11 @@ class TransformationFunction:
         Returns:
             `Dict`: Dictionary that contains all data required to json serialize the object.
         """
-        backend_version = client.get_connection().backend_version
+        backend_version = (
+            client.get_connection().backend_version
+            if client.get_connection()
+            else current_version
+        )
 
         return {
             "id": self._id,
@@ -317,6 +322,56 @@ class TransformationFunction:
                 output_col_names = [output_col_names[0][: FEATURES.MAX_LENGTH_NAME]]
 
         return output_col_names
+
+    def executor(
+        self,
+        statistics: TransformationStatistics = None,
+        context: dict[str, Any] = None,
+        online: bool = False,
+    ) -> Any:
+        """Function that returns an callable object that can be executed to obtain the resulting values of the transformation function.
+
+        The function allows the user to set the information in the transformation function like transformation statistics and transformation context and then execute it.
+
+        Parameters:
+            statistics: Statistics to be passed to the transformation function.
+            context: Transformation context to be passed to the transformation function.
+            online: Apply the transformation function for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+
+        Returns:
+            A callable object that can be executed to obtain the resulting values of the transformation function.
+        """
+        # Fetch existing stateful information in the UDF.
+        udf = copy.deepcopy(self.hopsworks_udf)
+
+        udf.transformation_context = context if context else udf.transformation_context
+        if statistics:
+            udf.transformation_statistics = statistics
+        udf.output_column_names = (
+            udf.output_column_names
+            if udf.output_column_names
+            else [f"col_{i}" for i in range(len(udf.return_types))]
+        )
+
+        executable = udf.get_udf(online=online)
+
+        executable.execute = executable.__call__
+
+        return executable
+
+    def execute(self, *args) -> Any:
+        """Function to execute the transformation function with the passed arguments.
+
+        This function execute the transformation function in the offline mode with no transformation statistics and transformation context.
+        To execute the transformation function in the online mode with transformation statistics and transformation context, use the `executor` function.
+
+        Parameters:
+            *args: The arguments to be passed to the transformation function.
+
+        Returns:
+            The resulting values of the transformation function.
+        """
+        return self.hopsworks_udf.executor().execute(*args)
 
     @staticmethod
     def _validate_transformation_type(

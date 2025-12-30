@@ -1325,10 +1325,11 @@ class TestExternalFeatureGroup:
             == "Updated expectation suite attached to Feature Group, edit it at"
         )
 
-    def test_from_response_json_transformation_functions(self, backend_fixtures):
+    def test_from_response_json_transformation_functions(
+        self, backend_fixtures, mocker
+    ):
         # Arrange
         json = backend_fixtures["feature_group"]["get_transformations"]["response"]
-
         # Act
         fg = feature_group.FeatureGroup.from_response_json(json)
 
