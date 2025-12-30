@@ -1130,6 +1130,7 @@ class Engine:
         dataframe_type: str,
         training_dataset_version: int = None,
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Function that creates or retrieves already created the training dataset.
 
@@ -1142,6 +1143,7 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1160,6 +1162,7 @@ class Engine:
                 dataframe_type,
                 training_dataset_version,
                 transformation_context=transformation_context,
+                n_processes=n_processes,
             )
         df = query_obj.read(read_options=read_options, dataframe_type=dataframe_type)
         # if training_dataset_version is None:
@@ -1176,6 +1179,7 @@ class Engine:
             online=False,
             transformation_context=transformation_context,
             request_parameters=None,
+            n_processes=n_processes,
         )
 
     def split_labels(
@@ -1186,7 +1190,7 @@ class Engine:
     ) -> tuple[pd.DataFrame | pl.DataFrame, pd.DataFrame | pl.DataFrame | None]:
         if labels:
             labels_df = df[labels]
-            df_new = self.drop_columns(df, [labels])
+            df_new = self.drop_columns(df, labels)
             return (
                 self._return_dataframe_type(df_new, dataframe_type),
                 self._return_dataframe_type(labels_df, dataframe_type),
@@ -1199,6 +1203,7 @@ class Engine:
         if HAS_POLARS and (
             isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
+            drop_cols = [drop_cols] if isinstance(drop_cols, str) else drop_cols
             return df.drop(*drop_cols)
         return df.drop(columns=drop_cols)
 
@@ -1211,6 +1216,7 @@ class Engine:
         dataframe_type: str,
         training_dataset_version: int = None,
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
     ) -> dict[str, pd.DataFrame | pl.DataFrame]:
         """Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split and values are split ratios.
 
@@ -1223,6 +1229,7 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1301,6 +1308,7 @@ class Engine:
                     online=False,
                     transformation_context=transformation_context,
                     request_parameters=None,
+                    n_processes=n_processes,
                 )
                 if feature_view_obj.transformation_functions
                 else result_dfs.get(split_name)

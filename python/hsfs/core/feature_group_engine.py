@@ -92,6 +92,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         write_options,
         transformation_context: dict[str, Any] = None,
         validation_options: dict = None,
+        n_processes: int = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
@@ -110,6 +111,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     data=feature_dataframe,
                     online=False,
                     transformation_context=transformation_context,
+                    n_processes=n_processes,
                 )
             else:
                 warnings.warn(
@@ -172,6 +174,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         online: bool = False,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
         """Function to apply on demand transformations to the passed dataframe or list of dictionaries.
 
@@ -181,6 +184,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
@@ -192,6 +196,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         except exceptions.TransformationFunctionException as e:
             raise exceptions.FeatureStoreException(
@@ -211,6 +216,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         validation_options: dict = None,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe,
@@ -230,6 +236,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     data=feature_dataframe,
                     transformation_context=transformation_context,
                     online=False,
+                    n_processes=n_processes,
                 )
             except exceptions.TransformationFunctionException as e:
                 raise exceptions.FeatureStoreException(

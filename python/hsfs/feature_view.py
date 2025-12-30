@@ -616,6 +616,7 @@ class FeatureView:
         request_parameters: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
     ) -> (
         list[Any]
         | pd.DataFrame
@@ -736,6 +737,9 @@ class FeatureView:
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object.
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vector along with all the logging metadata.
+            n_processes:
+                Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
 
         Returns:
             Returned `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (the exact type dependends on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -762,6 +766,7 @@ class FeatureView:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             logging_data=logging_data,
+            n_processes=n_processes,
         )
 
     def get_feature_vectors(
@@ -778,6 +783,7 @@ class FeatureView:
         request_parameters: list[dict[str, Any]] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
     ) -> (
         list[list[Any]]
         | pd.DataFrame
@@ -895,6 +901,9 @@ class FeatureView:
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object.
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
+            n_processes:
+                Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
 
         Returns:
             Returned `List[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (depending on the `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -923,6 +932,7 @@ class FeatureView:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             logging_data=logging_data,
+            n_processes=n_processes,
         )
 
     def get_inference_helper(
@@ -1167,6 +1177,7 @@ class FeatureView:
         transformed: bool | None = True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes | HopsworksLoggingMetadataType:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1265,6 +1276,10 @@ class FeatureView:
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object.
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The batch data object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
+            n_processes:
+                Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             DataFrame: The spark dataframe containing the feature data.
@@ -1282,7 +1297,7 @@ class FeatureView:
             start_time,
             end_time,
             self._batch_scoring_server.training_dataset_version,
-            self._batch_scoring_server._model_dependent_transformation_functions,
+            self._batch_scoring_server._model_dependent_transformation_functions_execution_graph,
             read_options,
             spine,
             kwargs.get("primary_keys") or primary_key,
@@ -1292,6 +1307,7 @@ class FeatureView:
             transformed=transformed,
             transformation_context=transformation_context,
             logging_data=logging_data,
+            n_processes=n_processes,
         )
 
     def add_tag(self, name: str, value: Any) -> None:
@@ -2376,6 +2392,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2476,6 +2493,7 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
@@ -2505,6 +2523,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         warnings.warn(
             f"Incremented version to `{td.version}`.",
@@ -2532,6 +2551,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2644,6 +2664,7 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -2682,6 +2703,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         warnings.warn(
             f"Incremented version to `{td.version}`.",
@@ -2725,6 +2747,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2852,6 +2875,7 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.A
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -2902,6 +2926,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         warnings.warn(
             f"Incremented version to `{td.version}`.",
@@ -2942,6 +2967,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2986,6 +3012,7 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels
@@ -2999,6 +3026,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         self.update_last_accessed_training_dataset(td.version)
         util.check_missing_mandatory_tags(td.missing_mandatory_tags)
@@ -3014,6 +3042,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3057,6 +3086,7 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -3072,6 +3102,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -3086,6 +3117,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3131,6 +3163,7 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3150,6 +3183,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -3911,6 +3945,7 @@ class FeatureView:
         request_parameters: list[dict[str, Any]] | dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
+        n_processes: int = None,
     ):
         """Function computes on-demand features present in the feature view.
 
@@ -3921,6 +3956,7 @@ class FeatureView:
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
@@ -3930,6 +3966,7 @@ class FeatureView:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             return_type=return_type,
+            n_processes=n_processes,
         )
 
     def transform(
@@ -3938,6 +3975,7 @@ class FeatureView:
         external: bool | None = None,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
+        n_processes: int = None,
     ):
         """Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
 
@@ -3955,6 +3993,7 @@ class FeatureView:
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector obtained by applying Model-Dependent Transformations.
@@ -3966,6 +4005,7 @@ class FeatureView:
             feature_vectors=feature_vector,
             transformation_context=transformation_context,
             return_type=return_type,
+            n_processes=n_processes,
         )
 
     def enable_logging(
@@ -4426,6 +4466,7 @@ class FeatureView:
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> dict[str, Any] | pd.DataFrame:
         """Apply on-demand transformations attached to the feature view on the provided data.
 
@@ -4462,6 +4503,7 @@ class FeatureView:
                 The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
             request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4475,6 +4517,7 @@ class FeatureView:
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         else:
             _logger.info(
@@ -4488,6 +4531,7 @@ class FeatureView:
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> dict[str, Any] | pd.DataFrame:
         """Apply model-dependent transformations attached to the feature view on the provided data.
 
@@ -4527,6 +4571,7 @@ class FeatureView:
                 The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
             request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4540,6 +4585,7 @@ class FeatureView:
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         else:
             _logger.info(

@@ -116,12 +116,18 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def shutdown_process_pool():
+        """Shutdown the process pool used for parallel execution of transformation functions."""
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.__process_pool.shutdown(wait=True)
             TransformationFunctionEngine.__process_pool = None
 
     @staticmethod
     def create_process_pool(n_processes: int = None):
+        """Create a process pool to use for parallel execution of transformation functions.
+
+        Parameters:
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores.
+        """
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.shutdown_process_pool()
         TransformationFunctionEngine.__process_pool = ProcessPoolExecutor(
@@ -208,6 +214,7 @@ class TransformationFunctionEngine:
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
             expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
@@ -263,11 +270,15 @@ class TransformationFunctionEngine:
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
             expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
-        if not TransformationFunctionEngine.__process_pool:
+        if not TransformationFunctionEngine.__process_pool or (
+            n_processes
+            and TransformationFunctionEngine.__process_pool._max_workers != n_processes
+        ):
             TransformationFunctionEngine.create_process_pool(n_processes)
 
         dropped_features: set[str] = set()
@@ -276,7 +287,7 @@ class TransformationFunctionEngine:
             transformed_data = data.copy()
         else:
             transformed_data = engine.get_instance().shallow_copy_dataframe(data)
-            transformed_data_columns = transformed_data.columns.tolist()
+            transformed_data_columns = list(transformed_data.columns)
 
         if request_parameters:
             for key in request_parameters:
@@ -287,10 +298,11 @@ class TransformationFunctionEngine:
         for tf in transformation_functions:
             udf = tf.hopsworks_udf
             udf.transformation_context = transformation_context
-            for col in udf.output_column_names:
-                if col in transformed_data_columns:
-                    transformed_data_columns.remove(col)
-                transformed_data_columns.append(col)
+            if not isinstance(transformed_data, dict):
+                for col in udf.output_column_names:
+                    if col in transformed_data_columns:
+                        transformed_data_columns.remove(col)
+                    transformed_data_columns.append(col)
 
             if udf.dropped_features:
                 dropped_features.update(
@@ -313,6 +325,13 @@ class TransformationFunctionEngine:
             if isinstance(transformed_data, dict):
                 transformed_data.update(result)
             else:
+                overwritten_columns = set(result.columns) & set(
+                    transformed_data.columns
+                )
+                if overwritten_columns:
+                    transformed_data = engine.get_instance().drop_columns(
+                        transformed_data, overwritten_columns
+                    )
                 transformed_data = execution_engine.concat_dataframes(
                     [transformed_data, result]
                 )
@@ -597,9 +616,15 @@ class TransformationFunctionEngine:
         # Add edges: dependency -> dependent
         for name, tf in funcs.items():
             transformation_features = tf.hopsworks_udf.transformation_features
-            for transformation_feature in transformation_features:
-                if transformation_feature in funcs:
-                    G.add_edge(transformation_feature, name)
+            # If input feature name is equal to the function name, then the feature in the dataframe will be overwritten with the transformed data.
+            # So, we don't need to add an edge for the feature, as it would be detected as a cyclic dependency.
+            if not any(
+                transformation_feature == tf.hopsworks_udf.function_name
+                for transformation_feature in transformation_features
+            ):
+                for transformation_feature in transformation_features:
+                    if transformation_feature in funcs:
+                        G.add_edge(transformation_feature, name)
 
         levels = []
 

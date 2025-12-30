@@ -2561,6 +2561,50 @@ class TestTransformationFunctionEngine:
             for tf in execution_graph[i]:
                 assert tf in expected_execution_graph[i]
 
+    def test_build_transformation_function_execution_graph_with_overwrite_feature(
+        self, mocker
+    ):
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.transformation_function_api.TransformationFunctionApi")
+
+        @udf(int)
+        def col1(col1, col2):
+            return col1 + col2
+
+        @udf(int)
+        def col2(col2):
+            return col1 + 2
+
+        @udf(int)
+        def add(col1, col2):
+            return col1 + col2
+
+        tf1 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=col1,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=col2,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf3 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        execution_graph = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+            [tf1, tf2, tf3]
+        )
+        expected_execution_graph = [[tf1, tf2], [tf3]]
+
+        for i in range(len(execution_graph)):
+            for tf in execution_graph[i]:
+                assert tf in expected_execution_graph[i]
+
     def test_build_transformation_function_execution_graph_with_dependencies_cyclic_dependency(
         self, mocker
     ):
