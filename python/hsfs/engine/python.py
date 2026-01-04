@@ -1200,6 +1200,7 @@ class Engine:
     def drop_columns(
         self, df: pd.DataFrame | pl.DataFrame, drop_cols: list[str]
     ) -> pd.DataFrame | pl.DataFrame:
+        drop_cols = [col for col in drop_cols if col in df.columns]
         if HAS_POLARS and (
             isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):

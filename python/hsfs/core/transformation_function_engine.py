@@ -285,7 +285,7 @@ class TransformationFunctionEngine:
                     for key in request_parameters:
                         row[key] = request_parameters[key]
             for key in request_parameters:
-                if isinstance(transformed_data, pd.DataFrame):
+                if isinstance(transformed_data, (pd.DataFrame, dict)):
                     transformed_data[key] = request_parameters[key]
                 else:
                     transformed_data.withColumn(col, request_parameters[key])
