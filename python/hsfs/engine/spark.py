@@ -21,6 +21,7 @@ import os
 import re
 import uuid
 import warnings
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -1625,6 +1626,8 @@ class Engine:
         dataset: DataFrame,
         transformation_context: dict[str, Any] = None,
         expected_features: set[str] = None,
+        request_parameters: dict[str, Any] = None,
+        dropped_features: set[str] = None,
     ):
         """Apply transformation function to the dataframe.
 
@@ -1640,11 +1643,34 @@ class Engine:
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        dropped_features = set()
         transformations = []
         transformation_features = []
         output_col_names = []
         explode_name = []
+        dropped_features = dropped_features if dropped_features is not None else set()
+
+        if request_parameters:
+            if isinstance(request_parameters, list):
+                collect_request_parameters = defaultdict(list)
+                for row in request_parameters:
+                    for col in row:
+                        collect_request_parameters[col].append(row[col])
+                request_parameters = collect_request_parameters
+                dataset = dataset.withColumns(collect_request_parameters)
+                dataset = dataset.withColumn(
+                    "row_id_temp",
+                    row_number().over(Window.orderBy(monotonically_increasing_id())),
+                )
+                request_parameters = self._spark_session.createDataFrame(
+                    enumerate(collect_request_parameters), ["idx", "new_col"]
+                )
+                dataset = self.drop_columns(dataset, collect_request_parameters.keys())
+                dataset = dataset.join(request_parameters, on="row_id_temp", how="left")
+                dataset = self.drop_columns(dataset, ["row_id_temp"])
+            else:
+                for col in request_parameters:
+                    dataset = dataset.withColumn(col, lit(request_parameters[col]))
+
         for tf in transformation_functions:
             hopsworks_udf = tf.hopsworks_udf
 

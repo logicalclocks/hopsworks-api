@@ -2431,15 +2431,15 @@ class TestFeatureViewEngine:
             start_time=None,
             end_time=None,
             training_dataset_version=None,
-            transformation_functions=[tf_value],
+            execution_graph=[[tf_value]],
             read_options=None,
         )
 
         # Assert
         assert (
             tf_engine_patch.apply_transformation_functions.call_args[1][
-                "transformation_functions"
-            ][0].hopsworks_udf.function_name
+                "execution_graph"
+            ][0][0].hopsworks_udf.function_name
             == tf_value.hopsworks_udf.function_name
         )
         assert tf_engine_patch.apply_transformation_functions.call_count == 1

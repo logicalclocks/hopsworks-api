@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 import networkx as nx
 import pandas as pd
 from hopsworks_common.client import exceptions
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import (
     engine,
     feature_view,
@@ -34,8 +35,11 @@ from hsfs.core import transformation_function_api
 from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
 
 
-if TYPE_CHECKING:
+if HAS_POLARS:
     import polars as pl
+
+
+if TYPE_CHECKING:
     import pyspark.sql as spark_sql
     from hsfs import feature_view, statistics, training_dataset, transformation_function
 
@@ -151,6 +155,12 @@ class TransformationFunctionEngine:
             exceptions.TransformationFunctionException: If the arguments required to execute the transformation functions are not present in the passed data or request parameters.
         """
         transformation_function_output_feature = set()
+        if isinstance(request_parameters, list) and len(request_parameters) != len(
+            data
+        ):
+            raise exceptions.TransformationFunctionException(
+                "Request Parameters should be a Dictionary, None, empty or be a list having the same length as the number of rows in the data provided."
+            )
         for transformation_functions in execution_graph:
             for tf in transformation_functions:
                 if engine.get_instance().check_supported_dataframe(data):
@@ -228,8 +238,9 @@ class TransformationFunctionEngine:
             request_parameters=request_parameters,
         )
 
+        dropped_features: set[str] = set()
         for transformation_functions in execution_graph:
-            if isinstance(data, dict) or engine.get_type() != "spark":
+            if isinstance(data, (dict, list)) or engine.get_type() != "spark":
                 # If the data is a dictionary or if the engine is not spark, we execute the transformation functions using.
                 data = TransformationFunctionEngine._apply_transformation_functions(
                     transformation_functions=transformation_functions,
@@ -238,6 +249,8 @@ class TransformationFunctionEngine:
                     transformation_context=transformation_context,
                     request_parameters=request_parameters,
                     expected_features=expected_features,
+                    n_processes=n_processes,
+                    dropped_features=dropped_features,
                 )
             else:
                 # In the case of spark, we execute the transformation functions using the spark engine since the transformations are pushed down to Spark and are not executed in Python.
@@ -246,8 +259,37 @@ class TransformationFunctionEngine:
                     dataset=data,
                     transformation_context=transformation_context,
                     expected_features=expected_features,
+                    request_parameters=request_parameters,
+                    dropped_features=dropped_features,
                 )
         return data
+
+    @staticmethod
+    def _update_request_parameter_data(transformed_data, request_parameters):
+        if isinstance(request_parameters, list):
+            if isinstance(transformed_data, pd.DataFrame):
+                request_parameters = pd.DataFrame(request_parameters)
+                for col in request_parameters:
+                    transformed_data[col] = request_parameters[col]
+            elif HAS_POLARS and isinstance(transformed_data, pl.DataFrame):
+                request_parameters = pl.DataFrame(request_parameters)
+                for col in request_parameters:
+                    transformed_data.with_columns(col, request_parameters[col])
+            else:
+                for data, rq in zip(transformed_data, request_parameters):
+                    for col in rq:
+                        data[col] = rq[col]
+        else:
+            if isinstance(transformed_data, list):
+                for row in transformed_data:
+                    for key in request_parameters:
+                        row[key] = request_parameters[key]
+            for key in request_parameters:
+                if isinstance(transformed_data, pd.DataFrame):
+                    transformed_data[key] = request_parameters[key]
+                else:
+                    transformed_data.withColumn(col, request_parameters[key])
+        return transformed_data
 
     @staticmethod
     def _apply_transformation_functions(
@@ -258,6 +300,7 @@ class TransformationFunctionEngine:
         request_parameters: dict[str, Any] = None,
         expected_features: set[str] = None,
         n_processes: int = None,
+        dropped_features: set[str] = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Function to apply the transformation functions to the passed dataframe or list of dictionaries.
 
@@ -271,27 +314,31 @@ class TransformationFunctionEngine:
             request_parameters: Request parameters to be used when applying the transformations.
             expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
             n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            dropped_features: Features to be dropped from the data, this argument contains all features that are dropped in the previous parallel execution of transformation functions.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
+        dropped_features = dropped_features if dropped_features is not None else set()
+
         if not TransformationFunctionEngine.__process_pool or (
             n_processes
             and TransformationFunctionEngine.__process_pool._max_workers != n_processes
         ):
             TransformationFunctionEngine.create_process_pool(n_processes)
 
-        dropped_features: set[str] = set()
-
-        if isinstance(data, dict):
+        if isinstance(data, (list, dict)):
             transformed_data = data.copy()
         else:
             transformed_data = engine.get_instance().shallow_copy_dataframe(data)
             transformed_data_columns = list(transformed_data.columns)
 
         if request_parameters:
-            for key in request_parameters:
-                transformed_data[key] = request_parameters[key]
+            transformed_data = (
+                TransformationFunctionEngine._update_request_parameter_data(
+                    transformed_data, request_parameters
+                )
+            )
 
         futures = []
         execution_engine = engine.get_instance()
@@ -351,7 +398,11 @@ class TransformationFunctionEngine:
     @staticmethod
     def execute_udf(
         udf: HopsworksUdf,
-        data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
+        data: spark_sql.DataFrame
+        | pl.DataFrame
+        | pd.DataFrame
+        | dict[str, Any]
+        | list[dict[str, Any]],
         engine_type: str | None = None,
         online: bool = False,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
@@ -376,6 +427,15 @@ class TransformationFunctionEngine:
             return TransformationFunctionEngine.apply_udf_on_dict(
                 udf=udf, data=data, online=online, engine_type=engine_type
             )
+        if isinstance(data, list):
+            transformed_results = []
+            for row in data:
+                transformed_results.append(
+                    TransformationFunctionEngine.apply_udf_on_dict(
+                        udf=udf, data=row, online=online, engine_type=engine_type
+                    )
+                )
+            return transformed_results
         raise exceptions.FeatureStoreException(
             f"Dataframe type {type(data)} not supported in the engine."
         )

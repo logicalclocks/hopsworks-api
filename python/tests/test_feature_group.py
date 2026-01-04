@@ -853,6 +853,7 @@ class TestFeatureGroup:
             validation_options={"save_report": True},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
@@ -903,6 +904,7 @@ class TestFeatureGroup:
             validation_options={"save_report": False},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
