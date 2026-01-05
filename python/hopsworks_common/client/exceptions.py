@@ -88,6 +88,24 @@ class FeatureStoreException(Exception):
     )
 
 
+class TransformationFunctionException(Exception):
+    """Exception raised when a transformation function fails."""
+
+    def __init__(
+        self,
+        message: str,
+        missing_features: str = None,
+        transformation_function_name: str = None,
+        transformation_type: str = None,
+    ) -> None:
+        self.missing_features = missing_features
+        self.transformation_function_name = transformation_function_name
+        self.transformation_type = (
+            transformation_type.replace("_", "-") if transformation_type else None
+        )
+        super().__init__(message)
+
+
 class VectorDatabaseException(Exception):
     # reason
     REQUESTED_K_TOO_LARGE = "REQUESTED_K_TOO_LARGE"
