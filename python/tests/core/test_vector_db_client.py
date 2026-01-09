@@ -13,15 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
 from hsfs.client.exceptions import FeatureStoreException
+from hsfs.constructor.filter import Filter
 from hsfs.core import vector_db_client
 from hsfs.embedding import EmbeddingIndex
 from hsfs.feature import Feature
 from hsfs.feature_group import FeatureGroup
+from hopsworks_common.util import convert_event_time_to_timestamp
 
 
 class TestVectorDbClient:
@@ -33,7 +36,9 @@ class TestVectorDbClient:
         f1 = Feature("f1", feature_group=fg, primary=True, type="int")
         f2 = Feature("f2", feature_group=fg, primary=True, type="int")
         f3 = Feature("f3", feature_group=fg, type="int")
-        fg.features = [f1, f2, f3]
+        f_bool = Feature("f_bool", feature_group=fg, type="boolean")
+        f_ts = Feature("f_ts", feature_group=fg, type="timestamp")
+        fg.features = [f1, f2, f3, f_bool, f_ts]
         fg2 = FeatureGroup("test_fg", 1, 99, id=2)
         fg2.features = [f1, f2]
 
@@ -65,21 +70,41 @@ class TestVectorDbClient:
         # _opensearch_client is no longer injected; use wrapper search result
 
     @pytest.mark.parametrize(
-        "filter_expression, expected_result",
+        "feature_attr, filter_expression, expected_result",
         [
-            (lambda f1: None, []),
-            (lambda f1: f1 > 10, [{"range": {"f1": {"gt": 10}}}]),
-            (lambda f1: f1 < 10, [{"range": {"f1": {"lt": 10}}}]),
-            (lambda f1: f1 >= 10, [{"range": {"f1": {"gte": 10}}}]),
-            (lambda f1: f1 <= 10, [{"range": {"f1": {"lte": 10}}}]),
-            (lambda f1: f1 == 10, [{"term": {"f1": 10}}]),
-            (lambda f1: f1 != 10, [{"bool": {"must_not": [{"term": {"f1": 10}}]}}]),
-            (lambda f1: f1.isin([10, 20, 30]), [{"terms": {"f1": "[10, 20, 30]"}}]),
-            (lambda f1: f1.like("abc"), [{"wildcard": {"f1": {"value": "*abc*"}}}]),
+            ("f1", lambda f: None, []),
+            ("f1", lambda f: f > 10, [{"range": {"f1": {"gt": 10}}}]),
+            ("f1", lambda f: f < 10, [{"range": {"f1": {"lt": 10}}}]),
+            ("f1", lambda f: f >= 10, [{"range": {"f1": {"gte": 10}}}]),
+            ("f1", lambda f: f <= 10, [{"range": {"f1": {"lte": 10}}}]),
+            ("f1", lambda f: f == 10, [{"term": {"f1": 10}}]),
+            ("f1", lambda f: f != 10, [{"bool": {"must_not": [{"term": {"f1": 10}}]}}]),
+            # IN operator - value should be converted from JSON string to list
+            ("f1", lambda f: f.isin([10, 20, 30]), [{"terms": {"f1": [10, 20, 30]}}]),
+            ("f1", lambda f: f.like("abc"), [{"wildcard": {"f1": {"value": "*abc*"}}}]),
+            # Timestamp type - value should be converted to epoch milliseconds.
+            (
+                "f_ts",
+                lambda f: f > "2024-04-18 12:00:25",
+                [{"range": {"f_ts": {"gt": convert_event_time_to_timestamp("2024-04-18 12:00:25")}}}],
+            ),
+            # Boolean type - string value "true" should be converted to True
+            (
+                "f_bool",
+                lambda f: f == True,
+                [{"term": {"f_bool": True}}],
+            ),
+            # Boolean type with IN operator - JSON array of strings should be converted to list of booleans
+            (
+                "f_bool",
+                lambda f: f.isin([True, False]),
+                [{"terms": {"f_bool": [True, False]}}],
+            ),
         ],
     )
-    def test_get_query_filter(self, filter_expression, expected_result):
-        filter = filter_expression(self.f1)
+    def test_get_query_filter(self, feature_attr, filter_expression, expected_result):
+        feature = getattr(self, feature_attr)
+        filter = filter_expression(feature)
         assert self.target._get_query_filter(filter) == expected_result
 
     @pytest.mark.parametrize(
@@ -231,7 +256,7 @@ class TestVectorDbClient:
 
         expected_query = {
             "query": {"bool": {"must": [{"match": {"f1": 10}}, {"match": {"f2": 20}}]}},
-            "_source": ["f1", "f2", "f3"],
+            "_source": ["f1", "f2", "f3", "f_bool", "f_ts"],
         }
         self.mock_os_wrapper.search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
@@ -245,7 +270,7 @@ class TestVectorDbClient:
         expected_query = {
             "query": {"bool": {"must": {"exists": {"field": "f1"}}}},
             "size": 10,
-            "_source": ["f1", "f2", "f3"],
+            "_source": ["f1", "f2", "f3", "f_bool", "f_ts"],
         }
         self.mock_os_wrapper.search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
