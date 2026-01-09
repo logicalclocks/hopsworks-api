@@ -10,7 +10,7 @@ class TAGS:
     ENVIRONMENT = "environment"
     JOB = "job"
     SYSTEM = "system"
-    UNIX = "unix"
+    TERMINAL = "terminal"
     BREWER = "brewer"
 
     STATEFUL = "stateful"

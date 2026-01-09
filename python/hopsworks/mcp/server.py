@@ -30,7 +30,7 @@ from .tools import (
     FeatureStoreTools,
     JobTools,
     ProjectTools,
-    UnixTools,
+    TerminalTools,
 )
 
 
@@ -38,18 +38,18 @@ from .tools import (
 mcp = FastMCP(name="Hopsworks MCP")
 
 # Initialize tools and resources
-_auth_tools = AuthTools(mcp)
-_project_tools = ProjectTools(mcp)
-_feature_store_tools = FeatureStoreTools(mcp)
-_feature_store_resources = FeatureStoreResources(mcp)
-_project_resource = ProjectResources(mcp)
-_project_prompts = ProjectPrompts(mcp)
-_system_prompts = SystemPrompts(mcp)
-_job_tools = JobTools(mcp)
-_dataset_tools = DatasetTools(mcp)
-_feature_group_tools = FeatureGroupTools(mcp)
-_unix_tools = UnixTools(mcp)
-_brewer_tools = BrewerTools(mcp)
+AuthTools(mcp)
+ProjectTools(mcp)
+FeatureStoreTools(mcp)
+FeatureStoreResources(mcp)
+ProjectResources(mcp)
+ProjectPrompts(mcp)
+SystemPrompts(mcp)
+JobTools(mcp)
+DatasetTools(mcp)
+FeatureGroupTools(mcp)
+TerminalTools(mcp)
+BrewerTools(mcp)
 
 
 @mcp.custom_route("/health", methods=["GET"])

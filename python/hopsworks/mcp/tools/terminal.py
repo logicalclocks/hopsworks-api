@@ -13,8 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
+import json
 import subprocess
+import tempfile
+from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
 
@@ -28,32 +32,34 @@ def enqueue_output(out, queue):
     out.close()
 
 
-class UnixTools:
-    """Tools for managing jobs in Hopsworks and executing Unix/Git commands."""
+class TerminalTools:
+    """Tools implementing shell and terminal access to Hopsworks."""
 
     def __init__(self, mcp):
-        """Initialize the UnixTools with the MCP server instance.
+        """Initialize the TerminalTools with the MCP server instance.
 
         Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
-        self.mcp.tool(tags=[TAGS.UNIX])(self.start_session)
-        self.mcp.tool(tags=[TAGS.UNIX])(self.add_input)
-        self.mcp.tool(tags=[TAGS.UNIX])(self.get_output)
+        self.mcp.tool(tags=[TAGS.TERMINAL])(self.start_session)
+        self.mcp.tool(tags=[TAGS.TERMINAL])(self.add_input)
+        self.mcp.tool(tags=[TAGS.TERMINAL])(self.get_output)
 
-        self.sessions = {}
+        self.sessions: dict[int, tuple[subprocess.Popen, Queue, str, str]] = {}
 
-    def start_session(self, cwd):
-        """Start a Unix session in the specified directory.
+    def start_session(self, cwd: str) -> int:
+        """Start a terminal session in the specified directory.
 
         Parameters:
             cwd: The directory path to start the session in.
 
         Returns:
-            UnixTools: An instance of UnixTools for the specified directory.
+            PID: The session process identifier.
         """
         # TODO: delete processes which were used longer than 5 min ago
+
+        envdir = tempfile.mkdtemp()
 
         proc = subprocess.Popen(
             ["bash"],
@@ -63,6 +69,7 @@ class UnixTools:
             cwd=cwd,
             text=True,
             bufsize=1,
+            env={"PROMPT_COMMAND": f'python -c "import json, os; print(json.dumps(dict(os.environ)))" > {envdir}/env.json'},
         )
 
         output_queue = Queue()
@@ -70,22 +77,27 @@ class UnixTools:
         t.daemon = True  # thread dies with the program
         t.start()
 
-        self.sessions[proc.pid] = (proc, output_queue, "")
+        self.sessions[proc.pid] = (proc, output_queue, "", envdir)
         # TODO: check for errors
 
-        print(proc.pid)
         return proc.pid
 
     def add_input(self, pid: int, addon: str):
-        proc, _, _ = self.sessions[pid]
+        proc, _, _, _ = self.sessions[pid]
+        if not proc.stdin:
+            raise Exception("Process stdin is not available")
         proc.stdin.write(addon)
         proc.stdin.flush()
 
     def get_output(self, pid: int, offset: int = 0):
-        proc, output_queue, output = self.sessions[pid]
+        proc, output_queue, output, envdir = self.sessions[pid]
         while True:
             try:
                 output += output_queue.get_nowait()
             except Empty:
-                self.sessions[pid] = (proc, output_queue, output)
+                self.sessions[pid] = (proc, output_queue, output, envdir)
                 return output[offset:]
+
+    def get_environ(self, pid: int) -> dict[str, str]:
+        _, _, _, envdir = self.sessions[pid]
+        return json.loads((Path(envdir) / "env.json").read_text())
