@@ -15,16 +15,11 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import hopsworks
+from fastmcp import Context  # noqa: TC002
 from hopsworks.mcp.models.job import Jobs, to_base_model_job
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
-
-
-if TYPE_CHECKING:
-    from fastmcp import Context
 
 
 class JobTools:

@@ -16,16 +16,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
 
 import hopsworks
+from fastmcp import Context  # noqa: TC002
 from hopsworks.mcp.models.project import Project, Projects
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
-
-
-if TYPE_CHECKING:
-    from fastmcp import Context
 
 
 class ProjectTools:

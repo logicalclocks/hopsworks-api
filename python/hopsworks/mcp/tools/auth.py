@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 """Authentication tools for Hopsworks."""
+from __future__ import annotations
 
 from fastmcp import Context
 from hopsworks.mcp.models.project import Project
@@ -45,7 +46,7 @@ class AuthTools:
         hostname_verification: bool = False,
         trust_store_path: str = None,
         engine: str = "python",
-        ctx: Context = None,
+        ctx: Context | None = None,
     ) -> Project:
         """Connect to a Hopsworks instance.
 
