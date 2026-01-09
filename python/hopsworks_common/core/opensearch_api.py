@@ -42,7 +42,6 @@ class OPENSEARCH_CONFIG:
     VERIFY_CERTS = "verify_certs"
     SSL_ASSERT_HOSTNAME = "ssl_assert_hostname"
     CA_CERTS = "ca_certs"
-    HTTP_AUTH = "http_auth"
 
 
 class OpenSearchApi:
@@ -79,8 +78,9 @@ class OpenSearchApi:
         return (_client._project_name + "_" + index).lower()
 
     @usage.method_logger
-    def get_default_py_config(self, feature_store_id: int = None) -> Dict[str, Any]:
-        """Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
+    def get_default_py_config(self) -> Dict[str, Any]:
+        """
+        Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
 
         ```python
 
@@ -103,7 +103,7 @@ class OpenSearchApi:
             OPENSEARCH_CONFIG.HOSTS: [{"host": url.host, "port": url.port}],
             OPENSEARCH_CONFIG.HTTP_COMPRESS: False,
             OPENSEARCH_CONFIG.HEADERS: {
-                "Authorization": self._get_authorization_token(feature_store_id)
+                "Authorization": self._get_authorization_token()
             },
             OPENSEARCH_CONFIG.USE_SSL: True,
             OPENSEARCH_CONFIG.VERIFY_CERTS: True,
@@ -111,7 +111,7 @@ class OpenSearchApi:
             OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(),
         }
 
-    def _get_authorization_token(self, feature_store_id: int = None) -> str:
+    def _get_authorization_token(self) -> str:
         """Get opensearch jwt token.
 
         # Returns
@@ -121,7 +121,6 @@ class OpenSearchApi:
         """
 
         _client = client.get_instance()
-        # Do not use feature store id for now since the backend is not yet updated to use it.
         path_params = ["elastic", "jwt", _client._project_id]
 
         headers = {"content-type": "application/json"}

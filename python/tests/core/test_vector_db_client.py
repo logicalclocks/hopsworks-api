@@ -40,9 +40,14 @@ class TestVectorDbClient:
     @pytest.fixture(autouse=True)
     def setup_mocks(self, mocker):
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        # Mock the OpenSearchClientSingleton to return a MagicMock instead of creating a real client
-        self.mock_os_wrapper = MagicMock()
-        self.mock_os_wrapper.search.return_value = {
+        mocker.patch(
+            "hsfs.core.opensearch.OpenSearchClientSingleton._setup_opensearch_client"
+        )
+
+        self.query = self.fg.select_all()
+        self.target = vector_db_client.VectorDbClient(self.query)
+        self.target._opensearch_client = MagicMock()
+        self.target._opensearch_client.search.return_value = {
             "hits": {
                 "hits": [
                     {
@@ -55,14 +60,6 @@ class TestVectorDbClient:
                 ]
             }
         }
-        mocker.patch(
-            "hsfs.core.vector_db_client.OpenSearchClientSingleton",
-            return_value=self.mock_os_wrapper,
-        )
-
-        self.query = self.fg.select_all()
-        self.target = vector_db_client.VectorDbClient(self.query)
-        # _opensearch_client is no longer injected; use wrapper search result
 
     @pytest.mark.parametrize(
         "filter_expression, expected_result",
@@ -233,7 +230,7 @@ class TestVectorDbClient:
             "query": {"bool": {"must": [{"match": {"f1": 10}}, {"match": {"f2": 20}}]}},
             "_source": ["f1", "f2", "f3"],
         }
-        self.mock_os_wrapper.search.assert_called_once_with(
+        self.target._opensearch_client.search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]
@@ -247,7 +244,7 @@ class TestVectorDbClient:
             "size": 10,
             "_source": ["f1", "f2", "f3"],
         }
-        self.mock_os_wrapper.search.assert_called_once_with(
+        self.target._opensearch_client.search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]
