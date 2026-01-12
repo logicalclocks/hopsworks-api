@@ -43,6 +43,7 @@ from hsfs.core.type_systems import (
 
 if TYPE_CHECKING:
     import great_expectations
+    from hsfs.constructor.filter import Filter, Logic
     from hsfs.training_dataset import TrainingDataset
 
 import boto3
@@ -66,7 +67,6 @@ from hsfs import (
 )
 from hsfs import storage_connector as sc
 from hsfs.constructor import query
-from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.fs_query import FsQuery
 from hsfs.core import (
     dataset_api,

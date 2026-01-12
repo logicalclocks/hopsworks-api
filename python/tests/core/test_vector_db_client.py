@@ -99,7 +99,7 @@ class TestVectorDbClient:
             # Boolean type - string value "true" should be converted to True
             (
                 "f_bool",
-                lambda f: f == True,
+                lambda f: f == True,  # noqa: E712
                 [{"term": {"f_bool": True}}],
             ),
             # Boolean type with IN operator - JSON array of strings should be converted to list of booleans
@@ -159,7 +159,7 @@ class TestVectorDbClient:
             ),
             (
                 "f_bool",
-                lambda f: f == True,
+                lambda f: f == True,  # noqa: E712
                 "46_",
                 [{"term": {"46_f_bool": True}}],
             ),
