@@ -560,11 +560,12 @@ class Engine:
         feature_group: hsfs.feature_group.FeatureGroup,
         n: int = None,
         dataframe_type: str = "default",
+        filter: Filter | Logic = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[list[Any]]:
         dataframe_type = dataframe_type.lower()
         self._validate_dataframe_type(dataframe_type)
 
-        results = VectorDbClient.read_feature_group(feature_group, n)
+        results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
         feature_names = [f.name for f in feature_group.features]
         if dataframe_type == "polars":
             if not HAS_POLARS:

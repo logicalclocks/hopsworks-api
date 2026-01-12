@@ -182,8 +182,9 @@ class Engine:
         feature_group: fg_mod.FeatureGroup,
         n: int = None,
         dataframe_type: str = "default",
+        filter: Filter | Logic = None,
     ) -> pd.DataFrame | np.ndarray | list[list[Any]] | TypeVar("pyspark.sql.DataFrame"):
-        results = VectorDbClient.read_feature_group(feature_group, n)
+        results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
         feature_names = [f.name for f in feature_group.features]
         dataframe_type = dataframe_type.lower()
         if dataframe_type in ["default", "spark"]:

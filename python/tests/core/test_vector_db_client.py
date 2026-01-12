@@ -13,18 +13,16 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
+from hopsworks_common.util import convert_event_time_to_timestamp
 from hsfs.client.exceptions import FeatureStoreException
-from hsfs.constructor.filter import Filter
 from hsfs.core import vector_db_client
 from hsfs.embedding import EmbeddingIndex
 from hsfs.feature import Feature
 from hsfs.feature_group import FeatureGroup
-from hopsworks_common.util import convert_event_time_to_timestamp
 
 
 class TestVectorDbClient:
@@ -86,7 +84,17 @@ class TestVectorDbClient:
             (
                 "f_ts",
                 lambda f: f > "2024-04-18 12:00:25",
-                [{"range": {"f_ts": {"gt": convert_event_time_to_timestamp("2024-04-18 12:00:25")}}}],
+                [
+                    {
+                        "range": {
+                            "f_ts": {
+                                "gt": convert_event_time_to_timestamp(
+                                    "2024-04-18 12:00:25"
+                                )
+                            }
+                        }
+                    }
+                ],
             ),
             # Boolean type - string value "true" should be converted to True
             (
