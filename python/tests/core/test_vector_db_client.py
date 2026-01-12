@@ -116,6 +116,52 @@ class TestVectorDbClient:
         assert self.target._get_query_filter(filter) == expected_result
 
     @pytest.mark.parametrize(
+        "feature_attr, filter_expression, col_prefix, expected_result",
+        [
+            ("f1", lambda f: f > 10, "46_", [{"range": {"46_f1": {"gt": 10}}}]),
+            ("f1", lambda f: f < 10, "46_", [{"range": {"46_f1": {"lt": 10}}}]),
+            ("f1", lambda f: f >= 10, "46_", [{"range": {"46_f1": {"gte": 10}}}]),
+            ("f1", lambda f: f <= 10, "46_", [{"range": {"46_f1": {"lte": 10}}}]),
+            ("f1", lambda f: f == 10, "46_", [{"term": {"46_f1": 10}}]),
+            ("f1", lambda f: f != 10, "46_", [{"bool": {"must_not": [{"term": {"46_f1": 10}}]}}]),
+            ("f1", lambda f: f.isin([10, 20, 30]), "46_", [{"terms": {"46_f1": [10, 20, 30]}}]),
+            ("f1", lambda f: f.like("abc"), "46_", [{"wildcard": {"46_f1": {"value": "*abc*"}}}]),
+            (
+                "f_ts",
+                lambda f: f > "2024-04-18 12:00:25",
+                "46_",
+                [
+                    {
+                        "range": {
+                            "46_f_ts": {
+                                "gt": convert_event_time_to_timestamp(
+                                    "2024-04-18 12:00:25"
+                                )
+                            }
+                        }
+                    }
+                ],
+            ),
+            (
+                "f_bool",
+                lambda f: f == True,
+                "46_",
+                [{"term": {"46_f_bool": True}}],
+            ),
+            (
+                "f_bool",
+                lambda f: f.isin([True, False]),
+                "46_",
+                [{"terms": {"46_f_bool": [True, False]}}],
+            ),
+        ],
+    )
+    def test_get_query_filter_with_col_prefix(self, feature_attr, filter_expression, col_prefix, expected_result):
+        feature = getattr(self, feature_attr)
+        filter = filter_expression(feature)
+        assert self.target._get_query_filter(filter, col_prefix) == expected_result
+
+    @pytest.mark.parametrize(
         "filter_expression_nested, expected_result",
         [
             (
@@ -235,6 +281,132 @@ class TestVectorDbClient:
     def test_get_query_filter_logic(self, filter_expression_nested, expected_result):
         filter = filter_expression_nested(self.f1, self.f2)
         assert self.target._get_query_filter(filter) == expected_result
+
+    @pytest.mark.parametrize(
+        "filter_expression_nested, col_prefix, expected_result",
+        [
+            (
+                lambda f1, f2: (f1 > 10) & (f2 < 20),
+                "46_",
+                [
+                    {
+                        "bool": {
+                            "must": [
+                                {"range": {"46_f1": {"gt": 10}}},
+                                {"range": {"46_f2": {"lt": 20}}},
+                            ]
+                        }
+                    }
+                ],
+            ),
+            (
+                lambda f1, f2: (f1 < 10) | (f2 > 20),
+                "46_",
+                [
+                    {
+                        "bool": {
+                            "minimum_should_match": 1,
+                            "should": [
+                                {"range": {"46_f1": {"lt": 10}}},
+                                {"range": {"46_f2": {"gt": 20}}},
+                            ],
+                        }
+                    }
+                ],
+            ),
+            (
+                lambda f1, f2: ((f1 < 10) | (f1 > 30)) & ((f2 > 20) | (f2 < 10)),
+                "46_",
+                [
+                    {
+                        "bool": {
+                            "must": [
+                                {
+                                    "bool": {
+                                        "should": [
+                                            {"range": {"46_f1": {"lt": 10}}},
+                                            {"range": {"46_f1": {"gt": 30}}},
+                                        ],
+                                        "minimum_should_match": 1,
+                                    }
+                                },
+                                {
+                                    "bool": {
+                                        "should": [
+                                            {"range": {"46_f2": {"gt": 20}}},
+                                            {"range": {"46_f2": {"lt": 10}}},
+                                        ],
+                                        "minimum_should_match": 1,
+                                    }
+                                },
+                            ]
+                        }
+                    }
+                ],
+            ),
+            (
+                lambda f1, f2: ((f1 > 10) & (f2 < 20)) | ((f1 > 10) & (f2 < 20)),
+                "46_",
+                [
+                    {
+                        "bool": {
+                            "minimum_should_match": 1,
+                            "should": [
+                                {
+                                    "bool": {
+                                        "must": [
+                                            {"range": {"46_f1": {"gt": 10}}},
+                                            {"range": {"46_f2": {"lt": 20}}},
+                                        ]
+                                    }
+                                },
+                                {
+                                    "bool": {
+                                        "must": [
+                                            {"range": {"46_f1": {"gt": 10}}},
+                                            {"range": {"46_f2": {"lt": 20}}},
+                                        ]
+                                    }
+                                },
+                            ],
+                        }
+                    }
+                ],
+            ),
+            (
+                lambda f1, f2: ((f1 > 10) & ((f2 < 20) | ((f1 > 30) & (f2 < 40)))),
+                "46_",
+                [
+                    {
+                        "bool": {
+                            "must": [
+                                {"range": {"46_f1": {"gt": 10}}},
+                                {
+                                    "bool": {
+                                        "should": [
+                                            {"range": {"46_f2": {"lt": 20}}},
+                                            {
+                                                "bool": {
+                                                    "must": [
+                                                        {"range": {"46_f1": {"gt": 30}}},
+                                                        {"range": {"46_f2": {"lt": 40}}},
+                                                    ]
+                                                }
+                                            },
+                                        ],
+                                        "minimum_should_match": 1,
+                                    }
+                                },
+                            ]
+                        }
+                    }
+                ],
+            ),
+        ],
+    )
+    def test_get_query_filter_logic_with_col_prefix(self, filter_expression_nested, col_prefix, expected_result):
+        filter = filter_expression_nested(self.f1, self.f2)
+        assert self.target._get_query_filter(filter, col_prefix) == expected_result
 
     def test_check_filter_when_filter_is_None(self):
         self.target._check_filter(None, self.fg2)
