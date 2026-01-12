@@ -123,9 +123,24 @@ class TestVectorDbClient:
             ("f1", lambda f: f >= 10, "46_", [{"range": {"46_f1": {"gte": 10}}}]),
             ("f1", lambda f: f <= 10, "46_", [{"range": {"46_f1": {"lte": 10}}}]),
             ("f1", lambda f: f == 10, "46_", [{"term": {"46_f1": 10}}]),
-            ("f1", lambda f: f != 10, "46_", [{"bool": {"must_not": [{"term": {"46_f1": 10}}]}}]),
-            ("f1", lambda f: f.isin([10, 20, 30]), "46_", [{"terms": {"46_f1": [10, 20, 30]}}]),
-            ("f1", lambda f: f.like("abc"), "46_", [{"wildcard": {"46_f1": {"value": "*abc*"}}}]),
+            (
+                "f1",
+                lambda f: f != 10,
+                "46_",
+                [{"bool": {"must_not": [{"term": {"46_f1": 10}}]}}],
+            ),
+            (
+                "f1",
+                lambda f: f.isin([10, 20, 30]),
+                "46_",
+                [{"terms": {"46_f1": [10, 20, 30]}}],
+            ),
+            (
+                "f1",
+                lambda f: f.like("abc"),
+                "46_",
+                [{"wildcard": {"46_f1": {"value": "*abc*"}}}],
+            ),
             (
                 "f_ts",
                 lambda f: f > "2024-04-18 12:00:25",
@@ -156,7 +171,9 @@ class TestVectorDbClient:
             ),
         ],
     )
-    def test_get_query_filter_with_col_prefix(self, feature_attr, filter_expression, col_prefix, expected_result):
+    def test_get_query_filter_with_col_prefix(
+        self, feature_attr, filter_expression, col_prefix, expected_result
+    ):
         feature = getattr(self, feature_attr)
         filter = filter_expression(feature)
         assert self.target._get_query_filter(filter, col_prefix) == expected_result
@@ -388,8 +405,16 @@ class TestVectorDbClient:
                                             {
                                                 "bool": {
                                                     "must": [
-                                                        {"range": {"46_f1": {"gt": 30}}},
-                                                        {"range": {"46_f2": {"lt": 40}}},
+                                                        {
+                                                            "range": {
+                                                                "46_f1": {"gt": 30}
+                                                            }
+                                                        },
+                                                        {
+                                                            "range": {
+                                                                "46_f2": {"lt": 40}
+                                                            }
+                                                        },
                                                     ]
                                                 }
                                             },
@@ -404,7 +429,9 @@ class TestVectorDbClient:
             ),
         ],
     )
-    def test_get_query_filter_logic_with_col_prefix(self, filter_expression_nested, col_prefix, expected_result):
+    def test_get_query_filter_logic_with_col_prefix(
+        self, filter_expression_nested, col_prefix, expected_result
+    ):
         filter = filter_expression_nested(self.f1, self.f2)
         assert self.target._get_query_filter(filter, col_prefix) == expected_result
 
@@ -448,7 +475,7 @@ class TestVectorDbClient:
         actual = self.target.read(self.fg.id, self.fg.features, pk="f1")
 
         expected_query = {
-            "query": {"bool": {"must": {"exists": {"field": "f1"}}}},
+            "query": {"bool": {"must": [{"exists": {"field": "f1"}}]}},
             "size": 10,
             "_source": ["f1", "f2", "f3", "f_bool", "f_ts"],
         }
