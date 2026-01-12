@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -331,10 +332,8 @@ class VectorDbClient:
         if condition == Filter.IN:
             # Parse JSON string if needed (as created by Feature.isin())
             if isinstance(value, str):
-                try:
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
                     value = json.loads(value)
-                except (json.JSONDecodeError, TypeError):
-                    pass  # If not JSON, treat as regular string
 
             # Convert list items
             if isinstance(value, list):

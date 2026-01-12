@@ -36,6 +36,7 @@ import tzlocal
 from hopsworks_common import constants
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
 from hsfs.constructor import query
+from hsfs.constructor.filter import Filter, Logic
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient

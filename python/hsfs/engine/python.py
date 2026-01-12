@@ -66,6 +66,7 @@ from hsfs import (
 )
 from hsfs import storage_connector as sc
 from hsfs.constructor import query
+from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.fs_query import FsQuery
 from hsfs.core import (
     dataset_api,
