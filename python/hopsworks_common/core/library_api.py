@@ -16,8 +16,8 @@
 
 import json
 
+from hopsworks_aliases import public
 from hopsworks_common import client, library
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.library_api")

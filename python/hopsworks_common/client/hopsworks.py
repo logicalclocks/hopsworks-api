@@ -25,7 +25,7 @@ from hopsworks_common.client import auth, base
 with contextlib.suppress(ImportError):
     import jks
 
-from hopsworks_common.internal.aliases import public
+from hopsworks_aliases import public
 
 
 @public("hopsworks.client.hopsworks", "hsfs.client.hopsworks", "hsml.client.hopsworks")

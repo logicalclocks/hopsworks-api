@@ -20,6 +20,7 @@ import json
 import socket
 from typing import Any
 
+from hopsworks_aliases import public
 from hopsworks_common import (
     client,
     constants,
@@ -27,7 +28,6 @@ from hopsworks_common import (
     kafka_topic,
     usage,
 )
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.kafka_api", "hsfs.core.kafka_api")

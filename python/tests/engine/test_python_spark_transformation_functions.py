@@ -73,7 +73,6 @@ class TestPythonSparkTransformationFunctions:
             features=features,
         )
 
-
     def _validate_on_python_engine(self, td, df, expected_df, transformation_functions):
         # Arrange
         python_engine = python.Engine()

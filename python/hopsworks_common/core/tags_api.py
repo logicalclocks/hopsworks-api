@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 
+from hopsworks_aliases import public
 from hopsworks_common import client, decorators, tag, usage
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.tags_api", "hsfs.core.tags_api")

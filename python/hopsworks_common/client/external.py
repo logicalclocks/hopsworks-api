@@ -23,9 +23,9 @@ import os
 
 import hopsworks_common.client
 import requests
+from hopsworks_aliases import public
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.internal.aliases import public
 
 
 with contextlib.suppress(ImportError):

@@ -24,6 +24,7 @@ import sys
 import warnings
 import weakref
 
+from hopsworks_aliases import public
 from hopsworks_common import client, constants, usage, util, version
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
@@ -35,7 +36,6 @@ from hopsworks_common.core import (
 )
 from hopsworks_common.core.opensearch import OpenSearchClientSingleton
 from hopsworks_common.decorators import connected, not_connected
-from hopsworks_common.internal.aliases import public
 from requests.exceptions import ConnectionError
 from typing_extensions import Self
 

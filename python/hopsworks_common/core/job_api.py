@@ -36,7 +36,7 @@ if TYPE_CHECKING:
         job_configuration,
     )
 
-from hopsworks_common.internal.aliases import public
+from hopsworks_aliases import public
 
 
 @public("hopsworks.core.job_api", as_alias="JobsApi")

@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 
+from hopsworks_aliases import public
 from hopsworks_common import client, git_op_execution
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.git_op_execution_api")

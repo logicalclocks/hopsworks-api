@@ -17,10 +17,10 @@
 import time
 from typing import Literal
 
+from hopsworks_aliases import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.core import execution_api, flink_cluster_api
 from hopsworks_common.engine import execution_engine
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.flink_cluster")

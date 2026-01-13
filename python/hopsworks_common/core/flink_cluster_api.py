@@ -19,10 +19,10 @@ import json
 import os
 from typing import Literal
 
+from hopsworks_aliases import public
 from hopsworks_common import client, decorators, flink_cluster, job, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import job_api
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.flink_cluster_api")

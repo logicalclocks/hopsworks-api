@@ -16,7 +16,7 @@
 # https://github.com/kserve/kserve/blob/release-0.11/python/kserve/kserve/utils/numpy_codec.py
 
 import numpy as np
-from hopsworks_common.internal.aliases import public
+from hopsworks_aliases import public
 
 
 @public("hsml.client.istio.utils.numpy_codec")

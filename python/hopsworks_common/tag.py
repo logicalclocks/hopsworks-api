@@ -19,8 +19,8 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_aliases import public
 from hopsworks_common import util
-from hopsworks_common.internal.aliases import public
 
 
 @public("hsfs.tag", "hsml.tag")

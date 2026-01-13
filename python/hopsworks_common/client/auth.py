@@ -20,8 +20,8 @@ import os
 from pathlib import Path
 
 import requests
+from hopsworks_aliases import public
 from hopsworks_common.client import exceptions
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")

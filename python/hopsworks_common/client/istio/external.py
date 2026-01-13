@@ -15,9 +15,9 @@
 #
 
 import requests
+from hopsworks_aliases import public
 from hopsworks_common.client import auth
 from hopsworks_common.client.istio import base as istio
-from hopsworks_common.internal.aliases import public
 
 
 @public("hsml.client.istio.external")

@@ -24,12 +24,12 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
+from hopsworks_aliases import public
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
 )
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG, OpenSearchApi
-from hopsworks_common.internal.aliases import public
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,

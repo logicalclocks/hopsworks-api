@@ -17,9 +17,9 @@
 import json
 
 import humps
+from hopsworks_aliases import public
 from hopsworks_common import util
 from hopsworks_common.core import secret_api
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.secret")

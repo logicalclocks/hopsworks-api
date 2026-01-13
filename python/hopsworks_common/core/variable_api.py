@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import re
 
+from hopsworks_aliases import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
-from hopsworks_common.internal.aliases import public
 
 
 LOADBALANCER_SERVICES = {

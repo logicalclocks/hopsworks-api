@@ -19,9 +19,9 @@ import json
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_aliases import public
 from hopsworks_common import git_commit, usage, user, util
 from hopsworks_common.core import dataset_api, git_api, git_remote_api
-from hopsworks_common.internal.aliases import public
 
 
 if TYPE_CHECKING:

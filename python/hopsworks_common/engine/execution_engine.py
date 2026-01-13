@@ -30,7 +30,7 @@ from hopsworks_common.core import dataset_api, execution_api
 if TYPE_CHECKING:
     from hopsworks_common.execution import Execution
 
-from hopsworks_common.internal.aliases import public
+from hopsworks_aliases import public
 
 
 @public("hopsworks.engine.execution_engine")

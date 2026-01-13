@@ -18,9 +18,9 @@ from __future__ import annotations
 import getpass
 import json
 
+from hopsworks_aliases import public
 from hopsworks_common import client, decorators, secret
 from hopsworks_common.core import project_api
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.secret_api")

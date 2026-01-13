@@ -126,8 +126,8 @@ class TestMonitoringWindowConfig:
 
         # Assert
         assert set(window_config_type_list) == {
-                "ALL_TIME",
-                "ROLLING_TIME",
-                "TRAINING_DATASET",
-                "SPECIFIC_VALUE",
-            }
+            "ALL_TIME",
+            "ROLLING_TIME",
+            "TRAINING_DATASET",
+            "SPECIFIC_VALUE",
+        }

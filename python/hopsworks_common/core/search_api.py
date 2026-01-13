@@ -17,8 +17,8 @@
 import logging
 from typing import Literal, get_args
 
+from hopsworks_aliases import public
 from hopsworks_common import client, search_results
-from hopsworks_common.internal.aliases import public
 
 
 DOC_TYPE_ARG = Literal[

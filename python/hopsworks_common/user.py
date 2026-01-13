@@ -21,8 +21,8 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 import humps
+from hopsworks_aliases import public
 from hopsworks_common import util
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.user", "hsfs.user")

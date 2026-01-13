@@ -20,6 +20,7 @@ import functools
 import importlib
 import os
 
+from hopsworks_aliases import public
 from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
@@ -28,7 +29,6 @@ from hopsworks_common.core.constants import (
     great_expectations_not_installed_message,
     polars_not_installed_message,
 )
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")

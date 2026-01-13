@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from typing import Literal, get_args
 
 import humps
+from hopsworks_aliases import public
 from hopsworks_common import (
     alert,
     alert_receiver,
@@ -30,7 +31,6 @@ from hopsworks_common import (
     usage,
 )
 from hopsworks_common.engine import alerts_engine
-from hopsworks_common.internal.aliases import public
 
 
 _GLOBAL_RECEIVER_PREFIX = "global-receiver"

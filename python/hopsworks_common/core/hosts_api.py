@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from hopsworks_aliases import public
 from hopsworks_common import client
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.hosts_api", "hsfs.core.hosts_api")

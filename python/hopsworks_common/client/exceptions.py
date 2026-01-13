@@ -19,7 +19,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common.internal.aliases import public
+from hopsworks_aliases import public
 from requests.exceptions import SSLError
 
 

@@ -110,18 +110,22 @@ class TestValidationResultEngine:
         assert len(correct_outputs[0]["filter_by"]) == 4
         assert "ingestion_result_eq:INGESTED" in correct_outputs[0]["filter_by"]
         assert "ingestion_result_eq:EXPERIMENT" in correct_outputs[0]["filter_by"]
-        filter_validation_gte = list(filter(
+        filter_validation_gte = list(
+            filter(
                 lambda x: "validation_time_gte:" in x, correct_outputs[0]["filter_by"]
-            ))
+            )
+        )
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
         ) == util.convert_event_time_to_timestamp(
             correct_inputs[0]["start_validation_time"]
         )
-        filter_validation_lte = list(filter(
+        filter_validation_lte = list(
+            filter(
                 lambda x: "validation_time_lte:" in x, correct_outputs[0]["filter_by"]
-            ))
+            )
+        )
         assert len(filter_validation_lte) == 1
         assert int(
             filter_validation_lte[0][20:]
@@ -132,36 +136,44 @@ class TestValidationResultEngine:
         # Second case
         assert len(correct_outputs[1]["filter_by"]) == 2
         assert "ingestion_result_eq:UNKNOWN" in correct_outputs[1]["filter_by"]
-        filter_validation_gte = list(filter(
+        filter_validation_gte = list(
+            filter(
                 lambda x: "validation_time_gte:" in x, correct_outputs[1]["filter_by"]
-            ))
+            )
+        )
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
         ) == util.convert_event_time_to_timestamp(
             correct_inputs[1]["start_validation_time"]
         )
-        filter_validation_lte = list(filter(
+        filter_validation_lte = list(
+            filter(
                 lambda x: "validation_time_lte:" in x, correct_outputs[1]["filter_by"]
-            ))
+            )
+        )
         assert len(filter_validation_lte) == 0
 
         # Third case
         assert len(correct_outputs[2]["filter_by"]) == 4
         assert "ingestion_result_eq:REJECTED" in correct_outputs[2]["filter_by"]
         assert "ingestion_result_eq:FG_DATA" in correct_outputs[2]["filter_by"]
-        filter_validation_gte = list(filter(
+        filter_validation_gte = list(
+            filter(
                 lambda x: "validation_time_gte:" in x, correct_outputs[2]["filter_by"]
-            ))
+            )
+        )
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
         ) == util.convert_event_time_to_timestamp(
             correct_inputs[2]["start_validation_time"]
         )
-        filter_validation_lte = list(filter(
+        filter_validation_lte = list(
+            filter(
                 lambda x: "validation_time_lte:" in x, correct_outputs[2]["filter_by"]
-            ))
+            )
+        )
         assert len(filter_validation_lte) == 1
         assert int(
             filter_validation_lte[0][20:]

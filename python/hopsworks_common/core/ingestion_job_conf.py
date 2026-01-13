@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 
+from hopsworks_aliases import public
 from hopsworks_common import util
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.ingestion_job_conf", "hsfs.core.ingestion_job_conf")

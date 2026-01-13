@@ -15,8 +15,8 @@
 #
 
 import humps
+from hopsworks_aliases import public
 from hopsworks_common import constants, git_repo
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.git_op_execution")

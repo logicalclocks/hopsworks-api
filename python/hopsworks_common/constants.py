@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.internal.aliases import public
+from hopsworks_aliases import public
 
 
 @public("hopsworks.constants")

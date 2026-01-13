@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import json
 
+from hopsworks_aliases import public
 from hopsworks_common import client, decorators, environment, usage
 from hopsworks_common.engine import environment_engine
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.environment_api")

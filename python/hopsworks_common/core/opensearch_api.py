@@ -19,10 +19,10 @@ from __future__ import annotations
 from typing import Any
 
 from furl import furl
+from hopsworks_aliases import public
 from hopsworks_common import client, usage
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.variable_api import VariableApi
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")
