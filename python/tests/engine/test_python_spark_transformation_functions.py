@@ -64,7 +64,7 @@ class TestPythonSparkTransformationFunctions:
         )
         features = [f, f1, f2]
 
-        td = training_dataset.TrainingDataset(
+        return training_dataset.TrainingDataset(
             name="test",
             version=1,
             data_format="CSV",
@@ -73,7 +73,6 @@ class TestPythonSparkTransformationFunctions:
             features=features,
         )
 
-        return td
 
     def _validate_on_python_engine(self, td, df, expected_df, transformation_functions):
         # Arrange
