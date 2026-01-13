@@ -28,7 +28,10 @@ from hopsworks_common import (
     usage,
 )
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.kafka_api")
 class KafkaApi:
     @usage.method_logger
     def create_topic(

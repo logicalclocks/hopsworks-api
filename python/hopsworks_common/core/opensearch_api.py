@@ -44,7 +44,10 @@ class OPENSEARCH_CONFIG:
     CA_CERTS = "ca_certs"
     HTTP_AUTH = "http_auth"
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.opensearch_api")
 class OpenSearchApi:
     def __init__(self) -> None:
         self._variable_api: VariableApi = VariableApi()

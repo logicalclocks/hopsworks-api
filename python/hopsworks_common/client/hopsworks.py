@@ -25,7 +25,10 @@ from hopsworks_common.client import auth, base
 with contextlib.suppress(ImportError):
     import jks
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.client.hopsworks")
 class Client(base.Client):
     HOPSWORKS_HOSTNAME_VERIFICATION = "HOPSWORKS_HOSTNAME_VERIFICATION"
     DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"

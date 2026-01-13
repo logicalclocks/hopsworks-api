@@ -20,7 +20,10 @@ import json
 from hopsworks_common import client, decorators, environment, usage
 from hopsworks_common.engine import environment_engine
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.environment_api")
 class EnvironmentApi:
     def __init__(self):
         self._environment_engine = environment_engine.EnvironmentEngine()

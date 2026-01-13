@@ -17,10 +17,12 @@
 import json
 
 import humps
+from hopsworks_common.internal.aliases import public
 from hopsworks_common import usage, util
 from hopsworks_common.core import kafka_api
 
 
+@public("hopsworks.kafka_schema")
 class KafkaSchema:
     def __init__(
         self,

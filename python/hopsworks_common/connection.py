@@ -24,6 +24,7 @@ import sys
 import warnings
 import weakref
 
+from hopsworks_common.internal.aliases import public
 from hopsworks_common import client, constants, usage, util, version
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
@@ -56,6 +57,7 @@ _hsfs_engine_type = None
 _logger = logging.getLogger(__name__)
 
 
+@public("hopsworks.connection")
 class Connection:
     """A hopsworks connection object.
 

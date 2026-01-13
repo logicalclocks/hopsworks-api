@@ -16,7 +16,10 @@
 
 from hopsworks_common import client, execution
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.execution_api")
 class ExecutionApi:
     def _start(self, job, args: str = None):
         _client = client.get_instance()

@@ -25,7 +25,10 @@ DOC_TYPE_ARG = Literal[
 ]
 FILTER_BY_ARG = Literal["tag", "tag_name", "tag_key", "tag_value", "keyword"]
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.search_api")
 class SearchApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)

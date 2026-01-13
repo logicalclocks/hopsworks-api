@@ -21,7 +21,10 @@ import json
 from hopsworks_common import client, decorators, secret
 from hopsworks_common.core import project_api
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.secret_api")
 class SecretsApi:
     def __init__(
         self,

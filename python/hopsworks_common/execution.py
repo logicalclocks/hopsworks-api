@@ -19,12 +19,14 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_common.internal.aliases import public
 from hopsworks_common import client, constants, usage, util
 from hopsworks_common.client.exceptions import JobExecutionException
 from hopsworks_common.core import execution_api
 from hopsworks_common.engine import execution_engine
 
 
+@public("hopsworks.execution")
 class Execution:
     def __init__(
         self,

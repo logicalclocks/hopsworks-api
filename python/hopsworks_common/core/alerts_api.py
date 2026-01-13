@@ -93,7 +93,10 @@ _MONITORING_STATUS_ARG = Literal[
 ]
 _MONITORING_STATUS = get_args(_MONITORING_STATUS_ARG)
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.alerts_api")
 class AlertsApi:
     """Alerts API handle.
 

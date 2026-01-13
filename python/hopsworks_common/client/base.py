@@ -40,7 +40,10 @@ _logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.client.base")
 class Client:
     TOKEN_FILE = "token.jwt"
     TOKEN_EXPIRED_RETRY_INTERVAL = 0.6

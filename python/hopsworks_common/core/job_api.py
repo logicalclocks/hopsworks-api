@@ -36,7 +36,11 @@ if TYPE_CHECKING:
         job_configuration,
     )
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.job_api")
+@public("hopsworks.core.job_api", as_alias="JobsApi")
 class JobApi:
     @usage.method_logger
     def create_job(self, name: str, config: dict) -> job.Job:

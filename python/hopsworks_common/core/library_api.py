@@ -18,7 +18,10 @@ import json
 
 from hopsworks_common import client, library
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.library_api")
 class LibraryApi:
     def _install(
         self, library_name: str, name: str, library_spec: dict

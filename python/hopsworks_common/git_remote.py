@@ -17,10 +17,12 @@
 import json
 
 import humps
+from hopsworks_common.internal.aliases import public
 from hopsworks_common import usage, util
 from hopsworks_common.core import git_remote_api
 
 
+@public("hopsworks.git_remote")
 class GitRemote:
     def __init__(
         self,

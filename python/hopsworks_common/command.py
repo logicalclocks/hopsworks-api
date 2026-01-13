@@ -15,7 +15,7 @@
 #
 
 import humps
-from hopsworks.internal.aliases import public
+from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.command")

@@ -17,7 +17,10 @@
 from hopsworks_common import client, git_op_execution, git_remote
 from hopsworks_common.engine import git_engine
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.git_remote_api")
 class GitRemoteApi:
     def __init__(self):
         self._git_engine = git_engine.GitEngine()

@@ -32,7 +32,10 @@ LOADBALANCER_SERVICES = {
     "namenode": "namenode",
 }
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.core.variable_api")
 class VariableApi:
     def get_variable(self, variable: str):
         """Get the configured value of a variable.

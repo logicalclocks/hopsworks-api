@@ -26,12 +26,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Literal
 
+from hopsworks_common.internal.aliases import public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
 
 
+@public("hopsworks.core.dataset_api")
 class Chunk:
     def __init__(self, content, number, status):
         self.content = content
@@ -40,6 +42,7 @@ class Chunk:
         self.retries = 0
 
 
+@public("hopsworks.core.dataset_api")
 class DatasetApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)

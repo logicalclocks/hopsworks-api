@@ -19,6 +19,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_common.internal.aliases import public
 from requests.exceptions import SSLError
 
 
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     import requests
 
 
+@public("hopsworks.client.exceptions")
 class RestAPIError(Exception):
     """REST Exception encapsulating the response object and url."""
 
@@ -74,10 +76,12 @@ class RestAPIError(Exception):
         self.response = response
 
 
+@public("hopsworks.client.exceptions")
 class UnknownSecretStorageError(Exception):
     """This exception will be raised if an unused secrets storage is passed as a parameter."""
 
 
+@public("hopsworks.client.exceptions")
 class FeatureStoreException(Exception):
     """Generic feature store exception."""
 
@@ -88,6 +92,7 @@ class FeatureStoreException(Exception):
     )
 
 
+@public("hopsworks.client.exceptions")
 class VectorDatabaseException(Exception):
     # reason
     REQUESTED_K_TOO_LARGE = "REQUESTED_K_TOO_LARGE"
@@ -112,6 +117,7 @@ class VectorDatabaseException(Exception):
         return self._info
 
 
+@public("hopsworks.client.exceptions")
 class DataValidationException(FeatureStoreException):
     """Raised when data validation fails only when using "STRICT" validation ingestion policy."""
 
@@ -119,6 +125,7 @@ class DataValidationException(FeatureStoreException):
         super().__init__(message)
 
 
+@public("hopsworks.client.exceptions")
 class ExternalClientError(TypeError):
     """Raised when external client cannot be initialized due to missing arguments."""
 
@@ -137,6 +144,7 @@ class InternalClientError(TypeError):
         super().__init__(message)
 
 
+@public("hopsworks.client.exceptions")
 class HopsworksSSLClientError(SSLError):
     """Raised when the client connection fails with SSL related errors."""
 
@@ -144,34 +152,42 @@ class HopsworksSSLClientError(SSLError):
         super().__init__(message)
 
 
+@public("hopsworks.client.exceptions")
 class GitException(Exception):
     """Generic git exception."""
 
 
+@public("hopsworks.client.exceptions")
 class JobException(Exception):
     """Generic job exception."""
 
 
+@public("hopsworks.client.exceptions")
 class EnvironmentException(Exception):
     """Generic python environment exception."""
 
 
+@public("hopsworks.client.exceptions")
 class KafkaException(Exception):
     """Generic kafka exception."""
 
 
+@public("hopsworks.client.exceptions")
 class DatasetException(Exception):
     """Generic dataset exception."""
 
 
+@public("hopsworks.client.exceptions")
 class ProjectException(Exception):
     """Generic project exception."""
 
 
+@public("hopsworks.client.exceptions")
 class OpenSearchException(Exception):
     """Generic opensearch exception."""
 
 
+@public("hopsworks.client.exceptions")
 class JobExecutionException(Exception):
     """Generic job executions exception."""
 

@@ -33,7 +33,10 @@ with contextlib.suppress(ImportError):
 
 _logger = logging.getLogger(__name__)
 
+from hopsworks_common.internal.aliases import public
 
+
+@public("hopsworks.client.external")
 class Client(base.Client):
     def __init__(
         self,

@@ -18,9 +18,11 @@ import json
 from datetime import datetime, timezone
 
 import humps
+from hopsworks_common.internal.aliases import public
 from hopsworks_common import util
 
 
+@public("hopsworks.job_schedule")
 class JobSchedule:
     def __init__(
         self,
