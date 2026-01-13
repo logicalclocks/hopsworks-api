@@ -18,14 +18,13 @@ import logging
 from typing import Literal, get_args
 
 from hopsworks_common import client, search_results
+from hopsworks_common.internal.aliases import public
 
 
 DOC_TYPE_ARG = Literal[
     "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "ALL"
 ]
 FILTER_BY_ARG = Literal["tag", "tag_name", "tag_key", "tag_value", "keyword"]
-
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.search_api")

@@ -20,6 +20,7 @@ import re
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.internal.aliases import public
 
 
 LOADBALANCER_SERVICES = {
@@ -31,8 +32,6 @@ LOADBALANCER_SERVICES = {
     "datanode": "datanode",
     "namenode": "namenode",
 }
-
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.variable_api", "hsfs.core.variable_api")

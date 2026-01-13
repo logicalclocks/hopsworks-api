@@ -29,6 +29,7 @@ import requests
 import urllib3
 from hopsworks_common.client import auth, exceptions
 from hopsworks_common.decorators import connected
+from hopsworks_common.internal.aliases import public
 
 
 with contextlib.suppress(ImportError):
@@ -39,8 +40,6 @@ _logger = logging.getLogger(__name__)
 
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.client.base", "hsfs.client.base", "hsml.client.base")

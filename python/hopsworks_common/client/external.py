@@ -25,6 +25,7 @@ import hopsworks_common.client
 import requests
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.internal.aliases import public
 
 
 with contextlib.suppress(ImportError):
@@ -32,8 +33,6 @@ with contextlib.suppress(ImportError):
 
 
 _logger = logging.getLogger(__name__)
-
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.client.external", "hsfs.client.external", "hsml.client.external")

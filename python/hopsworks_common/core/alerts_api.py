@@ -30,6 +30,7 @@ from hopsworks_common import (
     usage,
 )
 from hopsworks_common.engine import alerts_engine
+from hopsworks_common.internal.aliases import public
 
 
 _GLOBAL_RECEIVER_PREFIX = "global-receiver"
@@ -92,8 +93,6 @@ _MONITORING_STATUS_ARG = Literal[
     "feature_monitor_shift_detected",
 ]
 _MONITORING_STATUS = get_args(_MONITORING_STATUS_ARG)
-
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.alerts_api")
