@@ -19,8 +19,10 @@ import os
 import requests
 from hopsworks_common.client import auth, exceptions
 from hopsworks_common.client.istio import base as istio
+from hopsworks_common.internal.aliases import public
 
 
+@public("hsml.client.istio.hopsworks")
 class Client(istio.Client):
     REQUESTS_VERIFY = "REQUESTS_VERIFY"
     PROJECT_ID = "HOPSWORKS_PROJECT_ID"

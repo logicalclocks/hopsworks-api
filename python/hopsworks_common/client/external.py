@@ -36,7 +36,7 @@ _logger = logging.getLogger(__name__)
 from hopsworks_common.internal.aliases import public
 
 
-@public("hopsworks.client.external")
+@public("hopsworks.client.external", "hsfs.client.external", "hsml.client.external")
 class Client(base.Client):
     def __init__(
         self,

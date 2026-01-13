@@ -31,7 +31,7 @@ from hopsworks_common import (
 from hopsworks_common.internal.aliases import public
 
 
-@public("hopsworks.core.kafka_api")
+@public("hopsworks.core.kafka_api", "hsfs.core.kafka_api")
 class KafkaApi:
     @usage.method_logger
     def create_topic(

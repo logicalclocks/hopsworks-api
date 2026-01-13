@@ -20,8 +20,10 @@ from hopsworks_common.client import base
 from hopsworks_common.client.istio.grpc.inference_client import (
     GRPCInferenceServerClient,
 )
+from hopsworks_common.internal.aliases import public
 
 
+@public("hsml.client.istio.base")
 class Client(base.Client):
     SERVING_API_KEY = "SERVING_API_KEY"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"

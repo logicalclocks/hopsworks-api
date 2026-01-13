@@ -33,7 +33,7 @@ from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
 
 
-@public("hopsworks.core.dataset_api")
+@public("hopsworks.core.dataset_api", "hsml.core.dataset_api")
 class Chunk:
     def __init__(self, content, number, status):
         self.content = content
@@ -42,7 +42,7 @@ class Chunk:
         self.retries = 0
 
 
-@public("hopsworks.core.dataset_api")
+@public("hopsworks.core.dataset_api", "hsfs.core.dataset_api", "hsml.core.dataset_api")
 class DatasetApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)

@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common.util import (
+# Re-export from hopsworks.util (now available via @public decorator)
+from hopsworks.util import (
     FEATURE_STORE_NAME_SUFFIX,
     VALID_EMBEDDING_TYPE,
     Encoder,

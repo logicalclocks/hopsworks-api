@@ -24,7 +24,7 @@ from hopsworks_common.client import exceptions
 from hopsworks_common.internal.aliases import public
 
 
-@public("hopsworks.client.auth")
+@public("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")
 class BearerAuth(requests.auth.AuthBase):
     """Class to encapsulate a Bearer token."""
 
@@ -36,7 +36,7 @@ class BearerAuth(requests.auth.AuthBase):
         return r
 
 
-@public("hopsworks.client.auth")
+@public("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")
 class ApiKeyAuth(requests.auth.AuthBase):
     """Class to encapsulate an API key."""
 
@@ -48,7 +48,7 @@ class ApiKeyAuth(requests.auth.AuthBase):
         return r
 
 
-@public("hopsworks.client.auth")
+@public("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")
 class OnlineStoreKeyAuth(requests.auth.AuthBase):
     """Class to encapsulate an API key."""
 

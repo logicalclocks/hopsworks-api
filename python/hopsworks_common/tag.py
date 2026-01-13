@@ -20,8 +20,10 @@ import json
 
 import humps
 from hopsworks_common import util
+from hopsworks_common.internal.aliases import public
 
 
+@public("hsfs.tag", "hsml.tag")
 class Tag:
     NOT_FOUND_ERROR_CODE = 370002
 

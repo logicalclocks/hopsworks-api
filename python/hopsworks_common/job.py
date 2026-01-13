@@ -30,7 +30,7 @@ from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
 
 
-@public("hopsworks.job")
+@public("hopsworks.job", "hsfs.core.job")
 class Job:
     NOT_FOUND_ERROR_CODE = 130009
 

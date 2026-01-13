@@ -25,7 +25,7 @@ from hopsworks_common.constants import KAFKA_TOPIC
 from hopsworks_common.core import kafka_api
 
 
-@public("hopsworks.kafka_topic")
+@public("hopsworks.kafka_topic", "hsml.kafka_topic")
 class KafkaTopic:
     """Configuration for a Kafka topic."""
 

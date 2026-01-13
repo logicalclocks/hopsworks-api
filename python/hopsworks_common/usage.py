@@ -33,6 +33,10 @@ from datetime import datetime, timezone
 from os.path import expanduser, join
 
 
+from hopsworks_common.internal.aliases import public
+
+
+@public("hopsworks.usage", "hsfs.usage", "hsml.usage")
 class EnvironmentAttribute:
     def __init__(self):
         self._platform = None
@@ -115,6 +119,7 @@ class EnvironmentAttribute:
         )
 
 
+@public("hopsworks.usage", "hsfs.usage", "hsml.usage")
 class MethodCounter:
     def __init__(self):
         self.method_counts = {}
@@ -161,20 +166,24 @@ _USER_ID_FILE = "user_id"
 _is_enabled = os.environ.get("ENABLE_HOPSWORKS_USAGE", default="true").lower() == "true"
 
 
+@public("hopsworks.usage", "hsfs.usage", "hsml.usage")
 def enable():
     global _is_enabled
     _is_enabled = True
 
 
+@public("hopsworks.usage", "hsfs.usage", "hsml.usage")
 def disable():
     global _is_enabled
     _is_enabled = False
 
 
+@public("hopsworks.usage", "hsfs.usage", "hsml.usage")
 def get_env():
     return _env_attr.json()
 
 
+@public("hopsworks.usage", "hsfs.usage", "hsml.usage")
 def init_usage(hostname, backend_version):
     global _backend_hostname, _backend_version, _is_enabled
     _backend_hostname = hostname
@@ -220,6 +229,7 @@ def _extract_method_name_line_and_file(e):
     return "\t".join(tb_result)
 
 
+@public("hopsworks.usage", "hsfs.usage", "hsml.usage")
 def method_logger(func):
     # Disable usage BEFORE import hsfs, return function itself
     if not _is_enabled:

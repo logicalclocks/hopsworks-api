@@ -24,6 +24,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.variable_api import VariableApi
 
 
+@public("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")
 class OPENSEARCH_CONFIG:
     ELASTIC_ENDPOINT_ENV_VAR = "ELASTIC_ENDPOINT"
     SSL_CONFIG = "es.net.ssl"
@@ -44,10 +45,11 @@ class OPENSEARCH_CONFIG:
     CA_CERTS = "ca_certs"
     HTTP_AUTH = "http_auth"
 
+
 from hopsworks_common.internal.aliases import public
 
 
-@public("hopsworks.core.opensearch_api")
+@public("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")
 class OpenSearchApi:
     def __init__(self) -> None:
         self._variable_api: VariableApi = VariableApi()

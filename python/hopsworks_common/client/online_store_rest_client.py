@@ -26,6 +26,7 @@ from furl import furl
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import variable_api
+from hopsworks_common.internal.aliases import public
 
 
 _logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ _logger = logging.getLogger(__name__)
 _online_store_rest_client = None
 
 
+@public("hsfs.client.online_store_rest_client")
 def init_or_reset_online_store_rest_client(
     transport: requests.adapters.HTTPAdapter
     | requests.adapters.BaseAdapter
@@ -58,6 +60,7 @@ def init_or_reset_online_store_rest_client(
             )
 
 
+@public("hsfs.client.online_store_rest_client")
 def get_instance() -> OnlineStoreRestClientSingleton:
     global _online_store_rest_client
     if _online_store_rest_client is None:
@@ -71,6 +74,7 @@ def get_instance() -> OnlineStoreRestClientSingleton:
     return _online_store_rest_client
 
 
+@public("hsfs.client.online_store_rest_client")
 class OnlineStoreRestClientSingleton:
     HOST = "host"
     PORT = "port"

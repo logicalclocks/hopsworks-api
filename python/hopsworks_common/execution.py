@@ -26,7 +26,7 @@ from hopsworks_common.core import execution_api
 from hopsworks_common.engine import execution_engine
 
 
-@public("hopsworks.execution")
+@public("hopsworks.execution", "hsfs.core.execution")
 class Execution:
     def __init__(
         self,

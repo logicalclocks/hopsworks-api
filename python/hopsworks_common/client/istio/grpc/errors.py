@@ -17,6 +17,7 @@
 # https://github.com/kserve/kserve/blob/release-0.11/python/kserve/kserve/errors.py
 
 
+@public("hsml.client.istio.grpc.errors")
 class InvalidInput(ValueError):
     """Exception class indicating invalid input arguments.
 

@@ -24,7 +24,7 @@ from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.internal.aliases import public
 
 
-@public("hopsworks.core.project_api")
+@public("hopsworks.core.project_api", "hsfs.core.project_api")
 class ProjectApi:
     def _exists(self, name: str) -> bool:
         """Check if a project exists.
