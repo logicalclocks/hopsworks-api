@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 from hopsworks_common.internal.aliases import public
 
 
-@public("hopsworks.core.job_api")
+@public("hopsworks.core.job_api", as_alias="JobsApi")
 @public("hopsworks.core.job_api", "hsfs.core.job_api")
 class JobApi:
     @usage.method_logger
