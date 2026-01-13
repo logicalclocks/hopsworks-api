@@ -94,8 +94,8 @@ def deprecated(
                 if not caller or not caller.__name__.startswith("hopsworks"):
                     warnings.warn(
                         f"{symbol.__qualname__} is deprecated."
-                        f"The function will be removed in {v} of hopsworks."
-                        f"Consider using {recs} instead.",
+                        f" The function will be removed in {v} of hopsworks."
+                        f" Consider using {recs} instead.",
                         HopsworksDeprecationWarning,
                         stacklevel=2,
                     )
