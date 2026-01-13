@@ -15,8 +15,10 @@
 #
 
 import humps
+from hopsworks.internal.aliases import public
 
 
+@public("hopsworks.command")
 class Command:
     def __init__(
         self,
