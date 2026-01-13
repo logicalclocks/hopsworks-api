@@ -148,5 +148,4 @@ dev_scripts/
 # uv lock file
 uv.lock
 
-.gitignore
-!/.gitignore
+/python/.gitignore
