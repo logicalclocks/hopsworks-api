@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from hsfs import feature_group
 
 
-@public("hopsworks.util")
+@public("hopsworks.util", "hsml.util")
 class Encoder(json.JSONEncoder):
     def default(self, o: Any) -> dict[str, Any]:
         try:
@@ -62,6 +62,7 @@ class Encoder(json.JSONEncoder):
             return super().default(o)
 
 
+@public("hsml.util")
 class NumpyEncoder(json.JSONEncoder):
     """Special json encoder for numpy types.
 
@@ -420,11 +421,12 @@ def is_runtime_notebook():
     return "ipykernel" in sys.modules
 
 
-@public("hopsworks.util")
+@public("hopsworks.util", "hsml.util")
 class VersionWarning(Warning):
     pass
 
 
+@public("hsml.util")
 class ProvenanceWarning(Warning):
     pass
 
@@ -515,6 +517,7 @@ def is_interactive():
 # - schema and types
 
 
+@public("hsml.util")
 def set_model_class(model):
     from hsml.llm.model import Model as LLMModel
     from hsml.model import Model as BaseModel
@@ -547,6 +550,7 @@ def set_model_class(model):
     raise ValueError(f"framework {str(framework)} is not a supported framework")
 
 
+@public("hsml.util")
 def input_example_to_json(input_example):
     import numpy as np
 
@@ -561,10 +565,12 @@ def input_example_to_json(input_example):
     return _handle_dataframe_input(input_example)
 
 
+@public("hsml.util")
 def _handle_tensor_input(input_tensor):
     return input_tensor.tolist()
 
 
+@public("hsml.util")
 def _handle_dataframe_input(input_ex):
     if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
@@ -581,6 +587,7 @@ def _handle_dataframe_input(input_ex):
     raise TypeError(f"{type(input_ex)} is not a supported input example type")
 
 
+@public("hsml.util")
 def _handle_dict_input(input_ex):
     return input_ex
 
@@ -588,6 +595,7 @@ def _handle_dict_input(input_ex):
 # - artifacts
 
 
+@public("hsml.util")
 def compress(archive_out_path, archive_name, path_to_archive):
     if os.path.isdir(path_to_archive):
         return shutil.make_archive(
@@ -601,6 +609,7 @@ def compress(archive_out_path, archive_name, path_to_archive):
     )
 
 
+@public("hsml.util")
 def decompress(archive_file_path, extract_dir=None):
     return shutil.unpack_archive(archive_file_path, extract_dir=extract_dir)
 
@@ -608,6 +617,7 @@ def decompress(archive_file_path, extract_dir=None):
 # - export models
 
 
+@public("hsml.util")
 def validate_metrics(metrics):
     if metrics is not None:
         if not isinstance(metrics, dict):
@@ -633,6 +643,7 @@ def validate_metrics(metrics):
 # Model serving
 
 
+@public("hsml.util")
 def get_predictor_for_model(model, **kwargs):
     from hsml.llm.model import Model as LLMModel
     from hsml.llm.predictor import Predictor as vLLMPredictor
@@ -682,6 +693,7 @@ def get_predictor_for_server(name: str, script_file: str, **kwargs):
 # General
 
 
+@public("hsml.util")
 def pretty_print(obj):
     if isinstance(obj, list):
         for logs in obj:
@@ -691,6 +703,7 @@ def pretty_print(obj):
         print(json.dumps(json_decamelized, indent=4, sort_keys=True))
 
 
+@public("hsml.util")
 def get_members(cls, prefix=None):
     for m in inspect.getmembers(cls, lambda m: not (inspect.isroutine(m))):
         n = m[0]  # name
@@ -724,6 +737,7 @@ def extract_field_from_json(obj, fields, default=None, as_instance_of=None):
     return value
 
 
+@public("hsml.util")
 def get_obj_from_json(obj, cls):
     if obj is not None:
         if isinstance(obj, cls):
@@ -738,6 +752,7 @@ def get_obj_from_json(obj, cls):
     return obj
 
 
+@public("hsml.util")
 def feature_view_to_json(obj):
     if obj is None:
         return None

@@ -60,6 +60,7 @@ class OnlineStoreKeyAuth(requests.auth.AuthBase):
         return r
 
 
+@public("hsml.client.auth")
 def get_api_key(api_key_value, api_key_file):
     if api_key_value is not None:
         return api_key_value

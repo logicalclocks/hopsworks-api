@@ -25,7 +25,7 @@ from hopsworks_common import util
 from hopsworks_common.internal.aliases import public
 
 
-@public("hopsworks.user")
+@public("hopsworks.user", "hsfs.user")
 @dataclass
 class User:
     email: str | None = None
