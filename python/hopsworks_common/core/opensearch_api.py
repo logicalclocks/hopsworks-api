@@ -22,6 +22,7 @@ from furl import furl
 from hopsworks_common import client, usage
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.variable_api import VariableApi
+from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")
@@ -44,9 +45,6 @@ class OPENSEARCH_CONFIG:
     SSL_ASSERT_HOSTNAME = "ssl_assert_hostname"
     CA_CERTS = "ca_certs"
     HTTP_AUTH = "http_auth"
-
-
-from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")

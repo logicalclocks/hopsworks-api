@@ -16,6 +16,8 @@
 # This implementation has been borrowed from the kserve/kserve repository
 # https://github.com/kserve/kserve/blob/release-0.11/python/kserve/kserve/errors.py
 
+from hopsworks_common.internal.aliases import public
+
 
 @public("hsml.client.istio.grpc.errors")
 class InvalidInput(ValueError):
