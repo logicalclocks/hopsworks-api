@@ -26,10 +26,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Literal
 
-from hopsworks_common.internal.aliases import public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode
+from hopsworks_common.internal.aliases import public
 from tqdm.auto import tqdm
 
 

@@ -18,7 +18,6 @@ import time
 
 from hopsworks_common import client, command, environment, library
 from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
-
 from hopsworks_common.internal.aliases import public
 
 

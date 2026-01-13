@@ -4400,7 +4400,7 @@ class TestSpark:
 
         # Mock dataset API and file I/O for distribute=False case
         if distribute_arg is False:
-            mock_dataset_api.return_value.read_content.return_value.content = bytes()
+            mock_dataset_api.return_value.read_content.return_value.content = b""
             mocker.patch("builtins.open", mocker.mock_open())
 
         # Act

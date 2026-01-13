@@ -17,7 +17,6 @@
 import json
 
 from hopsworks_common import client, library
-
 from hopsworks_common.internal.aliases import public
 
 

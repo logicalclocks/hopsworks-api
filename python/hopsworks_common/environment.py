@@ -19,10 +19,10 @@ import os
 from typing import TYPE_CHECKING
 
 import humps
-from hopsworks_common.internal.aliases import public
 from hopsworks_common import client, command, usage, util
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
+from hopsworks_common.internal.aliases import public
 
 
 if TYPE_CHECKING:

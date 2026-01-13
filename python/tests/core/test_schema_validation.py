@@ -363,7 +363,7 @@ class TestPandasDataframe(BaseDataFrameTest):
 
         # Assert
         # validate that only 'val' is detected as a string column
-        assert ["string1", "string2"] == string_cols
+        assert string_cols == ["string1", "string2"]
 
 
 @pytest.mark.skipif(not HAS_POLARS, reason="polars not installed")

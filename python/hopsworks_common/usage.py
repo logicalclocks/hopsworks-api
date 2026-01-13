@@ -32,7 +32,6 @@ import uuid
 from datetime import datetime, timezone
 from os.path import expanduser, join
 
-
 from hopsworks_common.internal.aliases import public
 
 

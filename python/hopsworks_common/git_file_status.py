@@ -17,8 +17,8 @@
 import json
 
 import humps
-from hopsworks_common.internal.aliases import public
 from hopsworks_common import util
+from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.git_file_status")

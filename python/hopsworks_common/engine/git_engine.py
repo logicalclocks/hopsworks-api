@@ -19,7 +19,6 @@ import time
 
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.core import git_op_execution_api
-
 from hopsworks_common.internal.aliases import public
 
 

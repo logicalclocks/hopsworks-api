@@ -20,7 +20,6 @@ import json
 
 from hopsworks_common import client, constants, project
 from hopsworks_common.client.exceptions import RestAPIError
-
 from hopsworks_common.internal.aliases import public
 
 

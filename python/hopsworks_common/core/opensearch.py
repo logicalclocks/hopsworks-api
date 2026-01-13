@@ -29,6 +29,7 @@ from hopsworks_common.client.exceptions import (
     VectorDatabaseException,
 )
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG, OpenSearchApi
+from hopsworks_common.internal.aliases import public
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,
@@ -37,7 +38,6 @@ from opensearchpy.exceptions import (
     RequestError,
 )
 from retrying import retry
-from hopsworks_common.internal.aliases import public
 
 
 def _is_timeout(exception):

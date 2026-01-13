@@ -160,10 +160,9 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
 
     def test_save_time_travel_query(self, mocker):
@@ -198,14 +197,13 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
         assert mock_warning.call_args[0][0] == (
             "`as_of` argument in the `Query` will be ignored because"
-            + " feature view does not support time travel query."
+            " feature view does not support time travel query."
         )
 
     def test_save_time_travel_sub_query(self, mocker):
@@ -242,14 +240,13 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
         assert mock_warning.call_args[0][0] == (
             "`as_of` argument in the `Query` will be ignored because"
-            + " feature view does not support time travel query."
+            " feature view does not support time travel query."
         )
 
     def template_save_label_success(self, mocker, _query, label, label_fg_id):
@@ -288,10 +285,9 @@ class TestFeatureViewEngine:
         )
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
 
     def template_save_label_fail(self, mocker, _query, label, msg):
@@ -553,7 +549,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert "query" == result
+        assert result == "query"
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
         assert mock_qc_api.return_value.construct_query.call_count == 1
 
@@ -593,7 +589,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert "pit_query" == result
+        assert result == "pit_query"
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
         assert mock_qc_api.return_value.construct_query.call_count == 1
 
@@ -2844,8 +2840,11 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert ["id", "feature1", "feature2", "predicted_label"] == [
-            feature.name for feature in dataframe_logging_features
+        assert [feature.name for feature in dataframe_logging_features] == [
+            "id",
+            "feature1",
+            "feature2",
+            "predicted_label",
         ]
 
     def test_get_feature_logging_data(self, mocker):

@@ -19,7 +19,6 @@ import json
 
 from hopsworks_common import client, decorators, environment, usage
 from hopsworks_common.engine import environment_engine
-
 from hopsworks_common.internal.aliases import public
 
 

@@ -18,8 +18,8 @@ import json
 from datetime import datetime, timezone
 
 import humps
-from hopsworks_common.internal.aliases import public
 from hopsworks_common import util
+from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.job_schedule", "hsfs.core.job_schedule")

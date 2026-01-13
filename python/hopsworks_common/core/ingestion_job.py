@@ -17,8 +17,8 @@
 from __future__ import annotations
 
 import humps
-from hopsworks_common.job import Job
 from hopsworks_common.internal.aliases import public
+from hopsworks_common.job import Job
 
 
 @public("hopsworks.core.ingestion_job", "hsfs.core.ingestion_job")

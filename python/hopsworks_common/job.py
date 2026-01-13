@@ -22,11 +22,11 @@ from datetime import datetime, timezone
 from typing import Literal
 
 import humps
-from hopsworks_common.internal.aliases import public
 from hopsworks_common import alert, client, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
 from hopsworks_common.engine import execution_engine
+from hopsworks_common.internal.aliases import public
 from hopsworks_common.job_schedule import JobSchedule
 
 

@@ -19,10 +19,10 @@ from __future__ import annotations
 import json
 
 import humps
-from hopsworks_common.internal.aliases import public
 from hopsworks_common import usage, util
 from hopsworks_common.constants import KAFKA_TOPIC
 from hopsworks_common.core import kafka_api
+from hopsworks_common.internal.aliases import public
 
 
 @public("hopsworks.kafka_topic", "hsml.kafka_topic")

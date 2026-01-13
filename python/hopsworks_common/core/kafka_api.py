@@ -27,7 +27,6 @@ from hopsworks_common import (
     kafka_topic,
     usage,
 )
-
 from hopsworks_common.internal.aliases import public
 
 

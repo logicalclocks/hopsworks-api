@@ -38,9 +38,9 @@ from hopsworks_common.client.exceptions import FeatureStoreException, JobExcepti
 from hopsworks_common.constants import MODEL, PREDICTOR, Default
 from hopsworks_common.core.constants import HAS_PANDAS
 from hopsworks_common.git_file_status import GitFileStatus
+from hopsworks_common.internal.aliases import public
 from six import string_types
 
-from hopsworks_common.internal.aliases import public
 
 if HAS_PANDAS:
     import pandas as pd
