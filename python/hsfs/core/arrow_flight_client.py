@@ -20,7 +20,7 @@ import json
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
 from retrying import retry
