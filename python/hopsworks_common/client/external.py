@@ -182,9 +182,7 @@ class Client(base.Client):
         Returns:
             str: First 16 characters of SHA256 hash of the API key
         """
-        return hashlib.sha256(self._auth._token.encode("utf-8")).hexdigest()[
-            :16
-        ]
+        return hashlib.sha256(self._auth._token.encode("utf-8")).hexdigest()[:16]
 
     def get_certs_folder(self):
         return os.path.join(self._cert_folder_base, self._host, self._api_key_hash)
