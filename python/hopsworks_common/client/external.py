@@ -271,12 +271,8 @@ class Client(base.Client):
         self._cleanup_file(self._get_client_key_path())
 
         try:
-            # delete api_key_hash level
+            # delete api_key_hash level only, otherwise may clean up certs for other users
             os.rmdir(self._cert_folder)
-            # delete host level
-            os.rmdir(os.path.dirname(self._cert_folder))
-            # on AWS base dir will be empty, and can be deleted otherwise raises OSError
-            os.rmdir(self._cert_folder_base)
         except OSError:
             pass
 
