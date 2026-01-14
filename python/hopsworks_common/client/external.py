@@ -268,11 +268,9 @@ class Client(base.Client):
         self._cleanup_file(self._get_client_cert_path())
         self._cleanup_file(self._get_client_key_path())
 
-        try:
+        with contextlib.suppress(OSError):
             # delete api_key_hash level only, otherwise may clean up certs for other users
             os.rmdir(self._cert_folder)
-        except OSError:
-            pass
 
         self._cert_folder = None
 
