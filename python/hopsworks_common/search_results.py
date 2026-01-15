@@ -18,11 +18,10 @@ from __future__ import annotations
 import logging
 
 from hopsworks_common import client
-from typing import List
 
 
 class Project:
-    """Represents a project associated with a search result"""
+    """Represents a project associated with a search result."""
 
     def __init__(self, project_id: int, project_name: str):
         self._log = logging.getLogger(__name__)
@@ -31,27 +30,24 @@ class Project:
 
     @property
     def id(self) -> int:
-        """Project ID"""
+        """Project ID."""
         return self._id
 
     @property
     def name(self) -> str:
-        """Project name"""
+        """Project name."""
         return self._name
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary"""
-        return {
-            "id": self._id,
-            "name": self._name
-        }
+        """Convert to JSON-serializable dictionary."""
+        return {"id": self._id, "name": self._name}
 
     def __repr__(self):
         return f"Project(id={self._id}, name='{self._name}')"
 
 
 class Highlights:
-    """Container for search result highlights showing where matches occurred"""
+    """Container for search result highlights showing where matches occurred."""
 
     def __init__(self, highlights_data: dict):
         self._log = logging.getLogger(__name__)
@@ -65,45 +61,52 @@ class Highlights:
 
     @property
     def name(self) -> str | None:
-        """Highlighted name with <em> tags showing matched terms"""
+        """Highlighted name with <em> tags showing matched terms."""
         return self._name
 
     @property
     def description(self) -> str | None:
-        """Highlighted description with <em> tags showing matched terms"""
+        """Highlighted description with <em> tags showing matched terms."""
         return self._description
 
     @property
-    def tags(self) -> dict | None:
-        """List of highlighted tags with <em> tags showing matched terms"""
+    def tags(self) -> list:
+        """List of highlighted tags with <em> tags showing matched terms."""
         return self._tags
 
     @property
-    def keywords(self) -> List:
-        """Highlighted keywords with <em> tags showing matched terms"""
+    def keywords(self) -> list:
+        """Highlighted keywords with <em> tags showing matched terms."""
         return self._keywords
 
     @property
-    def features(self) -> List:
-        """Highlighted keywords with <em> tags showing matched terms"""
+    def features(self) -> list:
+        """Highlighted features with <em> tags showing matched terms."""
         return self._features
 
     @property
-    def source_feature_groups(self) -> List:
-        """Highlighted source feature groups with <em> tags showing matched terms"""
-        return self._features
+    def source_feature_groups(self) -> list:
+        """Highlighted source feature groups with <em> tags showing matched terms."""
+        return self._source_feature_groups
 
     @property
     def raw_data(self) -> dict:
-        """Raw highlights data"""
+        """Raw highlights data."""
         return self._raw_data
 
     def has_highlights(self) -> bool:
-        """Check if there are any highlights"""
-        return bool(self._name or self._description or self._tags or self._keywords or self._features or self._source_feature_groups)
+        """Check if there are any highlights."""
+        return bool(
+            self._name
+            or self._description
+            or self._tags
+            or self._keywords
+            or self._features
+            or self._source_feature_groups
+        )
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary"""
+        """Convert to JSON-serializable dictionary."""
         return {
             "name": self._name,
             "description": self._description,
@@ -134,7 +137,7 @@ class Highlights:
 
 
 class SearchResultItem:
-    """Base class for search result items"""
+    """Base class for search result items."""
 
     def __init__(self, data: dict):
         self._log = logging.getLogger(__name__)
@@ -148,84 +151,138 @@ class SearchResultItem:
         # Extract project information
         project_id = data.get("parentProjectId")
         project_name = data.get("parentProjectName")
-        self._project = Project(project_id, project_name) if project_id and project_name else None
+        self._project = (
+            Project(project_id, project_name) if project_id and project_name else None
+        )
 
     @property
     def href(self):
-        """URL to get the full resource"""
+        """URL to get the full resource."""
         return self._href
 
     @property
     def name(self):
-        """Name of the resource"""
+        """Name of the resource."""
         return self._name
 
     @property
     def version(self):
-        """Version of the resource"""
+        """Version of the resource."""
         return self._version
 
     @property
     def description(self):
-        """Description of the resource"""
+        """Description of the resource."""
         return self._description
 
     @property
     def highlights(self) -> Highlights:
-        """Search highlights showing matched terms"""
+        """Search highlights showing matched terms."""
         return self._highlights
 
     @property
     def project(self) -> Project | None:
-        """Parent project of this resource"""
+        """Parent project of this resource."""
         return self._project
 
     @property
     def raw_data(self):
-        """Raw data from the search result"""
+        """Raw data from the search result."""
         return self._raw_data
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary"""
+        """Convert to JSON-serializable dictionary."""
         return {
             "href": self._href,
             "name": self._name,
             "version": self._version,
             "description": self._description,
             "highlights": self._highlights.json(),
-            "project": self._project.json() if self._project else None
+            "project": self._project.json() if self._project else None,
         }
 
     def __repr__(self):
         version_str = f", version={self._version}" if self._version else ""
-        description_str = f", description='{self._description[:50]}...'" if self._description and len(self._description) > 50 else (f", description='{self._description}'" if self._description else "")
-        return f"{self.__class__.__name__}(name='{self._name}', {version_str}, {description_str}, project='{self._project}', highlights='{self._highlights}')"
+        if self._description:
+            if len(self._description) > 50:
+                description_preview = f"{self._description[:50]}..."
+            else:
+                description_preview = self._description
+            description_str = f", description='{description_preview}'"
+        else:
+            description_str = ""
+        return f"{self.__class__.__name__}(name='{self._name}'{version_str}{description_str}, project='{self._project}', highlights='{self._highlights}')"
 
 
 class FeatureGroupSearchResult(SearchResultItem):
-    """Search result for a Feature Group"""
+    """Search result for a Feature Group."""
+
     def get(self):
-        _fs = client.get_connection().get_feature_store(self.project.name)
-        return _fs.get_feature_group(self.name, version=self.version)
+        """Retrieve the full FeatureGroup object.
+
+        This uses the project associated with this search result to obtain a
+        connection to the feature store and then fetches the Feature Group
+        with the given name and version.
+
+        Returns:
+            The full Feature Group object corresponding to this search result.
+
+        Raises:
+            Exception: If the connection to the feature store fails or the
+                Feature Group cannot be retrieved.
+        """
+        fs = client.get_connection().get_feature_store(self.project.name)
+        return fs.get_feature_group(self.name, version=self.version)
+
 
 class FeatureViewSearchResult(SearchResultItem):
-    """Search result for a Feature View"""
+    """Search result for a Feature View."""
+
     def get(self):
-        _fs = client.get_connection().get_feature_store(self.project.name)
-        return _fs.get_feature_view(self.name, version=self.version)
+        """Retrieve the full FeatureView object.
+
+        This uses the project associated with this search result to obtain a
+        connection to the feature store and then fetches the Feature View
+        with the given name and version.
+
+        Returns:
+            The full FeatureView instance corresponding to this search result.
+
+        Raises:
+            Exception: If the connection to the feature store fails or the
+                Feature View cannot be retrieved.
+        """
+        fs = client.get_connection().get_feature_store(self.project.name)
+        return fs.get_feature_view(self.name, version=self.version)
+
 
 class TrainingDatasetSearchResult(SearchResultItem):
-    """Search result for a Training Dataset"""
+    """Search result for a Training Dataset."""
+
     def get(self):
-        _fs = client.get_connection().get_feature_store(self.project.name)
-        return _fs.get_training_dataset(self.name, version=self.version)
+        """Retrieve the full TrainingDataset object.
+
+        This uses the project associated with this search result to obtain a
+        connection to the feature store and then fetches the Training Dataset
+        with the given name and version.
+
+        Returns:
+            The full TrainingDataset instance corresponding to this search result.
+
+        Raises:
+            Exception: If the connection to the feature store fails or the
+                Training Dataset cannot be retrieved.
+        """
+        fs = client.get_connection().get_feature_store(self.project.name)
+        return fs.get_training_dataset(self.name, version=self.version)
+
 
 class FeatureSearchResult(SearchResultItem):
-    """Search result for a Feature"""
-    pass
+    """Search result for a Feature."""
+
 
 class FeaturestoreSearchResult:
-    """Container for all featurestore search results"""
+    """Container for all featurestore search results."""
 
     def __init__(self, response_data: dict):
         self._log = logging.getLogger(__name__)
@@ -234,16 +291,14 @@ class FeaturestoreSearchResult:
             for fg in response_data.get("featuregroups", [])
         ]
         self._feature_views = [
-            FeatureViewSearchResult(fv)
-            for fv in response_data.get("featureViews", [])
+            FeatureViewSearchResult(fv) for fv in response_data.get("featureViews", [])
         ]
         self._training_datasets = [
             TrainingDatasetSearchResult(td)
             for td in response_data.get("trainingdatasets", [])
         ]
         self._features = [
-            FeatureSearchResult(f)
-            for f in response_data.get("features", [])
+            FeatureSearchResult(f) for f in response_data.get("features", [])
         ]
 
         # Store metadata about result counts
@@ -257,67 +312,67 @@ class FeaturestoreSearchResult:
         self._features_total = response_data.get("featuresTotal", 0)
 
     @property
-    def feature_groups(self) -> List[FeatureGroupSearchResult]:
-        """List of Feature Group search results"""
+    def feature_groups(self) -> list[FeatureGroupSearchResult]:
+        """List of Feature Group search results."""
         return self._feature_groups
 
     @property
-    def feature_views(self) -> List[FeatureViewSearchResult]:
-        """List of Feature View search results"""
+    def feature_views(self) -> list[FeatureViewSearchResult]:
+        """List of Feature View search results."""
         return self._feature_views
 
     @property
-    def training_datasets(self) -> List[TrainingDatasetSearchResult]:
-        """List of Training Dataset search results"""
+    def training_datasets(self) -> list[TrainingDatasetSearchResult]:
+        """List of Training Dataset search results."""
         return self._training_datasets
 
     @property
-    def features(self) -> List[FeatureSearchResult]:
-        """List of Feature search results"""
+    def features(self) -> list[FeatureSearchResult]:
+        """List of Feature search results."""
         return self._features
 
     @property
     def feature_groups_offset(self) -> int:
-        """Total offset for the return list of feature groups within the whole result"""
+        """Total offset for the return list of feature groups within the whole result."""
         return self._feature_groups_offset
 
     @property
     def feature_views_offset(self) -> int:
-        """Total offset for the return list of feature views within the whole result"""
+        """Total offset for the return list of feature views within the whole result."""
         return self._feature_views_offset
 
     @property
     def training_datasets_offset(self) -> int:
-        """Total offset for the return list of training datasets within the whole result"""
+        """Total offset for the return list of training datasets within the whole result."""
         return self._training_datasets_offset
 
     @property
     def features_offset(self) -> int:
-        """Total offset for the return list of training datasets within the whole result"""
+        """Total offset for the return list of features within the whole result."""
         return self._features_offset
 
     @property
     def feature_groups_total(self) -> int:
-        """Total number of Feature Groups matching the search"""
+        """Total number of Feature Groups matching the search."""
         return self._feature_groups_total
 
     @property
     def feature_views_total(self) -> int:
-        """Total number of Feature Views matching the search"""
+        """Total number of Feature Views matching the search."""
         return self._feature_views_total
 
     @property
     def training_datasets_total(self) -> int:
-        """Total number of Training Datasets matching the search"""
+        """Total number of Training Datasets matching the search."""
         return self._training_datasets_total
 
     @property
     def features_total(self) -> int:
-        """Total number of Features matching the search"""
+        """Total number of Features matching the search."""
         return self._features_total
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary"""
+        """Convert to JSON-serializable dictionary."""
         return {
             "featuregroups": [fg.json() for fg in self._feature_groups],
             "featuregroupsFrom": self._feature_groups_offset,
@@ -330,7 +385,7 @@ class FeaturestoreSearchResult:
             "trainingdatasetsTotal": self._training_datasets_total,
             "features": [f.json() for f in self._features],
             "featuresFrom": self._features_offset,
-            "featuresTotal": self._features_total
+            "featuresTotal": self._features_total,
         }
 
     def __repr__(self):

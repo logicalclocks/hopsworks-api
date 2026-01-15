@@ -16,9 +16,23 @@
 
 from hopsworks_common.core.search_api import (
     SearchApi,
+    TagSearchFilter,
+)
+from hopsworks_common.search_results import (
+    FeatureGroupSearchResult,
+    FeatureSearchResult,
+    FeaturestoreSearchResult,
+    FeatureViewSearchResult,
+    TrainingDatasetSearchResult,
 )
 
 
 __all__ = [
+    "FeatureGroupSearchResult",
+    "FeatureSearchResult",
+    "FeaturestoreSearchResult",
+    "FeatureViewSearchResult",
     "SearchApi",
+    "TagSearchFilter",
+    "TrainingDatasetSearchResult",
 ]
