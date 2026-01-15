@@ -5,9 +5,9 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
-
 from hopsworks_common import util
 from hopsworks_common.job_schedule import JobSchedule
+
 
 if TYPE_CHECKING:
     from hopsworks_common.core.rest_endpoint import RestEndpointConfig
