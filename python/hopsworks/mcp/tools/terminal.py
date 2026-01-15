@@ -55,7 +55,7 @@ class TerminalTools:
             cwd: The directory path to start the session in.
 
         Returns:
-            PID: The session process identifier.
+            The session process identifier (pid).
         """
         # TODO: delete processes which were used longer than 5 min ago
 
@@ -83,13 +83,33 @@ class TerminalTools:
         return proc.pid
 
     def add_input(self, pid: int, addon: str):
+        r"""Add input to the terminal session.
+
+        Note that if you want to simulate pressing Enter, you need to include a newline character.
+        So, to run a command, you should set addon to something like "ls -la\n".
+
+        Parameters:
+            pid: The process identifier of the terminal session.
+            addon: The input string to add to the session.
+        """
         proc, _, _, _ = self.sessions[pid]
         if not proc.stdin:
             raise Exception("Process stdin is not available")
         proc.stdin.write(addon)
         proc.stdin.flush()
 
-    def get_output(self, pid: int, offset: int = 0):
+    def get_output(self, pid: int, offset: int = 0) -> str:
+        r"""Get output from the terminal session.
+
+        Set offset to the number of characters you have already retrieved, so that only new output is returned.
+
+        Parameters:
+            pid: The process identifier of the terminal session.
+            offset: The offset from which to retrieve new output.
+
+        Returns:
+            The output string from the session starting from the specified offset.
+        """
         proc, output_queue, output, envdir = self.sessions[pid]
         while True:
             try:
@@ -99,5 +119,15 @@ class TerminalTools:
                 return output[offset:]
 
     def get_environ(self, pid: int) -> dict[str, str]:
+        r"""Get the current values of the environment variables of the terminal session.
+
+        For example, this way you can figure out what the current working directory is by checking the "PWD" variable.
+
+        Parameters:
+            pid: The process identifier of the terminal session.
+
+        Returns:
+            A dictionary of environment variables.
+        """
         _, _, _, envdir = self.sessions[pid]
         return json.loads((Path(envdir) / "env.json").read_text())
