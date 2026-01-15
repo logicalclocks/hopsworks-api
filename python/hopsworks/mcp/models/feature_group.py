@@ -31,3 +31,10 @@ class FeatureGroup(BaseModel):
     topic_name: str | None = None
     notification_topic_name: str | None = None
     deprecated: bool | None = None
+
+class Feature(BaseModel):
+    name: str
+    type: str | None = None
+    description: str | None = None
+    primary: bool | None = None
+    event_time: bool | None = None

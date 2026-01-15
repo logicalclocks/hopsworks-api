@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hopsworks
 from fastmcp import Context  # noqa: TC002
-from hopsworks.mcp.models.feature_group import FeatureGroup
+from hopsworks.mcp.models.feature_group import Feature, FeatureGroup
 from hopsworks.mcp.utils.tags import TAGS
 
 
@@ -34,6 +34,12 @@ class FeatureGroupTools:
         )
         self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
             self.get_feature_group_details
+        )
+        self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
+            self.get_features
+        )
+        self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
+            self.get_feature_details
         )
 
     def _get_feature_group_versions(self, name: str | None = None):
@@ -83,7 +89,12 @@ class FeatureGroupTools:
         await ctx.info(f"Retrieving details of {name} feature group...")
 
         fgs = self._get_feature_group_versions(name)
-        fg = sorted(fgs, key=lambda fg: fg.version, reverse=True)[0]
+        try:
+            fg = sorted(fgs, key=lambda fg: fg.version, reverse=True)[0]
+        except IndexError:
+            raise RuntimeError(
+                f"Feature group {name} not found."
+            ) from None
         return FeatureGroup(
             id=fg.id,
             name=fg.name,
@@ -95,4 +106,56 @@ class FeatureGroupTools:
             topic_name=fg.topic_name,
             notification_topic_name=fg.notification_topic_name,
             deprecated=fg.deprecated,
+        )
+
+    async def get_features(
+        self,
+        ctx: Context,
+        feature_group_name: str,
+        version: int | None = None,
+    ) -> list[Feature]:
+        """Get the names of the features of a feature group with the specified name and version (latest by default)."""
+        await ctx.info(f"Retrieving features of {feature_group_name} feature group...")
+
+        fgs = self._get_feature_group_versions(feature_group_name)
+        try:
+            fg = sorted(fgs, key=lambda fg: fg.version, reverse=True)[0]
+        except IndexError:
+            raise RuntimeError(
+                f"Feature group {feature_group_name} not found."
+            ) from None
+        return sorted(
+            [Feature(name=f.name) for f in fg.features],
+            key=lambda feature: feature.name,
+        )
+
+    async def get_feature_details(
+        self,
+        ctx: Context,
+        feature_group_name: str,
+        name: str,
+        version: int | None = None,
+    ) -> Feature:
+        """Get the names of the features of a feature group with the specified name and version (latest by default)."""
+        await ctx.info(f"Retrieving details of {feature_group_name}.{name} feature...")
+
+        fgs = self._get_feature_group_versions(feature_group_name)
+        try:
+            fg = sorted(fgs, key=lambda fg: fg.version, reverse=True)[0]
+        except IndexError:
+            raise RuntimeError(
+                f"Feature group {feature_group_name} not found."
+            ) from None
+        try:
+            f = [f for f in fg.features if f.name == name][0]
+        except IndexError:
+            raise RuntimeError(
+                f"Feature {name} not found in feature group {feature_group_name}."
+            ) from None
+        return Feature(
+            name=f.name,
+            type=f.type,
+            description=f.description,
+            primary=f.primary,
+            event_time=fg.event_time == f.name,
         )
