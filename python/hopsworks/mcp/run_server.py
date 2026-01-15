@@ -16,12 +16,14 @@
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import sys
 from typing import Literal
 
 import click
 import hopsworks
+import uvicorn
 
 from .server import mcp
 from .utils.auth import login
@@ -47,21 +49,14 @@ def handle_shutdown(signum, frame):
     sys.exit(0)
 
 
-@click.command(
-    "hopsworks-mcp",
-    short_help="Run the Hopsworks MCP server.",
-    help="In addition to setting arguments directly, you can set environment variables: \
-        HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, \
-            HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.",
-)
 @click.option(
     "--host", default="0.0.0.0", help="Host to run the server on. (default: 0.0.0.0)"
 )
-@click.option("--port", default=8001, help="Port to run the server on. (default: 8001)")
+@click.option("--port", default=8000, help="Port to run the server on. (default: 8000)")
 @click.option(
     "--transport",
-    default="sse",
-    help="Transport method to use. (default: sse). Options: 'stdio', 'http', 'sse', 'streamable-http'",
+    default="http",
+    help="Transport method to use. (default: http). Options: 'stdio', 'http', 'sse', 'streamable-http'",
 )
 @click.option(
     "--create_session",
@@ -96,10 +91,10 @@ def handle_shutdown(signum, frame):
     default="python",
     help="Engine to use (python, spark, training, spark-no-metastore, spark-delta) (default: python)",
 )
-def main(
-    host: str | None = None,
-    port: int = 8001,
-    transport: str | None = None,
+def run_server(
+    host: str = "0.0.0.0",
+    port: int | None = None,
+    transport: Literal["stdio", "http", "sse", "streamable-http"] = "http",
     create_session: bool = True,
     hopsworks_host: str | None = None,
     hopsworks_port: int = 443,
@@ -108,18 +103,22 @@ def main(
     api_key_file: str | None = None,
     hostname_verification: bool = False,
     trust_store_path: str | None = None,
-    engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
-    | None = "python",
+    engine: Literal[
+        "spark", "python", "training", "spark-no-metastore", "spark-delta"
+    ] = "python",
 ):
     """Run the Hopsworks MCP server."""
-    if transport not in ["stdio", "http", "sse", "streamable-http"]:
+    if transport not in {"stdio", "http", "sse", "streamable-http"}:
         raise ValueError(
             "Invalid transport type. Choose from 'stdio', 'http', 'sse', or 'streamable-http'."
         )
 
+    if port is None:
+        port = int(os.getenv("UVICORN_PORT", "8000"))
+
     if create_session:
         # Set the API key for the Hopsworks client
-        project = login(
+        login(
             host=hopsworks_host,
             port=hopsworks_port,
             project=project,
@@ -139,7 +138,16 @@ def main(
         logging.getLogger().handlers.clear()
         logging.getLogger().addHandler(SafeStreamHandler(sys.stdout))
 
-        log.info(f"Starting Hopsworks MCP server using {transport} transport.")
         mcp.run(transport=transport, show_banner=False)
     else:
-        mcp.run(transport=transport, host=host, port=port, show_banner=False)
+        app = mcp.http_app(transport=transport)
+        uvicorn.run(app, host=host, port=port, loop="uvloop", http="httptools")
+
+
+run_server_command = click.command(
+    "hopsworks-mcp",
+    short_help="Run the Hopsworks MCP server.",
+    help="In addition to setting arguments directly, you can set environment variables: \
+        HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, \
+            HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.",
+)(run_server)
