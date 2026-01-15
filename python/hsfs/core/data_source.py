@@ -20,10 +20,8 @@ from typing import Any
 
 import humps
 from hopsworks_common import util
-from hsfs import (
-    storage_connector as sc,
-)
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
+from hsfs import storage_connector as sc
 
 
 class DataSource:

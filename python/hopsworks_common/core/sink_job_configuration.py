@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import util
-from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hopsworks_common.job_schedule import JobSchedule
+
+if TYPE_CHECKING:
+    from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 
 
 class LoadingStrategy(Enum):
@@ -117,7 +119,7 @@ class SinkJobConfiguration:
         batch_size: int | None = 100000,
         loading_config: LoadingConfig | dict | None = None,
         column_mappings: list[FeatureColumnMapping] | list[dict] | None = None,
-        endpoint_config: RestEndpointConfig | dict | None = None,
+        endpoint_config: dict | "RestEndpointConfig" | None = None,
         schedule_config: JobSchedule | dict | None = None,
     ):
         self._name = name
