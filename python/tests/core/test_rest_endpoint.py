@@ -15,7 +15,7 @@
 #
 
 import pytest
-from hsfs.core import rest_endpoint
+from hopsworks_common.core import rest_endpoint
 
 
 class TestRestEndpoint:
@@ -55,12 +55,12 @@ class TestRestEndpoint:
         )
         endpoint = rest_endpoint.RestEndpointConfig(
             relative_url="/items",
-            query_params=[rest_endpoint.QueryParams(key="page_size", value=50)],
+            query_params=[rest_endpoint.QueryParams(name="page_size", value=50)],
             pagination_config=pagination,
         )
 
         serialized = endpoint.to_dict()
         assert serialized["relativeUrl"] == "/items"
-        assert serialized["queryParams"] == [{"key": "page_size", "value": 50}]
+        assert serialized["queryParams"] == [{"name": "page_size", "value": 50}]
         assert serialized["paginationConfig"]["type"] == "json_link"
         assert serialized["paginationConfig"]["nextUrlPath"] == "pagination.next"

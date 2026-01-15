@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from enum import Enum
+from typing import Any
 
 import humps
 from hopsworks_common import util
+from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hopsworks_common.job_schedule import JobSchedule
 
 
@@ -115,6 +117,7 @@ class SinkJobConfiguration:
         batch_size: int | None = 100000,
         loading_config: LoadingConfig | dict | None = None,
         column_mappings: list[FeatureColumnMapping] | list[dict] | None = None,
+        endpoint_config: RestEndpointConfig | dict | None = None,
         schedule_config: JobSchedule | dict | None = None,
     ):
         self._name = name
@@ -138,7 +141,7 @@ class SinkJobConfiguration:
         self._featuregroup_id = None
         self._featurestore_id = None
         self._storage_connector_id = None
-        self._endpoint_config = None
+        self._endpoint_config = endpoint_config
         self._schedule_config = (
             JobSchedule.from_response_json(schedule_config)
             if isinstance(schedule_config, dict)
@@ -166,7 +169,11 @@ class SinkJobConfiguration:
             "featuregroupId": self._featuregroup_id,
             "featurestoreId": self._featurestore_id,
             "storageConnectorId": self._storage_connector_id,
-            "endpointConfig": self._endpoint_config,
+            "endpointConfig": (
+                self._endpoint_config.to_dict()
+                if hasattr(self._endpoint_config, "to_dict")
+                else self._endpoint_config
+            ),
             "jobSchedule": (
                 self._schedule_config.to_dict()
                 if isinstance(self._schedule_config, JobSchedule)
@@ -193,6 +200,7 @@ class SinkJobConfiguration:
             name=json_decamelized.get("name", None),
             loading_config=loading_config,
             column_mappings=column_mappings,
+            endpoint_config=json_decamelized.get("endpoint_config", None),
             schedule_config=(
                 JobSchedule.from_response_json(job_schedule) if job_schedule else None
             ),

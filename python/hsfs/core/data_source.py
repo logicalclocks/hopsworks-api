@@ -23,7 +23,7 @@ from hopsworks_common import util
 from hsfs import (
     storage_connector as sc,
 )
-from hsfs.core.rest_endpoint import RestEndpointConfig
+from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 
 
 class DataSource:

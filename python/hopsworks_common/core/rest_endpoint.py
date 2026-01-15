@@ -20,7 +20,7 @@ from enum import Enum
 from typing import Any
 
 import humps
-from hsfs import util
+from hopsworks_common import util
 
 
 class PaginationType(str, Enum):
@@ -35,10 +35,10 @@ class PaginationType(str, Enum):
 
 
 class QueryParams:
-    """Represents an arbitrary key/value pair used by REST endpoint configurations."""
+    """Represents an arbitrary name/value pair used by REST endpoint configurations."""
 
-    def __init__(self, key: str, value: Any) -> None:
-        self._key = key
+    def __init__(self, name: str, value: Any) -> None:
+        self._name = name
         self._value = value
 
     @classmethod
@@ -50,7 +50,7 @@ class QueryParams:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "key": self._key,
+            "name": self._name,
             "value": self._value,
         }
 
@@ -58,11 +58,15 @@ class QueryParams:
         return json.dumps(self, cls=util.Encoder)
 
     def __repr__(self) -> str:
-        return f"QueryParams({self._key!r}, {self._value!r})"
+        return f"QueryParams({self._name!r}, {self._value!r})"
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     @property
     def key(self) -> str:
-        return self._key
+        return self._name
 
     @property
     def value(self) -> Any:
@@ -370,7 +374,8 @@ class RestEndpointConfig:
 
         if isinstance(query_params, dict):
             return [
-                QueryParams(key=key, value=value) for key, value in query_params.items()
+                QueryParams(name=key, value=value)
+                for key, value in query_params.items()
             ]
 
         if isinstance(query_params, list):
