@@ -19,7 +19,6 @@ from .auth import AuthTools as AuthTools
 from .brewer import BrewerTools as BrewerTools
 from .dataset import DatasetTools as DatasetTools
 from .feature_group import FeatureGroupTools as FeatureGroupTools
-from .feature_store import FeatureStoreTools as FeatureStoreTools
 from .jobs import JobTools as JobTools
 from .project import ProjectTools as ProjectTools
 from .terminal import TerminalTools as TerminalTools

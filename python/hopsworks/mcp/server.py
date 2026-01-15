@@ -21,13 +21,12 @@ from starlette import status
 from starlette.responses import Response
 
 from .prompts import ProjectPrompts, SystemPrompts
-from .resources import FeatureStoreResources, ProjectResources
+from .resources.project import ProjectResources
 from .tools import (
     AuthTools,
     BrewerTools,
     DatasetTools,
     FeatureGroupTools,
-    FeatureStoreTools,
     JobTools,
     ProjectTools,
     TerminalTools,
@@ -40,8 +39,6 @@ mcp = FastMCP(name="Hopsworks MCP")
 # Initialize tools and resources
 AuthTools(mcp)
 ProjectTools(mcp)
-FeatureStoreTools(mcp)
-FeatureStoreResources(mcp)
 ProjectResources(mcp)
 ProjectPrompts(mcp)
 SystemPrompts(mcp)
