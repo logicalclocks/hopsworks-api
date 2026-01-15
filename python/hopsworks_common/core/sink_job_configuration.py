@@ -5,6 +5,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
+
 from hopsworks_common import util
 from hopsworks_common.job_schedule import JobSchedule
 
@@ -119,7 +120,7 @@ class SinkJobConfiguration:
         batch_size: int | None = 100000,
         loading_config: LoadingConfig | dict | None = None,
         column_mappings: list[FeatureColumnMapping] | list[dict] | None = None,
-        endpoint_config: dict | "RestEndpointConfig" | None = None,
+        endpoint_config: dict | RestEndpointConfig | None = None,
         schedule_config: JobSchedule | dict | None = None,
     ):
         self._name = name
