@@ -542,8 +542,30 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 _write_options, _spark_options
             )
 
+        if (
+            feature_group.sink_enabled
+            and feature_group.storage_connector.type == StorageConnector.REST
+            and (
+                not feature_group.data_source
+                or not feature_group.data_source.rest_endpoint
+            )
+        ):
+            raise exceptions.FeatureStoreException(
+                "REST endpoint configuration is missing in the data source."
+            )
         is_new_feature_group = feature_group.id is None
+        pre_save_rest_endpoint = (
+            feature_group.data_source.rest_endpoint
+            if feature_group.data_source
+            else None
+        )
         new_fg = self._feature_group_api.save(feature_group)
+        if (
+            pre_save_rest_endpoint
+            and new_fg.data_source
+            and not new_fg.data_source.rest_endpoint
+        ):
+            new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
         self._create_sink_job_if_needed(new_fg, is_new_feature_group)
 
         if feature_schema_available:
@@ -611,13 +633,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             print("Configuring REST endpoint for sink job...")
             kwargs["endpoint_config"] = (
                 feature_group.data_source.rest_endpoint.to_dict()
-            )
-        elif (
-            feature_group.storage_connector.type == StorageConnector.REST
-            and not feature_group.data_source.rest_endpoint
-        ):
-            raise exceptions.FeatureStoreException(
-                "REST endpoint configuration is missing in the data source."
             )
         sink_job_conf.set_extra_params(**kwargs)
 
