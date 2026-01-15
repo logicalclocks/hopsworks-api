@@ -1368,52 +1368,19 @@ class Engine:
         expectation_suite: great_expectations.core.ExpectationSuite,  # noqa: F821
         ge_validate_kwargs: dict | None,
     ):
-        # NOTE: InMemoryStoreBackendDefaults SHOULD NOT BE USED in normal settings. You
-        # may experience data loss as it persists nothing. It is used here for testing.
-        # Please refer to docs to learn how to instantiate your DataContext.
-        store_backend_defaults = (
-            great_expectations.data_context.types.base.InMemoryStoreBackendDefaults()
-        )
-        data_context_config = (
-            great_expectations.data_context.types.base.DataContextConfig(
-                store_backend_defaults=store_backend_defaults,
-                checkpoint_store_name=store_backend_defaults.checkpoint_store_name,
-            )
-        )
-        context = great_expectations.data_context.BaseDataContext(
-            project_config=data_context_config
-        )
+        if ge_validate_kwargs is None:
+            ge_validate_kwargs = {}
 
-        datasource = {
-            "name": "my_spark_dataframe",
-            "class_name": "Datasource",
-            "execution_engine": {
-                "class_name": "SparkDFExecutionEngine",
-                "force_reuse_spark_context": True,
-            },
-            "data_connectors": {
-                "default_runtime_data_connector_name": {
-                    "class_name": "RuntimeDataConnector",
-                    "batch_identifiers": ["batch_id"],
-                }
-            },
-        }
-        context.add_datasource(**datasource)
+        # GE 1.0+ batch-based validation workflow for Spark DataFrames
+        context = great_expectations.get_context()
+        data_source = context.data_sources.add_spark(name="hopsworks_spark_datasource")
+        data_asset = data_source.add_dataframe_asset(name="hopsworks_spark_dataframe_asset")
+        batch_definition = data_asset.add_batch_definition_whole_dataframe(
+            name="hopsworks_spark_batch_definition"
+        )
+        batch = batch_definition.get_batch(batch_parameters={"dataframe": dataframe})
 
-        # Here is a RuntimeBatchRequest using a dataframe
-        batch_request = great_expectations.core.batch.RuntimeBatchRequest(
-            datasource_name="my_spark_dataframe",
-            data_connector_name="default_runtime_data_connector_name",
-            data_asset_name="<YOUR_MEANGINGFUL_NAME>",  # This can be anything that identifies this data_asset for you
-            batch_identifiers={"batch_id": "default_identifier"},
-            runtime_parameters={"batch_data": dataframe},  # Your dataframe goes here
-        )
-        context.save_expectation_suite(expectation_suite)
-        validator = context.get_validator(
-            batch_request=batch_request,
-            expectation_suite_name=expectation_suite.expectation_suite_name,
-        )
-        return validator.validate(**ge_validate_kwargs)
+        return batch.validate(expectation_suite, **ge_validate_kwargs)
 
     def write_options(self, data_format, provided_options):
         if data_format.lower() == "tfrecords" or data_format.lower() == "tfrecord":

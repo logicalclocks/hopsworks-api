@@ -5,13 +5,14 @@
 ## Creation with Great Expectations
 
 ```python3
-import great_expectations as ge
+import great_expectations as gx
 
-expectation_suite = ge.core.ExpectationSuite(
-    "new_expectation_suite",
+# Create an ExpectationSuite with expectations
+expectation_suite = gx.ExpectationSuite(
+    name="new_expectation_suite",
     expectations=[
-        ge.core.ExpectationConfiguration(
-            expectation_type="expect_column_max_to_be_between",
+        gx.core.ExpectationConfiguration(
+            type="expect_column_max_to_be_between",
             kwargs={
                 "column": "feature",
                 "min_value": -1,
@@ -19,6 +20,16 @@ expectation_suite = ge.core.ExpectationSuite(
             }
         )
     ]
+)
+
+# Or add expectations using class-based syntax (recommended)
+expectation_suite = gx.ExpectationSuite(name="new_expectation_suite")
+expectation_suite.add_expectation(
+    gx.expectations.ExpectColumnMaxToBeBetween(
+        column="feature",
+        min_value=-1,
+        max_value=1
+    )
 )
 ```
 
