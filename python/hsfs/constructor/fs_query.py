@@ -26,27 +26,22 @@ class FsQuery:
     def __init__(
         self,
         query: str,
-        on_demand_feature_groups: list[dict[str, Any]] | None,
-        hudi_cached_feature_groups: list[dict[str, Any]] | None,
-        query_online: str | None = None,
-        pit_query: str | None = None,
-        pit_query_asof: str | None = None,
-        hqs_payload: str | None = None,
-        hqs_payload_signature: str | None = None,
-        href: str | None = None,
-        expand: list[str] | None = None,
-        items: list[dict[str, Any]] | None = None,
-        type: str | None = None,
-        delta_cached_feature_groups: list[dict[str, Any]] | None = None,
+        on_demand_feature_groups: Optional[List[Dict[str, Any]]],
+        hudi_cached_feature_groups: Optional[List[Dict[str, Any]]],
+        query_online: Optional[str] = None,
+        pit_query: Optional[str] = None,
+        pit_query_asof: Optional[str] = None,
+        href: Optional[str] = None,
+        expand: Optional[List[str]] = None,
+        items: Optional[List[Dict[str, Any]]] = None,
+        type: Optional[str] = None,
+        delta_cached_feature_groups: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> None:
         self._query = query
         self._query_online = query_online
         self._pit_query = pit_query
         self._pit_query_asof = pit_query_asof
-
-        self._hqs_payload = hqs_payload
-        self._hqs_payload_signature = hqs_payload_signature
 
         if on_demand_feature_groups is not None:
             self._on_demand_fg_aliases = [
@@ -106,14 +101,6 @@ class FsQuery:
         self,
     ) -> List["hudi_feature_group_alias.HudiFeatureGroupAlias"]:
         return self._hudi_cached_feature_groups
-
-    @property
-    def hqs_payload(self) -> str | None:
-        return self._hqs_payload
-
-    @property
-    def hqs_payload_signature(self) -> str | None:
-        return self._hqs_payload_signature
 
     def register_external(
         self,
