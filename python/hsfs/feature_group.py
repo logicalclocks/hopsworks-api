@@ -2290,13 +2290,13 @@ class FeatureGroupBase:
             `data_source` instead.
         """
         return self._data_source.storage_connector
-    
+
     @storage_connector.setter
     def storage_connector(self, storage_connector: sc.StorageConnector) -> None:
         if self._data_source is None:
             self._data_source = ds.DataSource()
         self._data_source.storage_connector = storage_connector
-    
+
     @property
     def data_source(self) -> ds.DataSource:
         return self._data_source

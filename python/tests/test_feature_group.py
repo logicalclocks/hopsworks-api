@@ -582,7 +582,7 @@ class TestFeatureGroup:
             primary_key=[],
             foreign_key=[],
             partition_key=[],
-            data_source=data_source
+            data_source=data_source,
         )
 
         # Assert
