@@ -28,6 +28,8 @@ import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_common import client
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
@@ -60,6 +62,7 @@ class StorageConnector(ABC):
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
     RDS = "RDS"
+    OPENSEARCH = "OPENSEARCH"
     NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
@@ -90,6 +93,7 @@ class StorageConnector(ABC):
         | SnowflakeConnector
         | BigQueryConnector
         | RdsConnector
+        | OpenSearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -110,6 +114,7 @@ class StorageConnector(ABC):
         | SnowflakeConnector
         | BigQueryConnector
         | RdsConnector
+        | OpenSearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -1457,7 +1462,9 @@ class KafkaConnector(StorageConnector):
                 and not pem_files_assigned
             ):
                 self.create_pem_files(kafka_options)
-                config["ssl.ca.location"] = self.ca_chain_path
+                config["ssl.ca.location"] = (
+                    kafka_options.get("ssl.ca.location") or self.ca_chain_path
+                )
                 config["ssl.certificate.location"] = self.client_cert_path
                 config["ssl.key.location"] = self.client_key_path
                 pem_files_assigned = True
@@ -2126,4 +2133,157 @@ class RdsConnector(StorageConnector):
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
+        )
+
+
+class OpenSearchConnector(StorageConnector):
+    type = StorageConnector.OPENSEARCH
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        # members specific to type of connector
+        host: str | None = None,
+        port: int | None = None,
+        scheme: str | None = None,
+        verify: bool | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        trust_store_path: str | None = None,
+        trust_store_password: str | None = None,
+        arguments: dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._scheme = scheme
+        self._verify = verify
+        self._username = username
+        self._password = password
+        self._trust_store_path = trust_store_path
+        self._trust_store_password = trust_store_password
+        self._arguments = (
+            {arg["name"]: arg.get("value", None) for arg in arguments}
+            if isinstance(arguments, list)
+            else (arguments if arguments else {})
+        )
+
+    @property
+    def host(self) -> str | None:
+        """OpenSearch host address."""
+        return self._host
+
+    @property
+    def port(self) -> int | None:
+        """OpenSearch port number."""
+        return self._port
+
+    @property
+    def scheme(self) -> str | None:
+        """Connection scheme (http or https)."""
+        return self._scheme
+
+    @property
+    def verify(self) -> bool | None:
+        """Whether to verify SSL certificates."""
+        return self._verify
+
+    @property
+    def username(self) -> str | None:
+        """OpenSearch username for authentication."""
+        return self._username
+
+    @property
+    def password(self) -> str | None:
+        """OpenSearch password for authentication."""
+        return self._password
+
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Additional OpenSearch connection options."""
+        return self._arguments
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return prepared options to be passed to Spark.
+
+        Based on the additional arguments.
+        """
+        return self.connector_options()
+
+    def connector_options(self) -> dict[str, Any]:
+        """Return options to be passed to an external OpenSearch connector library."""
+        props = {
+            "http_compress": False,
+        }
+        if self._host:
+            props[OPENSEARCH_CONFIG.HOSTS] = [
+                {"host": self._host, "port": self._port or 9200}
+            ]
+        if self._scheme:
+            props[OPENSEARCH_CONFIG.USE_SSL] = self._scheme == "https"
+        if self._verify is not None:
+            props[OPENSEARCH_CONFIG.VERIFY_CERTS] = self._verify
+        # do not set http_auth, the client use jwt for authentication
+        ca_certs = self._create_ca_certs()
+        if ca_certs:
+            props[OPENSEARCH_CONFIG.CA_CERTS] = ca_certs
+        # Merge additional arguments
+        for key, value in self._arguments.items():
+            if key.startswith("opensearchpy."):
+                props[key.replace("opensearchpy.", "")] = value
+        return props
+
+    def _create_ca_certs(self) -> str | None:
+        """Convert truststore JKS to PEM chain and return the PEM path.
+
+        Uses the underlying Hopsworks client helper to convert the JKS truststore
+        into a PEM CA chain file that can be consumed by Python libraries such as
+        `opensearch-py`. If the `trust_store_path` is
+        not configured on the connector, this method returns `None`.
+        """
+        # Return cached path if already created
+        ca_attr = "_ca_certs_path"
+        if hasattr(self, ca_attr):
+            return getattr(self, ca_attr)
+
+        # Only require a path; the password may legitimately be an empty string.
+        if not self._trust_store_path:
+            return None
+
+        # Download the truststore from HDFS / remote storage to a local path first
+        local_trust_store_path = engine.get_instance().add_file(self._trust_store_path)
+
+        # Reuse the same truststore for both keystore and truststore inputs since
+        # we only need a CA chain for server verification.
+        ca_chain_path, _, _ = client.get_instance()._write_pem(
+            local_trust_store_path,
+            self._trust_store_password,
+            local_trust_store_path,
+            self._trust_store_password,
+            f"opensearch_sc_{client.get_instance()._project_id}_{self._id}",
+        )
+
+        setattr(self, ca_attr, ca_chain_path)
+        return ca_chain_path
+
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: str = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        raise NotImplementedError(
+            "Cannot read from OpenSearch connector. Please use feature_group.read() instead."
         )

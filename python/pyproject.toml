@@ -45,7 +45,7 @@ dependencies = [
     "numpy<2",
     "pyjks",
     "mock",
-    "avro==1.11.3",
+    "avro==1.12.0",
     "PyMySQL[rsa]",
     "tzlocal",
     "fsspec<2025.12.0",
@@ -65,7 +65,7 @@ hopsworks-mcp = "hopsworks.mcp:run_server_command"
 python = [
     "pyarrow>=17.0",
     "confluent-kafka<=2.11.1",
-    "fastavro>=1.4.11,<=1.11.1",
+    "fastavro>=1.4.11,<=1.12.0",
     "tqdm",
     "hops-deltalake==1.1.2.post2; python_version >= '3.9' and (sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64'))",
 ]

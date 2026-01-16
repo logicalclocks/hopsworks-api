@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hashlib
 import logging
 import os
 
@@ -99,6 +100,10 @@ class Client(base.Client):
         self._project_id = str(project_info["projectId"])
         _logger.debug("Setting Project ID: %s", self._project_id)
 
+        # Get API key hash for cert folder isolation
+        self._api_key_hash = self._get_api_key_hash()
+        _logger.debug("API key hash: %s", self._api_key_hash)
+
         if self._engine == "python":
             self.download_certs()
 
@@ -171,12 +176,20 @@ class Client(base.Client):
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
         return res
 
+    def _get_api_key_hash(self):
+        """Generate a unique identifier from the API key for certificate path isolation.
+
+        Returns:
+            str: First 16 characters of SHA256 hash of the API key
+        """
+        return hashlib.sha256(self._auth._token.encode("utf-8")).hexdigest()[:16]
+
     def get_certs_folder(self):
-        return os.path.join(self._cert_folder_base, self._host, self._project_name)
+        return os.path.join(self._cert_folder_base, self._host, self._api_key_hash)
 
     def _materialize_certs(self):
         self._cert_folder = os.path.join(
-            self._cert_folder_base, self._host, self._project_name
+            self._cert_folder_base, self._host, self._api_key_hash
         )
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
@@ -255,15 +268,9 @@ class Client(base.Client):
         self._cleanup_file(self._get_client_cert_path())
         self._cleanup_file(self._get_client_key_path())
 
-        try:
-            # delete project level
+        with contextlib.suppress(OSError):
+            # delete api_key_hash level only, otherwise may clean up certs for other users
             os.rmdir(self._cert_folder)
-            # delete host level
-            os.rmdir(os.path.dirname(self._cert_folder))
-            # on AWS base dir will be empty, and can be deleted otherwise raises OSError
-            os.rmdir(self._cert_folder_base)
-        except OSError:
-            pass
 
         self._cert_folder = None
 
@@ -277,21 +284,21 @@ class Client(base.Client):
 
     def _get_ca_chain_path(self) -> str:
         path = os.path.join(
-            self._cert_folder_base, self._host, self._project_name, "ca_chain.pem"
+            self._cert_folder_base, self._host, self._api_key_hash, "ca_chain.pem"
         )
         _logger.debug(f"Getting ca chain path {path}")
         return path
 
     def _get_client_cert_path(self) -> str:
         path = os.path.join(
-            self._cert_folder_base, self._host, self._project_name, "client_cert.pem"
+            self._cert_folder_base, self._host, self._api_key_hash, "client_cert.pem"
         )
         _logger.debug(f"Getting client cert path {path}")
         return path
 
     def _get_client_key_path(self) -> str:
         path = os.path.join(
-            self._cert_folder_base, self._host, self._project_name, "client_key.pem"
+            self._cert_folder_base, self._host, self._api_key_hash, "client_key.pem"
         )
         _logger.debug(f"Getting client key path {path}")
         return path
