@@ -137,7 +137,7 @@ public abstract class FeatureGroupBase<T> {
 
   @Getter
   @Setter
-  protected DataSource dataSource;
+  protected DataSource dataSource = new DataSource();
 
   @JsonIgnore
   // These are only used in the client. In the server they are aggregated in the `features` field
@@ -169,6 +169,9 @@ public abstract class FeatureGroupBase<T> {
 
   public void setDataSource(DataSource dataSource) {
     this.dataSource = dataSource;
+    if (this.dataSource != null) {
+      this.dataSource.updateStorageConnector(this.dataSource.getStorageConnector());
+    }
   }
 
   public void delete() throws FeatureStoreException, IOException {
