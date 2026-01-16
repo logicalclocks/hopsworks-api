@@ -572,6 +572,7 @@ class TestFeatureGroup:
         # Arrange
         data_source = mocker.Mock()
         sc = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=1)
+        data_source.storage_connector = sc
 
         # Act
         feature_group.FeatureGroup(
@@ -581,8 +582,7 @@ class TestFeatureGroup:
             primary_key=[],
             foreign_key=[],
             partition_key=[],
-            data_source=data_source,
-            storage_connector=sc,
+            data_source=data_source
         )
 
         # Assert
@@ -925,7 +925,7 @@ class TestFeatureGroup:
     )
     def test_is_hopsfs_storage(self, sc, expected):
         fg = get_test_feature_group()
-        fg._storage_connector = sc
+        fg.storage_connector = sc
         assert fg._is_hopsfs_storage() is expected
 
     def test_init_time_travel_and_stream_uses_resolvers_python(

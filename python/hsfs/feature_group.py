@@ -2290,10 +2290,22 @@ class FeatureGroupBase:
             `data_source` instead.
         """
         return self._data_source.storage_connector
-
+    
+    @storage_connector.setter
+    def storage_connector(self, storage_connector: sc.StorageConnector) -> None:
+        if self._data_source is None:
+            self._data_source = ds.DataSource()
+        self._data_source.storage_connector = storage_connector
+    
     @property
     def data_source(self) -> ds.DataSource:
         return self._data_source
+
+    @data_source.setter
+    def data_source(self, data_source: ds.DataSource) -> None:
+        self._data_source = data_source
+        if self._data_source is not None:
+            self._data_source._update_storage_connector(self.storage_connector)
 
     def prepare_spark_location(self) -> str:
         # TODO: Add docstring
@@ -2776,9 +2788,9 @@ class FeatureGroup(FeatureGroupBase):
 
     def _is_hopsfs_storage(self) -> bool:
         """Return True if storage is HopsFS."""
-        return self._storage_connector is None or (
-            self._storage_connector is not None
-            and self._storage_connector.type == sc.StorageConnector.HOPSFS
+        return self.storage_connector is None or (
+            self.storage_connector is not None
+            and self.storage_connector.type == sc.StorageConnector.HOPSFS
         )
 
     @staticmethod
