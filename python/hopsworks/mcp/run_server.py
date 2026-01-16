@@ -141,7 +141,19 @@ def run_server(
         mcp.run(transport=transport, show_banner=False)
     else:
         app = mcp.http_app(transport=transport)
-        uvicorn.run(app, host=host, port=port, loop="uvloop", http="httptools")
+        try:
+            import uvloop as uvloop
+
+            has_uvloop = True
+        except ImportError:
+            has_uvloop = False
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            loop="uvloop" if has_uvloop else "auto",
+            http="httptools",
+        )
 
 
 run_server_command = click.command(

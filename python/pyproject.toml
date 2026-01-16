@@ -108,7 +108,7 @@ mcp=[
     "httpx",
     "httptools",
     "uvicorn",
-    "uvloop",
+    "uvloop; sys_platform != 'win32'",
     "pydantic>=2.11.7",
 ]
 
