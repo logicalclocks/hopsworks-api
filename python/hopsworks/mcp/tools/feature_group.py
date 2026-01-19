@@ -162,7 +162,9 @@ class FeatureGroupTools:
         except ImportError:
             pass
 
-        return preview
+        raise RuntimeError(
+            f"Unable to convert preview to dictionary. Here's the raw preview:\n{preview}"
+        )
 
     async def get_features(
         self,
