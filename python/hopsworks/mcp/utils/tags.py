@@ -10,6 +10,8 @@ class TAGS:
     ENVIRONMENT = "environment"
     JOB = "job"
     SYSTEM = "system"
+    TERMINAL = "terminal"
+    BREWER = "brewer"
 
     STATEFUL = "stateful"
     STATELESS = "stateless"

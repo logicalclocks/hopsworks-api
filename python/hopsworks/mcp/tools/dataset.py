@@ -15,17 +15,12 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import hopsworks
+from fastmcp import Context  # noqa: TC002
 from hopsworks.mcp.models.dataset import Dataset, Datasets, File, Files
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
 from hopsworks_common.core import dataset, inode
-
-
-if TYPE_CHECKING:
-    from fastmcp import Context
 
 
 class DatasetTools:

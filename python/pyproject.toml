@@ -59,7 +59,7 @@ dependencies = [
 ]
 
 [project.scripts]
-hopsworks-mcp = "hopsworks.mcp.main:main"
+hopsworks-mcp = "hopsworks.mcp:run_server_command"
 
 [project.optional-dependencies]
 python = [
@@ -97,14 +97,18 @@ dev-pandas1 = [
     "sqlalchemy<=1.4.48",
     "delta-spark==3.3.1"
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,polars,python]"]
+dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp]"]
 polars=[
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=17.0",
 ]
 mcp=[
-    "fastmcp>=2.10.5; python_version >= '3.10'",
+    "fastmcp>=2.10.5,<=2.13.3; python_version >= '3.10'",
+    "filelock",
     "httpx",
+    "httptools",
+    "uvicorn",
+    "uvloop; sys_platform != 'win32'",
     "pydantic>=2.11.7",
 ]
 

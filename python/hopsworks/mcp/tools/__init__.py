@@ -15,9 +15,10 @@
 #
 """Tools for the Hopsworks MCP server."""
 
-from .auth import AuthTools  # noqa: F401
-from .dataset import DatasetTools  # noqa: F401
-from .feature_group import FeatureGroupTools  # noqa: F401
-from .feature_store import FeatureStoreTools  # noqa: F401
-from .jobs import JobTools  # noqa: F401
-from .project import ProjectTools  # noqa: F401
+from .auth import AuthTools as AuthTools
+from .brewer import BrewerTools as BrewerTools
+from .dataset import DatasetTools as DatasetTools
+from .feature_group import FeatureGroupTools as FeatureGroupTools
+from .jobs import JobTools as JobTools
+from .project import ProjectTools as ProjectTools
+from .terminal import TerminalTools as TerminalTools
