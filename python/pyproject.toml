@@ -42,7 +42,7 @@ dependencies = [
     "furl",
     "boto3",
     "pandas[mysql]<2.4.0",
-    "numpy<2",
+    "numpy>=1.26.4,<2.5.0",
     "pyjks",
     "mock",
     "avro==1.12.0",
