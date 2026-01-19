@@ -132,6 +132,7 @@ class FeatureGroupTools:
 
         The tool can be useful to figure out the actual schema of the feature group in case the feature metadata is incomplete or confusing.
         """
+        # TODO: the function is partially complete, we should add a method to list data in columnar format to the API and use it here instead.
         await ctx.info(
             f"Retrieving preview of {name}{f' v{version}' if version else ''} feature group..."
         )
