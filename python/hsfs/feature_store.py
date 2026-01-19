@@ -43,6 +43,9 @@ from hsfs.core import (
 )
 from hsfs.decorators import typechecked
 from hsfs.transformation_function import TransformationFunction
+from hsfs.core.job import Job
+from hsfs.core.chart import Chart
+from hsfs.core.chart_api import ChartApi
 
 
 if TYPE_CHECKING:
@@ -1885,6 +1888,78 @@ class FeatureStore:
 
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
+
+    def create_chart(self, title: str, description: str, url: str, job_id: int | None = None) -> None:
+        """Create a chart in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # create a chart
+            fs.create_chart(
+                title="My Chart",
+                description="This is my chart description",
+                url="/Resources/chart.html",
+                job_id=123  # optional
+            )
+            ```
+
+        Arguments:
+            title: Title of the chart.
+            description: Description of the chart.
+            url: URL where the chart is hosted or can be accessed.
+            job_id: Optional ID of the job associated with this chart (intended to be used to refresh data).
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        chart = Chart(title=title, description=description, url=url, job=Job(id=job_id) if job_id else None)
+        return ChartApi().create_chart(chart)
+    
+    def get_charts(self) -> list[Chart]:
+        """Get all charts in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all charts
+            charts = fs.get_charts()
+            ```
+
+        Returns:
+            List of chart metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_charts()
+
+    def get_chart(self, chart_id: int) -> Chart:
+        """Get a chart by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific chart
+            chart = fs.get_chart(chart_id=123)
+            ```
+
+        Arguments:
+            chart_id: ID of the chart to retrieve.
+
+        Returns:
+            The chart metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_chart(chart_id)
 
     @property
     def id(self) -> int:
