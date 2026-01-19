@@ -127,7 +127,7 @@ class FeatureGroupTools:
         name: str,
         version: int | None = None,
         n: int = 10,
-    ):
+    ) -> dict[str, list[str | int | float | None]]:
         """Preview the first n (10 by default) rows of a feature group with the specified name and version (latest by default).
 
         The tool can be useful to figure out the actual schema of the feature group in case the feature metadata is incomplete or confusing.
@@ -137,7 +137,31 @@ class FeatureGroupTools:
         )
 
         fg = self._get_feature_group_version(name, version)
-        return fg.show(n)
+        preview = fg.show(n, fg.online_enabled)
+
+        try:
+            import pandas as pd
+
+            if isinstance(preview, pd.DataFrame):
+                return {
+                    str(k): [
+                        x if isinstance(x, (int, float, type(None))) else str(x)
+                        for x in vs
+                    ]
+                    for k, vs in preview.to_dict(orient="list").items()
+                }
+        except ImportError:
+            pass
+
+        try:
+            import polars as pl
+
+            if isinstance(preview, pl.DataFrame):
+                return {k: vs.to_list() for k, vs in preview.to_dict().items()}
+        except ImportError:
+            pass
+
+        return preview
 
     async def get_features(
         self,
