@@ -99,7 +99,7 @@ dev-pandas1 = [
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp]"]
 polars=[
-    "polars>=0.20.18,<=0.21.0",
+    "polars>=1.8.2,<=1.31.0",
     "pyarrow>=17.0",
 ]
 mcp=[
