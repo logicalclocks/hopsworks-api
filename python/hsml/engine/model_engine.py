@@ -18,7 +18,6 @@ import json
 import os
 import tempfile
 import time
-import uuid
 
 from hopsworks_common import client, constants, util
 from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIError
@@ -481,12 +480,92 @@ class ModelEngine:
         return model_instance
 
     def download(self, model_instance, local_path=None):
-        if local_path is None:
-            local_path = os.path.join(
-                tempfile.gettempdir(), str(uuid.uuid4()), model_instance._name
+        # User provided explicit path - bypass cache entirely
+        if local_path is not None:
+            os.makedirs(local_path, exist_ok=True)
+            self._download_model_files(model_instance, local_path)
+            return local_path
+
+        # Use cache path
+        cache_path = self._get_model_cache_path(model_instance)
+
+        # Check if model already exists in cache
+        if self._is_cached_model_valid(cache_path):
+            print(f"Model found in cache: {cache_path}")
+            return cache_path
+
+        # Download to cache
+        os.makedirs(cache_path, exist_ok=True)
+        self._download_model_files(model_instance, cache_path)
+
+        # Create a completion marker for validation
+        self._create_completion_marker(cache_path)
+
+        return cache_path
+
+    def _get_model_cache_path(self, model_instance):
+        """Generate the cache path for a model.
+
+        Args:
+            model_instance: Model instance with project_name, name, and version
+
+        Returns:
+            str: Cache path in format /tmp/hopsworks/models/{project}/{model}/{version}
+        """
+        cache_base = constants.MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT
+        project_name = model_instance.project_name
+        model_name = model_instance.name
+        version = str(model_instance.version)
+
+        if project_name is None:
+            raise ValueError(
+                "Cannot cache model without project_name. "
+                "Please provide local_path explicitly."
             )
-            local_path = local_path + "/" + str(model_instance._version)
-        os.makedirs(local_path, exist_ok=True)
+
+        return os.path.join(cache_base, project_name, model_name, version)
+
+    def _is_cached_model_valid(self, cache_path):
+        """Check if a cached model is valid and complete.
+
+        Args:
+            cache_path: Path to the cached model directory
+
+        Returns:
+            bool: True if cache is valid, False otherwise
+        """
+        # Check if directory exists
+        if not os.path.exists(cache_path):
+            return False
+
+        # Check if directory is not empty
+        try:
+            if not os.listdir(cache_path):
+                return False
+        except OSError:
+            return False
+
+        # Check for completion marker
+        marker_path = os.path.join(cache_path, ".download_complete")
+        return os.path.exists(marker_path)
+
+    def _create_completion_marker(self, cache_path):
+        """Create a marker file to indicate download completion.
+
+        Args:
+            cache_path: Path to the cached model directory
+        """
+        marker_path = os.path.join(cache_path, ".download_complete")
+        with open(marker_path, "w") as f:
+            f.write(f"Downloaded at: {time.time()}\n")
+
+    def _download_model_files(self, model_instance, local_path):
+        """Download model files from HDFS to local path.
+
+        Args:
+            model_instance: Model instance to download
+            local_path: Local directory path where model files will be downloaded
+        """
 
         def update_download_progress(n_dirs, n_files, done=False):
             print(
@@ -514,8 +593,6 @@ class ModelEngine:
             )
         except BaseException as be:
             raise be
-
-        return local_path
 
     def read_file(self, model_instance, resource):
         hdfs_resource_path = self._build_resource_path(
