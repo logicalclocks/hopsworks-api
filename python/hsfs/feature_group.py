@@ -31,7 +31,11 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    RestAPIError,
+    TransformationFunctionException,
+)
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
     HAS_DELTALAKE_PYTHON,
@@ -70,6 +74,7 @@ from hsfs.core import (
     online_ingestion_api,
     spine_group_engine,
     statistics_engine,
+    transformation_function_engine,
     validation_report_engine,
     validation_result_engine,
 )
@@ -1798,8 +1803,15 @@ class FeatureGroupBase:
                 "Features are accessible by name."
             )
         feature = [f for f in self.__getattribute__("_features") if f.name == name]
+        transformations = [
+            tf.hopsworks_udf
+            for tf in self.__getattribute__("_transformation_functions")
+            if tf.hopsworks_udf.function_name == name
+        ]
         if len(feature) == 1:
             return feature[0]
+        if len(transformations) == 1:
+            return transformations[0]
         raise KeyError(f"'FeatureGroup' object has no feature called '{name}'.")
 
     @property
@@ -2706,13 +2718,25 @@ class FeatureGroup(FeatureGroupBase):
                             TransformationType.ON_DEMAND
                         )
                     self._transformation_functions.append(transformation_function)
-
+        self._transformation_function_execution_graph: list[
+            list[TransformationFunction]
+        ] = None
         if self._transformation_functions:
             self._transformation_functions = (
                 FeatureGroup._sort_transformation_functions(
                     self._transformation_functions
                 )
             )
+            try:
+                self._transformation_function_execution_graph: list[
+                    list[TransformationFunction]
+                ] = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+                    self.transformation_functions
+                )
+            except TransformationFunctionException as e:
+                raise FeatureStoreException(
+                    "Cyclic dependency detected in on-demand transformation functions, present in the feature group. Please verify that the on-demand features present in the feature group do not have cyclic dependencies."
+                ) from e
 
     def _init_time_travel_and_stream(
         self,
@@ -3048,6 +3072,7 @@ class FeatureGroup(FeatureGroupBase):
         write_options: dict[str, Any] | None = None,
         validation_options: dict[str, Any] | None = None,
         wait: bool = False,
+        n_processes: int = None,
     ) -> tuple[
         Job | None,
         great_expectations.core.ExpectationSuiteValidationResult | None,
@@ -3099,6 +3124,9 @@ class FeatureGroup(FeatureGroupBase):
             wait:
                 Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
+
+            n_processes:
+                Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             When using the `python` engine, it returns the Hopsworks Job that was launched to ingest the feature group data.
@@ -3169,7 +3197,11 @@ class FeatureGroup(FeatureGroupBase):
 
         # fg_job is used only if the python engine is used
         fg_job, ge_report = self._feature_group_engine.save(
-            self, feature_dataframe, write_options, validation_options or {}
+            self,
+            feature_dataframe,
+            write_options,
+            validation_options or {},
+            n_processes=n_processes,
         )
 
         # Compute stats in client if there is no backfill job:
@@ -3212,6 +3244,7 @@ class FeatureGroup(FeatureGroupBase):
         wait: bool = False,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int = None,
     ) -> tuple[Job | None, ValidationReport | None]:
         """Persist the metadata and materialize the feature group to the feature store or insert data from a dataframe into the existing feature group.
 
@@ -3319,6 +3352,7 @@ class FeatureGroup(FeatureGroupBase):
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations
                 In this case, all required on-demand features must already exist in the provided dataframe.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
 
         Returns:
             Job: The job information if python engine is used.
@@ -3368,6 +3402,7 @@ class FeatureGroup(FeatureGroupBase):
             validation_options={"save_report": True, **validation_options},
             transformation_context=transformation_context,
             transform=transform,
+            n_processes=n_processes,
         )
 
         # Compute stats in client if there is no backfill job:
@@ -4060,6 +4095,46 @@ class FeatureGroup(FeatureGroupBase):
         return (
             self._time_travel_format is not None
             and self._time_travel_format.upper() != "NONE"
+        )
+
+    def execute_odts(
+        self,
+        data: pd.DataFrame | pl.DataFrame | dict[str, Any],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
+    ) -> list[dict[str, Any]] | pd.DataFrame:
+        """Apply on-demand transformations attached to the feature group on the passed dataframe or dictionary.
+
+        Parameters:
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+
+        Returns:
+            The updated dataframe or dictionary with the transformations applied.
+        """
+        if self.transformation_functions:
+            df = self._feature_group_engine.apply_on_demand_transformations(
+                execution_graph=self._transformation_function_execution_graph,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+                n_processes=n_processes,
+            )
+        else:
+            _logger.info(
+                "No on-demand transformation functions attached to the feature group, no transformations applied."
+            )
+        return df
+
+    def print_odt_execution_graph(self):
+        transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
+            self._transformation_function_execution_graph
         )
 
     @property

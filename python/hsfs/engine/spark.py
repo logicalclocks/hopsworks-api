@@ -21,6 +21,7 @@ import os
 import re
 import uuid
 import warnings
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -856,6 +857,7 @@ class Engine:
         dataframe_type: str,
         training_dataset_version: int = None,
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
     ):
         """Function that creates or retrieves already created the training dataset.
 
@@ -868,6 +870,7 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. This parameter is not applicable in the spark engine.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -957,7 +960,7 @@ class Engine:
                 dataset = dataset.coalesce(1)
             path = training_dataset.location + "/" + training_dataset.name
             return self._write_training_dataset_single(
-                feature_view_obj.transformation_functions,
+                feature_view_obj._model_dependent_transformation_execution_graph,
                 dataset,
                 training_dataset.storage_connector,
                 training_dataset.data_format,
@@ -991,7 +994,7 @@ class Engine:
             write_options,
             save_mode,
             to_df=to_df,
-            transformation_functions=feature_view_obj.transformation_functions,
+            execution_graph=feature_view_obj._model_dependent_transformation_execution_graph,
             transformation_context=transformation_context,
         )
 
@@ -1162,15 +1165,13 @@ class Engine:
         write_options,
         save_mode,
         to_df=False,
-        transformation_functions: list[
-            transformation_function.TransformationFunction
-        ] = None,
+        execution_graph: list[transformation_function.TransformationFunction] = None,
         transformation_context: dict[str, Any] = None,
     ):
         for split_name, feature_dataframe in feature_dataframes.items():
             split_path = training_dataset.location + "/" + str(split_name)
             feature_dataframes[split_name] = self._write_training_dataset_single(
-                transformation_functions,
+                execution_graph,
                 feature_dataframe,
                 training_dataset.storage_connector,
                 training_dataset.data_format,
@@ -1187,7 +1188,7 @@ class Engine:
 
     def _write_training_dataset_single(
         self,
-        transformation_functions,
+        execution_graph,
         feature_dataframe,
         storage_connector,
         data_format,
@@ -1198,9 +1199,10 @@ class Engine:
         transformation_context: dict[str, Any] = None,
     ):
         # apply transformation functions (they are applied separately to each split)
-        feature_dataframe = self._apply_transformation_function(
-            transformation_functions,
-            dataset=feature_dataframe,
+        feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            execution_graph=execution_graph,
+            data=feature_dataframe,
+            online=False,
             transformation_context=transformation_context,
         )
         if to_df:
@@ -1613,11 +1615,17 @@ class Engine:
             location
         )
 
+    def shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
+        return dataframe.copy(deep=False)
+
     def _apply_transformation_function(
         self,
         transformation_functions: list[transformation_function.TransformationFunction],
         dataset: DataFrame,
         transformation_context: dict[str, Any] = None,
+        expected_features: set[str] = None,
+        request_parameters: dict[str, Any] = None,
+        dropped_features: set[str] = None,
     ):
         """Apply transformation function to the dataframe.
 
@@ -1633,36 +1641,50 @@ class Engine:
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        dropped_features = set()
         transformations = []
         transformation_features = []
         output_col_names = []
         explode_name = []
+        dropped_features = dropped_features if dropped_features is not None else set()
+
+        if request_parameters:
+            if isinstance(request_parameters, list):
+                collect_request_parameters = defaultdict(list)
+                for row in request_parameters:
+                    for col in row:
+                        collect_request_parameters[col].append(row[col])
+                request_parameters = collect_request_parameters
+                dataset = dataset.withColumns(collect_request_parameters)
+                dataset = dataset.withColumn(
+                    "row_id_temp",
+                    row_number().over(Window.orderBy(monotonically_increasing_id())),
+                )
+                request_parameters = self._spark_session.createDataFrame(
+                    enumerate(collect_request_parameters), ["idx", "new_col"]
+                )
+                dataset = self.drop_columns(dataset, collect_request_parameters.keys())
+                dataset = dataset.join(request_parameters, on="row_id_temp", how="left")
+                dataset = self.drop_columns(dataset, ["row_id_temp"])
+            else:
+                for col in request_parameters:
+                    dataset = dataset.withColumn(col, lit(request_parameters[col]))
+
         for tf in transformation_functions:
             hopsworks_udf = tf.hopsworks_udf
 
             # Setting transformation function context variables.
             hopsworks_udf.transformation_context = transformation_context
 
-            missing_features = set(hopsworks_udf.transformation_features) - set(
-                dataset.columns
-            )
-
-            if missing_features:
-                if (
-                    tf.transformation_type
-                    == transformation_function.TransformationType.ON_DEMAND
-                ):
-                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
-                    raise FeatureStoreException(
-                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
-                        "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
-                    )
-                raise FeatureStoreException(
-                    f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
-                )
             if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(hopsworks_udf.dropped_features)
+                dropped_features.update(
+                    {
+                        f
+                        for f in hopsworks_udf.dropped_features
+                        if f not in expected_features
+                    }
+                    if expected_features
+                    else hopsworks_udf.dropped_features
+                )
 
             # Add to dropped features if the feature need to overwritten to avoid ambiguous columns.
             if len(hopsworks_udf.return_types) == 1 and (

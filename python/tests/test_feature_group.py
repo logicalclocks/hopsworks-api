@@ -853,6 +853,7 @@ class TestFeatureGroup:
             validation_options={"save_report": True},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
@@ -903,6 +904,7 @@ class TestFeatureGroup:
             validation_options={"save_report": False},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
@@ -1325,10 +1327,11 @@ class TestExternalFeatureGroup:
             == "Updated expectation suite attached to Feature Group, edit it at"
         )
 
-    def test_from_response_json_transformation_functions(self, backend_fixtures):
+    def test_from_response_json_transformation_functions(
+        self, backend_fixtures, mocker
+    ):
         # Arrange
         json = backend_fixtures["feature_group"]["get_transformations"]["response"]
-
         # Act
         fg = feature_group.FeatureGroup.from_response_json(json)
 

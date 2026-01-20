@@ -15,14 +15,25 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from hopsworks_common.client import exceptions
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
-from hsfs.client import exceptions
-from hsfs.core import delta_engine, feature_group_base_engine, hudi_engine
+from hsfs.core import (
+    delta_engine,
+    feature_group_base_engine,
+    hudi_engine,
+    transformation_function_engine,
+)
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hsfs.core.schema_validation import DataFrameValidator
+
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    from hsfs.transformation_function import TransformationFunction
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -76,7 +87,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
         feature_dataframe,
         write_options,
+        transformation_context: dict[str, Any] = None,
         validation_options: dict = None,
+        n_processes: int = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
@@ -90,10 +103,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # Currently on-demand transformation functions not supported in external feature groups.
         if feature_group.transformation_functions:
             if not isinstance(feature_group, fg.ExternalFeatureGroup):
-                feature_dataframe = (
-                    engine.get_instance()._apply_transformation_function(
-                        feature_group.transformation_functions, feature_dataframe
-                    )
+                feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                    execution_graph=feature_group._transformation_function_execution_graph,
+                    data=feature_dataframe,
+                    online=False,
+                    transformation_context=transformation_context,
+                    n_processes=n_processes,
                 )
             else:
                 warnings.warn(
@@ -149,6 +164,44 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
+    def apply_on_demand_transformations(
+        self,
+        execution_graph: list[list[TransformationFunction]],
+        data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
+        online: bool = False,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
+    ) -> list[dict[str, Any]] | pd.DataFrame:
+        """Function to apply on demand transformations to the passed dataframe or list of dictionaries.
+
+        Parameters:
+            transformation_functions: List of transformation functions to apply.
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
+        try:
+            df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                execution_graph=execution_graph,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+                n_processes=n_processes,
+            )
+        except exceptions.TransformationFunctionException as e:
+            raise exceptions.FeatureStoreException(
+                f"The following feature(s): {e.missing_features}, specified in the {e.transformation_type} transformation function '{e.transformation_function_name}' are not present in the feature group. "
+                " Please verify that the correct features are specified in the transformation function."
+            ) from e
+        return df
+
     def insert(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
@@ -160,6 +213,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         validation_options: dict = None,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe,
@@ -173,11 +227,19 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and feature_group.transformation_functions
             and transform
         ):
-            feature_dataframe = engine.get_instance()._apply_transformation_function(
-                feature_group.transformation_functions,
-                feature_dataframe,
-                transformation_context=transformation_context,
-            )
+            try:
+                feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                    execution_graph=feature_group._transformation_function_execution_graph,
+                    data=feature_dataframe,
+                    transformation_context=transformation_context,
+                    online=False,
+                    n_processes=n_processes,
+                )
+            except exceptions.TransformationFunctionException as e:
+                raise exceptions.FeatureStoreException(
+                    f"The following feature(s): {e.missing_features}, specified in the {e.transformation_type} transformation function '{e.transformation_function_name}'  are not present in the dataframe being inserted into the feature group. "
+                    "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted"
+                ) from e
 
             dataframe_features = (
                 self._update_feature_group_schema_on_demand_transformations(
@@ -423,11 +485,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if feature_group.transformation_functions and transform:
-            dataframe = engine.get_instance()._apply_transformation_function(
-                feature_group.transformation_functions,
-                dataframe,
-                transformation_context=transformation_context,
-            )
+            try:
+                dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                    execution_graph=feature_group._transformation_function_execution_graph,
+                    data=dataframe,
+                    online=False,
+                    transformation_context=transformation_context,
+                )
+            except exceptions.TransformationFunctionException as e:
+                raise exceptions.FeatureStoreException(
+                    f"The following feature(s): {e.missing_features}, specified in the {e.transformation_type} transformation function '{e.transformation_function_name}' are not present in the dataframe being inserted into the feature group. "
+                    "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted"
+                ) from e
 
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features

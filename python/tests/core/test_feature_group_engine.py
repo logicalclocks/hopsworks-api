@@ -61,10 +61,17 @@ class TestFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        transformation_engine = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
         )
         mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
 
@@ -96,10 +103,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
-        )
+        assert transformation_engine.apply_transformation_functions.call_count == 1
 
     def test_save_ge_report(self, mocker):
         # Arrange
@@ -333,6 +337,9 @@ class TestFeatureGroupEngine:
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
+        tf_engine_patch = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
         mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
@@ -367,10 +374,7 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
-        )
+        assert tf_engine_patch.apply_transformation_functions.call_count == 1
 
     def test_insert_id(self, mocker):
         # Arrange
@@ -1118,6 +1122,9 @@ class TestFeatureGroupEngine:
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
         )
+        tf_engine_patch = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
@@ -1158,10 +1165,7 @@ class TestFeatureGroupEngine:
         assert (
             mock_engine_get_instance.return_value.save_stream_dataframe.call_count == 1
         )
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
-        )
+        assert tf_engine_patch.apply_transformation_functions.call_count == 1
 
     def test_insert_stream_online_enabled_id(self, mocker):
         # Arrange
@@ -1405,10 +1409,9 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1459,10 +1462,9 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
@@ -1513,10 +1515,9 @@ class TestFeatureGroupEngine:
         assert f.partition is True
         assert f.hudi_precombine_key is True
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1675,10 +1676,9 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1730,10 +1730,9 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
