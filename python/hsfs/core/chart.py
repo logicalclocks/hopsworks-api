@@ -36,6 +36,10 @@ class Chart:
         description: str | None = None,
         url: str | None = None,
         job: Job | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        x: int | None = None,
+        y: int | None = None,
         **kwargs,
     ):
         self._id = id
@@ -43,6 +47,10 @@ class Chart:
         self._description = description
         self._url = url
         self._job = job
+        self._width = width
+        self._height = height
+        self._x = x
+        self._y = y
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> list[Chart]:
@@ -62,6 +70,10 @@ class Chart:
             "description": self._description,
             "url": self._url,
             "job": self._job,
+            "width": self._width,
+            "height": self._height,
+            "x": self._x,
+            "y": self._y,
         }
 
     def json(self):
@@ -106,6 +118,38 @@ class Chart:
     @job.setter
     def job(self, job: Job) -> None:
         self._job = job
+
+    @property
+    def width(self) -> int | None:
+        return self._width
+
+    @width.setter
+    def width(self, width: int) -> None:
+        self._width = width
+
+    @property
+    def height(self) -> int | None:
+        return self._height
+
+    @height.setter
+    def height(self, height: int) -> None:
+        self._height = height
+
+    @property
+    def x(self) -> int | None:
+        return self._x
+
+    @x.setter
+    def x(self, x: int) -> None:
+        self._x = x
+
+    @property
+    def y(self) -> int | None:
+        return self._y
+
+    @y.setter
+    def y(self, y: int) -> None:
+        self._y = y
 
     def delete(self) -> None:
         """Delete the chart from the feature store.

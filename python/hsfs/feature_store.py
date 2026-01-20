@@ -43,6 +43,8 @@ from hsfs.core import (
 )
 from hsfs.core.chart import Chart
 from hsfs.core.chart_api import ChartApi
+from hsfs.core.dashboard import Dashboard
+from hsfs.core.dashboard_api import DashboardApi
 from hsfs.core.job import Job
 from hsfs.decorators import typechecked
 from hsfs.transformation_function import TransformationFunction
@@ -1967,6 +1969,83 @@ class FeatureStore:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return ChartApi().get_chart(chart_id)
+
+    def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
+        """Create a chart in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            chart = fs.get_chart(chart_id=321)
+            chart.width = 12
+            chart.height = 8
+            chart.x = 0
+            chart.y = 0
+
+            # create a dashboard
+            fs.create_dashboard(
+                name="My Dashboard",
+                charts=[chart]  # optional
+            )
+            ```
+
+        Arguments:
+            name: Name of the dashboard.
+            charts: List of charts to include in the dashboard.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        dashboard = Dashboard(
+            name=name,
+            charts=charts,
+        )
+        return DashboardApi().create_dashboard(dashboard)
+
+    def get_dashboards(self) -> list[Dashboard]:
+        """Get all dashboards in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all dashboards
+            dashboards = fs.get_dashboards()
+            ```
+
+        Returns:
+            List of dashboard metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboards()
+
+    def get_dashboard(self, dashboard_id: int) -> Dashboard:
+        """Get a dashboard by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific dashboard
+            dashboard = fs.get_dashboard(dashboard_id=123)
+            ```
+
+        Arguments:
+            dashboard_id: ID of the dashboard to retrieve.
+
+        Returns:
+            The dashboard metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboard(dashboard_id)
 
     @property
     def id(self) -> int:
