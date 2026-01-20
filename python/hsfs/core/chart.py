@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import json
 from typing import (
+    TYPE_CHECKING,
     Any,
 )
 
 import humps
 from hopsworks_common import util
-from hsfs.core.job import Job
+
+if TYPE_CHECKING:
+    from hsfs.core.job import Job
 
 
 class Chart:

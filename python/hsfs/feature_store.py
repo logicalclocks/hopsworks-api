@@ -41,11 +41,11 @@ from hsfs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
-from hsfs.decorators import typechecked
-from hsfs.transformation_function import TransformationFunction
-from hsfs.core.job import Job
 from hsfs.core.chart import Chart
 from hsfs.core.chart_api import ChartApi
+from hsfs.core.job import Job
+from hsfs.decorators import typechecked
+from hsfs.transformation_function import TransformationFunction
 
 
 if TYPE_CHECKING:
@@ -1889,7 +1889,9 @@ class FeatureStore:
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
 
-    def create_chart(self, title: str, description: str, url: str, job_id: int | None = None) -> None:
+    def create_chart(
+        self, title: str, description: str, url: str, job_id: int | None = None
+    ) -> None:
         """Create a chart in the feature store.
 
         Example:
@@ -1915,9 +1917,14 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        chart = Chart(title=title, description=description, url=url, job=Job(id=job_id) if job_id else None)
+        chart = Chart(
+            title=title,
+            description=description,
+            url=url,
+            job=Job(id=job_id) if job_id else None,
+        )
         return ChartApi().create_chart(chart)
-    
+
     def get_charts(self) -> list[Chart]:
         """Get all charts in the feature store.
 

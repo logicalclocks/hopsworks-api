@@ -20,7 +20,6 @@ from hsfs.core.chart import Chart
 
 
 class ChartApi:
-
     def create_chart(self, chart: Chart) -> None:
         _client = client.get_instance()
         path_params = [
@@ -44,12 +43,14 @@ class ChartApi:
             "charts",
         ]
 
-        return Chart.from_response_json(_client._send_request(
-            "GET",
-            path_params,
-            headers={"content-type": "application/json"},
-        ))
-    
+        return Chart.from_response_json(
+            _client._send_request(
+                "GET",
+                path_params,
+                headers={"content-type": "application/json"},
+            )
+        )
+
     def get_chart(self, chart_id: int) -> Chart:
         _client = client.get_instance()
         path_params = [
@@ -59,12 +60,14 @@ class ChartApi:
             chart_id,
         ]
 
-        return Chart.from_response_json(_client._send_request(
-            "GET",
-            path_params,
-            headers={"content-type": "application/json"},
-        ))
-    
+        return Chart.from_response_json(
+            _client._send_request(
+                "GET",
+                path_params,
+                headers={"content-type": "application/json"},
+            )
+        )
+
     def update_chart(self, chart: Chart) -> None:
         _client = client.get_instance()
         path_params = [
@@ -80,7 +83,7 @@ class ChartApi:
             headers={"content-type": "application/json"},
             data=chart.json(),
         )
-    
+
     def delete_chart(self, chart_id: int) -> None:
         _client = client.get_instance()
         path_params = [
