@@ -242,9 +242,15 @@ class FeatureGroupApi:
         if with_features:
             query_params["expand"] = ["features"]
 
-        return fg_mod.FeatureGroup.from_response_json(
-            _client._send_request("GET", path_params, query_params)
-        )
+        res = _client._send_request("GET", path_params, query_params)
+
+        if "items" not in res:
+            try:
+                return [fg_mod.FeatureGroup.from_response_json(res)]
+            except TypeError:
+                return []
+
+        return [fg_mod.FeatureGroup.from_response_json(r) for r in res["items"]]
 
     def delete_content(
         self,
