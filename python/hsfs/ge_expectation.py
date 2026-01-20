@@ -74,7 +74,11 @@ class GeExpectation:
     def from_ge_type(
         cls, ge_expectation: great_expectations.core.ExpectationConfiguration
     ):
-        return cls(**ge_expectation.to_json_dict())
+        exp_dict = ge_expectation.to_json_dict()
+        # Handle GE 1.0+ field name changes: 'type' -> 'expectation_type'
+        if "type" in exp_dict and "expectation_type" not in exp_dict:
+            exp_dict["expectation_type"] = exp_dict.pop("type")
+        return cls(**exp_dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -112,8 +116,9 @@ class GeExpectation:
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationConfiguration:
         """Convert to Great Expectations ExpectationConfiguration type."""
+        # GE 1.0+ uses 'type' instead of 'expectation_type'
         return great_expectations.core.ExpectationConfiguration(
-            expectation_type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
+            type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
         )
 
     @property

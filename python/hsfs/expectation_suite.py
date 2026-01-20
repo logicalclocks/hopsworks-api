@@ -154,8 +154,23 @@ class ExpectationSuite:
             Hopsworks Expectation Suite instance.
         """
         suite_dict = ge_expectation_suite.to_json_dict()
+
+        # Handle GE 1.0+ field name changes: 'name' -> 'expectation_suite_name'
+        if "name" in suite_dict and "expectation_suite_name" not in suite_dict:
+            suite_dict["expectation_suite_name"] = suite_dict.pop("name")
+
+        # In GE 1.0+, 'id' is the cloud ID (was 'ge_cloud_id')
+        # We need to handle the id field carefully - GE's id is not our internal Hopsworks id
         if id is None and "id" in suite_dict:
-            id = suite_dict.pop("id")
+            # GE's id is the cloud ID, store it as ge_cloud_id
+            suite_dict["ge_cloud_id"] = suite_dict.pop("id")
+
+        # Handle GE 1.0+ field name changes in expectations: 'type' -> 'expectation_type'
+        if "expectations" in suite_dict:
+            for exp in suite_dict["expectations"]:
+                if isinstance(exp, dict) and "type" in exp and "expectation_type" not in exp:
+                    exp["expectation_type"] = exp.pop("type")
+
         return cls(
             **suite_dict,
             id=id,
@@ -205,10 +220,10 @@ class ExpectationSuite:
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuite:
         """Convert to Great Expectations ExpectationSuite type."""
+        # GE 1.0+ uses 'name' instead of 'expectation_suite_name'
+        # and 'id' instead of 'ge_cloud_id'. 'data_asset_type' is removed.
         return great_expectations.core.ExpectationSuite(
-            expectation_suite_name=self._expectation_suite_name,
-            ge_cloud_id=self._ge_cloud_id,
-            data_asset_type=self._data_asset_type,
+            name=self._expectation_suite_name,
             expectations=[
                 expectation.to_ge_type() for expectation in self._expectations
             ],
@@ -280,10 +295,18 @@ class ExpectationSuite:
         if HAS_GREAT_EXPECTATIONS and isinstance(
             expectation, great_expectations.core.ExpectationConfiguration
         ):
-            return GeExpectation(**expectation.to_json_dict())
+            exp_dict = expectation.to_json_dict()
+            # Handle GE 1.0+ field name changes: 'type' -> 'expectation_type'
+            if "type" in exp_dict and "expectation_type" not in exp_dict:
+                exp_dict["expectation_type"] = exp_dict.pop("type")
+            return GeExpectation(**exp_dict)
         if isinstance(expectation, GeExpectation):
             return expectation
         if isinstance(expectation, dict):
+            # Handle GE 1.0+ field name changes in dict: 'type' -> 'expectation_type'
+            if "type" in expectation and "expectation_type" not in expectation:
+                expectation = expectation.copy()
+                expectation["expectation_type"] = expectation.pop("type")
             return GeExpectation(**expectation)
         raise TypeError(f"Expectation of type {type(expectation)} is not supported.")
 
@@ -332,22 +355,21 @@ class ExpectationSuite:
 
         Example:
             ```python
-            # check if the minimum value of specific column is within a range of 0 and 1
+            import great_expectations as gx
+
+            # Option 1: Using class-based expectations (recommended for GE 1.0+)
             expectation_suite.add_expectation(
-                ge.core.ExpectationConfiguration(
-                    expectation_type="expect_column_min_to_be_between",
-                    kwargs={
-                        "column": "foo_id",
-                        "min_value": 0,
-                        "max_value": 1
-                    }
+                gx.expectations.ExpectColumnMinToBeBetween(
+                    column="foo_id",
+                    min_value=0,
+                    max_value=1
                 )
             )
 
-            # check if the length of specific column value is within a range of 3 and 10
+            # Option 2: Using ExpectationConfiguration
             expectation_suite.add_expectation(
-                ge.core.ExpectationConfiguration(
-                    expectation_type="expect_column_value_lengths_to_be_between",
+                gx.core.ExpectationConfiguration(
+                    type="expect_column_value_lengths_to_be_between",
                     kwargs={
                         "column": "bar_name",
                         "min_value": 3,

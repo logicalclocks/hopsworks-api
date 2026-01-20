@@ -73,8 +73,9 @@ class TestGeExpectation:
         expectation_type = "expect_column_min_to_be_between"
         kwargs = {"kwargs_key": "kwargs_value"}
         meta = {"meta_key": "meta_value", "expectationId": expectationId}
+        # GE 1.0+ uses 'type' instead of 'expectation_type'
         ge_object = great_expectations.core.ExpectationConfiguration(
-            expectation_type=expectation_type,
+            type=expectation_type,
             kwargs=kwargs,
             meta=meta,
         )

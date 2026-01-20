@@ -795,7 +795,7 @@ class Engine:
         ge_validate_kwargs: dict[Any, Any] | None = None,
     ) -> great_expectations.core.ExpectationSuiteValidationResult:
         # This conversion might cause a bottleneck in performance when using polars with greater expectations.
-        # This patch is done becuase currently great_expecatations does not support polars, would need to be made proper when support added.
+        # This patch is done because currently great_expectations does not support polars, would need to be made proper when support added.
         if HAS_POLARS and (
             isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
@@ -807,9 +807,17 @@ class Engine:
             dataframe = dataframe.to_pandas()
         if ge_validate_kwargs is None:
             ge_validate_kwargs = {}
-        return great_expectations.from_pandas(
-            dataframe, expectation_suite=expectation_suite
-        ).validate(**ge_validate_kwargs)
+
+        # GE 1.0+ batch-based validation workflow
+        context = great_expectations.get_context()
+        data_source = context.data_sources.add_pandas(name="hopsworks_pandas_datasource")
+        data_asset = data_source.add_dataframe_asset(name="hopsworks_dataframe_asset")
+        batch_definition = data_asset.add_batch_definition_whole_dataframe(
+            name="hopsworks_batch_definition"
+        )
+        batch = batch_definition.get_batch(batch_parameters={"dataframe": dataframe})
+
+        return batch.validate(expectation_suite, **ge_validate_kwargs)
 
     def set_job_group(self, group_id: str, description: str | None) -> None:
         pass

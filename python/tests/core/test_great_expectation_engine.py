@@ -83,7 +83,7 @@ class TestGreatExpectationEngine:
         )
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name", expectations=None, meta={}
+            name="suite_name", expectations=None, meta={}
         )
 
         validation_options = {"run_validation": False}
@@ -129,7 +129,7 @@ class TestGreatExpectationEngine:
         )
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name", expectations=None, meta={}
+            name="suite_name", expectations=None, meta={}
         )
 
         validation_options = {"run_validation": True}
@@ -174,7 +174,7 @@ class TestGreatExpectationEngine:
         )
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name", expectations=None, meta={}
+            name="suite_name", expectations=None, meta={}
         )
 
         validation_options = {"run_validation": True}
@@ -208,7 +208,7 @@ class TestGreatExpectationEngine:
         mocker.patch("hsfs.engine.get_instance")
 
         suite = great_expectations.core.ExpectationSuite(
-            expectation_suite_name="suite_name",
+            name="suite_name",
         )
 
         fg = feature_group.FeatureGroup(
@@ -218,7 +218,7 @@ class TestGreatExpectationEngine:
             primary_key=[],
             partition_key=[],
             expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+                name="attached_to_feature_group",
             ),
         )
 
@@ -251,7 +251,7 @@ class TestGreatExpectationEngine:
         mocker.patch("hsfs.engine.get_instance")
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name", expectations=[], meta={}
+            name="suite_name", expectations=[], meta={}
         )
 
         fg = feature_group.FeatureGroup(
@@ -261,7 +261,7 @@ class TestGreatExpectationEngine:
             primary_key=[],
             partition_key=[],
             expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+                name="attached_to_feature_group",
             ),
         )
 
@@ -302,7 +302,7 @@ class TestGreatExpectationEngine:
             primary_key=[],
             partition_key=[],
             expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+                name="attached_to_feature_group",
             ),
         )
 
@@ -341,7 +341,7 @@ class TestGreatExpectationEngine:
             primary_key=[],
             partition_key=[],
             expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+                name="attached_to_feature_group",
             ),
         )
 
@@ -369,7 +369,7 @@ class TestGreatExpectationEngine:
         )
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name",
+            name="suite_name",
             expectations=[],
             meta={},
             run_validation=True,
@@ -391,7 +391,7 @@ class TestGreatExpectationEngine:
         )
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name",
+            name="suite_name",
             expectations=[],
             meta={},
             run_validation=False,
@@ -413,7 +413,7 @@ class TestGreatExpectationEngine:
         )
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name",
+            name="suite_name",
             expectations=[],
             meta={},
             run_validation=True,
@@ -435,7 +435,7 @@ class TestGreatExpectationEngine:
         )
 
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name",
+            name="suite_name",
             expectations=[],
             meta={},
             run_validation=False,
@@ -604,7 +604,7 @@ class TestGreatExpectationEngine:
         )
         df = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
         suite = es.ExpectationSuite(
-            expectation_suite_name="suite_name",
+            name="suite_name",
             expectations=[],
             meta={},
             run_validation=True,

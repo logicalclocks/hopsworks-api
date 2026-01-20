@@ -73,7 +73,7 @@ sqlalchemy-1 = [
     "pandas<2.2.0; python_version < '3.13'",
     "sqlalchemy<2.0.0",
 ]
-great-expectations = ["great_expectations==0.18.12"]
+great-expectations = ["great_expectations==1.11.0"]
 dev-no-opt = [
     "hopsworks[python]",
     "pytest==7.4.4",
