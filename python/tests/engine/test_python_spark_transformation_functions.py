@@ -30,6 +30,7 @@ from hsfs import (
 )
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.core.transformation_function_engine import TransformationFunctionEngine
 from hsfs.engine import python, spark
 from hsfs.hopsworks_udf import HopsworksUdf, udf
 from hsfs.transformation_function import TransformationType
@@ -64,7 +65,7 @@ class TestPythonSparkTransformationFunctions:
         )
         features = [f, f1, f2]
 
-        td = training_dataset.TrainingDataset(
+        return training_dataset.TrainingDataset(
             name="test",
             version=1,
             data_format="CSV",
@@ -73,16 +74,15 @@ class TestPythonSparkTransformationFunctions:
             features=features,
         )
 
-        return td
-
     def _validate_on_python_engine(self, td, df, expected_df, transformation_functions):
         # Arrange
         python_engine = python.Engine()
+        tf_engine = TransformationFunctionEngine(feature_store_id=99)
         engine.set_instance(engine=python_engine, engine_type="python")
         # Act
-        result = python_engine._apply_transformation_function(
+        result = tf_engine.apply_transformation_functions(
             transformation_functions=transformation_functions,
-            dataset=df,
+            data=df,
         )
         assert list(result.columns) == list(expected_df.columns)
         for result_dtype, expected_dtype in zip(result.dtypes, expected_df.dtypes):
@@ -96,11 +96,12 @@ class TestPythonSparkTransformationFunctions:
     ):
         # Arrange
         spark_engine = spark.Engine()
+        tf_engine = TransformationFunctionEngine(feature_store_id=99)
         engine.set_instance(engine=spark_engine, engine_type="spark")
         # Act
-        result = spark_engine._apply_transformation_function(
+        result = tf_engine.apply_transformation_functions(
             transformation_functions=transformation_functions,
-            dataset=spark_df,
+            data=spark_df,
         )
 
         # Assert

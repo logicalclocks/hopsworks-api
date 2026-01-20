@@ -4358,6 +4358,96 @@ class FeatureView:
             },
         )
 
+    def execute_odts(
+        self,
+        data: pd.DataFrame | pl.DataFrame | dict[str, Any],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Apply on-demand transformations attached to the feature view on the passed dataframe or dictionary.
+
+        Parameters:
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+
+        Returns:
+            The updated dataframe or dictionary with the transformations applied.
+        """
+        if self._on_demand_transformation_functions:
+            data = self._feature_view_engine.apply_transformations(
+                transformation_functions=self._on_demand_transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+            )
+        else:
+            _logger.info(
+                "No on-demand transformation functions attached to the feature view, no transformations applied."
+            )
+        return data
+
+    def execute_mdts(
+        self,
+        data: pd.DataFrame | pl.DataFrame | dict[str, Any],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Apply model dependent transformations attached to the feature view on the passed dataframe or dictionary.
+
+        Parameters:
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+
+        Returns:
+            The updated dataframe or dictionary with the transformations applied.
+        """
+        if self.transformation_functions:
+            df = self._feature_view_engine.apply_transformations(
+                transformation_functions=self.transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+            )
+        else:
+            _logger.info(
+                "No model dependent transformation functions attached to the feature view, no transformations applied."
+            )
+        return df
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self.__getitem__(name)
+        except KeyError as err:
+            raise AttributeError(
+                f"'FeatureView' object has no attribute '{name}'. "
+            ) from err
+
+    def __getitem__(self, name: str):
+        if not isinstance(name, str):
+            raise TypeError(
+                f"Expected type `str`, got `{type(name)}`. "
+                "Features are accessible by name."
+            )
+        transformations = [
+            tf.hopsworks_udf
+            for tf in self.__getattribute__("transformation_functions")
+            + self.__getattribute__("_on_demand_transformation_functions")
+            if tf.hopsworks_udf.function_name == name
+        ]
+        if len(transformations) == 1:
+            return transformations[0]
+        raise KeyError(
+            f"'FeatureVuew' object has no transformation function called '{name}'."
+        )
+
     @staticmethod
     def _update_attribute_if_present(this: FeatureView, new: Any, key: str) -> None:
         if getattr(new, key):

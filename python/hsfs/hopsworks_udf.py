@@ -19,6 +19,7 @@ import ast
 import copy
 import inspect
 import json
+import logging
 import re
 import warnings
 from dataclasses import dataclass
@@ -38,6 +39,8 @@ from packaging.version import Version
 
 if TYPE_CHECKING:
     from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+
+_logger = logging.getLogger(__name__)
 
 
 class UDFExecutionMode(Enum):
@@ -678,7 +681,6 @@ def renaming_wrapper(*args):
             _date_time_output_columns=date_time_output_columns
         )
 
-        # executing code
         exec(code, scope)
 
         # returning executed function object
@@ -841,6 +843,56 @@ def renaming_wrapper(*args):
         raise ValueError(
             f"Invalid execution mode '{self.execution_mode}' for UDF '{self.function_name}'."
         )
+
+    def executor(
+        self,
+        statistics: TransformationStatistics = None,
+        context: dict[str, Any] = None,
+        online: bool = False,
+    ) -> Any:
+        """Function that returns an callable object that can be executed to obtain the resulting values of the UDF.
+
+        The function allows the user to set the information in the UDF like transformation statistics and transformation context and then execute it.
+
+        Parameters:
+            statistics: Statistics to be passed to the UDF.
+            context: Transformation context to be passed to the UDF.
+            online: Apply the UDF for online or offline usecase. This parameter is applicable when a UDF is defined using the `default` execution mode.
+
+        Returns:
+            A callable object that can be executed to obtain the resulting values of the UDF.
+        """
+        # Fetch existing stateful information in the UDF.
+        udf = copy.deepcopy(self)
+
+        udf.transformation_context = context if context else udf.transformation_context
+        if statistics:
+            udf.transformation_statistics = statistics
+        udf.output_column_names = (
+            udf.output_column_names
+            if udf.output_column_names
+            else [f"col_{i}" for i in range(len(udf.return_types))]
+        )
+
+        executable = udf.get_udf(online=online)
+
+        executable.execute = executable.__call__
+
+        return executable
+
+    def execute(self, *args) -> Any:
+        """Function to execute the UDF with the passed arguments.
+
+        This function execute the UDF in the offline mode with no transformation statistics and transformation context.
+        To execute the UDF in the online mode with transformation statistics and transformation context, use the `executor` function.
+
+        Parameters:
+            *args: The arguments to be passed to the UDF.
+
+        Returns:
+            The resulting values of the UDF.
+        """
+        return self.executor().execute(*args)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert class into a dictionary.
@@ -1109,14 +1161,28 @@ def renaming_wrapper(*args):
 
     @transformation_statistics.setter
     def transformation_statistics(
-        self, statistics: list[FeatureDescriptiveStatistics]
+        self,
+        statistics: list[FeatureDescriptiveStatistics]
+        | dict[str, dict[str, Any]]
+        | TransformationStatistics,
     ) -> None:
-        self._statistics = TransformationStatistics(*self._statistics_argument_names)
-        for stat in statistics:
-            if stat.feature_name in self._statistics_argument_mapping:
-                self._statistics.set_statistics(
-                    self._statistics_argument_mapping[stat.feature_name], stat.to_dict()
-                )
+        if isinstance(statistics, TransformationStatistics):
+            self._statistics = statistics
+        elif isinstance(statistics, dict):
+            self._statistics = TransformationStatistics(*statistics.keys())
+            for key, value in statistics.items():
+                value["feature_name"] = key
+                self._statistics.set_statistics(key, value)
+        else:
+            self._statistics = TransformationStatistics(
+                *self._statistics_argument_names
+            )
+            for stat in statistics:
+                if stat.feature_name in self._statistics_argument_mapping:
+                    self._statistics.set_statistics(
+                        self._statistics_argument_mapping[stat.feature_name],
+                        stat.to_dict(),
+                    )
 
     @output_column_names.setter
     def output_column_names(self, output_col_names: str | list[str]) -> None:

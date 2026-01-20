@@ -78,7 +78,9 @@ class TestArrowFlightClient:
             "hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query",
             return_value=fg.select_all(),
         )
-        mocker.patch("hsfs.engine.python.Engine._apply_transformation_function")
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
+        )
 
         # required for batch query
         batch_scoring_server = mocker.MagicMock()
