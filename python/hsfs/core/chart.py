@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import humps
 from hopsworks_common import util
 
+
 if TYPE_CHECKING:
     from hsfs.core.job import Job
 
