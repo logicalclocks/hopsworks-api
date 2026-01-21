@@ -17,10 +17,14 @@
 import base64
 import os
 import stat
+import sys
 import tempfile
 
 from hopsworks_common.client.base import Client as BaseClient
 from hopsworks_common.client.external import Client as ExternalClient
+
+# Windows doesn't support Unix-style file permissions
+IS_WINDOWS = sys.platform == "win32"
 
 
 class TestSecureFileWriting:
@@ -42,9 +46,11 @@ class TestSecureFileWriting:
                 assert f.read() == test_content
 
             # Verify permissions are 0o600 (owner read/write only)
-            file_stat = os.stat(test_path)
-            file_mode = stat.S_IMODE(file_stat.st_mode)
-            assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
+            # Skip permission check on Windows as it doesn't support Unix permissions
+            if not IS_WINDOWS:
+                file_stat = os.stat(test_path)
+                file_mode = stat.S_IMODE(file_stat.st_mode)
+                assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
 
     def test_write_secure_file_with_bytes_creates_file_with_0600_permissions(self):
         """Test that _write_secure_file handles bytes content correctly."""
@@ -62,9 +68,11 @@ class TestSecureFileWriting:
                 assert f.read() == test_content
 
             # Verify permissions are 0o600
-            file_stat = os.stat(test_path)
-            file_mode = stat.S_IMODE(file_stat.st_mode)
-            assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
+            # Skip permission check on Windows as it doesn't support Unix permissions
+            if not IS_WINDOWS:
+                file_stat = os.stat(test_path)
+                file_mode = stat.S_IMODE(file_stat.st_mode)
+                assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
 
     def test_write_pem_file_creates_file_with_0600_permissions(self):
         """Test that _write_pem_file creates files with 0o600 permissions."""
@@ -78,10 +86,17 @@ class TestSecureFileWriting:
 
             client._write_pem_file(test_content, test_path)
 
+            # Verify file exists and has correct content
+            assert os.path.exists(test_path)
+            with open(test_path) as f:
+                assert f.read() == test_content
+
             # Verify permissions are 0o600
-            file_stat = os.stat(test_path)
-            file_mode = stat.S_IMODE(file_stat.st_mode)
-            assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
+            # Skip permission check on Windows as it doesn't support Unix permissions
+            if not IS_WINDOWS:
+                file_stat = os.stat(test_path)
+                file_mode = stat.S_IMODE(file_stat.st_mode)
+                assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
 
 
 class TestExternalClientCertificates:
@@ -146,7 +161,7 @@ class TestExternalClientCertificates:
         try:
             client._materialize_certs()
 
-            # Verify all certificate files have 0o600 permissions
+            # Verify all certificate files exist and have correct permissions
             cert_files = [
                 os.path.join(client._cert_folder, "keyStore.jks"),
                 os.path.join(client._cert_folder, "trustStore.jks"),
@@ -155,11 +170,13 @@ class TestExternalClientCertificates:
 
             for cert_file in cert_files:
                 assert os.path.exists(cert_file), f"File {cert_file} should exist"
-                file_stat = os.stat(cert_file)
-                file_mode = stat.S_IMODE(file_stat.st_mode)
-                assert file_mode == 0o600, (
-                    f"File {cert_file} should have 0o600 permissions, got {oct(file_mode)}"
-                )
+                # Skip permission check on Windows as it doesn't support Unix permissions
+                if not IS_WINDOWS:
+                    file_stat = os.stat(cert_file)
+                    file_mode = stat.S_IMODE(file_stat.st_mode)
+                    assert file_mode == 0o600, (
+                        f"File {cert_file} should have 0o600 permissions, got {oct(file_mode)}"
+                    )
         finally:
             # Cleanup
             if client._cert_folder and os.path.exists(client._cert_folder):
@@ -189,12 +206,18 @@ class TestExternalClientCertificates:
         try:
             client._materialize_certs()
 
+            # Verify folder exists
+            assert os.path.exists(client._cert_folder)
+            assert os.path.isdir(client._cert_folder)
+
             # Verify folder has 0o700 permissions
-            folder_stat = os.stat(client._cert_folder)
-            folder_mode = stat.S_IMODE(folder_stat.st_mode)
-            assert folder_mode == 0o700, (
-                f"Folder should have 0o700 permissions, got {oct(folder_mode)}"
-            )
+            # Skip permission check on Windows as it doesn't support Unix permissions
+            if not IS_WINDOWS:
+                folder_stat = os.stat(client._cert_folder)
+                folder_mode = stat.S_IMODE(folder_stat.st_mode)
+                assert folder_mode == 0o700, (
+                    f"Folder should have 0o700 permissions, got {oct(folder_mode)}"
+                )
         finally:
             # Cleanup
             if client._cert_folder and os.path.exists(client._cert_folder):
@@ -228,6 +251,8 @@ class TestExternalClientCertificates:
                 assert f.read() == test_content
 
             # Verify permissions are 0o600
-            file_stat = os.stat(test_path)
-            file_mode = stat.S_IMODE(file_stat.st_mode)
-            assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
+            # Skip permission check on Windows as it doesn't support Unix permissions
+            if not IS_WINDOWS:
+                file_stat = os.stat(test_path)
+                file_mode = stat.S_IMODE(file_stat.st_mode)
+                assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
