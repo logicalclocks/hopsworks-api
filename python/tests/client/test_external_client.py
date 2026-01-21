@@ -19,7 +19,6 @@ import os
 import stat
 import tempfile
 
-import pytest
 from hopsworks_common.client.base import Client as BaseClient
 from hopsworks_common.client.external import Client as ExternalClient
 
