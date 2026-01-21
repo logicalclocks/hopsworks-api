@@ -223,6 +223,7 @@ class FeatureViewApi:
         batch: bool,
         inference_helper_columns: bool,
         logging_meta_data: bool = False,
+        with_inference_helpers: bool = False,
     ) -> list[serving_prepared_statement.ServingPreparedStatement]:
         """Get the prepared statement for fetching feature vectors.
 
@@ -232,6 +233,7 @@ class FeatureViewApi:
             batch : `bool`. Whether to get the prepared statement for batch feature vector retrieval.
             inference_helper_columns : `bool`. Whether to include inference helper columns in the prepared statement.
             logging_meta_data : `bool`. Whether to include logging meta data in the prepared statement. i.e return feature vector along with inference helper columns and event time of the root feature group.
+            with_inference_helpers : `bool`. Whether to include inference helper columns along with regular features in the prepared statement.
         """
         path = self._base_path + [
             name,
@@ -244,6 +246,7 @@ class FeatureViewApi:
             "batch": batch,
             "inference_helper_columns": inference_helper_columns,
             "logging_meta_data": logging_meta_data,
+            "with_inference_helpers": with_inference_helpers,
         }
         return serving_prepared_statement.ServingPreparedStatement.from_response_json(
             self._client._send_request("GET", path, query_params, headers=headers)

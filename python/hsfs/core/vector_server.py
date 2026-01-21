@@ -174,6 +174,8 @@ class VectorServer:
         self.__all_feature_groups_online: bool | None = None
         self._feature_view_logging_enabled: bool = False
         self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
+        # Flag indicating whether on-demand transformations require inference helper columns
+        self._use_inference_helpers_for_transformations: bool = False
 
     def init_serving(
         self,
@@ -294,6 +296,34 @@ class VectorServer:
             if feature.on_demand_transformation_function
         ]
 
+        # Cache whether on-demand transformations need inference helper columns
+        self._use_inference_helpers_for_transformations = (
+            self._requires_inference_helpers_for_transformations()
+        )
+
+    def _requires_inference_helpers_for_transformations(self) -> bool:
+        """Check if any on-demand transformation requires inference helper columns.
+
+        Returns True if on-demand transformation functions exist and any of them
+        use features that are marked as inference helper columns.
+        """
+        if (
+            not self._on_demand_transformation_functions
+            or not self._inference_helper_col_name
+        ):
+            return False
+
+        inference_helper_set = set(self._inference_helper_col_name)
+
+        for tf in self._on_demand_transformation_functions:
+            prefix = tf.hopsworks_udf.feature_name_prefix or ""
+            for feature in tf.hopsworks_udf.unprefixed_transformation_features:
+                # Check both prefixed and unprefixed names
+                prefixed = prefix + feature
+                if prefixed in inference_helper_set or feature in inference_helper_set:
+                    return True
+        return False
+
     def setup_sql_client(
         self,
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
@@ -309,10 +339,16 @@ class VectorServer:
             serving_keys=self.serving_keys,
             external=external,
         )
+        # Check if we need combined prepared statements for on-demand transformations
+        # that use inference helper columns
+        requires_inference_helpers_for_transformations = (
+            self._requires_inference_helpers_for_transformations()
+        )
         self.sql_client.init_prepared_statements(
             entity,
             inference_helper_columns,
             with_logging_meta_data=self._feature_view_logging_enabled,
+            with_inference_helpers_in_feature_vector=requires_inference_helpers_for_transformations,
         )
         self.sql_client.init_async_mysql_connection(options=options)
 
@@ -464,7 +500,9 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online SQL client")
             serving_vector = self.sql_client.get_single_feature_vector(
-                rondb_entry, logging_data=logging_data
+                rondb_entry,
+                logging_data=logging_data,
+                with_inference_helpers=self._use_inference_helpers_for_transformations,
             )
 
         self._raise_transformation_warnings(
@@ -621,7 +659,9 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vectors through SQL client")
             batch_results, _ = self.sql_client.get_batch_feature_vectors(
-                rondb_entries, logging_data=logging_data
+                rondb_entries,
+                logging_data=logging_data,
+                with_inference_helpers=self._use_inference_helpers_for_transformations,
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -1508,7 +1548,8 @@ class VectorServer:
                 )
             )
             for f in self._features
-            if f.is_complex() and f.feature_group.id not in self._skip_feature_decoding_fg_ids
+            if f.is_complex()
+            and f.feature_group.id not in self._skip_feature_decoding_fg_ids
         }
 
         if len(complex_feature_schemas) == 0:
