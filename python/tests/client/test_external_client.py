@@ -23,6 +23,7 @@ import tempfile
 from hopsworks_common.client.base import Client as BaseClient
 from hopsworks_common.client.external import Client as ExternalClient
 
+
 # Windows doesn't support Unix-style file permissions
 IS_WINDOWS = sys.platform == "win32"
 
