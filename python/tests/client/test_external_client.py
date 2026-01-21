@@ -73,7 +73,9 @@ class TestSecureFileWriting:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_path = os.path.join(tmpdir, "test.pem")
-            test_content = "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
+            test_content = (
+                "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
+            )
 
             client._write_pem_file(test_content, test_path)
 

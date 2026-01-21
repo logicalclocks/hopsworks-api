@@ -100,7 +100,6 @@ class Client(base.Client):
         self._project_id = str(project_info["projectId"])
         _logger.debug("Setting Project ID: %s", self._project_id)
 
-
         if self._engine == "python":
             self.download_certs()
 
@@ -178,7 +177,9 @@ class Client(base.Client):
 
     def _materialize_certs(self):
         os.makedirs(self._cert_folder_base, exist_ok=True)
-        self._cert_folder = tempfile.mkdtemp(prefix="hopsworks_certs_", dir=self._cert_folder_base)
+        self._cert_folder = tempfile.mkdtemp(
+            prefix="hopsworks_certs_", dir=self._cert_folder_base
+        )
         _logger.debug(f"Created certificates folder {self._cert_folder}")
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
