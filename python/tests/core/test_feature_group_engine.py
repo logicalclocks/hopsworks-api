@@ -15,12 +15,12 @@
 #
 
 import pytest
+from hopsworks_common.core import sink_job_configuration
 from hsfs import feature, feature_group, feature_group_commit, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
 from hsfs.hopsworks_udf import udf
 from hsfs.storage_connector import CRMAndAnalyticsConnector, CRMSource
-from hopsworks_common.core import sink_job_configuration
 
 
 class TestFeatureGroupEngine:
@@ -1407,9 +1407,10 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        )
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_creates_sink_job(self, mocker):
@@ -1560,9 +1561,10 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        )
         mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
     def test_save_feature_group_metadata_primary_partition_precombine(self, mocker):
@@ -1612,9 +1614,10 @@ class TestFeatureGroupEngine:
         assert f.partition is True
         assert f.hudi_precombine_key is True
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        )
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_primary_partition_precombine_event_error(
@@ -1772,9 +1775,10 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        )
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_write_options(self, mocker):
@@ -1825,9 +1829,10 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
+        )
         mock_save_empty_table.assert_not_called()
 
     def test_update_feature_group_schema_on_demand_transformations(self, mocker):
