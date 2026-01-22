@@ -477,8 +477,13 @@ class FeatureGroupBase:
         Returns:
             A query object with all features of the feature group.
         """
-        select_features = self.primary_key + self.foreign_key + [self.event_time]
-        if not isinstance(self, ExternalFeatureGroup):
+        select_features = self.primary_key + [self.event_time]
+
+        if not isinstance(self, SpineGroup):
+            select_features = select_features + self.foreign_key
+        if not isinstance(self, ExternalFeatureGroup) and not isinstance(
+            self, SpineGroup
+        ):
             select_features = select_features + self.partition_key
 
         query = self.select_except(select_features)
