@@ -13,10 +13,11 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+from unittest.mock import call
+
 import pandas as pd
 import pytest
 from hsml.utils.schema import column, columnar_schema
-from mock import call
 
 
 class TestColumnarSchema:

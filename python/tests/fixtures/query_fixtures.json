@@ -226,32 +226,32 @@
           "runValidation": true
         },
         "eventTime": "datet",
-        "storageConnector": {
-          "type": "featurestoreJdbcConnectorDTO",
-          "description": "JDBC connector for the Offline Feature Store",
-          "featurestoreId": 67,
-          "id": 2,
-          "name": "test_project_featurestore",
-          "storageConnectorType": "JDBC",
-          "arguments": [
-            {
-              "name": "sslTrustStore"
-            },
-            {
-              "name": "trustStorePassword"
-            },
-            {
-              "name": "sslKeyStore"
-            },
-            {
-              "name": "keyStorePassword"
-            }
-          ],
-          "connectionString": "jdbc:hopshive://10.0.2.15:9085/test_project_featurestore;auth=noSasl;ssl=true;twoWay=true;"
-        },
         "dataSource": {
           "query": "Select * from ",
-          "path": "test_path"
+          "path": "test_path",
+          "storageConnector": {
+            "type": "featurestoreJdbcConnectorDTO",
+            "description": "JDBC connector for the Offline Feature Store",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "test_project_featurestore",
+            "storageConnectorType": "JDBC",
+            "arguments": [
+              {
+                "name": "sslTrustStore"
+              },
+              {
+                "name": "trustStorePassword"
+              },
+              {
+                "name": "sslKeyStore"
+              },
+              {
+                "name": "keyStorePassword"
+              }
+            ],
+            "connectionString": "jdbc:hopshive://10.0.2.15:9085/test_project_featurestore;auth=noSasl;ssl=true;twoWay=true;"
+          }
         },
         "dataFormat": "HUDI",
         "options": [{ "name": "test_name", "value": "test_value" }]

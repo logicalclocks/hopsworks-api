@@ -603,14 +603,16 @@
         "query": "select * from Customer",
         "database": "test_database",
         "group": "test_schema",
-        "path": ""
+        "path": "",
+        "storageConnector": {
+          "id": 4,
+          "name": "snowflake",
+          "featurestoreId": 67,
+          "storageConnectorType": "SNOWFLAKE"
+        }
       },
       "dataFormat": null,
       "options": null,
-      "storageConnector": {"id": 4,
-        "name": "snowflake",
-        "featurestoreId": 67,
-        "storageConnectorType": "SNOWFLAKE"},
       "type": "onDemandFeaturegroupDTO",
       "statisticsConfig": {"enabled": true,
         "correlations": false,
