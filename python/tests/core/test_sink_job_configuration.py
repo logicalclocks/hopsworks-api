@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2025 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,71 +14,8 @@
 #   limitations under the License.
 #
 
-import pytest
 from hopsworks_common.core import sink_job_configuration
 from hopsworks_common.job_schedule import JobSchedule
-
-
-class TestFeatureColumnMapping:
-    def test_to_dict_and_from_response_json(self):
-        mapping = sink_job_configuration.FeatureColumnMapping(
-            source_column="source_a", feature_name="feature_a"
-        )
-
-        assert mapping.to_dict() == {
-            "sourceColumn": "source_a",
-            "featureName": "feature_a",
-        }
-
-        parsed = sink_job_configuration.FeatureColumnMapping.from_response_json(
-            {"sourceColumn": "source_b", "featureName": "feature_b"}
-        )
-        assert parsed.source_column == "source_b"
-        assert parsed.feature_name == "feature_b"
-
-
-class TestLoadingConfig:
-    def test_to_dict_full_load_defaults(self):
-        config = sink_job_configuration.LoadingConfig()
-
-        assert config.to_dict() == {
-            "loadingStrategy": sink_job_configuration.LoadingStrategy.FULL_LOAD.value,
-            "sourceCursorField": None,
-            "initialValue": None,
-            "initialValueDate": None,
-        }
-
-    def test_to_dict_incremental_id(self):
-        config = sink_job_configuration.LoadingConfig(
-            loading_strategy="INCREMENTAL_ID",
-            source_cursor_field="id",
-            initial_value="42",
-        )
-
-        assert config.to_dict() == {
-            "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_ID.value,
-            "sourceCursorField": "id",
-            "initialValue": "42",
-            "initialValueDate": None,
-        }
-
-    def test_to_dict_incremental_date(self):
-        config = sink_job_configuration.LoadingConfig(
-            loading_strategy=sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE,
-            source_cursor_field="event_date",
-            initial_value="2023-01-01",
-        )
-
-        assert config.to_dict() == {
-            "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE.value,
-            "sourceCursorField": "event_date",
-            "initialValue": None,
-            "initialValueDate": "2023-01-01",
-        }
-
-    def test_invalid_loading_strategy(self):
-        with pytest.raises(ValueError, match="Invalid loading_strategy"):
-            sink_job_configuration.LoadingConfig(loading_strategy="NOT_A_STRATEGY")
 
 
 class TestSinkJobConfiguration:

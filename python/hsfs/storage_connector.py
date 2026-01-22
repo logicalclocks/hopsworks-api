@@ -357,7 +357,7 @@ class StorageConnector(ABC):
         Returns:
             DataSourceData: An object containing the data retrieved from the data source.
         """
-        if self.type == StorageConnector.REST or self.type == StorageConnector.CRM:
+        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             return self._get_no_sql_data(data_source)
         return self._data_source_api.get_data(
             self._featurestore_id, self._name, data_source
@@ -384,7 +384,7 @@ class StorageConnector(ABC):
         Returns:
             dict: A dictionary containing metadata about the data source.
         """
-        if self.type == StorageConnector.REST or self.type == StorageConnector.CRM:
+        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api.get_metadata(
             self._featurestore_id, self._name, data_source

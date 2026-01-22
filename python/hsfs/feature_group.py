@@ -4003,7 +4003,6 @@ class FeatureGroup(FeatureGroupBase):
                     for transformation_function in transformation_functions
                 ]
             if "sink_job" in json_decamelized:
-                print("sink job found:", json_decamelized["sink_job"])
                 json_decamelized["sink_job"] = job.Job.from_response_json(
                     json_decamelized["sink_job"]
                 )
@@ -4029,7 +4028,6 @@ class FeatureGroup(FeatureGroupBase):
                     for transformation_function in transformation_functions
                 ]
             if "sink_job" in fg:
-                print("sink job found in list:", fg["sink_job"])
                 fg["sink_job"] = job.Job.from_response_json(fg["sink_job"])
         return [cls(**fg) for fg in json_decamelized]
 
