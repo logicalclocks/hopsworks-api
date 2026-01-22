@@ -19,6 +19,8 @@ from hsfs import feature, feature_group, feature_group_commit, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
 from hsfs.hopsworks_udf import udf
+from hsfs.storage_connector import CRMAndAnalyticsConnector, CRMSource
+from hopsworks_common.core import sink_job_configuration
 
 
 class TestFeatureGroupEngine:
@@ -1435,8 +1437,12 @@ class TestFeatureGroupEngine:
 
         mock_fg_api.return_value.save.side_effect = _save_side_effect
 
-        job_conf = mocker.Mock()
-        job_conf.json.return_value = "{}"
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
 
         fg = feature_group.FeatureGroup(
             name="fg",
@@ -1446,7 +1452,8 @@ class TestFeatureGroupEngine:
             foreign_key=[],
             partition_key=[],
             sink_enabled=True,
-            sink_job_conf={"name": "custom_sink_job", "job_conf": job_conf},
+            sink_job_conf={"name": "custom_sink_job"},
+            storage_connector=storage_connector,
         )
 
         dataframe_feature = feature.Feature(name="f", type="str")
@@ -1457,9 +1464,10 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        mock_job_api.create.assert_called_once_with("custom_sink_job", job_conf)
-        assert fg._sink_job is mock_job_api.create.return_value
-        assert fg._sink_job_configuration is None
+        mock_job_api.create.assert_called_once()
+        job_name, job_conf = mock_job_api.create.call_args[0]
+        assert job_name == "custom_sink_job"
+        assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
 
     def test_save_feature_group_metadata_skips_sink_job_when_disabled(self, mocker):
         # Arrange
