@@ -1895,6 +1895,18 @@ class FeatureStore:
         self, title: str, description: str, url: str, job_id: int | None = None
     ) -> None:
         """Create a chart in the feature store.
+        
+        Registers an HTML file as a chart in Hopsworks.
+        This enables it to be used in a [`Dashboard`][hsfs.core.dashboard.Dashboard].
+
+        Each chart with a set `job_id` has a refresh button which triggers the job and redraws the chart once the job finishes.
+        You can use this job to conviniently extract and prepare the data from Hopsworks Feature Store using its Python API.
+        Once the data is acquired, it can be put into JSON to simplify the Javascript code in the HTML.
+
+        Note: Jobless charts
+            Although charts can be created without a data preparation job, such charts are not suited to visualize data stored in Hopsworks.
+            Jobless charts can be useful, for example, in case you want to display data which is already available in JSON via a REST API of an external service, or if the chart is completely static.
+            Jobless charts do not have a refresh button attached to them.
 
         Example:
             ```python
@@ -1905,8 +1917,7 @@ class FeatureStore:
             fs.create_chart(
                 title="My Chart",
                 description="This is my chart description",
-                url="/Resources/chart.html",
-                job_id=123  # optional
+                url="/Resources/chart.html"
             )
             ```
 
@@ -1914,7 +1925,7 @@ class FeatureStore:
             title: Title of the chart.
             description: Description of the chart.
             url: URL where the chart is hosted or can be accessed.
-            job_id: Optional ID of the job associated with this chart (intended to be used to refresh data).
+            job_id: ID of the job that prepares the data to be displayed in the chart.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -1971,7 +1982,7 @@ class FeatureStore:
         return ChartApi().get_chart(chart_id)
 
     def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
-        """Create a chart in the feature store.
+        """Create a dashboard in the feature store.
 
         Example:
             ```python
