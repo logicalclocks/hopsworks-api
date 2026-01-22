@@ -144,9 +144,8 @@ class OnlineStoreSqlClient:
                         batch=key.startswith("batch"),
                         inference_helper_columns=key.endswith("helper_column"),
                         logging_meta_data="logging" in key,
-                        feature_vector_with_inference_helpers=key.endswith(
-                            "feature_vector_with_inference_helpers"
-                        ),
+                        feature_vector_with_inference_helpers="_with_inference_helpers"
+                        in key,
                     )
                 )
                 if _logger.isEnabledFor(logging.DEBUG):
