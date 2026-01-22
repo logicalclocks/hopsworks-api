@@ -375,18 +375,7 @@ class Query:
         event_time_feature = self._left_feature_group.get_feature(
             self._left_feature_group.event_time
         )
-
-        time_filter = None
-        if start_time is not None:
-            time_filter = event_time_feature > start_time
-
-        if end_time is not None:
-            end_filter = event_time_feature < end_time
-            if time_filter is not None:
-                time_filter = time_filter & end_filter
-            else:
-                time_filter = end_filter
-
+        time_filter = util.build_time_filter(event_time_feature, start_time, end_time)
         filtered_query = self.filter(time_filter)
         return filtered_query.read(
             online=online,

@@ -3089,18 +3089,9 @@ class FeatureGroup(FeatureGroupBase):
 
         if start_time is not None or end_time is not None:
             event_time_feature = self.get_feature(self.event_time)
-
-            time_filter = None
-            if start_time is not None:
-                time_filter = event_time_feature > start_time
-
-            if end_time is not None:
-                end_filter = event_time_feature < end_time
-                if time_filter is not None:
-                    time_filter = time_filter & end_filter
-                else:
-                    time_filter = end_filter
-
+            time_filter = util.build_time_filter(
+                event_time_feature, start_time, end_time
+            )
             query = query.filter(time_filter)
 
         return query.read(online, dataframe_type, read_options or {})
@@ -4950,18 +4941,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
         if start_time is not None or end_time is not None:
             event_time_feature = self.get_feature(self.event_time)
-
-            time_filter = None
-            if start_time is not None:
-                time_filter = event_time_feature > start_time
-
-            if end_time is not None:
-                end_filter = event_time_feature < end_time
-                if time_filter is not None:
-                    time_filter = time_filter & end_filter
-                else:
-                    time_filter = end_filter
-
+            time_filter = util.build_time_filter(
+                event_time_feature, start_time, end_time
+            )
             query = query.filter(time_filter)
 
         return query.read(
