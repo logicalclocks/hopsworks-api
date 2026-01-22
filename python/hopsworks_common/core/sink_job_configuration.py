@@ -267,7 +267,7 @@ class SinkJobConfiguration:
         self._name = name
 
     @property
-    def schedule_config(self) -> dict | None:
+    def schedule_config(self) -> JobSchedule | None:
         return self._schedule_config
 
     @schedule_config.setter

@@ -33,6 +33,7 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import DataSourceException
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
+from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
@@ -330,7 +331,10 @@ class StorageConnector(ABC):
             data: DataSourceData = self._data_source_api.get_crm_resources(
                 self._featurestore_id, self._name
             )
-            return [ds.DataSource(table=resource) for resource in data.supported_resources]
+            return [
+                ds.DataSource(table=resource)
+                for resource in (data.supported_resources or [])
+            ]
 
         return self._data_source_api.get_tables(
             self._featurestore_id, self._name, database
@@ -358,6 +362,12 @@ class StorageConnector(ABC):
             DataSourceData: An object containing the data retrieved from the data source.
         """
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
+            if not data_source.table:
+                raise ValueError(
+                    f"{self.type} data sources require a table name in data_source.table."
+                )
+            if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
+                data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source)
         return self._data_source_api.get_data(
             self._featurestore_id, self._name, data_source
@@ -403,9 +413,7 @@ class StorageConnector(ABC):
             _logger.info("Schema fetch in progress...")
 
         if data.schema_fetch_failed:
-            raise DataSourceException(
-                f"Schema fetch failed:\n{data.schema_fetch_logs}"
-            )
+            raise DataSourceException(f"Schema fetch failed:\n{data.schema_fetch_logs}")
         _logger.info("Schema fetch succeeded.")
 
         return data

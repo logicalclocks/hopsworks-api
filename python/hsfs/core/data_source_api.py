@@ -38,7 +38,7 @@ class DataSourceApi:
 
         return _client._send_request("GET", path_params)
 
-    def get_crm_resources(self, feature_store_id: int, name: str) -> dict:
+    def get_crm_resources(self, feature_store_id: int, name: str) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
             "project",

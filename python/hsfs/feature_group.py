@@ -2778,9 +2778,10 @@ class FeatureGroup(FeatureGroupBase):
 
     def _resolve_sink_enabled(self):
         """Check if sink enabled must enabled based on storage connector."""
-        self._sink_enabled = self._storage_connector is not None and (
-            self._storage_connector.type == sc.StorageConnector.CRM
-            or self._storage_connector.type == sc.StorageConnector.REST
+        self._sink_enabled = (
+            self._storage_connector is not None
+            and self._storage_connector.type
+            in [sc.StorageConnector.CRM, sc.StorageConnector.REST]
         )
 
     @staticmethod

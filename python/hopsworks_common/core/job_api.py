@@ -246,7 +246,6 @@ class JobApi:
         path_params = ["project", _client._project_id, "jobs", name]
 
         headers = {"content-type": "application/json"}
-        print("job_conf json:", job_conf.json())
         return job.Job.from_response_json(
             _client._send_request(
                 "PUT", path_params, headers=headers, data=job_conf.json()
