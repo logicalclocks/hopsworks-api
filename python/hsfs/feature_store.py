@@ -41,6 +41,11 @@ from hsfs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
+from hsfs.core.chart import Chart
+from hsfs.core.chart_api import ChartApi
+from hsfs.core.dashboard import Dashboard
+from hsfs.core.dashboard_api import DashboardApi
+from hsfs.core.job import Job
 from hsfs.decorators import typechecked
 from hsfs.transformation_function import TransformationFunction
 
@@ -1915,6 +1920,173 @@ class FeatureStore:
 
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
+
+    def create_chart(
+        self, title: str, description: str, url: str, job_id: int | None = None
+    ) -> None:
+        """Create a chart in the feature store.
+
+        Registers an HTML file as a chart in Hopsworks.
+        This enables it to be used in a [`Dashboard`][hsfs.core.dashboard.Dashboard].
+
+        Each chart with a set `job_id` has a refresh button which triggers the job and redraws the chart once the job finishes.
+        You can use this job to conviniently extract and prepare the data from Hopsworks Feature Store using its Python API.
+        Once the data is acquired, it can be put into JSON to simplify the Javascript code in the HTML.
+
+        Note: Jobless charts
+            Although charts can be created without a data preparation job, such charts are not suited to visualize data stored in Hopsworks.
+            Jobless charts can be useful, for example, in case you want to display data which is already available in JSON via a REST API of an external service, or if the chart is completely static.
+            Jobless charts do not have a refresh button attached to them.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # create a chart
+            fs.create_chart(
+                title="My Chart",
+                description="This is my chart description",
+                url="/Resources/chart.html"
+            )
+            ```
+
+        Arguments:
+            title: Title of the chart.
+            description: Description of the chart.
+            url: URL where the chart is hosted or can be accessed.
+            job_id: ID of the job that prepares the data to be displayed in the chart.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        chart = Chart(
+            title=title,
+            description=description,
+            url=url,
+            job=Job(id=job_id) if job_id else None,
+        )
+        return ChartApi().create_chart(chart)
+
+    def get_charts(self) -> list[Chart]:
+        """Get all charts in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all charts
+            charts = fs.get_charts()
+            ```
+
+        Returns:
+            List of chart metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_charts()
+
+    def get_chart(self, chart_id: int) -> Chart:
+        """Get a chart by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific chart
+            chart = fs.get_chart(chart_id=123)
+            ```
+
+        Arguments:
+            chart_id: ID of the chart to retrieve.
+
+        Returns:
+            The chart metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_chart(chart_id)
+
+    def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
+        """Create a dashboard in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            chart = fs.get_chart(chart_id=321)
+            chart.width = 12
+            chart.height = 8
+            chart.x = 0
+            chart.y = 0
+
+            # create a dashboard
+            fs.create_dashboard(
+                name="My Dashboard",
+                charts=[chart]  # optional
+            )
+            ```
+
+        Arguments:
+            name: Name of the dashboard.
+            charts: List of charts to include in the dashboard.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        dashboard = Dashboard(
+            name=name,
+            charts=charts,
+        )
+        return DashboardApi().create_dashboard(dashboard)
+
+    def get_dashboards(self) -> list[Dashboard]:
+        """Get all dashboards in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all dashboards
+            dashboards = fs.get_dashboards()
+            ```
+
+        Returns:
+            List of dashboard metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboards()
+
+    def get_dashboard(self, dashboard_id: int) -> Dashboard:
+        """Get a dashboard by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific dashboard
+            dashboard = fs.get_dashboard(dashboard_id=123)
+            ```
+
+        Arguments:
+            dashboard_id: ID of the dashboard to retrieve.
+
+        Returns:
+            The dashboard metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboard(dashboard_id)
 
     @property
     def id(self) -> int:

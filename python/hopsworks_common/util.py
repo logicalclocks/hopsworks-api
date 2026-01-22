@@ -76,7 +76,7 @@ class NumpyEncoder(json.JSONEncoder):
             return base64.encodebytes(x).decode("ascii")
 
         if isinstance(obj, np.ndarray):
-            if obj.dtype == np.object:
+            if obj.dtype == np.object_:
                 return [self.convert(x)[0] for x in obj.tolist()]
             if obj.dtype == np.bytes_:
                 return np.vectorize(encode_binary)(obj), True

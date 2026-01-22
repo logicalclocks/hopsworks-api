@@ -15,35 +15,26 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from datetime import date, datetime  # noqa: TC003
 
 from pydantic import BaseModel
 
 
-if TYPE_CHECKING:
-    from datetime import date, datetime
-
-
 class FeatureGroup(BaseModel):
-    """Model representing a feature group in Hopsworks MCP."""
-
-    id: int | None = None
-    name: str | None
-    version: int | None
-    featurestore_id: int | None
-    location: str | None
+    id: int
+    name: str
+    version: int
+    description: str | None = None
+    location: str | None = None
     event_time: str | int | date | datetime | None = None
-    online_enabled: bool = False
-    online_topic_name: str | None = None
+    online_enabled: bool | None = None
     topic_name: str | None = None
     notification_topic_name: str | None = None
-    deprecated: bool = False
+    deprecated: bool | None = None
 
-
-class FeatureGroups(BaseModel):
-    """Model representing a collection of feature groups in Hopsworks MCP."""
-
-    feature_groups: list[FeatureGroup]
-    total: int
-    offset: int
-    limit: int
+class Feature(BaseModel):
+    name: str
+    type: str | None = None
+    description: str | None = None
+    primary: bool | None = None
+    event_time: bool | None = None
