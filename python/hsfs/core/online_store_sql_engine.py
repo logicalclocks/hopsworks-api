@@ -113,7 +113,7 @@ class OnlineStoreSqlClient:
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         inference_helper_columns: bool,
         with_logging_meta_data: bool = False,
-        with_inference_helpers_in_feature_vector: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
     ) -> None:
         """Fetch prepared statement for feature vector retrival from the backend.
 
@@ -122,7 +122,7 @@ class OnlineStoreSqlClient:
             inference_helper_columns : Fetch prepared statements for inference helper columns.
             with_logging_meta_data : Fetch prepared statements to include logging meta data.
                 i.e The fetched data will include the features along with inference helper columns.
-            with_inference_helpers_in_feature_vector : Fetch prepared statements for combined
+            feature_vector_with_inference_helpers : Fetch prepared statements for combined
                 features + inference helpers in single query for on-demand transformation support.
         """
         if hasattr(entity, "_feature_view_engine"):
@@ -133,12 +133,10 @@ class OnlineStoreSqlClient:
             for key in self.get_prepared_statement_labels(
                 inference_helper_columns,
                 with_logging_meta_data,
-                with_inference_helpers_in_feature_vector,
+                feature_vector_with_inference_helpers,
             ):
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
-                # Determine the with_inference_helpers flag based on the key
-                with_inference_helpers = key.endswith("with_inference_helpers")
                 self.prepared_statements[key] = (
                     self.feature_view_api.get_serving_prepared_statement(
                         entity.name,
@@ -146,7 +144,9 @@ class OnlineStoreSqlClient:
                         batch=key.startswith("batch"),
                         inference_helper_columns=key.endswith("helper_column"),
                         logging_meta_data="logging" in key,
-                        with_inference_helpers=with_inference_helpers,
+                        feature_vector_with_inference_helpers=key.endswith(
+                            "feature_vector_with_inference_helpers"
+                        ),
                     )
                 )
                 if _logger.isEnabledFor(logging.DEBUG):
@@ -188,7 +188,7 @@ class OnlineStoreSqlClient:
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         inference_helper_columns: bool,
         with_logging_meta_data: bool = False,
-        with_inference_helpers_in_feature_vector: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
     ) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -198,7 +198,7 @@ class OnlineStoreSqlClient:
             entity,
             inference_helper_columns,
             with_logging_meta_data=with_logging_meta_data,
-            with_inference_helpers_in_feature_vector=with_inference_helpers_in_feature_vector,
+            feature_vector_with_inference_helpers=feature_vector_with_inference_helpers,
         )
 
         self.init_parametrize_and_serving_utils(
@@ -208,7 +208,7 @@ class OnlineStoreSqlClient:
         for key in self.get_prepared_statement_labels(
             inference_helper_columns,
             with_logging_meta_data,
-            with_inference_helpers_in_feature_vector,
+            feature_vector_with_inference_helpers,
         ):
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(f"Parametrize prepared statements for key {key}")
@@ -322,19 +322,19 @@ class OnlineStoreSqlClient:
         self,
         entry: dict[str, Any],
         logging_data: bool = False,
-        with_inference_helpers: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
     ) -> dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine.
 
         If `logging_data` is True, it will use the prepared statement that includes logging metadata.
         i.e. The fetched feature vector will also include inference helper columns.
-        If `with_inference_helpers` is True, it will use the prepared statement that includes
+        If `feature_vector_with_inference_helpers` is True, it will use the prepared statement that includes
         inference helper columns along with regular features in a single query.
         """
-        if with_inference_helpers:
-            key = self.SINGLE_VECTOR_WITH_INFERENCE_HELPERS_KEY
-        elif logging_data:
+        if logging_data:
             key = self.SINGLE_LOGGING_VECTOR_KEY
+        elif feature_vector_with_inference_helpers:
+            key = self.SINGLE_VECTOR_WITH_INFERENCE_HELPERS_KEY
         else:
             key = self.SINGLE_VECTOR_KEY
         return self._single_vector_result(
@@ -346,7 +346,7 @@ class OnlineStoreSqlClient:
         self,
         entries: list[dict[str, Any]],
         logging_data: bool = False,
-        with_inference_helpers: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
     ) -> list[dict[str, Any]]:
         """Retrieve batch vector with parallel queries using aiomysql engine.
 
@@ -355,10 +355,10 @@ class OnlineStoreSqlClient:
         If `with_inference_helpers` is True, it will use the prepared statement that includes
         inference helper columns along with regular features in a single query.
         """
-        if with_inference_helpers:
-            key = self.BATCH_VECTOR_WITH_INFERENCE_HELPERS_KEY
-        elif logging_data:
+        if logging_data:
             key = self.BATCH_LOGGING_VECTOR_KEY
+        elif feature_vector_with_inference_helpers:
+            key = self.BATCH_VECTOR_WITH_INFERENCE_HELPERS_KEY
         else:
             key = self.BATCH_VECTOR_KEY
         return self._batch_vector_results(
@@ -655,7 +655,7 @@ class OnlineStoreSqlClient:
     def get_prepared_statement_labels(
         with_inference_helper_column: bool = False,
         with_logging_meta_data: bool = False,
-        with_inference_helpers_in_feature_vector: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
     ) -> list[str]:
         if with_inference_helper_column:
             prepared_statements_list = [
@@ -674,7 +674,7 @@ class OnlineStoreSqlClient:
                 OnlineStoreSqlClient.SINGLE_LOGGING_VECTOR_KEY,
                 OnlineStoreSqlClient.BATCH_LOGGING_VECTOR_KEY,
             ]
-        if with_inference_helpers_in_feature_vector:
+        if feature_vector_with_inference_helpers:
             prepared_statements_list += [
                 OnlineStoreSqlClient.SINGLE_VECTOR_WITH_INFERENCE_HELPERS_KEY,
                 OnlineStoreSqlClient.BATCH_VECTOR_WITH_INFERENCE_HELPERS_KEY,

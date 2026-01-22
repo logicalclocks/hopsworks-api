@@ -174,8 +174,7 @@ class VectorServer:
         self.__all_feature_groups_online: bool | None = None
         self._feature_view_logging_enabled: bool = False
         self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
-        # Flag indicating whether on-demand transformations require inference helper columns
-        self._use_inference_helpers_for_transformations: bool = False
+        self._fetch_inference_helpers_for_transformations: bool = False
 
     def init_serving(
         self,
@@ -296,8 +295,7 @@ class VectorServer:
             if feature.on_demand_transformation_function
         ]
 
-        # Cache whether on-demand transformations need inference helper columns
-        self._use_inference_helpers_for_transformations = (
+        self._fetch_inference_helpers_for_transformations = (
             self._requires_inference_helpers_for_transformations()
         )
 
@@ -339,16 +337,11 @@ class VectorServer:
             serving_keys=self.serving_keys,
             external=external,
         )
-        # Check if we need combined prepared statements for on-demand transformations
-        # that use inference helper columns
-        requires_inference_helpers_for_transformations = (
-            self._requires_inference_helpers_for_transformations()
-        )
         self.sql_client.init_prepared_statements(
             entity,
             inference_helper_columns,
             with_logging_meta_data=self._feature_view_logging_enabled,
-            with_inference_helpers_in_feature_vector=requires_inference_helpers_for_transformations,
+            feature_vector_with_inference_helpers_in_feature_vector=self._fetch_inference_helpers_for_transformations,
         )
         self.sql_client.init_async_mysql_connection(options=options)
 
@@ -502,7 +495,7 @@ class VectorServer:
             serving_vector = self.sql_client.get_single_feature_vector(
                 rondb_entry,
                 logging_data=logging_data,
-                with_inference_helpers=self._use_inference_helpers_for_transformations,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
             )
 
         self._raise_transformation_warnings(
@@ -661,7 +654,7 @@ class VectorServer:
             batch_results, _ = self.sql_client.get_batch_feature_vectors(
                 rondb_entries,
                 logging_data=logging_data,
-                with_inference_helpers=self._use_inference_helpers_for_transformations,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
