@@ -268,7 +268,14 @@ class Query:
         Example: Reading with filters and time-based filtering:
             ```python
             fg = fs.get_feature_group(...)
+            # Using strings
             fg.filter(fg.category == "A").read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.filter(fg.category == "A").read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.filter(fg.category == "A").read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
             ```
 
         Parameters:
@@ -282,13 +289,15 @@ class Query:
             start_time:
                 Filter data to only include records where the event_time column of the
                 left feature group is greater than start_time.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`,
-                `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string
+                formatted as `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
+                or `%Y-%m-%d %H:%M:%S.%f`.
             end_time:
                 Filter data to only include records where the event_time column of the
                 left feature group is less than end_time.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`,
-                `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string
+                formatted as `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
+                or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             `DataFrame`: DataFrame depending on the chosen type.

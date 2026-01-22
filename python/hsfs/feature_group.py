@@ -3000,7 +3000,14 @@ class FeatureGroup(FeatureGroupBase):
         Example: Reading feature group with time-based filtering on event_time:
             ```python
             fg = fs.get_or_create_feature_group(...)
+            # Using strings
             fg.read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
             ```
 
         Parameters:
@@ -3023,10 +3030,12 @@ class FeatureGroup(FeatureGroupBase):
                 - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
             start_time:
                 Filter data to only include records where the event_time column is greater than start_time.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             end_time:
                 Filter data to only include records where the event_time column is less than end_time.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             One of the following:
@@ -4864,7 +4873,14 @@ class ExternalFeatureGroup(FeatureGroupBase):
         Example: Reading with time-based filtering on event_time:
             ```python
             fg = fs.get_or_create_feature_group(...)
+            # Using strings
             fg.read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
             ```
 
         Warning: Engine Support
@@ -4880,10 +4896,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
             read_options: Additional options as key/value pairs to pass to the spark engine.
             start_time:
                 Filter data to only include records where the event_time column is greater than start_time.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             end_time:
                 Filter data to only include records where the event_time column is less than end_time.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             One of:
