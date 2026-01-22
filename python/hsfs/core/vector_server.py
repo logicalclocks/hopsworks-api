@@ -341,7 +341,7 @@ class VectorServer:
             entity,
             inference_helper_columns,
             with_logging_meta_data=self._feature_view_logging_enabled,
-            feature_vector_with_inference_helpers_in_feature_vector=self._fetch_inference_helpers_for_transformations,
+            feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
         )
         self.sql_client.init_async_mysql_connection(options=options)
 
