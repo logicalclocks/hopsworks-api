@@ -1895,7 +1895,7 @@ class FeatureStore:
         self, title: str, description: str, url: str, job_id: int | None = None
     ) -> None:
         """Create a chart in the feature store.
-        
+
         Registers an HTML file as a chart in Hopsworks.
         This enables it to be used in a [`Dashboard`][hsfs.core.dashboard.Dashboard].
 
