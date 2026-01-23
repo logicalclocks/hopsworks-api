@@ -351,7 +351,7 @@ class OnlineStoreSqlClient:
 
         If `logging_data` is True, it will use the prepared statement that includes logging metadata.
         i.e. The fetched feature vector will also include inference helper columns.
-        If `with_inference_helpers` is True, it will use the prepared statement that includes
+        If `feature_vector_with_inference_helpers` is True, it will use the prepared statement that includes
         inference helper columns along with regular features in a single query.
         """
         if logging_data:
