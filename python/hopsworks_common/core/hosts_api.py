@@ -18,9 +18,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from hopsworks_aliases import public
 from hopsworks_common import client
 
 
+@public("hopsworks.core.hosts_api", "hsfs.core.hosts_api")
 class HostsApi:
     def get(self) -> list[Any]:
         _client = client.get_instance()

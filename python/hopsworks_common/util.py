@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from urllib.parse import urljoin, urlparse
 
 import humps
+from hopsworks_aliases import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, JobException
 from hopsworks_common.constants import MODEL, PREDICTOR, Default
@@ -52,6 +53,7 @@ if TYPE_CHECKING:
     from hsfs import feature_group
 
 
+@public("hopsworks.util", "hsml.util")
 class Encoder(json.JSONEncoder):
     def default(self, o: Any) -> dict[str, Any]:
         try:
@@ -60,6 +62,7 @@ class Encoder(json.JSONEncoder):
             return super().default(o)
 
 
+@public("hsml.util")
 class NumpyEncoder(json.JSONEncoder):
     """Special json encoder for numpy types.
 
@@ -107,6 +110,7 @@ VALID_EMBEDDING_TYPE = {
 }
 
 
+@public("hopsworks.util")
 def validate_embedding_feature_type(embedding_index, schema):
     if not embedding_index or not schema:
         return
@@ -120,6 +124,7 @@ def validate_embedding_feature_type(embedding_index, schema):
             )
 
 
+@public("hopsworks.util")
 def autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
     if warn and contains_uppercase(name):
@@ -145,12 +150,14 @@ def contains_whitespace(name: str) -> bool:
     return " " in name
 
 
+@public("hopsworks.util")
 def feature_group_name(
     feature_group,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
 ) -> str:
     return feature_group.name + "_" + str(feature_group.version)
 
 
+@public("hopsworks.util")
 def append_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
@@ -158,6 +165,7 @@ def append_feature_store_suffix(name: str) -> str:
     return name + FEATURE_STORE_NAME_SUFFIX
 
 
+@public("hopsworks.util")
 def strip_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
@@ -165,12 +173,14 @@ def strip_feature_store_suffix(name: str) -> str:
     return name
 
 
+@public("hopsworks.util")
 def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     if re.match(r"^(?:hdfs://|)/apps/hive/warehouse/*", path):
         return "HIVEDB"
     return "DATASET"
 
 
+@public("hopsworks.util")
 def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     date_format_patterns = {
         r"^([0-9]{4})([0-9]{2})([0-9]{2})$": "%Y%m%d",
@@ -203,6 +213,7 @@ def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     return normalized_date, date_format
 
 
+@public("hopsworks.util")
 def get_timestamp_from_date_string(input_date: str) -> int:
     norm_input_date, date_format = check_timestamp_format_from_date_string(input_date)
     try:
@@ -222,12 +233,14 @@ def get_timestamp_from_date_string(input_date: str) -> int:
     return int(float(date_time.timestamp()) * 1000)
 
 
+@public("hopsworks.util")
 def get_hudi_datestr_from_timestamp(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime(
         "%Y%m%d%H%M%S%f"
     )[:-3]
 
 
+@public("hopsworks.util")
 def get_delta_datestr_from_timestamp(timestamp: int) -> str:
     # It does not work to add the Z in the strftime function
     return (
@@ -238,6 +251,7 @@ def get_delta_datestr_from_timestamp(timestamp: int) -> str:
     )
 
 
+@public("hopsworks.util")
 def convert_event_time_to_timestamp(
     event_time: str
     | pd._libs.tslibs.timestamps.Timestamp
@@ -281,6 +295,7 @@ def convert_event_time_to_timestamp(
     )
 
 
+@public("hopsworks.util")
 def get_hostname_replaced_url(sub_path: str) -> str:
     """Construct and return an url with public hopsworks hostname and sub path.
 
@@ -295,6 +310,7 @@ def get_hostname_replaced_url(sub_path: str) -> str:
     return url_parsed.geturl()
 
 
+@public("hopsworks.util")
 def verify_attribute_key_names(
     feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
@@ -333,6 +349,7 @@ def verify_attribute_key_names(
             )
 
 
+@public("hopsworks.util")
 def get_job_url(href: str) -> str:
     """Use the endpoint returned by the API to construct the UI url for jobs.
 
@@ -348,6 +365,7 @@ def get_job_url(href: str) -> str:
     return ui_url.geturl()
 
 
+@public("hopsworks.util")
 def _loading_animation(message: str, stop_event: threading.Event) -> None:
     for char in itertools.cycle([".", "..", "...", ""]):
         if stop_event.is_set():
@@ -356,6 +374,7 @@ def _loading_animation(message: str, stop_event: threading.Event) -> None:
         time.sleep(0.5)
 
 
+@public("hopsworks.util")
 def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) -> Any:
     stop_event = threading.Event()
     t = threading.Thread(
@@ -384,6 +403,7 @@ def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) ->
             print(f"\rFinished: {message} ({(end - start):.2f}s) ", end="\n")
 
 
+@public("hopsworks.util")
 def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     sub_path = (
         "/p/"
@@ -396,38 +416,47 @@ def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     return get_hostname_replaced_url(sub_path)
 
 
+@public("hopsworks.util")
 def is_runtime_notebook():
     return "ipykernel" in sys.modules
 
 
+@public("hopsworks.util", "hsml.util")
 class VersionWarning(Warning):
     pass
 
 
+@public("hsml.util")
 class ProvenanceWarning(Warning):
     pass
 
 
+@public("hopsworks.util")
 class JobWarning(Warning):
     pass
 
 
+@public("hopsworks.util")
 class StorageWarning(Warning):
     pass
 
 
+@public("hopsworks.util")
 class StatisticsWarning(Warning):
     pass
 
 
+@public("hopsworks.util")
 class ValidationWarning(Warning):
     pass
 
 
+@public("hopsworks.util")
 class FeatureGroupWarning(Warning):
     pass
 
 
+@public("hopsworks.util")
 def convert_to_abs(path, current_proj_name):
     abs_project_prefix = f"/Projects/{current_proj_name}"
     if not path.startswith(abs_project_prefix):
@@ -442,6 +471,7 @@ def convert_to_project_rel_path(path, current_proj_name):
     return path
 
 
+@public("hopsworks.util")
 def validate_job_conf(config, project_name):
     # User is required to set the appPath programmatically after getting the configuration
     if (
@@ -463,6 +493,7 @@ def validate_job_conf(config, project_name):
     return config
 
 
+@public("hopsworks.util")
 def convert_git_status_to_files(files):
     # Convert GitFileStatus to list of file paths
     if isinstance(files[0], GitFileStatus):
@@ -474,6 +505,7 @@ def convert_git_status_to_files(files):
     return files
 
 
+@public("hopsworks.util")
 def is_interactive():
     import __main__ as main
 
@@ -485,6 +517,7 @@ def is_interactive():
 # - schema and types
 
 
+@public("hsml.util")
 def set_model_class(model):
     from hsml.llm.model import Model as LLMModel
     from hsml.model import Model as BaseModel
@@ -517,6 +550,7 @@ def set_model_class(model):
     raise ValueError(f"framework {str(framework)} is not a supported framework")
 
 
+@public("hsml.util")
 def input_example_to_json(input_example):
     import numpy as np
 
@@ -531,10 +565,12 @@ def input_example_to_json(input_example):
     return _handle_dataframe_input(input_example)
 
 
+@public("hsml.util")
 def _handle_tensor_input(input_tensor):
     return input_tensor.tolist()
 
 
+@public("hsml.util")
 def _handle_dataframe_input(input_ex):
     if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
@@ -551,6 +587,7 @@ def _handle_dataframe_input(input_ex):
     raise TypeError(f"{type(input_ex)} is not a supported input example type")
 
 
+@public("hsml.util")
 def _handle_dict_input(input_ex):
     return input_ex
 
@@ -558,6 +595,7 @@ def _handle_dict_input(input_ex):
 # - artifacts
 
 
+@public("hsml.util")
 def compress(archive_out_path, archive_name, path_to_archive):
     if os.path.isdir(path_to_archive):
         return shutil.make_archive(
@@ -571,6 +609,7 @@ def compress(archive_out_path, archive_name, path_to_archive):
     )
 
 
+@public("hsml.util")
 def decompress(archive_file_path, extract_dir=None):
     return shutil.unpack_archive(archive_file_path, extract_dir=extract_dir)
 
@@ -578,6 +617,7 @@ def decompress(archive_file_path, extract_dir=None):
 # - export models
 
 
+@public("hsml.util")
 def validate_metrics(metrics):
     if metrics is not None:
         if not isinstance(metrics, dict):
@@ -603,6 +643,7 @@ def validate_metrics(metrics):
 # Model serving
 
 
+@public("hsml.util")
 def get_predictor_for_model(model, **kwargs):
     from hsml.llm.model import Model as LLMModel
     from hsml.llm.predictor import Predictor as vLLMPredictor
@@ -652,6 +693,7 @@ def get_predictor_for_server(name: str, script_file: str, **kwargs):
 # General
 
 
+@public("hsml.util")
 def pretty_print(obj):
     if isinstance(obj, list):
         for logs in obj:
@@ -661,6 +703,7 @@ def pretty_print(obj):
         print(json.dumps(json_decamelized, indent=4, sort_keys=True))
 
 
+@public("hsml.util")
 def get_members(cls, prefix=None):
     for m in inspect.getmembers(cls, lambda m: not (inspect.isroutine(m))):
         n = m[0]  # name
@@ -694,6 +737,7 @@ def extract_field_from_json(obj, fields, default=None, as_instance_of=None):
     return value
 
 
+@public("hsml.util")
 def get_obj_from_json(obj, cls):
     if obj is not None:
         if isinstance(obj, cls):
@@ -708,6 +752,7 @@ def get_obj_from_json(obj, cls):
     return obj
 
 
+@public("hsml.util")
 def feature_view_to_json(obj):
     if obj is None:
         return None

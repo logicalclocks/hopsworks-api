@@ -20,6 +20,7 @@ import functools
 import importlib
 import os
 
+from hopsworks_aliases import public
 from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
@@ -30,6 +31,7 @@ from hopsworks_common.core.constants import (
 )
 
 
+@public("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")
 def not_connected(fn):
     @functools.wraps(fn)
     def if_not_connected(inst, *args, **kwargs):
@@ -40,6 +42,7 @@ def not_connected(fn):
     return if_not_connected
 
 
+@public("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")
 def connected(fn):
     @functools.wraps(fn)
     def if_connected(inst, *args, **kwargs):
@@ -50,6 +53,7 @@ def connected(fn):
     return if_connected
 
 
+@public("hsfs.decorators", "hsml.decorators")
 def catch_not_found(*class_import_paths, fallback_return=None):
     def decorator(f):
         @functools.wraps(f)
@@ -79,6 +83,7 @@ def catch_not_found(*class_import_paths, fallback_return=None):
     return decorator
 
 
+@public("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")
 class HopsworksConnectionError(Exception):
     """Thrown when attempted to change connection attributes while connected."""
 
@@ -88,6 +93,7 @@ class HopsworksConnectionError(Exception):
         )
 
 
+@public("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")
 class NoHopsworksConnectionError(Exception):
     """Thrown when attempted to perform operation on connection while not connected."""
 
@@ -104,12 +110,14 @@ else:
 
     _T = TypeVar("_T")
 
+    @public("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")
     def typechecked(
         target: _T,
     ) -> _T:
         return target if target else typechecked
 
 
+@public("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")
 def uses_great_expectations(f):
     @functools.wraps(f)
     def g(*args, **kwds):

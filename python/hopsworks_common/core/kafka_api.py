@@ -20,6 +20,7 @@ import json
 import socket
 from typing import Any
 
+from hopsworks_aliases import public
 from hopsworks_common import (
     client,
     constants,
@@ -29,6 +30,7 @@ from hopsworks_common import (
 )
 
 
+@public("hopsworks.core.kafka_api", "hsfs.core.kafka_api")
 class KafkaApi:
     @usage.method_logger
     def create_topic(

@@ -4,4 +4,4 @@
 
 ::: hopsworks_common.core.secret_api.SecretsApi
 
-::: hopsworks.secret.Secret
+::: hopsworks_common.secret.Secret

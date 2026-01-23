@@ -19,11 +19,13 @@ from __future__ import annotations
 from typing import Any
 
 from furl import furl
+from hopsworks_aliases import public
 from hopsworks_common import client, usage
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.variable_api import VariableApi
 
 
+@public("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")
 class OPENSEARCH_CONFIG:
     ELASTIC_ENDPOINT_ENV_VAR = "ELASTIC_ENDPOINT"
     SSL_CONFIG = "es.net.ssl"
@@ -45,6 +47,7 @@ class OPENSEARCH_CONFIG:
     HTTP_AUTH = "http_auth"
 
 
+@public("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")
 class OpenSearchApi:
     def __init__(self) -> None:
         self._variable_api: VariableApi = VariableApi()

@@ -20,9 +20,11 @@ import os
 from pathlib import Path
 
 import requests
+from hopsworks_aliases import public
 from hopsworks_common.client import exceptions
 
 
+@public("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")
 class BearerAuth(requests.auth.AuthBase):
     """Class to encapsulate a Bearer token."""
 
@@ -34,6 +36,7 @@ class BearerAuth(requests.auth.AuthBase):
         return r
 
 
+@public("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")
 class ApiKeyAuth(requests.auth.AuthBase):
     """Class to encapsulate an API key."""
 
@@ -45,6 +48,7 @@ class ApiKeyAuth(requests.auth.AuthBase):
         return r
 
 
+@public("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")
 class OnlineStoreKeyAuth(requests.auth.AuthBase):
     """Class to encapsulate an API key."""
 
@@ -56,6 +60,7 @@ class OnlineStoreKeyAuth(requests.auth.AuthBase):
         return r
 
 
+@public("hsml.client.auth")
 def get_api_key(api_key_value, api_key_file):
     if api_key_value is not None:
         return api_key_value

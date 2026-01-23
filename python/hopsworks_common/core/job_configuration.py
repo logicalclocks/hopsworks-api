@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import json
 
+from hopsworks_aliases import public
 from hopsworks_common import util
 
 
+@public("hopsworks.core.job_configuration", "hsfs.core.job_configuration")
 class JobConfiguration:
     """Configuration of a Hopsworks job.
 
