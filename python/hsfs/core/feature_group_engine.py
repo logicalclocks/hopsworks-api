@@ -49,6 +49,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         else:
             transformed_features = []
             dropped_features = []
+            feature_names = [feature.name for feature in features]
             for tf in feature_group.transformation_functions:
                 transformed_features.extend(
                     [
@@ -61,6 +62,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                             tf.hopsworks_udf.output_column_names,
                             tf.hopsworks_udf.return_types,
                         )
+                        if output_column_name
+                        not in feature_names  # Don't add features that are already in the feature group. Feature names can already be in the feature group if the user explicitly added them in the feature group creation or if the feature group drop
                     ]
                 )
                 if tf.hopsworks_udf.dropped_features:
