@@ -14,6 +14,3 @@
 #   limitations under the License.
 #
 """Models for the Hopsworks MCP server."""
-
-from .feature_store import FeatureStore  # noqa: F401
-from .project import Project, Projects  # noqa: F401

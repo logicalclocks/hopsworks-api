@@ -1,5 +1,5 @@
 #
-#   Copyright 2025 Hopsworks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,18 +13,3 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
-
-from pydantic import BaseModel
-
-
-class FeatureStore(BaseModel):
-    """Model representing a feature store in Hopsworks MCP."""
-
-    name: str
-    id: int
-    project_id: int
-    project_name: str
-    online_featurestore_name: str | None = None
-    online_enabled: bool
-    offline_featurestore_name: str | None = None

@@ -109,9 +109,19 @@ class Client:
         """
         return self._send_request("GET", ["project", project_id, "credentials"])
 
-    def _write_pem_file(self, content: str, path: str) -> None:
-        with open(path, "w") as f:
+    def _write_secure_file(self, content: bytes | str, path: str) -> None:
+        """Write content to a file with restricted permissions (0o600).
+
+        :param content: content to write (bytes or str)
+        :param path: path where file is saved
+        """
+        mode = "wb" if isinstance(content, bytes) else "w"
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, mode) as f:
             f.write(content)
+
+    def _write_pem_file(self, content: str, path: str) -> None:
+        self._write_secure_file(content, path)
 
     @connected
     def _send_request(
