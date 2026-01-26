@@ -94,7 +94,8 @@ dev-pandas1 = [
     "moto[s3]==5.0.0",
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
+    "numpy<=1.26.4",
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
 polars=[
