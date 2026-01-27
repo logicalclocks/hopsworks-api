@@ -368,7 +368,9 @@ class PredictorScalingConfig(ComponentScalingConfig):
         return PredictorScalingConfig(**kwargs)
 
     def to_dict(self):
-        return {humps.camelize(self.SCALING_CONFIG_KEY): super().to_json()}
+        return {
+            humps.camelize(self.SCALING_CONFIG_KEY): humps.camelize(super().to_json())
+        }
 
     def __repr__(self):
         return f"PredictorScalingConfig({super().__repr__()})"
@@ -408,7 +410,9 @@ class TransformerScalingConfig(ComponentScalingConfig):
         )
 
     def to_dict(self):
-        return {humps.camelize(self.SCALING_CONFIG_KEY): super().to_json()}
+        return {
+            humps.camelize(self.SCALING_CONFIG_KEY): humps.camelize(super().to_json())
+        }
 
     def __repr__(self):
         return f"TransformerScalingConfig({super().__repr__()})"

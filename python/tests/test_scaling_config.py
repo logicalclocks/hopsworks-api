@@ -144,6 +144,31 @@ class TestScalingConfig:
             "scale_to_zero_retention_seconds": 60,
         }
 
+    def test_to_dict_camelizes_scaling_config(self):
+        sc = PredictorScalingConfig(
+            min_instances=1,
+            max_instances=2,
+            scale_metric="CONCURRENCY",
+            target=10,
+            panic_window_percentage=5.0,
+            panic_threshold_percentage=150.0,
+            stable_window_seconds=30,
+            scale_to_zero_retention_seconds=60,
+        )
+
+        assert sc.to_dict() == {
+            "predictorScalingConfig": {
+                "minInstances": 1,
+                "scaleMetric": "CONCURRENCY",
+                "target": 10,
+                "maxInstances": 2,
+                "panicWindowPercentage": 5.0,
+                "panicThresholdPercentage": 150.0,
+                "stableWindowSeconds": 30,
+                "scaleToZeroRetentionSeconds": 60,
+            }
+        }
+
     def test_from_json_missing_min_instances_raises(self):
         json_payload = {"predictor_scaling_config": {"scale_metric": "CONCURRENCY"}}
 
