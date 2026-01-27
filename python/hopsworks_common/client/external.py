@@ -20,6 +20,7 @@ import base64
 import contextlib
 import logging
 import os
+import tempfile
 
 import hopsworks_common.client
 import requests
@@ -174,25 +175,16 @@ class Client(base.Client):
         return res
 
     def get_certs_folder(self):
-        return os.path.join(self._cert_folder_base, self._host, self._project_name)
+        return self._cert_folder
 
     def _materialize_certs(self):
-        self._cert_folder = os.path.join(
-            self._cert_folder_base, self._host, self._project_name
+        os.makedirs(self._cert_folder_base, exist_ok=True)
+        self._cert_folder = tempfile.mkdtemp(
+            prefix="hopsworks_certs_", dir=self._cert_folder_base
         )
+        _logger.debug(f"Created certificates folder {self._cert_folder}")
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
-
-        if os.path.exists(self._cert_folder):
-            _logger.debug(
-                f"Running in Python environment, reading certificates from certificates folder {self._cert_folder_base}"
-            )
-            _logger.debug("Found certificates: %s", os.listdir(self._cert_folder_base))
-        else:
-            _logger.debug(
-                f"Running in Python environment, creating certificates folder {self._cert_folder_base}"
-            )
-            os.makedirs(self._cert_folder, exist_ok=True)
 
         credentials = self._get_credentials(self._project_id)
         self._write_b64_cert_to_bytes(
@@ -206,8 +198,7 @@ class Client(base.Client):
 
         self._cert_key = str(credentials["password"])
         self._cert_key_path = os.path.join(self._cert_folder, "material_passwd")
-        with open(self._cert_key_path, "w") as f:
-            f.write(str(credentials["password"]))
+        self._write_secure_file(self._cert_key, self._cert_key_path)
 
         # Return the credentials object for the Python engine to materialize the pem files.
         return credentials
@@ -257,15 +248,8 @@ class Client(base.Client):
         self._cleanup_file(self._get_client_cert_path())
         self._cleanup_file(self._get_client_key_path())
 
-        try:
-            # delete project level
+        with contextlib.suppress(OSError):
             os.rmdir(self._cert_folder)
-            # delete host level
-            os.rmdir(os.path.dirname(self._cert_folder))
-            # on AWS base dir will be empty, and can be deleted otherwise raises OSError
-            os.rmdir(self._cert_folder_base)
-        except OSError:
-            pass
 
         self._cert_folder = None
 
@@ -278,23 +262,17 @@ class Client(base.Client):
         return self._key_store_path
 
     def _get_ca_chain_path(self) -> str:
-        path = os.path.join(
-            self._cert_folder_base, self._host, self._project_name, "ca_chain.pem"
-        )
+        path = os.path.join(self._cert_folder, "ca_chain.pem")
         _logger.debug(f"Getting ca chain path {path}")
         return path
 
     def _get_client_cert_path(self) -> str:
-        path = os.path.join(
-            self._cert_folder_base, self._host, self._project_name, "client_cert.pem"
-        )
+        path = os.path.join(self._cert_folder, "client_cert.pem")
         _logger.debug(f"Getting client cert path {path}")
         return path
 
     def _get_client_key_path(self) -> str:
-        path = os.path.join(
-            self._cert_folder_base, self._host, self._project_name, "client_key.pem"
-        )
+        path = os.path.join(self._cert_folder, "client_key.pem")
         _logger.debug(f"Getting client key path {path}")
         return path
 
@@ -318,9 +296,8 @@ class Client(base.Client):
         :type path: str
         """
         _logger.debug(f"Writing b64 encoded certificate to {path}")
-        with open(path, "wb") as f:
-            cert_b64 = base64.b64decode(b64_string)
-            f.write(cert_b64)
+        cert_b64 = base64.b64decode(b64_string)
+        self._write_secure_file(cert_b64, path)
 
     def _cleanup_file(self, file_path):
         """Removes local files with `file_path`."""
