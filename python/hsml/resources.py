@@ -108,7 +108,7 @@ class ComponentResources(ABC):
     """Resource configuration for a predictor or transformer.
 
     Parameters:
-        num_instances: Number of instances.
+        num_instances: Deprecated. Use scaling configuration instead.
         requests: Minimum resources to allocate for a deployment
         limits: Maximum resources to allocate for a deployment
     Returns:
@@ -117,7 +117,7 @@ class ComponentResources(ABC):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | Default | None = None,
         limits: Resources | dict | Default | None = None,
     ):
@@ -250,7 +250,7 @@ class PredictorResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
     ):
@@ -278,7 +278,7 @@ class TransformerResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
     ):
