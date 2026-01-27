@@ -42,7 +42,7 @@ dependencies = [
     "furl",
     "boto3",
     "pandas[mysql]<2.4.0",
-    "numpy<2",
+    "numpy>=1.26.3,<2.5.0",
     "pyjks",
     "mock",
     "avro==1.12.0",
@@ -93,6 +93,7 @@ dev-pandas1 = [
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas<=1.5.3",
+    "numpy<2.0.0",
     "sqlalchemy<=1.4.48",
     "delta-spark==3.3.1"
 ]
