@@ -180,6 +180,7 @@ class VectorServer:
         self.__all_feature_groups_online: Optional[bool] = None
         self._feature_view_logging_enabled: bool = False
         self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
+        self._fetch_inference_helpers_for_transformations: bool = False
 
     def init_serving(
         self,
@@ -300,6 +301,33 @@ class VectorServer:
             if feature.on_demand_transformation_function
         ]
 
+        self._fetch_inference_helpers_for_transformations = (
+            self._requires_inference_helpers_for_transformations()
+        )
+
+    def _requires_inference_helpers_for_transformations(self) -> bool:
+        """Check if any on-demand transformation requires inference helper columns.
+
+        Returns True if on-demand transformation functions exist and any of them
+        use features that are marked as inference helper columns.
+        """
+        if (
+            not self._on_demand_transformation_functions
+            or not self._inference_helper_col_name
+        ):
+            return False
+
+        inference_helper_set = set(self._inference_helper_col_name)
+
+        for tf in self._on_demand_transformation_functions:
+            prefix = tf.hopsworks_udf.feature_name_prefix or ""
+            for feature in tf.hopsworks_udf.unprefixed_transformation_features:
+                # Check both prefixed and unprefixed names
+                prefixed = prefix + feature
+                if prefixed in inference_helper_set or feature in inference_helper_set:
+                    return True
+        return False
+
     def setup_sql_client(
         self,
         entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
@@ -319,6 +347,7 @@ class VectorServer:
             entity,
             inference_helper_columns,
             with_logging_meta_data=self._feature_view_logging_enabled,
+            feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
         )
         self.sql_client.init_async_mysql_connection(options=options)
 
@@ -470,7 +499,9 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online SQL client")
             serving_vector = self.sql_client.get_single_feature_vector(
-                rondb_entry, logging_data=logging_data
+                rondb_entry,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
             )
 
         self._raise_transformation_warnings(
@@ -541,25 +572,19 @@ class VectorServer:
             passed_features is None
             or len(passed_features) == 0
             or len(passed_features) == len(entries)
-        ), (
-            "Passed features should be None, empty or have the same length as the entries"
-        )
+        ), "Passed features should be None, empty or have the same length as the entries"
         assert (
             vector_db_features is None
             or len(vector_db_features) == 0
             or len(vector_db_features) == len(entries)
-        ), (
-            "Vector DB features should be None, empty or have the same length as the entries"
-        )
+        ), "Vector DB features should be None, empty or have the same length as the entries"
         assert (
             request_parameters is None
             or len(request_parameters) == 0
             or isinstance(request_parameters, dict)
             or not entries
             or len(request_parameters) == len(entries)
-        ), (
-            "Request Parameters should be a Dictionary, None, empty or have the same length as the entries if they are not None or empty."
-        )
+        ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries if they are not None or empty."
 
         # Create logging meta data object if required and populate it during the function.
         logging_meta_data = (
@@ -629,7 +654,9 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vectors through SQL client")
             batch_results, _ = self.sql_client.get_batch_feature_vectors(
-                rondb_entries, logging_data=logging_data
+                rondb_entries,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -1540,7 +1567,8 @@ class VectorServer:
                 )
             )
             for f in self._features
-            if f.is_complex() and f.feature_group.id not in self._skip_feature_decoding_fg_ids
+            if f.is_complex()
+            and f.feature_group.id not in self._skip_feature_decoding_fg_ids
         }
 
         if len(complex_feature_schemas) == 0:
