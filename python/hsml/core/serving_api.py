@@ -126,7 +126,7 @@ class ServingApi:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
         headers = {"content-type": "application/json"}
-        
+
         deployment_instance = deployment_instance.update_from_response_json(
             _client._send_request(
                 "PUT",
