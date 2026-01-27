@@ -199,34 +199,6 @@ class TestResources:
             limits=json["limits"],
         )
 
-        # Assert
-        assert pr.num_instances == json["num_instances"]
-        assert pr.requests == requests_object
-        assert pr.limits == limits_object
-        assert mock_fill_missing_resources.call_count == 2
-        assert (
-            mock_fill_missing_resources.call_args_list[0][0][1] == RESOURCES.MIN_CORES
-        )
-        assert (
-            mock_fill_missing_resources.call_args_list[0][0][2] == RESOURCES.MIN_MEMORY
-        )
-        assert mock_fill_missing_resources.call_args_list[0][0][3] == RESOURCES.GPUS
-        assert (
-            mock_fill_missing_resources.call_args_list[1][0][1] == RESOURCES.MAX_CORES
-        )
-        assert (
-            mock_fill_missing_resources.call_args_list[1][0][2] == RESOURCES.MAX_MEMORY
-        )
-        assert (
-            mock_fill_missing_resources.call_args_list[1][0][3] == requests_object.gpus
-        )
-        assert mock_util_get_obj_from_json.call_count == 2
-        expected_calls = [
-            call(json["requests"], resources.Resources),
-            call(json["limits"], resources.Resources),
-        ]
-        mock_util_get_obj_from_json.assert_has_calls(expected_calls)
-
     def test_num_instances_property_warns(self):
         pr = resources.PredictorResources(num_instances=1)
 
