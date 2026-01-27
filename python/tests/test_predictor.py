@@ -248,9 +248,6 @@ class TestPredictor:
             scaling_configuration=copy.deepcopy(p_json["predictor_scaling_config"]),
         )
 
-        print("PRedictor scaling configuration:")
-        print(p.scaling_configuration)
-
         # Assert
         assert p.id == p_json["id"]
         assert p.name == p_json["name"]
