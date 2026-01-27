@@ -79,7 +79,7 @@ class Predictor(DeployableComponent):
             scaling_configuration, PredictorScalingConfig
         ) or PredictorScalingConfig.get_default_scaling_configuration(
             serving_tool=serving_tool,
-            min_instances=resources.num_instances if resources is not None else None,
+            min_instances=resources._num_instances if resources is not None else None,
         )
 
         super().__init__(
@@ -205,7 +205,7 @@ class Predictor(DeployableComponent):
         if (
             resources is not None
             and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-            and resources.num_instances != 0
+            and resources._num_instances != 0
             and client.is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
@@ -521,9 +521,9 @@ class Predictor(DeployableComponent):
     @property
     def requested_instances(self):
         """Total number of requested instances in the predictor."""
-        num_instances = self._resources.num_instances
+        num_instances = self._resources._num_instances
         if self._transformer is not None:
-            num_instances += self._transformer.resources.num_instances
+            num_instances += self._transformer.resources._num_instances
         return num_instances
 
     @property

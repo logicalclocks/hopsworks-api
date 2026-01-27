@@ -38,14 +38,14 @@ class Transformer(DeployableComponent):
             )
             or self._get_default_resources()
         )
-        if resources.num_instances is None:
-            resources.num_instances = self._get_default_num_instances()
+        if resources._num_instances is None:
+            resources._num_instances = self._get_default_num_instances()
 
         self._scaling_configuration: TransformerScalingConfig = util.get_obj_from_json(
             scaling_configuration, TransformerScalingConfig
         ) or TransformerScalingConfig.get_default_scaling_configuration(
             serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
-            min_instances=resources.num_instances if resources is not None else None,
+            min_instances=resources._num_instances if resources is not None else None,
             component_type="transformer",
         )
 
@@ -61,7 +61,7 @@ class Transformer(DeployableComponent):
     def _validate_resources(cls, resources):
         if (
             resources is not None
-            and resources.num_instances != 0
+            and resources._num_instances != 0
             and client.is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
@@ -92,6 +92,8 @@ class Transformer(DeployableComponent):
         sf = util.extract_field_from_json(
             json_decamelized, ["transformer", "script_file"]
         )
+        if sf is None:
+            return None, None, None
         sc = TransformerScalingConfig.from_json(json_decamelized)
         rc = TransformerResources.from_json(json_decamelized)
         return sf, rc, sc
