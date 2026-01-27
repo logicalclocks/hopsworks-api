@@ -25,6 +25,16 @@ from hsml.scaling_config import TransformerScalingConfig
 class Transformer(DeployableComponent):
     """Metadata object representing a transformer to be used in a predictor."""
 
+    @staticmethod
+    def _get_raw_num_instances(resources):
+        if resources is None:
+            return None
+        return (
+            resources._num_instances
+            if hasattr(resources, "_num_instances")
+            else resources.num_instances
+        )
+
     def __init__(
         self,
         script_file: str,
@@ -38,14 +48,14 @@ class Transformer(DeployableComponent):
             )
             or self._get_default_resources()
         )
-        if resources._num_instances is None:
+        if self._get_raw_num_instances(resources) is None:
             resources._num_instances = self._get_default_num_instances()
 
         self._scaling_configuration: TransformerScalingConfig = util.get_obj_from_json(
             scaling_configuration, TransformerScalingConfig
         ) or TransformerScalingConfig.get_default_scaling_configuration(
             serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
-            min_instances=resources._num_instances if resources is not None else None,
+            min_instances=self._get_raw_num_instances(resources),
             component_type="transformer",
         )
 
@@ -61,7 +71,7 @@ class Transformer(DeployableComponent):
     def _validate_resources(cls, resources):
         if (
             resources is not None
-            and resources._num_instances != 0
+            and cls._get_raw_num_instances(resources) != 0
             and client.is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required

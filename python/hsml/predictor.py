@@ -41,6 +41,16 @@ from hsml.transformer import Transformer
 class Predictor(DeployableComponent):
     """Metadata object representing a predictor in Model Serving."""
 
+    @staticmethod
+    def _get_raw_num_instances(resources):
+        if resources is None:
+            return None
+        return (
+            resources._num_instances
+            if hasattr(resources, "_num_instances")
+            else resources.num_instances
+        )
+
     def __init__(
         self,
         name: str,
@@ -79,7 +89,7 @@ class Predictor(DeployableComponent):
             scaling_configuration, PredictorScalingConfig
         ) or PredictorScalingConfig.get_default_scaling_configuration(
             serving_tool=serving_tool,
-            min_instances=resources._num_instances if resources is not None else None,
+            min_instances=self._get_raw_num_instances(resources),
         )
 
         super().__init__(
@@ -205,7 +215,7 @@ class Predictor(DeployableComponent):
         if (
             resources is not None
             and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-            and resources._num_instances != 0
+            and cls._get_raw_num_instances(resources) != 0
             and client.is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
@@ -521,9 +531,9 @@ class Predictor(DeployableComponent):
     @property
     def requested_instances(self):
         """Total number of requested instances in the predictor."""
-        num_instances = self._resources._num_instances
+        num_instances = self._get_raw_num_instances(self._resources)
         if self._transformer is not None:
-            num_instances += self._transformer.resources._num_instances
+            num_instances += self._get_raw_num_instances(self._transformer.resources)
         return num_instances
 
     @property
