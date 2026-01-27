@@ -37,10 +37,16 @@ from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
+    search_api,
     storage_connector_api,
     training_dataset_api,
     transformation_function_engine,
 )
+from hsfs.core.chart import Chart
+from hsfs.core.chart_api import ChartApi
+from hsfs.core.dashboard import Dashboard
+from hsfs.core.dashboard_api import DashboardApi
+from hsfs.core.job import Job
 from hsfs.decorators import typechecked
 from hsfs.transformation_function import TransformationFunction
 
@@ -121,6 +127,7 @@ class FeatureStore:
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
         )
+        self._search_api: search_api.SearchApi = search_api.SearchApi()
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureStore:
@@ -1886,6 +1893,173 @@ class FeatureStore:
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
 
+    def create_chart(
+        self, title: str, description: str, url: str, job_id: int | None = None
+    ) -> None:
+        """Create a chart in the feature store.
+
+        Registers an HTML file as a chart in Hopsworks.
+        This enables it to be used in a [`Dashboard`][hsfs.core.dashboard.Dashboard].
+
+        Each chart with a set `job_id` has a refresh button which triggers the job and redraws the chart once the job finishes.
+        You can use this job to conviniently extract and prepare the data from Hopsworks Feature Store using its Python API.
+        Once the data is acquired, it can be put into JSON to simplify the Javascript code in the HTML.
+
+        Note: Jobless charts
+            Although charts can be created without a data preparation job, such charts are not suited to visualize data stored in Hopsworks.
+            Jobless charts can be useful, for example, in case you want to display data which is already available in JSON via a REST API of an external service, or if the chart is completely static.
+            Jobless charts do not have a refresh button attached to them.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # create a chart
+            fs.create_chart(
+                title="My Chart",
+                description="This is my chart description",
+                url="/Resources/chart.html"
+            )
+            ```
+
+        Arguments:
+            title: Title of the chart.
+            description: Description of the chart.
+            url: URL where the chart is hosted or can be accessed.
+            job_id: ID of the job that prepares the data to be displayed in the chart.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        chart = Chart(
+            title=title,
+            description=description,
+            url=url,
+            job=Job(id=job_id) if job_id else None,
+        )
+        return ChartApi().create_chart(chart)
+
+    def get_charts(self) -> list[Chart]:
+        """Get all charts in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all charts
+            charts = fs.get_charts()
+            ```
+
+        Returns:
+            List of chart metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_charts()
+
+    def get_chart(self, chart_id: int) -> Chart:
+        """Get a chart by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific chart
+            chart = fs.get_chart(chart_id=123)
+            ```
+
+        Arguments:
+            chart_id: ID of the chart to retrieve.
+
+        Returns:
+            The chart metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_chart(chart_id)
+
+    def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
+        """Create a dashboard in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            chart = fs.get_chart(chart_id=321)
+            chart.width = 12
+            chart.height = 8
+            chart.x = 0
+            chart.y = 0
+
+            # create a dashboard
+            fs.create_dashboard(
+                name="My Dashboard",
+                charts=[chart]  # optional
+            )
+            ```
+
+        Arguments:
+            name: Name of the dashboard.
+            charts: List of charts to include in the dashboard.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        dashboard = Dashboard(
+            name=name,
+            charts=charts,
+        )
+        return DashboardApi().create_dashboard(dashboard)
+
+    def get_dashboards(self) -> list[Dashboard]:
+        """Get all dashboards in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all dashboards
+            dashboards = fs.get_dashboards()
+            ```
+
+        Returns:
+            List of dashboard metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboards()
+
+    def get_dashboard(self, dashboard_id: int) -> Dashboard:
+        """Get a dashboard by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific dashboard
+            dashboard = fs.get_dashboard(dashboard_id=123)
+            ```
+
+        Arguments:
+            dashboard_id: ID of the dashboard to retrieve.
+
+        Returns:
+            The dashboard metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboard(dashboard_id)
+
     @property
     def id(self) -> int:
         """Id of the feature store."""
@@ -1920,3 +2094,324 @@ class FeatureStore:
     def offline_featurestore_name(self) -> str:
         """Name of the offline feature store database."""
         return self._offline_feature_store_name
+
+    @usage.method_logger
+    def search(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> search_api.FeaturestoreSearchResult:
+        """Search for feature groups, feature views, training datasets and features.
+
+        Parameters:
+           search_term: the term to search for.
+           keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+           tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+           offset: the number of results to skip (default is 0).
+           limit: the number of search results to return (default is 100).
+           global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+           `FeaturestoreSearchResult`: The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+
+        Raises:
+           `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Simple search
+        result = fs.search("search-term")
+
+        # Access results
+        for fg_meta in result.feature_groups:
+           print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+           print(f"Description: {fg_meta.description}")
+           print(f"Highlights: {fg_meta.highlights}")
+
+           # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+           fg = fg_meta.get()
+
+        # Search with a single keyword (string)
+        result = fs.search("search-term", keyword_filter="ml")
+
+        # Search with multiple keywords (array of strings)
+        result = fs.search("search-term", keyword_filter=["ml", "production"])
+
+        # Search with tag filter as a single dictionary
+        result = fs.search(
+           "search-term",
+           tag_filter={"name": "tag1", "key": "environment", "value": "production"}
+        )
+
+        # Search with tag filter as an array of dictionaries
+        result = fs.search(
+           "search-term",
+           tag_filter=[
+               {"name": "tag1", "key": "environment", "value": "production"},
+               {"name": "tag2", "key": "version", "value": "v1.0"}
+           ]
+        )
+
+        # Search with TagSearchFilter objects
+        from hsfs.core.search_api import TagSearchFilter
+        tags = [
+           TagSearchFilter(name="tag1", key="environment", value="production"),
+           TagSearchFilter(name="tag2", key="version", value="v1.0")
+        ]
+        result = fs.search("search-term", tag_filter=tags)
+
+        # Search with both keyword_filter and tag_filter
+        result = fs.search(
+           "search-term",
+           keyword_filter=["ml", "production"],
+           tag_filter=tags
+        )
+        ```
+        """
+        return self._search_api.feature_store(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_feature_groups(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureGroupSearchResult]:
+        """Search for feature groups only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for feature groups matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature groups
+        fg_metas = fs.search_feature_groups("customer")
+
+        for fg_meta in fg_metas:
+            print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+
+            # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+            fg = fg_meta.get()
+        ```
+        """
+        return self._search_api.feature_groups(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_feature_views(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureViewSearchResult]:
+        """Search for feature views only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for feature views matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature views
+        fv_metas = fs.search_feature_views("customer")
+
+        for fv_meta in fv_metas:
+            print(f"Feature View: {fv_meta.name} v{fv_meta.version}")
+
+            # Get the same FeatureView object as returned by featurestore.get_feature_view
+            fv = fv_meta.get()
+        ```
+        """
+        return self._search_api.feature_views(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_training_datasets(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.TrainingDatasetSearchResult]:
+        """Search for training datasets only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for training datasets matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for training datasets
+        td_metas = fs.search_training_datasets("model")
+
+        for td_meta in td_metas:
+            print(f"Training Dataset: {td_meta.name} v{td_meta.version}")
+
+            # Get the same TrainingDataset object as returned by featurestore.get_training_dataset
+            td = td_meta.get()
+        ```
+        """
+        return self._search_api.training_datasets(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_features(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureSearchResult]:
+        """Search for features only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of features matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for features
+        features = fs.search_features("age")
+
+        for feature in features:
+            print(f"Feature: {feature.name}")
+        ```
+        """
+        return self._search_api.features(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
