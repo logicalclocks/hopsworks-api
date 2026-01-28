@@ -116,7 +116,7 @@ class ComponentResources(ABC):
 
     def __init__(
         self,
-        num_instances: int | None = None,
+        num_instances: Optional[int] = None,
         requests: Optional[Union[Resources, dict, Default]] = None,
         limits: Optional[Union[Resources, dict, Default]] = None,
     ):
@@ -249,7 +249,7 @@ class PredictorResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int | None = None,
+        num_instances: Optional[int] = None,
         requests: Optional[Union[Resources, dict]] = None,
         limits: Optional[Union[Resources, dict]] = None,
     ):
