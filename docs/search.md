@@ -13,11 +13,3 @@ You can obtain a `SearchApi` handle by calling [`Project.get_search_api`][hopswo
 ::: hopsworks_common.search_results.TrainingDatasetSearchResult
 
 ::: hopsworks_common.search_results.FeatureSearchResult
-
-::: hopsworks_common.search_results.FeatureGroupResult
-
-::: hopsworks_common.search_results.FeatureViewResult
-
-::: hopsworks_common.search_results.TrainingDatasetResult
-
-::: hopsworks_common.search_results.FeatureResult
