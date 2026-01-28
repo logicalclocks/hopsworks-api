@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from abc import ABC, abstractmethod
 
 import humps
@@ -107,7 +108,7 @@ class ComponentResources(ABC):
     """Resource configuration for a predictor or transformer.
 
     Parameters:
-        num_instances: Number of instances.
+        num_instances: Deprecated. Use scaling configuration instead.
         requests: Minimum resources to allocate for a deployment
         limits: Maximum resources to allocate for a deployment
     Returns:
@@ -116,7 +117,7 @@ class ComponentResources(ABC):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | Default | None = None,
         limits: Resources | dict | Default | None = None,
     ):
@@ -205,10 +206,20 @@ class ComponentResources(ABC):
     @property
     def num_instances(self):
         """Number of instances."""
+        warnings.warn(
+            "The 'num_instances' property is deprecated and will be removed in a future release. Use scaling configuration instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._num_instances
 
     @num_instances.setter
     def num_instances(self, num_instances: int):
+        warnings.warn(
+            "The 'num_instances' property is deprecated and will be removed in a future release. Use scaling configuration instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._num_instances = num_instances
 
     @property
@@ -239,7 +250,7 @@ class PredictorResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
     ):
@@ -267,7 +278,7 @@ class TransformerResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
     ):
