@@ -3300,7 +3300,7 @@ class FeatureView:
             ```
 
         Returns:
-            The dictionary of tags.
+            `Dict[str, obj]` of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
