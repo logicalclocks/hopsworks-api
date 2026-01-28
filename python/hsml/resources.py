@@ -277,7 +277,7 @@ class TransformerResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int | None = None,
+        num_instances: Optional[int] = None,
         requests: Optional[Union[Resources, dict]] = None,
         limits: Optional[Union[Resources, dict]] = None,
     ):
