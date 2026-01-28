@@ -16,13 +16,16 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+import contextlib
+import json
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
 )
+from hopsworks_common.util import convert_event_time_to_timestamp
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton
@@ -216,12 +219,14 @@ class VectorDbClient:
             if not feature_value:  # Feature value can be null
                 continue
             if feature_type == "date":
-                result[feature_name] = datetime.utcfromtimestamp(
-                    feature_value // 10**3
+                result[feature_name] = datetime.fromtimestamp(
+                    feature_value // 10**3, tz=timezone.utc
                 ).date()
             elif feature_type == "timestamp":
                 # convert timestamp in ms to datetime in s
-                result[feature_name] = datetime.utcfromtimestamp(feature_value // 10**3)
+                result[feature_name] = datetime.fromtimestamp(
+                    feature_value // 10**3, tz=timezone.utc
+                )
             elif feature_type == "binary" or (
                 feature.is_complex() and feature not in self._embedding_features
             ):
@@ -250,7 +255,7 @@ class VectorDbClient:
         if isinstance(filter, Logic):
             if filter.type == Logic.SINGLE:
                 return self._get_query_filter(
-                    filter.get_left_filter_or_logic()
+                    filter.get_left_filter_or_logic(), col_prefix
                 ) or self._get_query_filter(
                     filter.get_right_filter_or_logic(), col_prefix
                 )
@@ -295,19 +300,75 @@ class VectorDbClient:
             feature_name = col_prefix + filter.feature.name
         else:
             feature_name = filter.feature.name
+
+        # Get feature type for value conversion
+        feature_type = filter.feature.type.lower()
+
+        # Convert filter value based on feature type
+        converted_value = self._convert_filter_value(
+            filter.value, feature_type, condition
+        )
+
         if condition == Filter.EQ:
-            return {"term": {feature_name: filter.value}}
+            return {"term": {feature_name: converted_value}}
         if condition == filter.NE:
-            return {"bool": {"must_not": [{"term": {feature_name: filter.value}}]}}
+            return {"bool": {"must_not": [{"term": {feature_name: converted_value}}]}}
         if condition == filter.IN:
-            return {"terms": {feature_name: filter.value}}
+            return {"terms": {feature_name: converted_value}}
         if condition == filter.LK:
-            return {"wildcard": {feature_name: {"value": "*" + filter.value + "*"}}}
+            # LIKE condition uses string value, no conversion needed
+            return {
+                "wildcard": {feature_name: {"value": "*" + str(filter.value) + "*"}}
+            }
         if condition in self._filter_map:
             return {
-                "range": {feature_name: {self._filter_map[condition]: filter.value}}
+                "range": {feature_name: {self._filter_map[condition]: converted_value}}
             }
         raise FeatureStoreException("Filter condition not defined.")
+
+    def _convert_filter_value(self, value, feature_type, condition):
+        """Convert filter value based on feature type for OpenSearch compatibility."""
+        # Handle IN condition - value might be a JSON string or a list
+        if condition == Filter.IN:
+            # Parse JSON string if needed (as created by Feature.isin())
+            if isinstance(value, str):
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
+                    value = json.loads(value)
+
+            # Convert list items
+            if isinstance(value, list):
+                converted_list = []
+                for item in value:
+                    converted_list.append(
+                        self._convert_filter_value(item, feature_type, Filter.EQ)
+                    )
+                return converted_list
+
+        # Handle boolean type
+        if feature_type == "boolean":
+            if isinstance(value, bool):
+                if value:
+                    return 1
+                return 0
+            if isinstance(value, str):
+                if value.lower() == "true":
+                    return 1
+                if value.lower() == "false":
+                    return 0
+            else:
+                raise FeatureStoreException(f"Invalid boolean value: {value}")
+
+        # Handle timestamp type
+        elif feature_type == "timestamp":
+            # Convert timestamp strings to epoch milliseconds for OpenSearch
+            if isinstance(value, str):
+                # Convert timestamp string to epoch milliseconds
+                return convert_event_time_to_timestamp(value)
+            # If already int (epoch milliseconds), return as-is
+            return value
+
+        # For other types, return value as-is
+        return value
 
     def _rewrite_result_key(self, result_map, key_map):
         new_map = {}
@@ -320,7 +381,16 @@ class VectorDbClient:
             new_map[new_key] = value
         return new_map
 
-    def read(self, fg_id, schema, keys=None, pk=None, index_name=None, n=10):
+    def read(
+        self,
+        fg_id,
+        schema,
+        keys=None,
+        pk=None,
+        index_name=None,
+        n=10,
+        filter: Filter | Logic = None,
+    ):
         if fg_id not in self._fg_vdb_col_fg_col_map:
             raise FeatureStoreException("Provided fg does not have embedding.")
         if not index_name:
@@ -331,6 +401,7 @@ class VectorDbClient:
             ].feature_group.feature_store_id
         )
         if keys:
+            # Do not add filter query to keys match query
             query = {
                 "query": {
                     "bool": {
@@ -346,8 +417,19 @@ class VectorDbClient:
         else:
             if not pk:
                 raise FeatureStoreException("No pk provided.")
+
+            if filter:
+                self._check_filter(filter, self._fg_embedding_map[fg_id].feature_group)
+                filter_query = self._get_query_filter(
+                    filter,
+                    self._fg_embedding_map[
+                        fg_id
+                    ].feature_group.embedding_index.col_prefix,
+                )
+            else:
+                filter_query = []
             query = {
-                "query": {"bool": {"must": {"exists": {"field": pk}}}},
+                "query": {"bool": {"must": [{"exists": {"field": pk}}] + filter_query}},
                 "size": n,
             }
             if n is None:
@@ -386,7 +468,9 @@ class VectorDbClient:
 
     @staticmethod
     def read_feature_group(
-        feature_group: hsfs.feature_group.FeatureGroup, n: int = None
+        feature_group: hsfs.feature_group.FeatureGroup,
+        n: int = None,
+        filter: Filter | Logic = None,
     ) -> list:
         if feature_group.embedding_index:
             vector_db_client = VectorDbClient(feature_group.select_all())
@@ -397,6 +481,7 @@ class VectorDbClient:
                 + feature_group.primary_key[0],
                 index_name=feature_group.embedding_index.index_name,
                 n=n,
+                filter=filter,
             )
             return [
                 [result[f.name] for f in feature_group.features] for result in results
