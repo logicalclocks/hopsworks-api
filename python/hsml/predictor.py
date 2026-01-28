@@ -78,7 +78,9 @@ class Predictor(DeployableComponent):
         api_protocol: Optional[str] = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
         environment: Optional[str] = None,
         project_namespace: str = None,
-        scaling_configuration: PredictorScalingConfig | dict | Default | None = None,
+        scaling_configuration: Optional[
+            Union[PredictorScalingConfig, dict, Default]
+        ] = None,
         **kwargs,
     ):
         serving_tool = (
