@@ -203,8 +203,9 @@ class Model:
         self,
         name: str | None = None,
         description: str | None = None,
-        artifact_version: str
-        | None = None,  # deprecated, kept for backward compatibility
+        artifact_version: (
+            str | None
+        ) = None,  # deprecated, kept for backward compatibility
         serving_tool: str | None = None,
         script_file: str | None = None,
         config_file: str | None = None,
@@ -259,7 +260,6 @@ class Model:
         """
         if name is None:
             name = self._get_default_serving_name()
-            
 
         predictor = Predictor.for_model(
             self,
