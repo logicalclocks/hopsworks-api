@@ -2626,7 +2626,7 @@ class FeatureGroup(FeatureGroupBase):
         self._stream = stream
         self._parents = parents
         self._deltastreamer_jobconf = delta_streamer_job_conf
-        self._tags: list[tag.Tag] | None = tags or []
+        self._tags: list[tag.Tag] | None = tags
 
         self._materialization_job: Job = None
 

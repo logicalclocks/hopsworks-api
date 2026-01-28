@@ -181,15 +181,9 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if feature_group_object:
             feature_group_object.feature_store = self
-            if feature_group_object.missing_mandatory_tags:
-                tag_names = [
-                    tag.get("name", str(tag))
-                    for tag in feature_group_object.missing_mandatory_tags
-                ]
-                warnings.warn(
-                    f"Missing mandatory tags: {tag_names}",
-                    stacklevel=1,
-                )
+            util.check_missing_mandatory_tags(
+                feature_group_object.missing_mandatory_tags
+            )
         return feature_group_object
 
     def get_feature_groups(
@@ -304,15 +298,9 @@ class FeatureStore:
         )
         if feature_group_object:
             feature_group_object.feature_store = self
-            if feature_group_object.missing_mandatory_tags:
-                tag_names = [
-                    tag.get("name", str(tag))
-                    for tag in feature_group_object.missing_mandatory_tags
-                ]
-                warnings.warn(
-                    f"Missing mandatory tags: {tag_names}",
-                    stacklevel=1,
-                )
+            util.check_missing_mandatory_tags(
+                feature_group_object.missing_mandatory_tags
+            )
         return feature_group_object
 
     @usage.method_logger
@@ -406,14 +394,9 @@ class FeatureStore:
             )
             version = self.DEFAULT_VERSION
         training_dataset_object = self._training_dataset_api.get(name, version)
-        if training_dataset_object and training_dataset_object.missing_mandatory_tags:
-            tag_names = [
-                tag.get("name", str(tag))
-                for tag in training_dataset_object.missing_mandatory_tags
-            ]
-            warnings.warn(
-                f"Missing mandatory tags: {tag_names}",
-                stacklevel=1,
+        if training_dataset_object:
+            util.check_missing_mandatory_tags(
+                training_dataset_object.missing_mandatory_tags
             )
         return training_dataset_object
 
@@ -1926,14 +1909,9 @@ class FeatureStore:
             )
             version = self.DEFAULT_VERSION
         feature_view_object = self._feature_view_engine.get(name, version)
-        if feature_view_object and feature_view_object.missing_mandatory_tags:
-            tag_names = [
-                tag.get("name", str(tag))
-                for tag in feature_view_object.missing_mandatory_tags
-            ]
-            warnings.warn(
-                f"Missing mandatory tags: {tag_names}",
-                stacklevel=1,
+        if feature_view_object:
+            util.check_missing_mandatory_tags(
+                feature_view_object.missing_mandatory_tags
             )
         return feature_view_object
 

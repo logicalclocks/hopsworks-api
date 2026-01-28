@@ -83,6 +83,7 @@ class TrainingDatasetBase:
         time_split_size=None,
         extra_filter=None,
         missing_mandatory_tags=None,
+        tags=None,
         **kwargs,
     ):
         self._name = name
@@ -102,6 +103,7 @@ class TrainingDatasetBase:
         self._location = location
         self._train_split = train_split
         self._missing_mandatory_tags = missing_mandatory_tags or []
+        self._tags: list[tag.Tag] | None = tags
 
         if training_dataset_type:
             self.training_dataset_type = training_dataset_type
@@ -564,7 +566,6 @@ class TrainingDataset(TrainingDatasetBase):
         tags=None,
         **kwargs,
     ):
-        self._tags: list[tag.Tag] | None = tags or []
         super().__init__(
             name,
             version,
@@ -595,6 +596,7 @@ class TrainingDataset(TrainingDatasetBase):
             time_split_size=time_split_size,
             extra_filter=extra_filter,
             missing_mandatory_tags=missing_mandatory_tags,
+            tags=tags,
         )
 
         self._id = id
@@ -829,7 +831,7 @@ class TrainingDataset(TrainingDatasetBase):
         """Returns all tags attached to a training dataset.
 
         Returns:
-            The dictionary of tags.
+            `Dict[str, obj]` of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.

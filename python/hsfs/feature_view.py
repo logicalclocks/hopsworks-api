@@ -148,7 +148,7 @@ class FeatureView:
     ) -> None:
         self._name = name
         self._id = id
-        self._tags: list[tag.Tag] | None = tags or []
+        self._tags: list[tag.Tag] | None = tags
         self._query = query
         # Check if query has any ambiguous columns and print warning in these cases:
         query.check_and_warn_ambiguous_features()
@@ -2979,12 +2979,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
-        if td.missing_mandatory_tags:
-            tag_names = [tag.get("name", str(tag)) for tag in td.missing_mandatory_tags]
-            warnings.warn(
-                f"Missing mandatory tags: {tag_names}",
-                stacklevel=1,
-            )
+        util.check_missing_mandatory_tags(td.missing_mandatory_tags)
         return df
 
     @usage.method_logger
@@ -3161,14 +3156,10 @@ class FeatureView:
         """
         tds = self._feature_view_engine.get_training_datasets(self)
         for td in tds:
-            if td.missing_mandatory_tags:
-                tag_names = [
-                    tag.get("name", str(tag)) for tag in td.missing_mandatory_tags
-                ]
-                warnings.warn(
-                    f"Training dataset '{td.name}' version {td.version} has missing mandatory tags: {tag_names}",
-                    stacklevel=1,
-                )
+            util.check_missing_mandatory_tags(
+                td.missing_mandatory_tags,
+                message=f"Training dataset '{td.name}' version {td.version} has missing mandatory tags",
+            )
         return tds
 
     @usage.method_logger
@@ -3300,7 +3291,7 @@ class FeatureView:
             ```
 
         Returns:
-            The dictionary of tags.
+            `Dict[str, obj]` of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request

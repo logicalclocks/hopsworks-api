@@ -58,8 +58,8 @@ class Tag:
 
     @staticmethod
     def normalize(
-        tags,
-    ):
+        tags: Tag | dict[str, Any] | list[Tag | dict[str, Any]] | None,
+    ) -> list[Tag]:
         """Normalize tags input to a list of Tag objects.
 
         # Arguments
@@ -83,7 +83,7 @@ class Tag:
         return normalized_tags
 
     @staticmethod
-    def tags_to_dict(tags):
+    def tags_to_dict(tags: list[Tag] | None) -> dict[str, Any] | None:
         """Convert a list of tags to API format with count and items.
 
         # Arguments
