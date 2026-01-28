@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.resources import PredictorResources
+    from hsml.scaling_config import PredictorScalingConfig
     from hsml.transformer import Transformer
 
 
@@ -210,6 +211,7 @@ class Model:
         resources: PredictorResources | dict | None = None,
         inference_logger: InferenceLogger | dict | None = None,
         inference_batcher: InferenceBatcher | dict | None = None,
+        scaling_configuration: PredictorScalingConfig | dict | None = None,
         transformer: Transformer | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
@@ -244,6 +246,7 @@ class Model:
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
+            scaling_configuration: Scaling configuration for the predictor.
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The inference environment to use.
@@ -256,6 +259,7 @@ class Model:
         """
         if name is None:
             name = self._get_default_serving_name()
+            
 
         predictor = Predictor.for_model(
             self,
@@ -267,6 +271,7 @@ class Model:
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
+            scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
