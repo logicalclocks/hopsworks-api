@@ -43,7 +43,7 @@ dependencies = [
     "boto3",
     "pandas[mysql]<2.4.0",
     "numpy>=1.26.3,<2.5.0",
-    "pyjks",
+    "cryptography",
     "mock",
     "avro==1.12.0",
     "PyMySQL[rsa]",

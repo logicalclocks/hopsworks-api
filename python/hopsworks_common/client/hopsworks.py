@@ -14,16 +14,11 @@
 #   limitations under the License.
 #
 
-import contextlib
 import os
 from pathlib import Path
 
 import requests
 from hopsworks_common.client import auth, base
-
-
-with contextlib.suppress(ImportError):
-    import jks
 
 
 class Client(base.Client):
@@ -78,13 +73,13 @@ class Client(base.Client):
         ca_chain_path = Path(self._get_ca_chain_path())
         if not ca_chain_path.exists():
             keystore_pw = self._cert_key
-            ks = jks.KeyStore.load(
-                self._get_jks_key_store_path(), keystore_pw, try_decrypt_keys=True
+            _, ks_certs = self._load_jks(
+                self._get_jks_key_store_path(), keystore_pw
             )
-            ts = jks.KeyStore.load(
-                self._get_jks_trust_store_path(), keystore_pw, try_decrypt_keys=True
+            _, ts_certs = self._load_jks(
+                self._get_jks_trust_store_path(), keystore_pw
             )
-            self._write_ca_chain(ks, ts, ca_chain_path)
+            self._write_ca_chain(ks_certs, ts_certs, ca_chain_path)
         return str(ca_chain_path)
 
     def _get_hopsworks_rest_endpoint(self):
