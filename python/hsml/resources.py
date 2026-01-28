@@ -14,6 +14,7 @@
 #   limitations under the License.
 
 import json
+import warnings
 from abc import ABC, abstractmethod
 from typing import Optional, Union
 
@@ -105,8 +106,8 @@ class Resources:
 class ComponentResources(ABC):
     """Resource configuration for a predictor or transformer.
 
-    # Arguments
-        num_instances: Number of instances.
+    Parameters:
+        num_instances: Deprecated. Use scaling configuration instead.
         requests: Minimum resources to allocate for a deployment
         limits: Maximum resources to allocate for a deployment
     # Returns
@@ -115,7 +116,7 @@ class ComponentResources(ABC):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: Optional[int] = None,
         requests: Optional[Union[Resources, dict, Default]] = None,
         limits: Optional[Union[Resources, dict, Default]] = None,
     ):
@@ -203,11 +204,21 @@ class ComponentResources(ABC):
 
     @property
     def num_instances(self):
-        """Number of instances"""
+        """Number of instances."""
+        warnings.warn(
+            "The 'num_instances' property is deprecated and will be removed in a future release. Use scaling configuration instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._num_instances
 
     @num_instances.setter
     def num_instances(self, num_instances: int):
+        warnings.warn(
+            "The 'num_instances' property is deprecated and will be removed in a future release. Use scaling configuration instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._num_instances = num_instances
 
     @property
@@ -238,7 +249,7 @@ class PredictorResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: Optional[int] = None,
         requests: Optional[Union[Resources, dict]] = None,
         limits: Optional[Union[Resources, dict]] = None,
     ):
@@ -266,7 +277,7 @@ class TransformerResources(ComponentResources):
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: Optional[int] = None,
         requests: Optional[Union[Resources, dict]] = None,
         limits: Optional[Union[Resources, dict]] = None,
     ):

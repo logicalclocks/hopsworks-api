@@ -115,9 +115,11 @@ class ModelServingApi:
                         port.number,
                         _client._project_name,
                         _client._auth._token,  # reuse hopsworks client token
-                        scheme="https"
-                        if endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
-                        else "http",
+                        scheme=(
+                            "https"
+                            if endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                            else "http"
+                        ),
                     )
                     return
 

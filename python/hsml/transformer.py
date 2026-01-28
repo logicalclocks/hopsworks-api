@@ -17,18 +17,32 @@ from typing import Optional, Union
 
 import humps
 from hopsworks_common import client, util
-from hopsworks_common.constants import RESOURCES, Default
+from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG, Default
 from hsml.deployable_component import DeployableComponent
 from hsml.resources import TransformerResources
+from hsml.scaling_config import TransformerScalingConfig
 
 
 class Transformer(DeployableComponent):
     """Metadata object representing a transformer to be used in a predictor."""
 
+    @staticmethod
+    def _get_raw_num_instances(resources):
+        if resources is None:
+            return None
+        return (
+            resources._num_instances
+            if hasattr(resources, "_num_instances")
+            else resources.num_instances
+        )
+
     def __init__(
         self,
         script_file: str,
         resources: Optional[Union[TransformerResources, dict, Default]] = None,  # base
+        scaling_configuration: Optional[
+            Union[TransformerScalingConfig, dict, Default]
+        ] = None,
         **kwargs,
     ):
         resources = (
@@ -37,10 +51,20 @@ class Transformer(DeployableComponent):
             )
             or self._get_default_resources()
         )
-        if resources.num_instances is None:
-            resources.num_instances = self._get_default_num_instances()
+        if self._get_raw_num_instances(resources) is None:
+            resources._num_instances = self._get_default_num_instances()
 
-        super().__init__(script_file, resources)
+        self._scaling_configuration: TransformerScalingConfig = util.get_obj_from_json(
+            scaling_configuration, TransformerScalingConfig
+        ) or TransformerScalingConfig.get_default_scaling_configuration(
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+            min_instances=self._get_raw_num_instances(resources),
+            component_type="transformer",
+        )
+
+        super().__init__(
+            script_file, resources, scaling_configuration=self._scaling_configuration
+        )
 
     def describe(self):
         """Print a JSON description of the transformer."""
@@ -48,7 +72,11 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def _validate_resources(cls, resources):
-        if resources is not None:
+        if (
+            resources is not None
+            and cls._get_raw_num_instances(resources) != 0
+            and client.is_scale_to_zero_required()
+        ):
             # ensure scale-to-zero for kserve deployments when required
             if resources.num_instances != 0 and client.is_scale_to_zero_required():
                 raise ValueError(
@@ -61,7 +89,7 @@ class Transformer(DeployableComponent):
         return (
             0  # enable scale-to-zero by default if required
             if client.is_scale_to_zero_required()
-            else RESOURCES.MIN_NUM_INSTANCES
+            else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
 
     @classmethod
@@ -70,16 +98,19 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        sf, rc = cls.extract_fields_from_json(json_decamelized)
-        return Transformer(sf, rc) if sf is not None else None
+        sf, rc, sc = cls.extract_fields_from_json(json_decamelized)
+        return Transformer(sf, rc, scaling_configuration=sc) if sf is not None else None
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         sf = util.extract_field_from_json(
             json_decamelized, ["transformer", "script_file"]
         )
+        if sf is None:
+            return None, None, None
+        sc = TransformerScalingConfig.from_json(json_decamelized)
         rc = TransformerResources.from_json(json_decamelized)
-        return sf, rc
+        return sf, rc, sc
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
