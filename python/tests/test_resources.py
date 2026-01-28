@@ -16,6 +16,7 @@
 
 import copy
 
+import pytest
 from hsml import resources
 from hsml.constants import RESOURCES
 from mock import call
@@ -225,6 +226,15 @@ class TestResources:
             call(json["limits"], resources.Resources),
         ]
         mock_util_get_obj_from_json.assert_has_calls(expected_calls)
+
+    def test_num_instances_property_warns(self):
+        pr = resources.PredictorResources(num_instances=1)
+
+        with pytest.warns(DeprecationWarning, match="num_instances"):
+            _ = pr.num_instances
+
+        with pytest.warns(DeprecationWarning, match="num_instances"):
+            pr.num_instances = 2
 
     # - extract fields from json
 

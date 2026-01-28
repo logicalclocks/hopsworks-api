@@ -33,6 +33,7 @@ from hsml.inference_logger import InferenceLogger
 from hsml.model_schema import ModelSchema
 from hsml.predictor import Predictor
 from hsml.resources import PredictorResources
+from hsml.scaling_config import PredictorScalingConfig
 from hsml.schema import Schema
 from hsml.transformer import Transformer
 
@@ -205,6 +206,7 @@ class Model:
         resources: Optional[Union[PredictorResources, dict]] = None,
         inference_logger: Optional[Union[InferenceLogger, dict]] = None,
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
+        scaling_configuration: Optional[Union[PredictorScalingConfig, dict]] = None,
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
         environment: Optional[str] = None,
@@ -239,6 +241,7 @@ class Model:
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
+            scaling_configuration: Scaling configuration for the predictor.
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The inference environment to use.
@@ -263,6 +266,7 @@ class Model:
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
+            scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
