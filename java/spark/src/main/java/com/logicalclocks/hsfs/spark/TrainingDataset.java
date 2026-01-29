@@ -20,6 +20,7 @@ package com.logicalclocks.hsfs.spark;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.logicalclocks.hsfs.DataFormat;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.FeatureStoreBase;
 import com.logicalclocks.hsfs.Split;
 import com.logicalclocks.hsfs.StatisticsConfig;
@@ -60,14 +61,19 @@ public class TrainingDataset extends TrainingDatasetBase {
                          TrainingDatasetType trainingDatasetType, Float validationSize, Float testSize,
                          String trainStart, String trainEnd, String validationStart,
                          String validationEnd, String testStart, String testEnd, Integer timeSplitSize,
-                         FilterLogic extraFilterLogic, Filter extraFilter)
+                         FilterLogic extraFilterLogic, Filter extraFilter, DataSource dataSource)
       throws FeatureStoreException, ParseException {
     this.version = version;
     this.description = description;
     this.dataFormat = dataFormat != null ? dataFormat : DataFormat.PARQUET;
     this.coalesce = coalesce != null ? coalesce : false;
-    this.location = location;
-    this.storageConnector = storageConnector;
+    if (dataSource == null) {
+      this.dataSource = new DataSource();
+      this.dataSource.setStorageConnector(storageConnector);
+      this.dataSource.setPath(location);
+    } else {
+      this.dataSource = dataSource;
+    }
     this.trainSplit = trainSplit;
     this.splits = splits == null ? Lists.newArrayList() : splits;
     this.seed = seed;
@@ -77,7 +83,7 @@ public class TrainingDataset extends TrainingDatasetBase {
     this.eventStartTime = eventStartTime != null ? FeatureGroupUtils.getDateFromDateString(eventStartTime) : null;
     this.eventEndTime = eventEndTime != null ? FeatureGroupUtils.getDateFromDateString(eventEndTime) : null;
     this.trainingDatasetType = trainingDatasetType != null ? trainingDatasetType :
-        getTrainingDatasetType(storageConnector);
+        getTrainingDatasetType(dataSource);
     setValTestSplit(validationSize, testSize);
     setTimeSeriesSplits(timeSplitSize, trainStart, trainEnd, validationStart, validationEnd, testStart, testEnd);
     if (extraFilter != null) {

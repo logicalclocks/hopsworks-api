@@ -15,10 +15,10 @@
 #
 
 import warnings
+from unittest.mock import Mock
 
 from hsfs import feature_group as fg_mod
 from hsfs.core import feature_group_api
-from mock import Mock
 
 
 class TestFeatureGroupApi:

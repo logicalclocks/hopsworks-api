@@ -184,6 +184,7 @@ class Links:
         FEATURE_VIEW = 2
         MODEL = 3
         STORAGE_CONNECTOR = 4
+        TRAINING_DATASET = 5
 
     def __str__(self, indent=None):
         return json.dumps(self, cls=ProvenanceEncoder, indent=indent)
@@ -252,6 +253,27 @@ class Links:
                 elif bool(link_json["node"]["accessible"]):
                     links.accessible.append(
                         feature_view.FeatureView.from_response_json(
+                            link_json["node"]["artifact"]
+                        )
+                    )
+                elif bool(link_json["node"]["deleted"]):
+                    links.deleted.append(Artifact.from_response_json(link_json["node"]))
+                else:
+                    links.inaccessible.append(
+                        Artifact.from_response_json(link_json["node"])
+                    )
+        return links
+
+    @staticmethod
+    def __parse_training_datasets(links_json: dict, artifacts: set[str]):
+        links = Links()
+        for link_json in links_json:
+            if link_json["node"]["artifact_type"] in artifacts:
+                if link_json["node"].get("exception_cause") is not None:
+                    links._faulty.append(Artifact.from_response_json(link_json["node"]))
+                elif bool(link_json["node"]["accessible"]):
+                    links.accessible.append(
+                        training_dataset.TrainingDataset.from_response_json(
                             link_json["node"]["artifact"]
                         )
                     )
@@ -386,8 +408,13 @@ class Links:
                 return Links.__parse_feature_views(
                     links_json["downstream"], {"FEATURE_VIEW"}
                 )
+            if artifact == Links.Type.TRAINING_DATASET:
+                return Links.__parse_training_datasets(
+                    links_json["downstream"], {"TRAINING_DATASET"}
+                )
             return Links()
-        return None
+
+        return Links()
 
 
 class ProvenanceEncoder(json.JSONEncoder):
