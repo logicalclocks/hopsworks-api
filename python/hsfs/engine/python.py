@@ -344,9 +344,7 @@ class Engine:
 
         if storage_connector.type == storage_connector.HOPSFS:
             path = storage_connector._get_path(location)
-            df_list = self._read_hopsfs(
-                path, data_format, read_options, dataframe_type
-            )
+            df_list = self._read_hopsfs(path, data_format, read_options, dataframe_type)
         elif storage_connector.type == storage_connector.S3:
             df_list = self._read_s3(
                 storage_connector, location, data_format, dataframe_type
@@ -475,12 +473,10 @@ class Engine:
                 arrow_flight_config,
                 dataframe_type=dataframe_type,
             )
-        else:
-            content_stream = self._dataset_api.read_content(path)
-            if dataframe_type.lower() == "polars":
-                return self._read_polars(data_format, BytesIO(content_stream.content))
-            else:
-                return self._read_pandas(data_format, BytesIO(content_stream.content))
+        content_stream = self._dataset_api.read_content(path)
+        if dataframe_type.lower() == "polars":
+            return self._read_polars(data_format, BytesIO(content_stream.content))
+        return self._read_pandas(data_format, BytesIO(content_stream.content))
 
     def _read_s3(
         self,
