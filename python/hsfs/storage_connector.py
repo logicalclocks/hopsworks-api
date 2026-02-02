@@ -392,7 +392,9 @@ class HopsFSConnector(StorageConnector):
         return {}
 
     def _get_path(self, sub_path: str) -> str:
-        return os.path.join(self._hopsfs_path, sub_path)
+        if sub_path:
+            return os.path.join(self._hopsfs_path, sub_path)
+        return self._hopsfs_path
 
 
 class S3Connector(StorageConnector):
