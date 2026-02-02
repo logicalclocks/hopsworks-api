@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.util import (
@@ -63,6 +64,15 @@ if TYPE_CHECKING:
 
 
 FeatureStoreEncoder = Encoder
+
+
+def check_missing_mandatory_tags(
+    missing_mandatory_tags: list[dict[str, Any]] | None,
+    message: str = "Missing mandatory tags",
+) -> None:
+    if missing_mandatory_tags:
+        tag_names = [tag.get("name", str(tag)) for tag in missing_mandatory_tags]
+        warnings.warn(f"{message}: {tag_names}", stacklevel=2)
 
 
 def validate_feature(
