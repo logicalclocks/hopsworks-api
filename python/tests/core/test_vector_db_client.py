@@ -243,7 +243,7 @@ class TestVectorDbClient:
         actual = self.target.read(self.fg.id, self.fg.features, pk="f1")
 
         expected_query = {
-            "query": {"bool": {"must": {"exists": {"field": "f1"}}}},
+            "query": {"bool": {"must": [{"exists": {"field": "f1"}}]}},
             "size": 10,
             "_source": ["f1", "f2", "f3"],
         }
