@@ -73,12 +73,8 @@ class Client(base.Client):
         ca_chain_path = Path(self._get_ca_chain_path())
         if not ca_chain_path.exists():
             keystore_pw = self._cert_key
-            _, ks_certs = self._load_jks(
-                self._get_jks_key_store_path(), keystore_pw
-            )
-            _, ts_certs = self._load_jks(
-                self._get_jks_trust_store_path(), keystore_pw
-            )
+            _, ks_certs = self._load_jks(self._get_jks_key_store_path(), keystore_pw)
+            _, ts_certs = self._load_jks(self._get_jks_trust_store_path(), keystore_pw)
             self._write_ca_chain(ks_certs, ts_certs, ca_chain_path)
         return str(ca_chain_path)
 

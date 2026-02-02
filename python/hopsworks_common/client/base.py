@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives.serialization import (
 from hopsworks_common.client import auth, exceptions
 from hopsworks_common.decorators import connected
 
+
 _logger = logging.getLogger(__name__)
 
 
@@ -251,7 +252,9 @@ class Client:
         (entry_count,) = struct.unpack_from(">I", data, offset)
         offset += 4
 
-        pw_bytes = password.encode("utf-16-be") if isinstance(password, str) else password
+        pw_bytes = (
+            password.encode("utf-16-be") if isinstance(password, str) else password
+        )
 
         private_keys = []
         trusted_certs = []
