@@ -130,17 +130,18 @@ class VectorDbClient:
                 )
         self._check_filter(filter, embedding_feature.feature_group)
         col_name = embedding_feature.embedding_index.col_prefix + embedding_feature.name
+        filter_clauses = [
+            {"exists": {"field": col_name}},
+        ] + self._get_query_filter(filter, embedding_feature.embedding_index.col_prefix)
         query = {
             "size": k,
             "query": {
-                "bool": {
-                    "must": [
-                        {"knn": {col_name: {"vector": embedding, "k": k}}},
-                        {"exists": {"field": col_name}},
-                    ]
-                    + self._get_query_filter(
-                        filter, embedding_feature.embedding_index.col_prefix
-                    )
+                "knn": {
+                    col_name: {
+                        "vector": embedding,
+                        "k": k,
+                        "filter": {"bool": {"must": filter_clauses}},
+                    }
                 }
             },
             "_source": list(
@@ -167,7 +168,7 @@ class VectorDbClient:
             # Get the max number of results allowed to request if it is not available.
             # This is expected to be executed once only.
             if not VectorDbClient._index_result_limit_k.get(index_name):
-                query["query"]["bool"]["must"][0]["knn"][col_name]["k"] = 2**31 - 1
+                query["query"]["knn"][col_name]["k"] = 2**31 - 1
                 try:
                     # It is expected that this request ALWAYS fails because requested k is too large.
                     # The purpose here is to get the max k allowed from the vector database, and cache it.
@@ -186,7 +187,7 @@ class VectorDbClient:
                         )
                     else:
                         raise e
-            query["query"]["bool"]["must"][0]["knn"][col_name]["k"] = min(
+            query["query"]["knn"][col_name]["k"] = min(
                 VectorDbClient._index_result_limit_k.get(index_name, k), 3 * k
             )
             results = opensearch_client.search(
@@ -347,7 +348,7 @@ class VectorDbClient:
             if not pk:
                 raise FeatureStoreException("No pk provided.")
             query = {
-                "query": {"bool": {"must": {"exists": {"field": pk}}}},
+                "query": {"bool": {"must": [{"exists": {"field": pk}}]}},
                 "size": n,
             }
             if n is None:
@@ -407,7 +408,7 @@ class VectorDbClient:
         query = {
             "query": {
                 "bool": {
-                    "must": {"exists": {"field": self._fg_id_to_vdb_pks[fg.id][0]}}
+                    "must": [{"exists": {"field": self._fg_id_to_vdb_pks[fg.id][0]}}]
                 }
             },
         }
