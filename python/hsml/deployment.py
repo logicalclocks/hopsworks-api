@@ -548,8 +548,17 @@ class Deployment:
         self._predictor.environment = environment
 
     @property
+    def env_vars(self):
+        """Environment variables of the deployment"""
+        return self._predictor.env_vars
+
+    @env_vars.setter
+    def env_vars(self, env_vars: str):
+        self._predictor.env_vars = env_vars
+
+    @property
     def project_namespace(self):
-        """Name of inference environment."""
+        """Name of kubernetes namespace the project is in"""
         return self._predictor.project_namespace
 
     @project_namespace.setter

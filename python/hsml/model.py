@@ -216,6 +216,7 @@ class Model:
         transformer: Transformer | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
+        env_vars: dict | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -275,6 +276,7 @@ class Model:
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
+            env_vars=env_vars,
         )
 
         return predictor.deploy()
