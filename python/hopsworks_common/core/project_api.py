@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, constants, project
 from hopsworks_common.client.exceptions import RestAPIError
 
 
-@public("hopsworks.core.project_api", "hsfs.core.project_api")
+@public("hopsworks.core.project_api.ProjectApi", "hsfs.core.project_api.ProjectApi")
 class ProjectApi:
     def _exists(self, name: str) -> bool:
         """Check if a project exists.

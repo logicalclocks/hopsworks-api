@@ -16,12 +16,12 @@
 
 import time
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, command, environment, library
 from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
 
 
-@public("hopsworks.engine.environment_engine")
+@public("hopsworks.engine.environment_engine.EnvironmentEngine")
 class EnvironmentEngine:
     def await_library_command(self, environment_name, library_name):
         commands = [command.Command(status="ONGOING")]

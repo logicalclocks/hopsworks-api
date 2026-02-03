@@ -17,11 +17,11 @@
 from __future__ import annotations
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common.job import Job
 
 
-@public("hopsworks.core.ingestion_job", "hsfs.core.ingestion_job")
+@public("hopsworks.core.ingestion_job.IngestionJob", "hsfs.core.ingestion_job.IngestionJob")
 class IngestionJob:
     def __init__(
         self,

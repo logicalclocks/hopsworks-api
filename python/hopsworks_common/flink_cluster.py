@@ -17,13 +17,13 @@
 import time
 from typing import Literal
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.core import execution_api, flink_cluster_api
 from hopsworks_common.engine import execution_engine
 
 
-@public("hopsworks.flink_cluster")
+@public("hopsworks.flink_cluster.FlinkCluster")
 class FlinkCluster:
     NOT_FOUND_ERROR_CODE = 130009
 

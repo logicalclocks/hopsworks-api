@@ -16,10 +16,10 @@
 # This implementation has been borrowed from the kserve/kserve repository
 # https://github.com/kserve/kserve/blob/release-0.11/python/kserve/kserve/errors.py
 
-from hopsworks_aliases import public
+from hopsworks_apigen import also_available_as
 
 
-@public("hsml.client.istio.grpc.errors")
+@also_available_as("hsml.client.istio.grpc.errors.InvalidInput")
 class InvalidInput(ValueError):
     """Exception class indicating invalid input arguments.
 

@@ -17,7 +17,7 @@
 import logging
 from typing import Literal, get_args
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, search_results
 
 
@@ -27,7 +27,7 @@ DOC_TYPE_ARG = Literal[
 FILTER_BY_ARG = Literal["tag", "tag_name", "tag_key", "tag_value", "keyword"]
 
 
-@public("hopsworks.core.search_api")
+@public("hopsworks.core.search_api.SearchApi")
 class SearchApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)

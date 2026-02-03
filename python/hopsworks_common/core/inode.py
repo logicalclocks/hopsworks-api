@@ -18,10 +18,10 @@ from __future__ import annotations
 from typing import Any
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 
 
-@public("hopsworks.core.inode", "hsfs.core.inode")
+@public("hopsworks.core.inode.Inode", "hsfs.core.inode.Inode")
 class Inode:
     def __init__(
         self,

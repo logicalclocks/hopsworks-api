@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 
@@ -34,7 +34,7 @@ LOADBALANCER_SERVICES = {
 }
 
 
-@public("hopsworks.core.variable_api", "hsfs.core.variable_api")
+@public("hopsworks.core.variable_api.VariableApi", "hsfs.core.variable_api.VariableApi")
 class VariableApi:
     def get_variable(self, variable: str):
         """Get the configured value of a variable.

@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, execution
 
 
-@public("hopsworks.core.execution_api")
+@public("hopsworks.core.execution_api.ExecutionApi")
 class ExecutionApi:
     def _start(self, job, args: str = None):
         _client = client.get_instance()

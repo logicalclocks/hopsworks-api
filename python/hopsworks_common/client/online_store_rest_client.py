@@ -23,7 +23,7 @@ from warnings import warn
 import requests
 import requests.adapters
 from furl import furl
-from hopsworks_aliases import public
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import variable_api
@@ -34,7 +34,7 @@ _logger = logging.getLogger(__name__)
 _online_store_rest_client = None
 
 
-@public("hsfs.client.online_store_rest_client")
+@also_available_as("hsfs.client.online_store_rest_client.init_or_reset_online_store_rest_client")
 def init_or_reset_online_store_rest_client(
     transport: requests.adapters.HTTPAdapter
     | requests.adapters.BaseAdapter
@@ -60,7 +60,7 @@ def init_or_reset_online_store_rest_client(
             )
 
 
-@public("hsfs.client.online_store_rest_client")
+@also_available_as("hsfs.client.online_store_rest_client.get_instance")
 def get_instance() -> OnlineStoreRestClientSingleton:
     global _online_store_rest_client
     if _online_store_rest_client is None:
@@ -74,7 +74,7 @@ def get_instance() -> OnlineStoreRestClientSingleton:
     return _online_store_rest_client
 
 
-@public("hsfs.client.online_store_rest_client")
+@also_available_as("hsfs.client.online_store_rest_client.OnlineStoreRestClientSingleton")
 class OnlineStoreRestClientSingleton:
     HOST = "host"
     PORT = "port"
@@ -94,7 +94,7 @@ class OnlineStoreRestClientSingleton:
 
     def __init__(
         self,
-        transport: requests.adapaters.HTTPadapter
+        transport: requests.adapters.HTTPAdapter
         | requests.adapters.BaseAdapter
         | None = None,
         optional_config: dict[str, Any] | None = None,
@@ -120,7 +120,7 @@ class OnlineStoreRestClientSingleton:
 
     def reset_client(
         self,
-        transport: requests.adapters.HttpAdapter
+        transport: requests.adapters.HTTPAdapter
         | requests.adapters.BaseAdapter
         | None = None,
         optional_config: dict[str, Any] | None = None,
@@ -145,7 +145,7 @@ class OnlineStoreRestClientSingleton:
 
     def _setup_rest_client(
         self,
-        transport: requests.adapters.HttpAdapter
+        transport: requests.adapters.HTTPAdapter
         | requests.adapters.BaseAdapter
         | None = None,
         optional_config: dict[str, Any] | None = None,

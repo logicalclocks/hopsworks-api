@@ -30,10 +30,10 @@ from hopsworks_common.core import dataset_api, execution_api
 if TYPE_CHECKING:
     from hopsworks_common.execution import Execution
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 
 
-@public("hopsworks.engine.execution_engine")
+@public("hopsworks.engine.execution_engine.ExecutionEngine")
 class ExecutionEngine:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()

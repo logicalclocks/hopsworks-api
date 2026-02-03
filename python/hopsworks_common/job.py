@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import alert, client, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
@@ -30,7 +30,7 @@ from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
 
 
-@public("hopsworks.job", "hsfs.core.job")
+@public("hopsworks.job.Job", "hsfs.core.job.Job")
 class Job:
     NOT_FOUND_ERROR_CODE = 130009
 

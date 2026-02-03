@@ -55,8 +55,8 @@ dependencies = [
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
     "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
-    "packaging",         # ^21.0
-    "hopsworks-aliases@git+https://github.com/aversey/hopsworks-aliases.git",
+    "packaging",                     # ^21.0
+    "hopsworks-apigen@git+https://github.com/aversey/hopsworks-aliases.git",
 ]
 
 [project.scripts]
@@ -138,7 +138,7 @@ conflicts = [
 ]
 
 [build-system]
-requires = ["setuptools", "hopsworks-aliases[build]@git+https://github.com/aversey/hopsworks-aliases.git"]
+requires = ["setuptools", "hopsworks-apigen[build]@git+https://github.com/aversey/hopsworks-aliases.git"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

@@ -16,10 +16,10 @@
 # https://github.com/kserve/kserve/blob/release-0.11/python/kserve/kserve/utils/numpy_codec.py
 
 import numpy as np
-from hopsworks_aliases import public
+from hopsworks_apigen import also_available_as
 
 
-@public("hsml.client.istio.utils.numpy_codec")
+@also_available_as("hsml.client.istio.utils.numpy_codec.to_np_dtype")
 def to_np_dtype(dtype):
     dtype_map = {
         "BOOL": bool,
@@ -39,7 +39,7 @@ def to_np_dtype(dtype):
     return dtype_map.get(dtype)
 
 
-@public("hsml.client.istio.utils.numpy_codec")
+@also_available_as("hsml.client.istio.utils.numpy_codec.from_np_dtype")
 def from_np_dtype(np_dtype):
     if np_dtype is bool:
         return "BOOL"

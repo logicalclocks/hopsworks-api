@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from typing import Literal, get_args
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import (
     alert,
     alert_receiver,
@@ -95,7 +95,7 @@ _MONITORING_STATUS_ARG = Literal[
 _MONITORING_STATUS = get_args(_MONITORING_STATUS_ARG)
 
 
-@public("hopsworks.core.alerts_api")
+@public("hopsworks.core.alerts_api.AlertsApi")
 class AlertsApi:
     """Alerts API handle.
 

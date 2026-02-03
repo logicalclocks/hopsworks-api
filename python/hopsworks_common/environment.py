@@ -19,7 +19,7 @@ import os
 from typing import TYPE_CHECKING
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, command, usage, util
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from hopsworks_common.library import Library
 
 
-@public("hopsworks.environment")
+@public("hopsworks.environment.Environment")
 class Environment:
     NOT_FOUND_ERROR_CODE = 300000
 

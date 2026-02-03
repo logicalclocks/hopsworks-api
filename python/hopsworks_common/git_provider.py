@@ -17,12 +17,12 @@
 import json
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.core import git_provider_api
 
 
-@public("hopsworks.git_provider")
+@public("hopsworks.git_provider.GitProvider")
 class GitProvider:
     def __init__(
         self,

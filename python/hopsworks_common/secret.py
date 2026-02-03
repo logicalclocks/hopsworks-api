@@ -17,12 +17,12 @@
 import json
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.core import secret_api
 
 
-@public("hopsworks.secret")
+@public("hopsworks.secret.Secret")
 class Secret:
     NOT_FOUND_ERROR_CODE = 160048
 

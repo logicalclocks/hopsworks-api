@@ -38,10 +38,10 @@ from hopsworks_common.engine import git_engine
 if TYPE_CHECKING:
     from hopsworks_common.git_file_status import GitFileStatus
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 
 
-@public("hopsworks.core.git_api")
+@public("hopsworks.core.git_api.GitApi")
 class GitApi:
     def __init__(self):
         self._git_engine = git_engine.GitEngine()

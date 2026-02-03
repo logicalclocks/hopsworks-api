@@ -19,7 +19,7 @@ import json
 from typing import TYPE_CHECKING
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import git_commit, usage, user, util
 from hopsworks_common.core import dataset_api, git_api, git_remote_api
 
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from hopsworks_common.git_remote import GitRemote
 
 
-@public("hopsworks.git_repo")
+@public("hopsworks.git_repo.GitRepo")
 class GitRepo:
     def __init__(
         self,

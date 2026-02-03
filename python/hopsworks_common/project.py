@@ -19,7 +19,7 @@ import json
 from typing import Literal
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import alert, client, util
 from hopsworks_common.core import (
     alerts_api,
@@ -34,7 +34,7 @@ from hopsworks_common.core import (
 )
 
 
-@public("hopsworks.project")
+@public("hopsworks.project.Project")
 class Project:
     def __init__(
         self,

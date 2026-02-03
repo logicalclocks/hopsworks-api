@@ -17,12 +17,12 @@
 import os
 
 import requests
-from hopsworks_aliases import public
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
 from hopsworks_common.client.istio import base as istio
 
 
-@public("hsml.client.istio.hopsworks")
+@also_available_as("hsml.client.istio.hopsworks.Client")
 class Client(istio.Client):
     REQUESTS_VERIFY = "REQUESTS_VERIFY"
     PROJECT_ID = "HOPSWORKS_PROJECT_ID"

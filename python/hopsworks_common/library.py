@@ -15,11 +15,11 @@
 #
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import command
 
 
-@public("hopsworks.library")
+@public("hopsworks.library.Library")
 class Library:
     def __init__(
         self,

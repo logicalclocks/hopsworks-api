@@ -21,11 +21,11 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 import humps
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@public("hopsworks.user", "hsfs.user")
+@public("hopsworks.user.User", "hsfs.user.User")
 @dataclass
 class User:
     email: str | None = None

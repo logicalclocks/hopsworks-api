@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, decorators, environment, usage
 from hopsworks_common.engine import environment_engine
 
 
-@public("hopsworks.core.environment_api")
+@public("hopsworks.core.environment_api.EnvironmentApi")
 class EnvironmentApi:
     def __init__(self):
         self._environment_engine = environment_engine.EnvironmentEngine()

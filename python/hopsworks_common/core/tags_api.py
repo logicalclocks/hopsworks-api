@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_aliases import public
+from hopsworks_apigen import public
 from hopsworks_common import client, decorators, tag, usage
 
 
-@public("hopsworks.core.tags_api", "hsfs.core.tags_api")
+@public("hopsworks.core.tags_api.TagsApi", "hsfs.core.tags_api.TagsApi")
 class TagsApi:
     def __init__(self, feature_store_id, entity_type):
         """Tags endpoint for `trainingdatasets` and `featuregroups` resource.
