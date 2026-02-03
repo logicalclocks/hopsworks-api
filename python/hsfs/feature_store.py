@@ -26,6 +26,7 @@ from hsfs import (
     feature_group,
     feature_view,
     storage_connector,
+    tag,
     training_dataset,
     usage,
     util,
@@ -37,6 +38,7 @@ from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
+    search_api,
     storage_connector_api,
     training_dataset_api,
     transformation_function_engine,
@@ -126,6 +128,7 @@ class FeatureStore:
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
         )
+        self._search_api: search_api.SearchApi = search_api.SearchApi()
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureStore:
@@ -178,6 +181,9 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if feature_group_object:
             feature_group_object.feature_store = self
+            util.check_missing_mandatory_tags(
+                feature_group_object.missing_mandatory_tags
+            )
         return feature_group_object
 
     def get_feature_groups(
@@ -292,6 +298,9 @@ class FeatureStore:
         )
         if feature_group_object:
             feature_group_object.feature_store = self
+            util.check_missing_mandatory_tags(
+                feature_group_object.missing_mandatory_tags
+            )
         return feature_group_object
 
     @usage.method_logger
@@ -384,7 +393,12 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        return self._training_dataset_api.get(name, version)
+        training_dataset_object = self._training_dataset_api.get(name, version)
+        if training_dataset_object:
+            util.check_missing_mandatory_tags(
+                training_dataset_object.missing_mandatory_tags
+            )
+        return training_dataset_object
 
     def get_training_datasets(
         self, name: str
@@ -493,6 +507,20 @@ class FeatureStore:
         """
         return self._storage_connector_api.get_online_connector(self._id)
 
+    def _normalize_tags(
+        self,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None,
+    ) -> list[tag.Tag]:
+        """Normalize tags input to a list of Tag objects.
+
+        # Arguments
+            tags: Tags in various formats (single Tag, dict, or list of Tags/dicts)
+
+        # Returns
+            `list[tag.Tag]`: List of Tag objects.
+        """
+        return tag.Tag.normalize(tags)
+
     @usage.method_logger
     def create_feature_group(
         self,
@@ -526,6 +554,7 @@ class FeatureStore:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -653,10 +682,19 @@ class FeatureStore:
                 When set to True data will be stored on disk, instead of in memory.
                 Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
+            tags:
+                Optionally, define tags for the feature group. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature group after it is saved. Defaults to None.
 
         Returns:
             The feature group metadata object.
         """
+        normalized_tags = self._normalize_tags(tags)
+
         if not data_source:
             data_source = ds.DataSource(path=path)
         feature_group_object = feature_group.FeatureGroup(
@@ -688,6 +726,7 @@ class FeatureStore:
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            tags=normalized_tags,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1359,6 +1398,7 @@ class FeatureStore:
         label: list[str] | None = None,
         transformation_functions: dict[str, TransformationFunction] | None = None,
         train_split: str = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> training_dataset.TrainingDataset:
         """Create a training dataset metadata object.
 
@@ -1404,7 +1444,6 @@ class FeatureStore:
             seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
             statistics_config:
                 A configuration object, or a dictionary with keys:
-
                 - `"enabled"` to generally enable descriptive statistics computation for this feature group,
                 - `"correlations"` to turn on feature correlation computation, and
                 - `"histograms"` to compute feature value frequencies.
@@ -1422,10 +1461,19 @@ class FeatureStore:
             train_split:
                 If `splits` is set, provide the name of the split that is going to be used for training.
                 The statistics of this split will be used for transformation functions if necessary.
+            tags:
+                Optionally, define tags for the training dataset. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the training dataset after it is saved. Defaults to None.
 
         Returns:
             The training dataset metadata object.
         """
+        normalized_tags = self._normalize_tags(tags)
+
         return training_dataset.TrainingDataset(
             name=name,
             version=version,
@@ -1441,6 +1489,7 @@ class FeatureStore:
             coalesce=coalesce,
             transformation_functions=transformation_functions or {},
             train_split=train_split,
+            tags=normalized_tags,
         )
 
     @usage.method_logger
@@ -1619,6 +1668,7 @@ class FeatureStore:
         | None = None,
         logging_enabled: bool | None = False,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
@@ -1706,10 +1756,19 @@ class FeatureStore:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
                 Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
+            tags:
+                Optionally, define tags for the feature view. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature view after it is saved. Defaults to None.
 
         Returns:
             The feature view metadata object.
         """
+        normalized_tags = self._normalize_tags(tags)
+
         feat_view = feature_view.FeatureView(
             name=name,
             query=query,
@@ -1723,6 +1782,7 @@ class FeatureStore:
             featurestore_name=self._name,
             logging_enabled=logging_enabled,
             extra_log_columns=extra_log_columns,
+            tags=normalized_tags,
         )
         return self._feature_view_engine.save(feat_view)
 
@@ -1848,7 +1908,12 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        return self._feature_view_engine.get(name, version)
+        feature_view_object = self._feature_view_engine.get(name, version)
+        if feature_view_object:
+            util.check_missing_mandatory_tags(
+                feature_view_object.missing_mandatory_tags
+            )
+        return feature_view_object
 
     @usage.method_logger
     def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
@@ -2092,3 +2157,324 @@ class FeatureStore:
     def offline_featurestore_name(self) -> str:
         """Name of the offline feature store database."""
         return self._offline_feature_store_name
+
+    @usage.method_logger
+    def search(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> search_api.FeaturestoreSearchResult:
+        """Search for feature groups, feature views, training datasets and features.
+
+        Parameters:
+           search_term: the term to search for.
+           keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+           tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+           offset: the number of results to skip (default is 0).
+           limit: the number of search results to return (default is 100).
+           global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+           `FeaturestoreSearchResult`: The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+
+        Raises:
+           `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Simple search
+        result = fs.search("search-term")
+
+        # Access results
+        for fg_meta in result.feature_groups:
+           print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+           print(f"Description: {fg_meta.description}")
+           print(f"Highlights: {fg_meta.highlights}")
+
+           # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+           fg = fg_meta.get()
+
+        # Search with a single keyword (string)
+        result = fs.search("search-term", keyword_filter="ml")
+
+        # Search with multiple keywords (array of strings)
+        result = fs.search("search-term", keyword_filter=["ml", "production"])
+
+        # Search with tag filter as a single dictionary
+        result = fs.search(
+           "search-term",
+           tag_filter={"name": "tag1", "key": "environment", "value": "production"}
+        )
+
+        # Search with tag filter as an array of dictionaries
+        result = fs.search(
+           "search-term",
+           tag_filter=[
+               {"name": "tag1", "key": "environment", "value": "production"},
+               {"name": "tag2", "key": "version", "value": "v1.0"}
+           ]
+        )
+
+        # Search with TagSearchFilter objects
+        from hsfs.core.search_api import TagSearchFilter
+        tags = [
+           TagSearchFilter(name="tag1", key="environment", value="production"),
+           TagSearchFilter(name="tag2", key="version", value="v1.0")
+        ]
+        result = fs.search("search-term", tag_filter=tags)
+
+        # Search with both keyword_filter and tag_filter
+        result = fs.search(
+           "search-term",
+           keyword_filter=["ml", "production"],
+           tag_filter=tags
+        )
+        ```
+        """
+        return self._search_api.feature_store(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_feature_groups(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureGroupSearchResult]:
+        """Search for feature groups only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for feature groups matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature groups
+        fg_metas = fs.search_feature_groups("customer")
+
+        for fg_meta in fg_metas:
+            print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+
+            # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+            fg = fg_meta.get()
+        ```
+        """
+        return self._search_api.feature_groups(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_feature_views(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureViewSearchResult]:
+        """Search for feature views only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for feature views matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature views
+        fv_metas = fs.search_feature_views("customer")
+
+        for fv_meta in fv_metas:
+            print(f"Feature View: {fv_meta.name} v{fv_meta.version}")
+
+            # Get the same FeatureView object as returned by featurestore.get_feature_view
+            fv = fv_meta.get()
+        ```
+        """
+        return self._search_api.feature_views(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_training_datasets(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.TrainingDatasetSearchResult]:
+        """Search for training datasets only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for training datasets matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for training datasets
+        td_metas = fs.search_training_datasets("model")
+
+        for td_meta in td_metas:
+            print(f"Training Dataset: {td_meta.name} v{td_meta.version}")
+
+            # Get the same TrainingDataset object as returned by featurestore.get_training_dataset
+            td = td_meta.get()
+        ```
+        """
+        return self._search_api.training_datasets(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_features(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureSearchResult]:
+        """Search for features only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of features matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for features
+        features = fs.search_features("age")
+
+        for feature in features:
+            print(f"Feature: {feature.name}")
+        ```
+        """
+        return self._search_api.features(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )

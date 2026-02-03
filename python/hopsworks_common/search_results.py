@@ -15,1348 +15,384 @@
 #
 from __future__ import annotations
 
-import json
+import logging
 
-import humps
-from hopsworks_common import util
+from hopsworks_common import client
 
 
-class Creator:
-    def __init__(
-        self, username=None, firstname=None, lastname=None, email=None, **kwargs
-    ):
-        self._username = username
-        self._firstname = firstname
-        self._lastname = lastname
-        self._email = email
+class Project:
+    """Represents a project associated with a search result."""
 
-    @classmethod
-    def from_response_json(cls, json_dict: dict):
-        if json_dict:
-            json_decamelized = humps.decamelize(json_dict)
-            return cls(**json_decamelized)
-        return None
+    def __init__(self, project_id: int, project_name: str):
+        self._log = logging.getLogger(__name__)
+        self._id = project_id
+        self._name = project_name
 
     @property
-    def username(self) -> str:
-        """Username of the creator."""
-        return self._username
-
-    @property
-    def firstname(self) -> str:
-        """First name of the creator."""
-        return self._firstname
-
-    @property
-    def lastname(self) -> str:
-        """Last name of the creator."""
-        return self._lastname
-
-    @property
-    def email(self) -> str:
-        """Email of the creator."""
-        return self._email
-
-    def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "username": self.username,
-            "firstname": self.firstname,
-            "lastname": self.lastname,
-            "email": self.email,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"Creator(id={self._username}, name={self._firstname} {self._lastname})"
-
-
-class Tag:
-    def __init__(self, key=None, value=None, **kwargs):
-        self._key = key
-        self._value = value
-
-    @classmethod
-    def from_response_json(cls, json_dict: dict):
-        if json_dict:
-            json_decamelized = humps.decamelize(json_dict)
-            return cls(**json_decamelized)
-        return None
-
-    @property
-    def key(self) -> str:
-        """Key of the tag."""
-        return self._key
-
-    @property
-    def value(self) -> str:
-        """Value of the tag."""
-        return self._value
-
-    def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "key": self.key,
-            "value": self.value,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"Tag(key={self.key}, description={self.value})"
-
-
-class FeatureHighlights:
-    def __init__(self, name=None, description=None, **kwargs):
-        self._name = name
-        self._description = description
-
-    @classmethod
-    def from_response_json(cls, json_dict: dict):
-        if json_dict:
-            json_decamelized = humps.decamelize(json_dict)
-            return cls(**json_decamelized)
-        return None
+    def id(self) -> int:
+        """Project ID."""
+        return self._id
 
     @property
     def name(self) -> str:
-        """Name of the feature highlight."""
+        """Project name."""
         return self._name
-
-    @property
-    def description(self) -> str:
-        """Description of the feature highlight."""
-        return self._description
 
     def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
+        """Convert to JSON-serializable dictionary."""
+        return {"id": self._id, "name": self._name}
 
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"FeatureHighlights(name={self.name}, description={self.description})"
+    def __repr__(self):
+        return f"Project(id={self._id}, name='{self._name}')"
 
 
-class Highlight:
-    def __init__(
-        self,
-        name=None,
-        description=None,
-        features=None,
-        tags=None,
-        other_xattrs=None,
-        **kwargs,
-    ):
-        self._name = name
-        self._description = description
-        self._features = (
-            [FeatureHighlights.from_response_json(f) for f in features]
-            if features
-            else []
-        )
-        self._tags = [Tag.from_response_json(tag) for tag in tags] if tags else []
-        self._other_xattrs = other_xattrs
+class Highlights:
+    """Container for search result highlights showing where matches occurred."""
 
-    @classmethod
-    def from_response_json(cls, json_dict: dict):
-        if json_dict:
-            json_decamelized = humps.decamelize(json_dict)
-            return cls(**json_decamelized)
-        return None
+    def __init__(self, highlights_data: dict):
+        self._log = logging.getLogger(__name__)
+        self._raw_data = highlights_data
+        self._name = highlights_data.get("name")
+        self._description = highlights_data.get("description")
+        self._tags = highlights_data.get("tags", [])
+        self._keywords = highlights_data.get("keywords", [])
+        self._features = highlights_data.get("features", [])
+        self._source_feature_groups = highlights_data.get("sourceFeatureGroups", [])
 
     @property
-    def name(self) -> str:
-        """Name of the highlight."""
+    def name(self) -> str | None:
+        """Highlighted name with <em> tags showing matched terms."""
         return self._name
 
     @property
-    def description(self) -> str:
-        """Description of the highlight."""
+    def description(self) -> str | None:
+        """Highlighted description with <em> tags showing matched terms."""
         return self._description
 
     @property
-    def features(self) -> list | None:
-        """List of features."""
-        return self._features
-
-    @property
-    def tags(self) -> list | None:
-        """List of tags."""
+    def tags(self) -> list:
+        """List of highlighted tags with <em> tags showing matched terms."""
         return self._tags
 
     @property
-    def other_xattrs(self) -> dict | None:
-        """Other xattrs."""
-        return self._other_xattrs
-
-    def json(self) -> dict:
-        """Convert the object to JSON format."""
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "features": [f.to_dict() for f in self.features],
-            "tags": [tag.to_dict() for tag in self.tags],
-            "other_xattrs": self.other_xattrs,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"Highlight(name={self.name}, description={self.description}, features={self.features}, tags={self.tags}, other_xattrs={self.other_xattrs})"
-
-
-class FeaturestoreResult:
-    def __init__(
-        self,
-        name=None,
-        version=None,
-        description=None,
-        featurestore_id=None,
-        created=None,
-        parent_project_id=None,
-        parent_project_name=None,
-        access_projects=None,
-        highlights: Highlight = None,
-        creator: Creator = None,
-        elastic_id=None,
-        **kwargs,
-    ):
-        self._name = name
-        self._version = version
-        self._description = description
-        self._featurestore_id = featurestore_id
-        self._created = created
-        self._parent_project_id = parent_project_id
-        self._parent_project_name = parent_project_name
-        self._access_projects = access_projects
-        self._highlights = (
-            Highlight.from_response_json(highlights) if highlights else None
-        )
-        self._creator = Creator.from_response_json(creator) if creator else None
-        self._elastic_id = elastic_id
-
-    @classmethod
-    def from_response_json(cls, json_dict: dict):
-        if json_dict:
-            json_decamelized = humps.decamelize(json_dict)
-            return cls(**json_decamelized)
-        return None
+    def keywords(self) -> list:
+        """Highlighted keywords with <em> tags showing matched terms."""
+        return self._keywords
 
     @property
-    def name(self) -> str:
-        """Name."""
+    def features(self) -> list:
+        """Highlighted features with <em> tags showing matched terms."""
+        return self._features
+
+    @property
+    def source_feature_groups(self) -> list:
+        """Highlighted source feature groups with <em> tags showing matched terms."""
+        return self._source_feature_groups
+
+    @property
+    def raw_data(self) -> dict:
+        """Raw highlights data."""
+        return self._raw_data
+
+    def has_highlights(self) -> bool:
+        """Check if there are any highlights."""
+        return bool(
+            self._name
+            or self._description
+            or self._tags
+            or self._keywords
+            or self._features
+            or self._source_feature_groups
+        )
+
+    def json(self) -> dict:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            "name": self._name,
+            "description": self._description,
+            "tags": self._tags,
+            "keywords": self._keywords,
+            "features": self._features,
+            "source_feature_groups": self._source_feature_groups,
+        }
+
+    def __repr__(self):
+        highlights = []
+        if self._name:
+            highlights.append("name")
+        if self._description:
+            highlights.append("description")
+        if self._tags:
+            highlights.append("tags")
+        if self._keywords:
+            highlights.append("keywords")
+        if self._features:
+            highlights.append("features")
+        if self._source_feature_groups:
+            highlights.append("source_feature_groups")
+
+        if highlights:
+            return f"Highlights({', '.join(highlights)})"
+        return "Highlights(none)"
+
+
+class SearchResultItem:
+    """Base class for search result items."""
+
+    def __init__(self, data: dict):
+        self._log = logging.getLogger(__name__)
+        self._href = data.get("href")
+        self._name = data.get("name")
+        self._version = data.get("version")
+        self._description = data.get("description")
+        self._highlights = Highlights(data.get("highlights", {}))
+        self._raw_data = data
+
+        # Extract project information
+        project_id = data.get("parentProjectId")
+        project_name = data.get("parentProjectName")
+        self._project = (
+            Project(project_id, project_name) if project_id and project_name else None
+        )
+
+    @property
+    def href(self):
+        """URL to get the full resource."""
+        return self._href
+
+    @property
+    def name(self):
+        """Name of the resource."""
         return self._name
 
     @property
-    def version(self) -> int:
-        """Version."""
+    def version(self):
+        """Version of the resource."""
         return self._version
 
     @property
-    def description(self) -> str:
-        """Description."""
+    def description(self):
+        """Description of the resource."""
         return self._description
 
     @property
-    def featurestore_id(self) -> int:
-        """Featurestore ID."""
-        return self._featurestore_id
-
-    @property
-    def created(self) -> str:
-        """Created timestamp."""
-        return self._created
-
-    @property
-    def parent_project_id(self) -> int:
-        """Parent project ID."""
-        return self._parent_project_id
-
-    @property
-    def parent_project_name(self) -> str:
-        """Parent project name."""
-        return self._parent_project_name
-
-    @property
-    def access_projects(self) -> dict | None:
-        """Projects that can access this result."""
-        return self._access_projects
-
-    @property
-    def highlights(self) -> Highlight | None:
-        """Highlights of the result."""
+    def highlights(self) -> Highlights:
+        """Search highlights showing matched terms."""
         return self._highlights
 
     @property
-    def creator(self) -> Creator | None:
-        """Creator of the result."""
-        return self._creator
+    def project(self) -> Project | None:
+        """Parent project of this resource."""
+        return self._project
 
     @property
-    def elastic_id(self) -> str:
-        """Elastic ID of the result."""
-        return self._elastic_id
+    def raw_data(self):
+        """Raw data from the search result."""
+        return self._raw_data
 
     def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
+        """Convert to JSON-serializable dictionary."""
         return {
-            "name": self.name,
-            "version": self.version,
-            "description": self.description,
-            "featurestore_id": self.featurestore_id,
-            "created": self.created,
-            "parent_project_id": self.parent_project_id,
-            "parent_project_name": self.parent_project_name,
-            "access_projects": self.access_projects,
-            "highlights": self.highlights.to_dict() if self.highlights else None,
-            "creator": self.creator.to_dict() if self.creator else None,
+            "href": self._href,
+            "name": self._name,
+            "version": self._version,
+            "description": self._description,
+            "highlights": self._highlights.json(),
+            "project": self._project.json() if self._project else None,
         }
 
-    def __str__(self) -> str:
-        return self.json()
+    def __repr__(self):
+        version_str = f", version={self._version}" if self._version else ""
+        if self._description:
+            if len(self._description) > 50:
+                description_preview = f"{self._description[:50]}..."
+            else:
+                description_preview = self._description
+            description_str = f", description='{description_preview}'"
+        else:
+            description_str = ""
+        return f"{self.__class__.__name__}(name='{self._name}'{version_str}{description_str}, project='{self._project}', highlights='{self._highlights}')"
 
-    def __repr__(self) -> str:
-        return f"FeaturestoreResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
 
+class FeatureGroupSearchResult(SearchResultItem):
+    """Search result for a Feature Group."""
 
-class FeatureResult(FeaturestoreResult):
-    def __init__(
-        self,
-        name=None,
-        version=None,
-        description=None,
-        featurestore_id=None,
-        created=None,
-        parent_project_id=None,
-        parent_project_name=None,
-        access_projects=None,
-        highlights: Highlight = None,
-        creator: Creator = None,
-        elastic_id=None,
-        featuregroup=None,
-        **kwargs,
-    ):
-        super().__init__(
-            name,
-            version,
-            description,
-            featurestore_id,
-            created,
-            parent_project_id,
-            parent_project_name,
-            access_projects,
-            highlights,
-            creator,
-            elastic_id,
-            **kwargs,
-        )
-        from hsfs.core import feature_group_api
+    def get(self):
+        """Retrieve the full FeatureGroup object.
 
-        self._featuregroup = featuregroup
-        self._feature_group_api = feature_group_api.FeatureGroupApi()
-
-    def get_feature_group(self):
-        """Get the feature group instance associated with this feature.
+        This uses the project associated with this search result to obtain a
+        connection to the feature store and then fetches the Feature Group
+        with the given name and version.
 
         Returns:
-            FeatureGroup: The feature group instance.
+            The full Feature Group object corresponding to this search result.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            Exception: If the connection to the feature store fails or the
+                Feature Group cannot be retrieved.
         """
-        return self._feature_group_api.get(
-            self._featurestore_id, self._featuregroup, self._version
-        )
+        fs = client.get_connection().get_feature_store(self.project.name)
+        return fs.get_feature_group(self.name, version=self.version)
 
-    def get_feature(self):
-        """Get the feature instance associated with this feature result.
+
+class FeatureViewSearchResult(SearchResultItem):
+    """Search result for a Feature View."""
+
+    def get(self):
+        """Retrieve the full FeatureView object.
+
+        This uses the project associated with this search result to obtain a
+        connection to the feature store and then fetches the Feature View
+        with the given name and version.
 
         Returns:
-            Feature: The feature instance.
+            The full FeatureView instance corresponding to this search result.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            Exception: If the connection to the feature store fails or the
+                Feature View cannot be retrieved.
         """
-        fg = self._feature_group_api.get(
-            self._featurestore_id, self._featuregroup, self._version
-        )
-        return fg.get_feature(self.name)
+        fs = client.get_connection().get_feature_store(self.project.name)
+        return fs.get_feature_view(self.name, version=self.version)
+
+
+class TrainingDatasetSearchResult(SearchResultItem):
+    """Search result for a Training Dataset."""
+
+    def get(self):
+        """Retrieve the full TrainingDataset object.
+
+        This uses the project associated with this search result to obtain a
+        connection to the feature store and then fetches the Training Dataset
+        with the given name and version.
+
+        Returns:
+            The full TrainingDataset instance corresponding to this search result.
+
+        Raises:
+            Exception: If the connection to the feature store fails or the
+                Training Dataset cannot be retrieved.
+        """
+        fs = client.get_connection().get_feature_store(self.project.name)
+        return fs.get_training_dataset(self.name, version=self.version)
+
+
+class FeatureSearchResult(SearchResultItem):
+    """Search result for a Feature."""
+
+
+class FeaturestoreSearchResult:
+    """Container for all featurestore search results."""
+
+    def __init__(self, response_data: dict):
+        self._log = logging.getLogger(__name__)
+        self._feature_groups = [
+            FeatureGroupSearchResult(fg)
+            for fg in response_data.get("featuregroups", [])
+        ]
+        self._feature_views = [
+            FeatureViewSearchResult(fv) for fv in response_data.get("featureViews", [])
+        ]
+        self._training_datasets = [
+            TrainingDatasetSearchResult(td)
+            for td in response_data.get("trainingdatasets", [])
+        ]
+        self._features = [
+            FeatureSearchResult(f) for f in response_data.get("features", [])
+        ]
+
+        # Store metadata about result counts
+        self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
+        self._feature_groups_total = response_data.get("featuregroupsTotal", 0)
+        self._feature_views_offset = response_data.get("featureViewsFrom", 0)
+        self._feature_views_total = response_data.get("featureViewsTotal", 0)
+        self._training_datasets_offset = response_data.get("trainingdatasetsFrom", 0)
+        self._training_datasets_total = response_data.get("trainingdatasetsTotal", 0)
+        self._features_offset = response_data.get("featuresFrom", 0)
+        self._features_total = response_data.get("featuresTotal", 0)
 
     @property
-    def featuregroup(self) -> str:
-        """Feature group name."""
-        return self._featuregroup
-
-    def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "version": self.version,
-            "description": self.description,
-            "featurestore_id": self.featurestore_id,
-            "created": self.created,
-            "parent_project_id": self.parent_project_id,
-            "parent_project_name": self.parent_project_name,
-            "access_projects": self.access_projects,
-            "highlights": self.highlights.to_dict() if self.highlights else None,
-            "creator": self.creator.to_dict() if self.creator else None,
-            "featuregroup": self.featuregroup,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"FeatureResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator}, featuregroup={self.featuregroup})"
-
-
-class FeatureGroupResult(FeaturestoreResult):
-    def __init__(
-        self,
-        name=None,
-        version=None,
-        description=None,
-        featurestore_id=None,
-        created=None,
-        parent_project_id=None,
-        parent_project_name=None,
-        access_projects=None,
-        highlights: Highlight = None,
-        creator: Creator = None,
-        elastic_id=None,
-        **kwargs,
-    ):
-        super().__init__(
-            name,
-            version,
-            description,
-            featurestore_id,
-            created,
-            parent_project_id,
-            parent_project_name,
-            access_projects,
-            highlights,
-            creator,
-            elastic_id,
-            **kwargs,
-        )
-
-    def get_feature_group(self):
-        """Get the feature group instance associated with this feature group result.
-
-        Returns:
-            FeatureGroup: The feature group instance.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-        """
-        from hsfs.core import feature_group_api
-
-        return feature_group_api.FeatureGroupApi().get(
-            self._featurestore_id, self._name, self._version
-        )
-
-    def __repr__(self) -> str:
-        return f"FeatureGroupResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
-
-
-class FeatureViewResult(FeaturestoreResult):
-    def __init__(
-        self,
-        name=None,
-        version=None,
-        description=None,
-        featurestore_id=None,
-        created=None,
-        parent_project_id=None,
-        parent_project_name=None,
-        access_projects=None,
-        highlights: Highlight = None,
-        creator: Creator = None,
-        elastic_id=None,
-        **kwargs,
-    ):
-        super().__init__(
-            name,
-            version,
-            description,
-            featurestore_id,
-            created,
-            parent_project_id,
-            parent_project_name,
-            access_projects,
-            highlights,
-            creator,
-            elastic_id,
-            **kwargs,
-        )
-
-    def get_feature_view(self):
-        """Get the feature view instance associated with this feature view result.
-
-        Returns:
-            FeatureView: The feature view instance.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-        """
-        from hsfs.core import feature_view_api
-
-        return feature_view_api.FeatureViewApi(
-            self._featurestore_id
-        ).get_by_name_version(self._name, self._version)
-
-    def __repr__(self) -> str:
-        return f"FeatureViewResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
-
-
-class TrainingDatasetResult(FeaturestoreResult):
-    def __init__(
-        self,
-        name=None,
-        version=None,
-        description=None,
-        featurestore_id=None,
-        created=None,
-        parent_project_id=None,
-        parent_project_name=None,
-        access_projects=None,
-        highlights: Highlight = None,
-        creator: Creator = None,
-        elastic_id=None,
-        **kwargs,
-    ):
-        super().__init__(
-            name,
-            version,
-            description,
-            featurestore_id,
-            created,
-            parent_project_id,
-            parent_project_name,
-            access_projects,
-            highlights,
-            creator,
-            elastic_id,
-            **kwargs,
-        )
-
-    def get_training_dataset(self):
-        """Get the training dataset instance associated with this training dataset result.
-
-        Returns:
-            TrainingDataset: The training dataset instance.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-        """
-        from hsfs.core import training_dataset_api
-
-        return training_dataset_api.TrainingDatasetApi(self._featurestore_id).get(
-            self._name, self._version
-        )
-
-    def __repr__(self) -> str:
-        return f"TrainingDatasetResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
-
-
-class FeaturestoreSearchResultBase:
-    def __init__(
-        self,
-        featuregroups=None,
-        feature_views=None,
-        trainingdatasets=None,
-        features=None,
-        featuregroups_from=None,
-        featuregroups_total=None,
-        feature_views_from=None,
-        feature_views_total=None,
-        trainingdatasets_from=None,
-        trainingdatasets_total=None,
-        features_from=None,
-        features_total=None,
-        **kwargs,
-    ):
-        self._featuregroups = featuregroups
-        self._feature_views = feature_views
-        self._trainingdatasets = trainingdatasets
-        self._features = features
-        self._featuregroups_from = featuregroups_from
-        self._featuregroups_total = featuregroups_total
-        self._feature_views_from = feature_views_from
-        self._feature_views_total = feature_views_total
-        self._trainingdatasets_from = trainingdatasets_from
-        self._trainingdatasets_total = trainingdatasets_total
-        self._features_from = features_from
-        self._features_total = features_total
-
-    @classmethod
-    def from_response_json(cls, json_dict: dict):
-        if json_dict:
-            json_decamelized = humps.decamelize(json_dict)
-            return cls(**json_decamelized)
-        return None
+    def feature_groups(self) -> list[FeatureGroupSearchResult]:
+        """List of Feature Group search results."""
+        return self._feature_groups
 
     @property
-    def featuregroups(self) -> list | None:
-        """List of FeatureGroupResult."""
-        return self._featuregroups
-
-    @property
-    def feature_views(self) -> list | None:
-        """List of FeatureViewResult."""
+    def feature_views(self) -> list[FeatureViewSearchResult]:
+        """List of Feature View search results."""
         return self._feature_views
 
     @property
-    def trainingdatasets(self) -> list | None:
-        """List of TrainingDatasetResult."""
-        return self._trainingdatasets
+    def training_datasets(self) -> list[TrainingDatasetSearchResult]:
+        """List of Training Dataset search results."""
+        return self._training_datasets
 
     @property
-    def features(self) -> list | None:
-        """List of FeatureResult."""
+    def features(self) -> list[FeatureSearchResult]:
+        """List of Feature search results."""
         return self._features
 
     @property
-    def featuregroups_from(self) -> list | None:
-        """Results from offset."""
-        return self._featuregroups_from
+    def feature_groups_offset(self) -> int:
+        """Total offset for the return list of feature groups within the whole result."""
+        return self._feature_groups_offset
 
     @property
-    def featuregroups_total(self) -> list | None:
-        """Total feature groups found."""
-        return self._featuregroups_total
+    def feature_views_offset(self) -> int:
+        """Total offset for the return list of feature views within the whole result."""
+        return self._feature_views_offset
 
     @property
-    def feature_views_from(self) -> list | None:
-        """Results from offset."""
-        return self._feature_views_from
+    def training_datasets_offset(self) -> int:
+        """Total offset for the return list of training datasets within the whole result."""
+        return self._training_datasets_offset
 
     @property
-    def feature_views_total(self) -> list | None:
-        """Total feature views found."""
+    def features_offset(self) -> int:
+        """Total offset for the return list of features within the whole result."""
+        return self._features_offset
+
+    @property
+    def feature_groups_total(self) -> int:
+        """Total number of Feature Groups matching the search."""
+        return self._feature_groups_total
+
+    @property
+    def feature_views_total(self) -> int:
+        """Total number of Feature Views matching the search."""
         return self._feature_views_total
 
     @property
-    def trainingdatasets_from(self) -> list | None:
-        """Results from offset."""
-        return self._trainingdatasets_from
+    def training_datasets_total(self) -> int:
+        """Total number of Training Datasets matching the search."""
+        return self._training_datasets_total
 
     @property
-    def trainingdatasets_total(self) -> list | None:
-        """Total training datasets found."""
-        return self._trainingdatasets_total
-
-    @property
-    def features_from(self) -> list | None:
-        """Features from offset."""
-        return self._features_from
-
-    @property
-    def features_total(self) -> list | None:
-        """Total features found."""
+    def features_total(self) -> int:
+        """Total number of Features matching the search."""
         return self._features_total
 
     def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
+        """Convert to JSON-serializable dictionary."""
         return {
-            "featuregroups": [fg.to_dict() for fg in self.featuregroups],
-            "feature_views": [fv.to_dict() for fv in self.feature_views],
-            "trainingdatasets": [td.to_dict() for td in self.trainingdatasets],
-            "features": [f.to_dict() for f in self.features],
-            "featuregroups_from": self.featuregroups_from,
-            "featuregroups_total": self.featuregroups_total,
-            "feature_views_from": self.feature_views_from,
-            "feature_views_total": self.feature_views_total,
-            "trainingdatasets_from": self.trainingdatasets_from,
-            "trainingdatasets_total": self.trainingdatasets_total,
-            "features_from": self.features_from,
-            "features_total": self.features_total,
+            "featuregroups": [fg.json() for fg in self._feature_groups],
+            "featuregroupsFrom": self._feature_groups_offset,
+            "featuregroupsTotal": self._feature_groups_total,
+            "featureviews": [fv.json() for fv in self._feature_views],
+            "featureviewsFrom": self._feature_views_offset,
+            "featureviewsTotal": self._feature_views_total,
+            "trainingdatasets": [td.json() for td in self._training_datasets],
+            "trainingdatasetsFrom": self._training_datasets_offset,
+            "trainingdatasetsTotal": self._training_datasets_total,
+            "features": [f.json() for f in self._features],
+            "featuresFrom": self._features_offset,
+            "featuresTotal": self._features_total,
         }
 
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"FeaturestoreSearchResult(featuregroups={self.featuregroups}, feature_views={self.feature_views}, trainingdatasets={self.trainingdatasets}, features={self.features}, featuregroups_from={self.featuregroups_from}, featuregroups_total={self.featuregroups_total}, feature_views_from={self.feature_views_from}, feature_views_total={self.feature_views_total}, trainingdatasets_from={self.trainingdatasets_from}, trainingdatasets_total={self.trainingdatasets_total}, features_from={self.features_from}, features_total={self.features_total})"
-
-
-class FeaturestoreSearchResult(FeaturestoreSearchResultBase):
-    def __init__(
-        self,
-        featuregroups=None,
-        feature_views=None,
-        trainingdatasets=None,
-        features=None,
-        featuregroups_from=None,
-        featuregroups_total=None,
-        feature_views_from=None,
-        feature_views_total=None,
-        trainingdatasets_from=None,
-        trainingdatasets_total=None,
-        features_from=None,
-        features_total=None,
-        **kwargs,
-    ):
-        _featuregroups = (
-            [FeatureGroupResult.from_response_json(fg) for fg in featuregroups]
-            if featuregroups
-            else []
+    def __repr__(self):
+        return (
+            f"FeaturestoreSearchResult("
+            f"feature_groups={len(self._feature_groups)}/{self._feature_groups_total}, "
+            f"feature_views={len(self._feature_views)}/{self._feature_views_total}, "
+            f"training_datasets={len(self._training_datasets)}/{self._training_datasets_total}, "
+            f"features={len(self._features)}/{self._features_total})"
         )
-        _feature_views = (
-            [FeatureViewResult.from_response_json(fv) for fv in feature_views]
-            if feature_views
-            else []
-        )
-        _trainingdatasets = (
-            [TrainingDatasetResult.from_response_json(td) for td in trainingdatasets]
-            if trainingdatasets
-            else []
-        )
-        _features = (
-            [FeatureResult.from_response_json(f) for f in features] if features else []
-        )
-        super().__init__(
-            _featuregroups,
-            _feature_views,
-            _trainingdatasets,
-            _features,
-            featuregroups_from,
-            featuregroups_total,
-            feature_views_from,
-            feature_views_total,
-            trainingdatasets_from,
-            trainingdatasets_total,
-            features_from,
-            features_total,
-        )
-
-
-class FeaturestoreSearchResultByTag(FeaturestoreSearchResultBase):
-    def __init__(
-        self,
-        featuregroups=None,
-        feature_views=None,
-        trainingdatasets=None,
-        features=None,
-        featuregroups_from=None,
-        featuregroups_total=None,
-        feature_views_from=None,
-        feature_views_total=None,
-        trainingdatasets_from=None,
-        trainingdatasets_total=None,
-        features_from=None,
-        features_total=None,
-        **kwargs,
-    ):
-        _featuregroups = (
-            [
-                FeatureGroupResult.from_response_json(fg)
-                for fg in featuregroups
-                if "highlights" in fg
-                and "tags" in fg["highlights"]
-                and len(fg["highlights"]["tags"]) > 0
-            ]
-            if featuregroups
-            else []
-        )
-        _feature_views = (
-            [
-                FeatureViewResult.from_response_json(fv)
-                for fv in feature_views
-                if "highlights" in fv
-                and "tags" in fv["highlights"]
-                and len(fv["highlights"]["tags"]) > 0
-            ]
-            if feature_views
-            else []
-        )
-        _trainingdatasets = (
-            [
-                TrainingDatasetResult.from_response_json(td)
-                for td in trainingdatasets
-                if "highlights" in td
-                and "tags" in td["highlights"]
-                and len(td["highlights"]["tags"]) > 0
-            ]
-            if trainingdatasets
-            else []
-        )
-        _features = (
-            [
-                FeatureResult.from_response_json(f)
-                for f in features
-                if "highlights" in f
-                and "tags" in f["highlights"]
-                and len(f["highlights"]["tags"]) > 0
-            ]
-            if features
-            else []
-        )
-        super().__init__(
-            _featuregroups,
-            _feature_views,
-            _trainingdatasets,
-            _features,
-            featuregroups_from,
-            featuregroups_total,
-            feature_views_from,
-            feature_views_total,
-            trainingdatasets_from,
-            trainingdatasets_total,
-            features_from,
-            features_total,
-        )
-
-
-class FeaturestoreSearchResultByTagName(FeaturestoreSearchResultBase):
-    def __init__(
-        self,
-        featuregroups=None,
-        feature_views=None,
-        trainingdatasets=None,
-        features=None,
-        featuregroups_from=None,
-        featuregroups_total=None,
-        feature_views_from=None,
-        feature_views_total=None,
-        trainingdatasets_from=None,
-        trainingdatasets_total=None,
-        features_from=None,
-        features_total=None,
-        **kwargs,
-    ):
-        _featuregroups = (
-            [
-                FeatureGroupResult.from_response_json(fg)
-                for fg in featuregroups
-                if "highlights" in fg
-                and "tags" in fg["highlights"]
-                and any(
-                    "key" in tag and tag["key"] and "<em>" in tag["key"]
-                    for tag in fg["highlights"]["tags"]
-                )
-            ]
-            if featuregroups
-            else []
-        )
-        _feature_views = (
-            [
-                FeatureViewResult.from_response_json(fv)
-                for fv in feature_views
-                if "highlights" in fv
-                and "tags" in fv["highlights"]
-                and any(
-                    "key" in tag and tag["key"] and "<em>" in tag["key"]
-                    for tag in fv["highlights"]["tags"]
-                )
-            ]
-            if feature_views
-            else []
-        )
-        _trainingdatasets = (
-            [
-                TrainingDatasetResult.from_response_json(td)
-                for td in trainingdatasets
-                if "highlights" in td
-                and "tags" in td["highlights"]
-                and any(
-                    "key" in tag and tag["key"] and "<em>" in tag["key"]
-                    for tag in td["highlights"]["tags"]
-                )
-            ]
-            if trainingdatasets
-            else []
-        )
-        _features = (
-            [
-                FeatureResult.from_response_json(f)
-                for f in features
-                if "highlights" in f
-                and "tags" in f["highlights"]
-                and any(
-                    "key" in tag and tag["key"] and "<em>" in tag["key"]
-                    for tag in f["highlights"]["tags"]
-                )
-            ]
-            if features
-            else []
-        )
-        super().__init__(
-            _featuregroups,
-            _feature_views,
-            _trainingdatasets,
-            _features,
-            featuregroups_from,
-            featuregroups_total,
-            feature_views_from,
-            feature_views_total,
-            trainingdatasets_from,
-            trainingdatasets_total,
-            features_from,
-            features_total,
-        )
-
-
-class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
-    def __init__(
-        self,
-        featuregroups=None,
-        feature_views=None,
-        trainingdatasets=None,
-        features=None,
-        featuregroups_from=None,
-        featuregroups_total=None,
-        feature_views_from=None,
-        feature_views_total=None,
-        trainingdatasets_from=None,
-        trainingdatasets_total=None,
-        features_from=None,
-        features_total=None,
-        **kwargs,
-    ):
-        _featuregroups = (
-            [
-                FeatureGroupResult.from_response_json(fg)
-                for fg in featuregroups
-                if "highlights" in fg
-                and "tags" in fg["highlights"]
-                and any(
-                    "<em>" in val.split(":")[0]
-                    for tag in fg["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if featuregroups
-            else []
-        )
-        _feature_views = (
-            [
-                FeatureViewResult.from_response_json(fv)
-                for fv in feature_views
-                if "highlights" in fv
-                and "tags" in fv["highlights"]
-                and any(
-                    "value" in tag and tag["value"] for tag in fv["highlights"]["tags"]
-                )
-                and any(
-                    "<em>" in val.split(":")[0]
-                    for tag in fv["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if feature_views
-            else []
-        )
-        _trainingdatasets = (
-            [
-                TrainingDatasetResult.from_response_json(td)
-                for td in trainingdatasets
-                if "highlights" in td
-                and "tags" in td["highlights"]
-                and any(
-                    "value" in tag and tag["value"] for tag in td["highlights"]["tags"]
-                )
-                and any(
-                    "<em>" in val.split(":")[0]
-                    for tag in td["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if trainingdatasets
-            else []
-        )
-        _features = (
-            [
-                FeatureResult.from_response_json(f)
-                for f in features
-                if "highlights" in f
-                and "tags" in f["highlights"]
-                and any(
-                    "value" in tag and tag["value"] for tag in f["highlights"]["tags"]
-                )
-                and any(
-                    "<em>" in val.split(":")[0]
-                    for tag in f["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if features
-            else []
-        )
-        super().__init__(
-            _featuregroups,
-            _feature_views,
-            _trainingdatasets,
-            _features,
-            featuregroups_from,
-            featuregroups_total,
-            feature_views_from,
-            feature_views_total,
-            trainingdatasets_from,
-            trainingdatasets_total,
-            features_from,
-            features_total,
-        )
-
-
-class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
-    def __init__(
-        self,
-        featuregroups=None,
-        feature_views=None,
-        trainingdatasets=None,
-        features=None,
-        featuregroups_from=None,
-        featuregroups_total=None,
-        feature_views_from=None,
-        feature_views_total=None,
-        trainingdatasets_from=None,
-        trainingdatasets_total=None,
-        features_from=None,
-        features_total=None,
-        **kwargs,
-    ):
-        _featuregroups = (
-            [
-                FeatureGroupResult.from_response_json(fg)
-                for fg in featuregroups
-                if "highlights" in fg
-                and "tags" in fg["highlights"]
-                and any(
-                    "<em>" in val.split(":")[1]
-                    for tag in fg["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if featuregroups
-            else []
-        )
-        _feature_views = (
-            [
-                FeatureViewResult.from_response_json(fv)
-                for fv in feature_views
-                if "highlights" in fv
-                and "tags" in fv["highlights"]
-                and any(
-                    "<em>" in val.split(":")[1]
-                    for tag in fv["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if feature_views
-            else []
-        )
-        _trainingdatasets = (
-            [
-                TrainingDatasetResult.from_response_json(td)
-                for td in trainingdatasets
-                if "highlights" in td
-                and "tags" in td["highlights"]
-                and any(
-                    "<em>" in val.split(":")[1]
-                    for tag in td["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if trainingdatasets
-            else []
-        )
-        _features = (
-            [
-                FeatureResult.from_response_json(f)
-                for f in features
-                if "highlights" in f
-                and "tags" in f["highlights"]
-                and any(
-                    "<em>" in val.split(":")[1]
-                    for tag in f["highlights"]["tags"]
-                    if "value" in tag and isinstance(tag["value"], str)
-                    for val in tag["value"].split(",")
-                    if ":" in val
-                )
-            ]
-            if features
-            else []
-        )
-        super().__init__(
-            _featuregroups,
-            _feature_views,
-            _trainingdatasets,
-            _features,
-            featuregroups_from,
-            featuregroups_total,
-            feature_views_from,
-            feature_views_total,
-            trainingdatasets_from,
-            trainingdatasets_total,
-            features_from,
-            features_total,
-        )
-
-
-class FeaturestoreSearchResultByKeyWord(FeaturestoreSearchResultBase):
-    def __init__(
-        self,
-        featuregroups=None,
-        feature_views=None,
-        trainingdatasets=None,
-        features=None,
-        featuregroups_from=None,
-        featuregroups_total=None,
-        feature_views_from=None,
-        feature_views_total=None,
-        trainingdatasets_from=None,
-        trainingdatasets_total=None,
-        features_from=None,
-        features_total=None,
-        **kwargs,
-    ):
-        _featuregroups = (
-            [
-                FeatureGroupResult.from_response_json(fg)
-                for fg in featuregroups
-                if "highlights" in fg
-                and "other_xattrs" in fg["highlights"]
-                and "xattr.keywords" in fg["highlights"]["other_xattrs"]
-            ]
-            if featuregroups
-            else []
-        )
-        _feature_views = (
-            [
-                FeatureViewResult.from_response_json(fv)
-                for fv in feature_views
-                if "highlights" in fv
-                and "other_xattrs" in fv["highlights"]
-                and "xattr.keywords" in fv["highlights"]["other_xattrs"]
-            ]
-            if feature_views
-            else []
-        )
-        _trainingdatasets = (
-            [
-                TrainingDatasetResult.from_response_json(td)
-                for td in trainingdatasets
-                if "highlights" in td
-                and "other_xattrs" in td["highlights"]
-                and "xattr.keywords" in td["highlights"]["other_xattrs"]
-            ]
-            if trainingdatasets
-            else []
-        )
-        _features = (
-            [
-                FeatureResult.from_response_json(f)
-                for f in features
-                if "highlights" in f
-                and "other_xattrs" in f["highlights"]
-                and "xattr.keywords" in f["highlights"]["other_xattrs"]
-            ]
-            if features
-            else []
-        )
-        super().__init__(
-            _featuregroups,
-            _feature_views,
-            _trainingdatasets,
-            _features,
-            featuregroups_from,
-            featuregroups_total,
-            feature_views_from,
-            feature_views_total,
-            trainingdatasets_from,
-            trainingdatasets_total,
-            features_from,
-            features_total,
-        )
-
-
-class FeatureGroupSearchResult:
-    def __init__(self, result: FeaturestoreSearchResultBase):
-        self._featuregroups = result.featuregroups
-        self._featuregroups_from = result.featuregroups_from
-        self._featuregroups_total = result.featuregroups_total
-
-    @property
-    def featuregroups(self) -> list | None:
-        """List of FeatureGroupResult."""
-        return self._featuregroups
-
-    @property
-    def featuregroups_from(self) -> list | None:
-        """Result from offset."""
-        return self._featuregroups_from
-
-    @property
-    def featuregroups_total(self) -> list | None:
-        """Total feature groups found."""
-        return self._featuregroups_total
-
-    def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "featuregroups": [fg.to_dict() for fg in self.featuregroups],
-            "featuregroups_from": self.featuregroups_from,
-            "featuregroups_total": self.featuregroups_total,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"FeatureGroupSearchResult(featuregroups={self.featuregroups}, featuregroups_from={self.featuregroups_from}, featuregroups_total={self.featuregroups_total})"
-
-
-class FeatureViewSearchResult:
-    def __init__(self, result: FeaturestoreSearchResultBase):
-        self._feature_views = result.feature_views
-        self._feature_views_from = result.feature_views_from
-        self._feature_views_total = result.feature_views_total
-
-    @property
-    def feature_views(self) -> list | None:
-        """List of FeatureViewResult."""
-        return self._feature_views
-
-    @property
-    def feature_views_from(self) -> list | None:
-        """Result from offset."""
-        return self._feature_views_from
-
-    @property
-    def feature_views_total(self) -> list | None:
-        """Total feature views found."""
-        return self._feature_views_total
-
-    def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "feature_views": [fg.to_dict() for fg in self.feature_views],
-            "feature_views_from": self.feature_views_from,
-            "feature_views_total": self.feature_views_total,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"FeatureViewSearchResult(feature_views={self.feature_views}, feature_views_from={self.feature_views_from}, feature_views_total={self.feature_views_total})"
-
-
-class FeatureSearchResult:
-    def __init__(self, result: FeaturestoreSearchResultBase):
-        self._features = result.features
-        self._features_from = result.features_from
-        self._features_total = result.features_total
-
-    @property
-    def features(self) -> list | None:
-        """List of FeatureResult."""
-        return self._features
-
-    @property
-    def features_from(self) -> list | None:
-        """Result from offset."""
-        return self._features_from
-
-    @property
-    def features_total(self) -> list | None:
-        """Total features found."""
-        return self._features_total
-
-    def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "features": [fg.to_dict() for fg in self.features],
-            "features_from": self.features_from,
-            "features_total": self.features_total,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"FeatureSearchResult(features={self.features}, features_from={self.features_from}, features_total={self.features_total})"
-
-
-class TrainingDatasetSearchResult:
-    def __init__(self, result: FeaturestoreSearchResultBase):
-        self._trainingdatasets = result.trainingdatasets
-        self._trainingdatasets_from = result.trainingdatasets_from
-        self._trainingdatasets_total = result.trainingdatasets_total
-
-    @property
-    def trainingdatasets(self) -> list | None:
-        """List of TrainingDatasetResult."""
-        return self._trainingdatasets
-
-    @property
-    def trainingdatasets_from(self) -> list | None:
-        """Result from offset."""
-        return self._trainingdatasets_from
-
-    @property
-    def trainingdatasets_total(self) -> list | None:
-        """Total training datasets found."""
-        return self._trainingdatasets_total
-
-    def json(self) -> dict:
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self) -> dict:
-        return {
-            "trainingdatasets": [td.to_dict() for td in self.trainingdatasets],
-            "trainingdatasets_from": self.trainingdatasets_from,
-            "trainingdatasets_total": self.trainingdatasets_total,
-        }
-
-    def __str__(self) -> str:
-        return self.json()
-
-    def __repr__(self) -> str:
-        return f"TrainingdatasetsSearchResult(trainingdatasets={self.trainingdatasets}, trainingdatasets_from={self.trainingdatasets_from}, trainingdatasets_total={self.trainingdatasets_total})"

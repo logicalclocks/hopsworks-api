@@ -142,10 +142,13 @@ class FeatureView:
         serving_keys: list[skm.ServingKey] | None = None,
         logging_enabled: bool | None = False,
         extra_log_columns: list[Feature] | dict[str, str] | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
+        tags: list[tag.Tag] | None = None,
         **kwargs,
     ) -> None:
         self._name = name
         self._id = id
+        self._tags: list[tag.Tag] | None = tags
         self._query = query
         # Check if query has any ambiguous columns and print warning in these cases:
         query.check_and_warn_ambiguous_features()
@@ -214,6 +217,7 @@ class FeatureView:
         self._logging_enabled = True if extra_log_columns else logging_enabled
         self._feature_logging = None
         self._alert_api = alerts_api.AlertsApi()
+        self._missing_mandatory_tags = missing_mandatory_tags or []
 
         self._extra_log_columns: list[Feature] = (
             [
@@ -1475,6 +1479,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1648,6 +1653,8 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        normalized_tags = tag.Tag.normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -1663,6 +1670,7 @@ class FeatureView:
             statistics_config=statistics_config,
             coalesce=coalesce,
             extra_filter=extra_filter,
+            tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine.create_training_dataset(
@@ -1700,6 +1708,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -1927,6 +1936,8 @@ class FeatureView:
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
         )
+        normalized_tags = tag.Tag.normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -1946,6 +1957,7 @@ class FeatureView:
             statistics_config=statistics_config,
             coalesce=coalesce,
             extra_filter=extra_filter,
+            tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine.create_training_dataset(
@@ -1985,6 +1997,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2202,6 +2215,8 @@ class FeatureView:
             validation_end=validation_end,
             test_start=test_start,
         )
+        normalized_tags = tag.Tag.normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -2224,6 +2239,7 @@ class FeatureView:
             statistics_config=statistics_config,
             coalesce=coalesce,
             extra_filter=extra_filter,
+            tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine.create_training_dataset(
@@ -2963,6 +2979,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
+        util.check_missing_mandatory_tags(td.missing_mandatory_tags)
         return df
 
     @usage.method_logger
@@ -3137,7 +3154,13 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_view_engine.get_training_datasets(self)
+        tds = self._feature_view_engine.get_training_datasets(self)
+        for td in tds:
+            util.check_missing_mandatory_tags(
+                td.missing_mandatory_tags,
+                message=f"Training dataset '{td.name}' version {td.version} has missing mandatory tags",
+            )
+        return tds
 
     @usage.method_logger
     def get_training_dataset_statistics(
@@ -3768,6 +3791,10 @@ class FeatureView:
                 skm.ServingKey.from_response_json(sk) for sk in serving_keys
             ]
         transformation_functions = json_decamelized.get("transformation_functions", {})
+        tags_response = json_decamelized.get("tags", None)
+        tags = None
+        if tags_response:
+            tags = tag.Tag.from_response_json(tags_response)
         fv = cls(
             id=json_decamelized.get("id", None),
             name=json_decamelized["name"],
@@ -3791,6 +3818,8 @@ class FeatureView:
                 if transformation_functions
                 else []
             ),
+            missing_mandatory_tags=json_decamelized.get("missing_mandatory_tags", None),
+            tags=tags,
         )
         features = json_decamelized.get("features", [])
         if features:
@@ -4393,7 +4422,7 @@ class FeatureView:
         Returns:
             `Dict`: Dictionary that contains all data required to json serialize the object.
         """
-        return {
+        fv_dict = {
             "featurestoreId": self._featurestore_id,
             "name": self._name,
             "version": self._version,
@@ -4405,6 +4434,10 @@ class FeatureView:
             "type": "featureViewDTO",
             "extraLogColumns": self._extra_log_columns,
         }
+        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        if tags_dict:
+            fv_dict["tags"] = tags_dict
+        return fv_dict
 
     def get_training_dataset_schema(
         self, training_dataset_version: int | None = None
@@ -4470,6 +4503,11 @@ class FeatureView:
     @version.setter
     def version(self, version: int) -> None:
         self._version = version
+
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """List of missing mandatory tags for the feature view."""
+        return self._missing_mandatory_tags
 
     @property
     def labels(self) -> list[str]:
