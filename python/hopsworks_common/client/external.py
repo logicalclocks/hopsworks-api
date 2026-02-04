@@ -34,6 +34,9 @@ with contextlib.suppress(ImportError):
 
 _logger = logging.getLogger(__name__)
 
+# Default certificate folder - matches CERT_FOLDER_DEFAULT in connection.py
+_CERT_FOLDER_DEFAULT = "/tmp"
+
 
 class Client(base.Client):
     def __init__(
@@ -177,9 +180,14 @@ class Client(base.Client):
 
     def _materialize_certs(self):
         os.makedirs(self._cert_folder_base, exist_ok=True)
-        self._cert_folder = tempfile.mkdtemp(
-            prefix="hopsworks_certs_", dir=self._cert_folder_base
-        )
+        if self._cert_folder_base == _CERT_FOLDER_DEFAULT:
+            # Default behavior: create a temp subdirectory to avoid conflicts
+            self._cert_folder = tempfile.mkdtemp(
+                prefix="hopsworks_certs_", dir=self._cert_folder_base
+            )
+        else:
+            # Custom path specified: use it directly
+            self._cert_folder = self._cert_folder_base
         _logger.debug(f"Created certificates folder {self._cert_folder}")
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")

@@ -84,6 +84,7 @@ def login(
     api_key_file: str | None = None,
     hostname_verification: bool = False,
     trust_store_path: str | None = None,
+    cert_folder: str | None = None,
     engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
     | None = None,
 ) -> project.Project:
@@ -110,7 +111,7 @@ def login(
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH` and `HOPSWORKS_ENGINE`.
+    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH`, `HOPSWORKS_CERT_FOLDER` and `HOPSWORKS_ENGINE`.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
@@ -122,6 +123,7 @@ def login(
         api_key_file: Path to file wih API Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
+        cert_folder: The directory to store retrieved HopsFS certificates. If not specified, uses `HOPSWORKS_CERT_FOLDER` environment variable or defaults to "/tmp". When using the default "/tmp", a temporary subdirectory is created to avoid conflicts. When specifying a custom path, certificates are stored directly in that directory.
         engine:
             Specifies the engine to use.
             The default value is `None`, which automatically selects the engine based on the environment:
@@ -194,7 +196,11 @@ def login(
         "HOPSWORKS_HOSTNAME_VERIFICATION", f"{hostname_verification}"
     ).lower() in ("true", "1", "y", "yes")
 
-    trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH", trust_store_path)
+    if trust_store_path is None:
+        trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH")
+
+    if cert_folder is None:
+        cert_folder = os.getenv("HOPSWORKS_CERT_FOLDER", "/tmp")
 
     # This .hw_api_key is created when a user logs into Serverless Hopsworks the first time.
     # It is then used only for future login calls to Serverless. For other Hopsworks installations it's ignored.
@@ -220,6 +226,7 @@ def login(
                 api_key_file=api_key_path,
                 hostname_verification=hostname_verification,
                 trust_store_path=trust_store_path,
+                cert_folder=cert_folder,
             )
             _connected_project = _prompt_project(_hw_connection, project, is_app)
             if _connected_project:
@@ -260,6 +267,7 @@ def login(
             api_key_value=api_key,
             hostname_verification=hostname_verification,
             trust_store_path=trust_store_path,
+            cert_folder=cert_folder,
         )
         _connected_project = _prompt_project(_hw_connection, project, is_app)
         if _connected_project:
