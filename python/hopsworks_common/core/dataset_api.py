@@ -26,14 +26,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Literal
 
-from hopsworks_apigen import public
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
 
 
-@public("hopsworks.core.dataset_api.Chunk", "hsml.core.dataset_api.Chunk")
+@also_available_as("hopsworks.core.dataset_api.Chunk", "hsml.core.dataset_api.Chunk")
 class Chunk:
     def __init__(self, content, number, status):
         self.content = content
