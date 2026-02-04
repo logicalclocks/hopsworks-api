@@ -24,6 +24,7 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
+from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
 from hopsworks_common.client.exceptions import (
     HopsworksSSLClientError,
@@ -75,6 +76,7 @@ logging.basicConfig(
 )
 
 
+@public
 def login(
     host: str | None = None,
     port: int = 443,
@@ -390,6 +392,7 @@ def _is_connection_active():
     return isinstance(_hw_connection, Connection)
 
 
+@public
 def get_current_project() -> project.Project:
     """Get a reference to the current logged in project.
 
