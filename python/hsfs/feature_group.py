@@ -1797,7 +1797,7 @@ class FeatureGroupBase:
         if not isinstance(name, str):
             raise TypeError(
                 f"Expected type `str`, got `{type(name)}`. "
-                "Features are accessible by name."
+                "Features and transformations are accessible by name."
             )
         feature = [f for f in self.__getattribute__("_features") if f.name == name]
         transformations = [
@@ -1809,7 +1809,9 @@ class FeatureGroupBase:
             return feature[0]
         if len(transformations) == 1:
             return transformations[0]
-        raise KeyError(f"'FeatureGroup' object has no feature called '{name}'.")
+        raise KeyError(
+            f"'FeatureGroup' object has no feature or transformation called '{name}'."
+        )
 
     @property
     def statistics_config(self) -> StatisticsConfig:
@@ -3333,7 +3335,7 @@ class FeatureGroup(FeatureGroupBase):
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations
                 In this case, all required on-demand features must already exist in the provided dataframe.
@@ -3509,7 +3511,7 @@ class FeatureGroup(FeatureGroupBase):
 
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations.
                 In this case, all required on-demand features must already exist in the provided dataframe.
@@ -3624,7 +3626,7 @@ class FeatureGroup(FeatureGroupBase):
             write_options: Additional write options for Spark as key-value pairs.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations.
                 In this case, all required on-demand features must already exist in the provided dataframe.
@@ -4094,19 +4096,50 @@ class FeatureGroup(FeatureGroupBase):
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
-        """Apply on-demand transformations attached to the feature group on the passed dataframe or dictionary.
+        """Apply on-demand transformations attached to the feature group on the provided data.
+
+        This method allows you to test on-demand transformation functions locally.
+        It executes all on-demand transformations(ODTs) attached to the feature group on the input data.
+
+        !!! example "Testing on-demand transformations"
+            ```python
+            # Define and attach an on-demand transformation
+            @udf(return_type=float)
+            def compute_ratio(amount, quantity):
+                return amount / quantity
+
+            fg = fs.get_or_create_feature_group(name="transactions",
+                                                version=1,
+                                                primary_key=["pk"],
+                                                transformation_functions=[compute_ratio("amount", "quantity")])
+
+            # Test with a DataFrame (offline mode)
+            test_df = pd.DataFrame({
+                "amount": [100.0, 200.0, 300.0],
+                "quantity": [2, 4, 5]
+            })
+            result_df = fg.execute_odts(test_df)
+
+            # Test with a dictionary (online inference simulation)
+            test_dict = {"amount": 100.0, "quantity": 2}
+            result_dict = fg.execute_odts(test_dict, online=True)
+            ```
 
         Parameters:
-            data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
-            transformation_context: Transformation context to be used when applying the transformations.
-            request_parameters: Request parameters to be used when applying the transformations.
+            data: Input data to apply transformations to. This can a dataframe or a dictionary.
+            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized). Defaults to offline mode
+            transformation_context: A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
+                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
+            request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
 
         Returns:
-            The updated dataframe or dictionary with the transformations applied.
+            The transformed data in the same format as the input:
+                - `pd.DataFrame` if input was a DataFrame
+                - `dict[str, Any]` if input was a dictionary
         """
         if self.transformation_functions:
-            df = self._feature_group_engine.apply_on_demand_transformations(
+            data = self._feature_group_engine.apply_on_demand_transformations(
                 transformation_functions=self.transformation_functions,
                 data=data,
                 online=online,
@@ -4117,7 +4150,7 @@ class FeatureGroup(FeatureGroupBase):
             _logger.info(
                 "No on-demand transformation functions attached to the feature group, no transformations applied."
             )
-        return df
+        return data
 
     @property
     def id(self) -> int | None:

@@ -1127,7 +1127,7 @@ class Engine:
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1208,7 +1208,7 @@ class Engine:
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.

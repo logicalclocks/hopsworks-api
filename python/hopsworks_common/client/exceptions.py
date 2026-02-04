@@ -94,7 +94,7 @@ class TransformationFunctionException(Exception):
     def __init__(
         self,
         message: str,
-        missing_features: str,
+        missing_features: set[str],
         transformation_function_name: str,
         transformation_type: str,
     ) -> None:

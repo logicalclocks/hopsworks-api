@@ -1106,7 +1106,7 @@ class TestTransformationFunction:
             )
             assert transformed_values_offline.name == "add_one_feature_"
         else:
-            assert transformed_values_offline == expected_online_value
+            assert transformed_values_offline == offline_expected_data
 
     def test_execute_statistics_and_context(self, mocker):
         mocker.patch("hsfs.engine.get_type", return_value="python")

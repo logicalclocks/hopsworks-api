@@ -846,21 +846,128 @@ def renaming_wrapper(*args):
 
     def executor(
         self,
-        statistics: TransformationStatistics = None,
+        statistics: TransformationStatistics
+        | list[FeatureDescriptiveStatistics]
+        | dict[str, dict[str, Any]] = None,
         context: dict[str, Any] = None,
         online: bool = False,
     ) -> Any:
-        """Function that returns an callable object that can be executed to obtain the resulting values of the UDF.
+        """Create an executable transformation with optional statistics and context for unit testing.
 
-        The function allows the user to set the information in the UDF like transformation statistics and transformation context and then execute it.
+        This method returns a callable object that can execute the UDF with the specified
+        configuration. It is designed for unit testing transformation functions locally.
+
+        The executor allows you to:
+        - Inject mock statistics for testing model-dependent transformations
+        - Provide transformation context for testing transformation functions using
+        - Switch between online (single-value) and offline (batch) execution modes
+
+        !!! example "Testing UDF with pandas execution mode"
+            ```python
+            @udf(return_type=float, mode="pandas")
+            def add_one(value):
+                return value + 1
+
+            # Create executor and test
+            executor = add_one.executor()
+            result = executor.execute(pd.Series([1.0, 2.0, 3.0]))
+            assert result.tolist() == [2.0, 3.0, 4.0]
+            ```
+
+        !!! example "Testing UDF with python execution mode"
+            ```python
+            @udf(return_type=float, mode="python")
+            def add_one(value):
+                return value + 1
+
+            # Create executor and test
+            executor = add_one.executor()
+            result = executor.execute(1.0)
+            assert result == 2.0
+            ```
+
+        !!! example "Testing UDF with default execution mode"
+            ```python
+            # In the default execution mode, Hopsworks executes the transformation function as pandas UDF for batch processing and as python function for online processing to get optimal.
+            # Hence, the function should should be able to handle both online and offline execution modes and unit-test musts be written for both these use-cases.
+            # In the offline mode, Hopsworks would pass a pandas Series to the function.
+            # In the online mode, Hopsworks would pass a single value to the function.
+
+            @udf(return_type=float)
+            def double_value(value):
+                return value * 2
+
+            # Offline mode (batch processing with pandas Series)
+            offline_executor = double_value.executor(online=False)
+            batch_result = offline_executor.execute(pd.Series([1.0, 2.0, 3.0]))
+
+            # Online mode (single value processing)
+            online_executor = double_value.executor(online=True)
+            single_result = online_executor.execute(5.0)
+            assert single_result == 10.0
+            ```
+
+        !!! example "Unit test with mocked statistics"
+            ```python
+            from hsfs.transformation_statistics import TransformationStatistics
+
+            @udf(return_type=float)
+            def normalize(value, statistics=TransformationStatistics("value")):
+                return (value - statistics.value.mean) / statistics.value.std_dev
+
+            # Test with mock statistics
+            executor = normalize.executor(statistics={"value": {"mean": 100.0, "std_dev": 25.0}})
+            result = executor.execute(pd.Series([100.0, 125.0, 150.0]))
+            assert result.tolist() == [0.0, 1.0, 2.0]
+            ```
+
+
+        !!! example "Unit test with transformation context"
+            ```python
+            @udf(return_type=float)
+            def apply_discount(price, context):
+                return price * (1 - context["discount_rate"])
+
+            executor = apply_discount.executor(context={"discount_rate": 0.1})
+            result = executor.execute(pd.Series([100.0, 200.0]))
+            assert result.tolist() == [90.0, 180.0]
+            ```
+
+        !!! example "Testing online vs offline execution modes"
+            ```python
+            # For transformation functions using the default execution mode `default`.
+            # The function should should be able to handle both online and offline execution modes.
+            # In the offline mode, Hopsworks would pass a pandas Series to the function.
+            # In the online mode, Hopsworks would pass a single value to the function.
+            @udf(return_type=float, mode="default")
+            def double_value(value):
+                return value * 2
+
+            # Offline mode (batch processing with pandas Series)
+            offline_executor = double_value.executor(online=False)
+            batch_result = offline_executor.execute(pd.Series([1.0, 2.0, 3.0]))
+
+            # Online mode (single value processing)
+            online_executor = double_value.executor(online=True)
+            single_result = online_executor.execute(5.0)
+            assert single_result == 10.0
+            ```
 
         Parameters:
-            statistics: Statistics to be passed to the UDF.
-            context: Transformation context to be passed to the UDF.
-            online: Apply the UDF for online or offline usecase. This parameter is applicable when a UDF is defined using the `default` execution mode.
+            statistics: Statistics for model-dependent transformations.
+                Can be provided as:
+
+                - `TransformationStatistics`: Pre-built statistics object
+                - `dict[str, dict[str, Any]]`: Dictionary mapping feature names to their statistics (e.g., `{"amount": {"mean": 100.0, "std_dev": 25.0}}`)
+                - `list[FeatureDescriptiveStatistics]`: List of statistics objects from Hopsworks
+            context: A dictionary mapping variable names to values that provide contextual
+                information to the transformation function at runtime.
+                The keys must match parameter names defined in the UDF.
+            online: Whether to execute in online mode (single values) or offline mode (batch/vectorized).
+                Only applicable when the UDF uses `mode="default"`.
 
         Returns:
-            A callable object that can be executed to obtain the resulting values of the UDF.
+            A callable object with an `execute(*args)` method to run the transformation.
         """
         # Fetch existing stateful information in the UDF.
         udf = copy.deepcopy(self)
@@ -881,16 +988,38 @@ def renaming_wrapper(*args):
         return executable
 
     def execute(self, *args) -> Any:
-        """Function to execute the UDF with the passed arguments.
+        """Execute the UDF directly with the provided arguments.
 
-        This function execute the UDF in the offline mode with no transformation statistics and transformation context.
-        To execute the UDF in the online mode with transformation statistics and transformation context, use the `executor` function.
+        This is a convenience method for quick testing of simple UDFs that don't require
+        statistics or transformation context. It executes the UDF in offline mode (batch processing).
+
+        !!! example "Quick UDF testing"
+            ```python
+            @udf(return_type=float)
+            def add_one(value):
+                return value + 1
+
+            # Direct execution for simple tests
+            result = add_one.execute(pd.Series([1.0, 2.0, 3.0]))
+            assert result.tolist() == [2.0, 3.0, 4.0]
+            ```
+
+        !!! note
+            For UDFs that require statistics or transformation context or need to be executed in online mode, use [`executor()`][hsfs.hopsworks_udf.HopsworksUdf.executor] instead:
+            ```python
+            result = my_udf.executor(statistics=stats, context=ctx).execute(data)
+            ```
 
         Parameters:
-            *args: The arguments to be passed to the UDF.
+            *args: Input arguments matching the UDF's parameter signature.
+                For batch processing, pass pandas Series or DataFrames.
 
         Returns:
-            The resulting values of the UDF.
+            The transformed values.
+            - pd.Series - Single output Pandas UDFs.
+            - pd.DataFrame - Multi-output Pandas UDFs.
+            - int | float | str | bool | datetime | time | date - Single output Python UDFs.
+            - tuple[int | float | str | bool | datetime | time | date] - Multi-output Python UDFs.
         """
         return self.executor().execute(*args)
 
@@ -1171,8 +1300,7 @@ def renaming_wrapper(*args):
         elif isinstance(statistics, dict):
             self._statistics = TransformationStatistics(*statistics.keys())
             for key, value in statistics.items():
-                value["feature_name"] = key
-                self._statistics.set_statistics(key, value)
+                self._statistics.set_statistics(key, {"feature_name": key, **value})
         else:
             self._statistics = TransformationStatistics(
                 *self._statistics_argument_names
