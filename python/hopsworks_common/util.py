@@ -34,7 +34,11 @@ from urllib.parse import urljoin, urlparse
 
 import humps
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException, JobException
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    JobException,
+    ModelRegistryException,
+)
 from hopsworks_common.constants import MODEL, PREDICTOR, Default
 from hopsworks_common.core.constants import HAS_PANDAS
 from hopsworks_common.git_file_status import GitFileStatus
@@ -598,6 +602,15 @@ def validate_metrics(metrics):
                 raise ValueError(
                     f"{str(metrics[metric])} is not a number, only numbers can be attached as metadata for models."
                 ) from err
+
+
+def validate_model_name(name):
+    """Validate model name contains only alphanumeric characters and underscores."""
+    if not re.fullmatch(r"[a-zA-Z0-9_]+", name):
+        raise ModelRegistryException(
+            f"Invalid model name '{name}'. Model name must contain only alphanumeric characters "
+            "and underscores (regex: [a-zA-Z0-9_]+)."
+        )
 
 
 # Model serving

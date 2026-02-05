@@ -373,6 +373,7 @@ class ModelEngine:
             model_instance._project_name = _client._project_name
 
         util.validate_metrics(model_instance.training_metrics)
+        util.validate_model_name(model_instance._name)
 
         if not self._dataset_api.path_exists(dataset_models_root_path):
             raise AssertionError(
