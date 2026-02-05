@@ -202,6 +202,7 @@ class TestModel:
             "script_file": p_json["transformer"],
             "resources": copy.deepcopy(p_json["transformer_resources"]),
         }
+        scaling_configuration = copy.deepcopy(p_json["predictor_scaling_config"])
 
         # Act
         m = model.Model.from_response_json(m_json)
@@ -214,6 +215,7 @@ class TestModel:
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
+            scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=p_json["api_protocol"],
             environment=p_json["environment_dto"]["name"],
@@ -230,6 +232,7 @@ class TestModel:
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
+            scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=p_json["api_protocol"],
             environment=p_json["environment_dto"]["name"],

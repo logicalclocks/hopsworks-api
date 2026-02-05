@@ -26,6 +26,7 @@ from hsml.inference_batcher import InferenceBatcher
 if TYPE_CHECKING:
     from hopsworks_common.constants import Default
     from hsml.resources import Resources
+    from hsml.scaling_config import ComponentScalingConfig
 
 
 class DeployableComponent(ABC):
@@ -36,6 +37,7 @@ class DeployableComponent(ABC):
         script_file: str | None = None,
         resources: Resources | None = None,
         inference_batcher: InferenceBatcher | dict | Default | None = None,
+        scaling_configuration: ComponentScalingConfig | dict | Default | None = None,
         **kwargs,
     ):
         self._script_file = script_file
@@ -44,6 +46,7 @@ class DeployableComponent(ABC):
             util.get_obj_from_json(inference_batcher, InferenceBatcher)
             or InferenceBatcher()
         )
+        self._scaling_configuration = scaling_configuration
 
     @classmethod
     @abstractmethod
@@ -92,3 +95,12 @@ class DeployableComponent(ABC):
     @inference_batcher.setter
     def inference_batcher(self, inference_batcher: InferenceBatcher):
         self._inference_batcher = inference_batcher
+
+    @property
+    def scaling_configuration(self):
+        """Scaling configuration for the deployment component (i.e., predictor or transformer)."""
+        return self._scaling_configuration
+
+    @scaling_configuration.setter
+    def scaling_configuration(self, scaling_configuration: ComponentScalingConfig):
+        self._scaling_configuration = scaling_configuration
