@@ -49,7 +49,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         else:
             transformed_features = []
             dropped_features = []
-            feature_names = [feature.name for feature in features]
+            feature_names = [f.name for f in features]
             for tf in feature_group.transformation_functions:
                 transformed_features.extend(
                     [
