@@ -415,6 +415,11 @@ class ModelEngine:
                     self._engine.mkdir(model_instance.version_path)
                     self._engine.mkdir(model_instance.model_files_path)
                 if step["id"] == 1:
+                    if not keep_original_files:
+                        print(
+                            f"Model files will be moved from '{model_path}' to the model registry. "
+                            "Set keep_original_files=True to copy instead."
+                        )
 
                     def update_upload_progress(n_dirs=0, n_files=0, step=step):
                         pbar.set_description(
