@@ -23,6 +23,7 @@ from hopsworks_common import version
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_function import TransformationFunction, TransformationType
+from hsfs.transformation_statistics import TransformationStatistics
 from packaging.version import Version
 
 
@@ -1058,3 +1059,78 @@ class TestTransformationFunction:
         )
 
         assert mdt != odt
+
+    @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
+    def test_execute(self, mocker, execution_mode):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int, mode=execution_mode)
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        if execution_mode == "default":
+            online_test_data = 1
+            offline_test_data = pd.Series(data=[1, 2, 3])
+        elif execution_mode == "python":
+            online_test_data = offline_test_data = 1
+        elif execution_mode == "pandas":
+            online_test_data = offline_test_data = pd.Series(data=[1, 2, 3])
+
+        expected_online_value = online_test_data + 1
+        offline_expected_data = offline_test_data + 1
+
+        transformed_values_online = mdt.executor(online=True).execute(online_test_data)
+        transformed_values_offline = mdt.executor(online=False).execute(
+            offline_test_data
+        )
+
+        if isinstance(online_test_data, pd.Series):
+            assert (
+                transformed_values_online.values.tolist()
+                == expected_online_value.values.tolist()
+            )
+            assert transformed_values_offline.name == "add_one_feature_"
+        else:
+            assert transformed_values_online == expected_online_value
+
+        if isinstance(offline_test_data, pd.Series):
+            assert (
+                transformed_values_offline.values.tolist()
+                == offline_expected_data.values.tolist()
+            )
+            assert transformed_values_offline.name == "add_one_feature_"
+        else:
+            assert transformed_values_offline == offline_expected_data
+
+    def test_execute_statistics_and_context(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        stats = TransformationStatistics("feature")
+
+        @udf(int, mode="pandas")
+        def add_statistics_data(feature, context, statistics=stats):
+            return feature + statistics.feature.mean + context["test_value"]
+
+        tf = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_statistics_data,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        data = pd.Series([1, 2, 3])
+
+        statistics = TransformationStatistics("feature")
+        statistics.set_statistics("feature", {"feature_name": "feature", "mean": 10})
+
+        assert tf.executor(statistics=statistics, context={"test_value": 10}).execute(
+            data
+        ).values.tolist() == [21, 22, 23]
+
+        assert tf.executor(
+            statistics={"feature": {"mean": 100}}, context={"test_value": 10}
+        ).execute(data).values.tolist() == [111, 112, 113]

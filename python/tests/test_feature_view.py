@@ -15,6 +15,7 @@
 #
 import warnings
 
+import pytest
 from hopsworks_common import version
 from hsfs import feature, feature_group, feature_view, training_dataset_feature
 from hsfs.constructor import query
@@ -449,3 +450,569 @@ class TestFeatureView:
 
         # Assert
         assert root_feature_group_event_time == "event_time"
+
+
+class TestFeatureViewExecuteOdts:
+    def test_execute_odts_with_transformations(self, mocker):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        odts_list = [odt("fg1_feature")]
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        # Mock the property since it's computed from features
+        mocker.patch.object(
+            type(fv),
+            "_on_demand_transformation_functions",
+            new_callable=mocker.PropertyMock,
+            return_value=odts_list,
+        )
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline)
+        df_test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+        result_df = fv.execute_odts(data=df_test_data, online=False)
+
+        mock_apply.assert_called_with(
+            transformation_functions=odts_list,
+            data=df_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online)
+        dict_test_data = {"fg1_feature": 1.0}
+        result_dict = fv.execute_odts(data=dict_test_data, online=True)
+
+        mock_apply.assert_called_with(
+            transformation_functions=odts_list,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_odts_with_transformation_context_and_request_parameters(
+        self, mocker
+    ):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_context_value(feature, context):
+            return feature + context["value"]
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_context_value,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        odts_list = [odt("fg1_feature")]
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        mocker.patch.object(
+            type(fv),
+            "_on_demand_transformation_functions",
+            new_callable=mocker.PropertyMock,
+            return_value=odts_list,
+        )
+
+        context = {"value": 10}
+        request_params = {"param1": "value1"}
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline) and transformation_context
+        df_test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+        result_df = fv.execute_odts(
+            data=df_test_data, online=False, transformation_context=context
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=odts_list,
+            data=df_test_data,
+            online=False,
+            transformation_context=context,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online) and request_parameters
+        dict_test_data = {"fg1_feature": 1.0}
+        result_dict = fv.execute_odts(
+            data=dict_test_data, online=True, request_parameters=request_params
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=odts_list,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=request_params,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_odts_no_transformations(self, mocker, caplog):
+        import logging
+
+        import pandas as pd
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        # Mock empty list - no ODTs attached
+        mocker.patch.object(
+            type(fv),
+            "_on_demand_transformation_functions",
+            new_callable=mocker.PropertyMock,
+            return_value=[],
+        )
+
+        test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+        )
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = fv.execute_odts(data=test_data, online=False)
+
+        # Assert
+        mock_apply.assert_not_called()
+        assert (
+            "No on-demand transformation functions attached to the feature view"
+            in caplog.text
+        )
+        pd.testing.assert_frame_equal(result, test_data)
+
+    @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
+    def test_execute_odts_execution_modes(self, mocker, execution_mode):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int, mode=execution_mode)
+        def add_one(feature):
+            return feature + 1
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        odts_list = [odt("fg1_feature")]
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        mocker.patch.object(
+            type(fv),
+            "_on_demand_transformation_functions",
+            new_callable=mocker.PropertyMock,
+            return_value=odts_list,
+        )
+
+        if execution_mode == "default":
+            online_test_data = {"fg1_feature": 1.0}
+            offline_test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+        elif execution_mode == "python":
+            online_test_data = offline_test_data = {"fg1_feature": 1.0}
+        elif execution_mode == "pandas":
+            online_test_data = offline_test_data = pd.DataFrame(
+                {"fg1_feature": [1.0, 2.0, 3.0]}
+            )
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Act - online
+        fv.execute_odts(data=online_test_data, online=True)
+
+        # Assert - online
+        mock_apply.assert_called_with(
+            transformation_functions=odts_list,
+            data=online_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+
+        # Act - offline
+        fv.execute_odts(data=offline_test_data, online=False)
+
+        # Assert - offline
+        mock_apply.assert_called_with(
+            transformation_functions=odts_list,
+            data=offline_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
+
+
+class TestFeatureViewExecuteMdts:
+    def test_execute_mdts_with_transformations(self, mocker):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            transformation_functions=[mdt("fg1_feature")],
+        )
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline)
+        df_test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+        result_df = fv.execute_mdts(data=df_test_data, online=False)
+
+        mock_apply.assert_called_with(
+            transformation_functions=fv.transformation_functions,
+            data=df_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online)
+        dict_test_data = {"fg1_feature": 1.0}
+        result_dict = fv.execute_mdts(data=dict_test_data, online=True)
+
+        mock_apply.assert_called_with(
+            transformation_functions=fv.transformation_functions,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_mdts_with_transformation_context_and_request_parameters(
+        self, mocker
+    ):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_context_value(feature, context):
+            return feature + context["value"]
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_context_value,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            transformation_functions=[mdt("fg1_feature")],
+        )
+
+        context = {"value": 10}
+        request_params = {"param1": "value1"}
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline) and transformation_context
+        df_test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+        result_df = fv.execute_mdts(
+            data=df_test_data, online=False, transformation_context=context
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=fv.transformation_functions,
+            data=df_test_data,
+            online=False,
+            transformation_context=context,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online) and request_parameters
+        dict_test_data = {"fg1_feature": 1.0}
+        result_dict = fv.execute_mdts(
+            data=dict_test_data, online=True, request_parameters=request_params
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=fv.transformation_functions,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=request_params,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_mdts_with_statistics(self, mocker):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+        from hsfs.transformation_statistics import TransformationStatistics
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        stats = TransformationStatistics("feature")
+
+        @udf(float, mode="pandas")
+        def normalize(feature, statistics=stats):
+            return (feature - statistics.feature.mean) / statistics.feature.std_dev
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=normalize,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            transformation_functions=[mdt("fg1_feature")],
+        )
+
+        test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+        expected_result = pd.DataFrame(
+            {"fg1_feature": [1.0, 2.0, 3.0], "normalize_fg1_feature_": [-1.0, 0.0, 1.0]}
+        )
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+            return_value=expected_result,
+        )
+
+        # Act
+        result = fv.execute_mdts(data=test_data, online=False)
+
+        # Assert
+        mock_apply.assert_called_once_with(
+            transformation_functions=fv.transformation_functions,
+            data=test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        assert result is expected_result
+
+    def test_execute_mdts_no_transformations(self, mocker, caplog):
+        import logging
+
+        import pandas as pd
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            transformation_functions=[],
+        )
+
+        test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+        )
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = fv.execute_mdts(data=test_data, online=False)
+
+        # Assert
+        mock_apply.assert_not_called()
+        assert (
+            "No model dependent transformation functions attached to the feature view"
+            in caplog.text
+        )
+        pd.testing.assert_frame_equal(result, test_data)
+
+    @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
+    def test_execute_mdts_execution_modes(self, mocker, execution_mode):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int, mode=execution_mode)
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            transformation_functions=[mdt("fg1_feature")],
+        )
+
+        if execution_mode == "default":
+            online_test_data = {"fg1_feature": 1.0}
+            offline_test_data = pd.DataFrame({"fg1_feature": [1.0, 2.0, 3.0]})
+        elif execution_mode == "python":
+            online_test_data = offline_test_data = {"fg1_feature": 1.0}
+        elif execution_mode == "pandas":
+            online_test_data = offline_test_data = pd.DataFrame(
+                {"fg1_feature": [1.0, 2.0, 3.0]}
+            )
+
+        mock_apply = mocker.patch.object(
+            fv._feature_view_engine,
+            "apply_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Act - online
+        fv.execute_mdts(data=online_test_data, online=True)
+
+        # Assert - online
+        mock_apply.assert_called_with(
+            transformation_functions=fv.transformation_functions,
+            data=online_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+
+        # Act - offline
+        fv.execute_mdts(data=offline_test_data, online=False)
+
+        # Assert - offline
+        mock_apply.assert_called_with(
+            transformation_functions=fv.transformation_functions,
+            data=offline_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
