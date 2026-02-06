@@ -207,12 +207,18 @@ def udf(
     """
 
     def wrapper(func: Callable) -> HopsworksUdf:
-        return HopsworksUdf(
+        udf_obj = HopsworksUdf(
             func=func,
             return_types=return_type,
             dropped_argument_names=drop,
             execution_mode=UDFExecutionMode.from_string(mode),
         )
+        # Preserve the original function's metadata for documentation generation
+        udf_obj.__doc__ = func.__doc__
+        udf_obj.__name__ = func.__name__
+        udf_obj.__module__ = func.__module__
+        udf_obj.__wrapped__ = func  # Standard attribute for decorated functions
+        return udf_obj
 
     return wrapper
 
