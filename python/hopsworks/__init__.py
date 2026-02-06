@@ -470,6 +470,7 @@ def create_project(
     return None
 
 
+@public
 def get_secrets_api() -> secret_api.SecretsApi:
     """Get the secrets api.
 

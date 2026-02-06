@@ -27,7 +27,7 @@ from hopsworks_common.core import project_api
 class SecretsApi:
     """API for managing secrets in Hopsworks.
 
-    You can get an instance of this class with [`Project.get_secrets_api`][hopsworks.project.Project.get_secrets_api].
+    You can get an instance of this class with [`hopsworks.get_secrets_api`][hopsworks.get_secrets_api].
     """
     def __init__(
         self,
