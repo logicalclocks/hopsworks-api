@@ -94,7 +94,7 @@ class TestArrowFlightClient:
         json_td = backend_fixtures["training_dataset"]["get_basic_info"]["response"]
         td_hopsfs = training_dataset.TrainingDataset.from_response_json(json_td)[0]
         td_hopsfs.training_dataset_type = "HOPSFS_TRAINING_DATASET"
-        td_hopsfs.storage_connector = HopsFSConnector(0, "", "")
+        td_hopsfs.storage_connector = HopsFSConnector(0, "", "", hopsfs_path="/path")
         td_hopsfs.data_format = data_format
         mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata",
