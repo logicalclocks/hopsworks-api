@@ -50,6 +50,7 @@ nav:
     - Storage Connector: storage_connector_api.md
     - TrainingDataset: training_dataset_api.md
     - Transformation Functions:
+      - transformation_functions_overview.md
       - HopsworksUDF: hopsworks_udf.md
       - Transformation Statistics:
         - FeatureTransformationStatistics: feature_transformation_statistics.md
