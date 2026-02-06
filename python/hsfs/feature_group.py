@@ -4172,7 +4172,59 @@ class FeatureGroup(FeatureGroupBase):
     def transformation_functions(
         self,
     ) -> list[TransformationFunction]:
-        """Get transformation functions."""
+        """On-demand transformation functions attached to this feature group.
+
+        On-demand transformations compute features that require request-time parameters
+        (e.g., current timestamp, real-time data). They are:
+
+        - **Executed on insert**: When data is inserted into the feature group, on-demand
+          transformations are applied to backfill the computed features into the offline/online stores.
+        - **Computed at inference time**: During online inference via `get_feature_vector()`,
+          on-demand features are recomputed using `request_parameters`.
+
+        On-demand transformations cannot access training dataset statistics. For transformations
+        that need statistics (scaling, encoding), use model-dependent transformations on feature views.
+
+        Example: Creating a feature group with on-demand transformations
+            ```python
+            from hopsworks import udf
+
+            @udf(return_type=int, drop=["event_time"])
+            def days_since_event(event_time, context):
+                return (context["current_time"] - event_time).dt.days
+
+            fg = fs.create_feature_group(
+                name="transactions",
+                primary_key=["transaction_id"],
+                transformation_functions=[days_since_event]
+            )
+
+            # On insert, days_since_event is computed and stored
+            fg.insert(df)
+            ```
+
+        Example: Using on-demand features in a feature view
+            ```python
+            # Select the on-demand feature in a query
+            query = fg.select(["transaction_id", "amount", "days_since_event"])
+
+            # Create feature view - on-demand transformations are inherited
+            fv = fs.create_feature_view(name="my_view", query=query)
+
+            # At inference time, provide request_parameters
+            vector = fv.get_feature_vector(
+                entry={"transaction_id": 123},
+                request_parameters={"current_time": datetime.now()}
+            )
+            ```
+
+        Returns:
+            List of on-demand transformation functions.
+
+        See Also:
+            - [`TransformationType.ON_DEMAND`][hsfs.transformation_function.TransformationType]: On-demand transformation description.
+            - [`FeatureView.transformation_functions`][hsfs.feature_view.FeatureView.transformation_functions]: Model-dependent transformations.
+        """
         return self._transformation_functions
 
     @description.setter

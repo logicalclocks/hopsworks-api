@@ -41,7 +41,23 @@ if TYPE_CHECKING:
 
 
 class UDFExecutionMode(Enum):
-    """Class that store the possible execution types of UDF's."""
+    """Execution mode controlling how a UDF runs in different contexts.
+
+    The execution mode determines whether the UDF executes as a vectorized Pandas function
+    (efficient for large datasets) or as a row-by-row Python function (efficient for single records).
+
+    Attributes:
+        DEFAULT: Adapts execution based on context.
+            Uses PYTHON mode for online inference (single feature vectors) and
+            PANDAS mode for training dataset creation and batch inference.
+            This is the recommended mode for most transformation functions.
+        PYTHON: Always executes the UDF as a Python function processing one record at a time.
+            Use this when the transformation logic cannot be vectorized or when working
+            with complex Python objects that don't support Pandas operations.
+        PANDAS: Always executes the UDF as a vectorized Pandas function.
+            Use this when you need consistent vectorized behavior across all contexts,
+            or when the transformation requires Pandas-specific operations.
+    """
 
     DEFAULT = "default"
     PYTHON = "python"
@@ -76,33 +92,118 @@ def udf(
     drop: str | list[str] | None = None,
     mode: Literal["default", "python", "pandas"] = "default",
 ) -> HopsworksUdf:
-    """Create an User Defined Function that can be and used within the Hopsworks Feature Store to create transformation functions.
+    """Create a User Defined Function for use as a transformation function in the Hopsworks Feature Store.
 
-    Hopsworks UDF's are user defined functions that executes as 'pandas_udf' when executing in spark engine and as pandas functions in the python engine.
-    The pandas udf/pandas functions gets as inputs pandas Series's and can provide as output a pandas Series or a pandas DataFrame.
-    A Hopsworks udf is defined using the `hopsworks_udf` decorator.
-    The outputs of the defined UDF must be mentioned in the decorator as a list of python types.
+    Transformation functions transform feature data and can be attached to feature groups to create
+    [on-demand transformations][hsfs.feature_group.FeatureGroup] or to feature views to create
+    [model-dependent transformations][hsfs.feature_view.FeatureView].
 
+    Hopsworks UDFs execute as `pandas_udf` in the Spark engine and as Pandas functions in the Python engine.
+    The UDF receives Pandas Series as input and returns either a Pandas Series (single output) or
+    multiple Series/DataFrame (multiple outputs).
 
-    Example:
+    Hopsworks supports four transformation patterns:
+
+    - **One-to-one**: One input feature → one output feature
+    - **Many-to-one**: Multiple input features → one output feature
+    - **One-to-many**: One input feature → multiple output features
+    - **Many-to-many**: Multiple input features → multiple output features
+
+    The supported Python types for `return_type` are:
+
+    | Python Type        | Description                    |
+    |--------------------|--------------------------------|
+    | `str`              | String/text data               |
+    | `int`              | Integer numbers                |
+    | `float`            | Floating-point numbers         |
+    | `bool`             | Boolean values                 |
+    | `datetime.datetime`| Timestamp with date and time   |
+    | `datetime.date`    | Date without time              |
+    | `datetime.time`    | Time without date              |
+
+    Example: One-to-one transformation
         ```python
         from hopsworks import udf
 
-        @udf(float)
-        def add_one(data1):
-            return data1 + 1
+        @udf(return_type=float)
+        def add_one(feature):
+            return feature + 1
         ```
 
+    Example: Many-to-one transformation
+        ```python
+        from hopsworks import udf
+
+        @udf(return_type=float)
+        def sum_features(feature1, feature2, feature3):
+            return feature1 + feature2 + feature3
+        ```
+
+    Example: One-to-many transformation
+        ```python
+        from hopsworks import udf
+
+        @udf(return_type=[int, int])
+        def split_feature(feature):
+            return feature + 1, feature + 2
+        ```
+
+    Example: Using training dataset statistics for model-dependent transformations
+        ```python
+        from hopsworks import udf
+        from hsfs.transformation_statistics import TransformationStatistics
+
+        stats = TransformationStatistics("feature")
+
+        @udf(return_type=float, drop=["feature"])
+        def normalize(feature, statistics=stats):
+            return (feature - statistics.feature.mean) / statistics.feature.stddev
+        ```
+
+    Example: Using context variables for dynamic parameters
+        ```python
+        from hopsworks import udf
+
+        @udf(return_type=int)
+        def time_since(event_time, context):
+            return (context["current_time"] - event_time).dt.days
+        ```
+
+    Note: Execution Modes
+        - `default`: Uses Python UDF for online inference (optimized for single records) and
+          Pandas UDF for training/batch inference (optimized for large datasets). Recommended for most use cases.
+        - `python`: Always executes as a Python UDF. Use when the transformation cannot be vectorized.
+        - `pandas`: Always executes as a Pandas UDF. Use when you need vectorized operations everywhere.
+
+    Warning: PySpark Kernels
+        Defining transformation functions within a Jupyter notebook is only supported in Python kernels.
+        In PySpark kernels, transformation functions must be defined in modules or added when starting the notebook.
+
     Parameters:
-        return_type: The output types of the defined UDF.
-        drop: The features to be dropped after application of transformation functions.
-        mode: The exection mode of the UDF.
+        return_type:
+            The Python type(s) of the output feature(s).
+            Use a single type for one output feature, or a list of types for multiple output features.
+        drop:
+            Feature name(s) to exclude from the output after the transformation is applied.
+            Useful when the transformed feature replaces the original (e.g., scaling).
+        mode:
+            Execution mode controlling how the UDF runs.
+            `"default"` adapts to the context (Python for online, Pandas for batch).
+            `"python"` always runs as a row-by-row Python function.
+            `"pandas"` always runs as a vectorized Pandas function.
 
     Returns:
-        The metadata object for hopsworks UDF's.
+        A [`HopsworksUdf`][hsfs.hopsworks_udf.HopsworksUdf] metadata object that can be attached to
+        feature groups or feature views, or saved to the feature store.
 
     Raises:
-        hopsworks.client.exceptions.FeatureStoreException: If unable to create UDF.
+        FeatureStoreException: If the return_type contains unsupported Python types.
+
+    See Also:
+        - [`TransformationFunction`][hsfs.transformation_function.TransformationFunction]: Wrapper for saved transformation functions.
+        - [`TransformationStatistics`][hsfs.transformation_statistics.TransformationStatistics]: Access training dataset statistics in UDFs.
+        - [`FeatureView.transformation_functions`][hsfs.feature_view.FeatureView.transformation_functions]: Attach as model-dependent transformations.
+        - [`FeatureGroup.transformation_functions`][hsfs.feature_group.FeatureGroup.transformation_functions]: Attach as on-demand transformations.
     """
 
     def wrapper(func: Callable) -> HopsworksUdf:
@@ -139,22 +240,39 @@ class TransformationFeature:
 
 @typechecked
 class HopsworksUdf:
-    """Meta data for user defined functions.
+    """Metadata container for a Hopsworks User Defined Function.
 
-    Stores meta data required to execute the user defined function in both spark and python engine.
-    The class generates uses the metadata to dynamically generate user defined functions based on the engine it is executed in.
+    This class is created by the [`@udf`][hsfs.hopsworks_udf.udf] decorator and manages the execution
+    of transformation functions across different engines (Spark, Python) and contexts (training, batch inference, online inference).
 
-    Parameters:
-        func: The transformation function object or the source code of the transformation function.
-        return_types: A python type or a list of python types that denotes the data types of the columns output from the transformation functions.
-        name: Name of the transformation function.
-        transformation_features: A list of objects of `TransformationFeature` that maps the feature used for transformation to their corresponding statistics argument names if any.
-        transformation_function_argument_names: The argument names of the transformation function.
-        dropped_argument_names: The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
-        dropped_feature_names: The feature name corresponding to the arguments names that are dropped.
-        feature_name_prefix: Prefixes if any used in the feature view.
-        output_column_names: The names of the output columns returned from the transformation function.
-        generate_output_col_names: Generate default output column names for the transformation function.
+    Users typically interact with this class through the `@udf` decorator rather than instantiating it directly.
+    The class handles:
+
+    - Extracting and storing the function source code for serialization
+    - Managing input feature mappings and output column names
+    - Providing access to training dataset statistics via [`TransformationStatistics`][hsfs.transformation_statistics.TransformationStatistics]
+    - Generating appropriate UDF wrappers for Spark (pandas_udf) or Python execution
+
+    Example: Creating and using a HopsworksUdf
+        ```python
+        from hopsworks import udf
+
+        # The decorator creates a HopsworksUdf instance
+        @udf(return_type=float)
+        def add_one(feature):
+            return feature + 1
+
+        # Call with feature names to bind to specific features
+        bound_udf = add_one("my_feature")
+
+        # Use alias to set custom output column names
+        add_one.alias("my_transformed_feature")
+        ```
+
+    Note: Internal Class
+        This class is primarily for internal use.
+        Users should create UDFs using the [`@udf`][hsfs.hopsworks_udf.udf] decorator
+        and interact with them through [`TransformationFunction`][hsfs.transformation_function.TransformationFunction].
     """
 
     # Mapping for converting python types to spark types - required for creating pandas UDF's.
@@ -733,7 +851,49 @@ def renaming_wrapper(*args):
         return udf
 
     def alias(self, *args: str):
-        """Set the names of the transformed features output by the UDF."""
+        """Set custom names for the output features produced by this UDF.
+
+        Override the default auto-generated output column names with custom names.
+        This is useful for creating meaningful feature names in your training data.
+
+        The number of names provided must match the number of output features
+        (determined by the `return_type` parameter of the [`@udf`][hsfs.hopsworks_udf.udf] decorator).
+
+        Example: Set custom output names
+            ```python
+            from hopsworks import udf
+
+            @udf(return_type=[float, float])
+            def extract_coords(location):
+                # Returns latitude and longitude
+                return location.lat, location.lon
+
+            # Set meaningful output names
+            extract_coords.alias("latitude", "longitude")
+            ```
+
+        Example: Method chaining
+            ```python
+            feature_view = fs.create_feature_view(
+                name="my_view",
+                query=fg.select_all(),
+                transformation_functions=[
+                    normalize("value").alias("normalized_value")
+                ]
+            )
+            ```
+
+        Parameters:
+            *args: Output feature names as positional arguments.
+                Can also pass a single list of names.
+
+        Returns:
+            This HopsworksUdf instance (for method chaining).
+
+        Raises:
+            FeatureStoreException: If names are not strings, not unique,
+                exceed 63 characters, or don't match the number of outputs.
+        """
         if len(args) == 1 and isinstance(args[0], list):
             # If a single list is passed, use it directly
             output_col_names = args[0]
@@ -985,7 +1145,12 @@ def renaming_wrapper(*args):
 
     @property
     def return_types(self) -> list[str]:
-        """Get the output types of the UDF."""
+        """Data types of the output features as Spark type strings.
+
+        Returns the types specified in the `return_type` parameter of the
+        [`@udf`][hsfs.hopsworks_udf.udf] decorator, converted to Spark type strings
+        (e.g., `"string"`, `"bigint"`, `"double"`, `"boolean"`, `"timestamp"`, `"date"`).
+        """
         # Update the number of outputs for one hot encoder to match the number of unique values for the feature
         if self.function_name == "one_hot_encoder" and self.transformation_statistics:
             self.update_return_type_one_hot()
@@ -993,24 +1158,48 @@ def renaming_wrapper(*args):
 
     @property
     def function_name(self) -> str:
-        """Get the function name of the UDF."""
+        """Name of the transformation function.
+
+        Derived from the Python function name used with the [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+        Used in auto-generated output column names and for retrieving saved transformation functions.
+        """
         return self._function_name
 
     @property
     def statistics_required(self) -> bool:
-        """Get if statistics for any feature is required by the UDF."""
+        """Whether this UDF requires training dataset statistics.
+
+        Returns `True` if the UDF has a `statistics` parameter, indicating it's designed
+        for model-dependent transformations that use training data statistics.
+
+        UDFs requiring statistics cannot be used as on-demand transformations.
+        """
         return bool(self.statistics_features)
 
     @property
     def transformation_statistics(
         self,
     ) -> TransformationStatistics | None:
-        """Feature statistics required for the defined UDF."""
+        """Training dataset statistics available to this UDF.
+
+        For UDFs with a `statistics` parameter, this provides access to computed statistics
+        like mean, stddev, min, max from the training dataset.
+
+        Returns `None` until statistics are populated (after training dataset creation
+        or serving initialization).
+
+        See Also:
+            - [`TransformationStatistics`][hsfs.transformation_statistics.TransformationStatistics]: Container for feature statistics.
+        """
         return self._statistics
 
     @property
     def output_column_names(self) -> list[str]:
-        """Output columns names of the transformation function."""
+        """Names of the output features produced by this UDF.
+
+        Either custom names set via [`alias()`][hsfs.hopsworks_udf.HopsworksUdf.alias]
+        or auto-generated names based on the function name and input features.
+        """
         if self._feature_name_prefix:
             return [
                 self._feature_name_prefix + output_col_name
@@ -1020,7 +1209,13 @@ def renaming_wrapper(*args):
 
     @property
     def transformation_features(self) -> list[str]:
-        """List of feature names to be used in the User Defined Function."""
+        """Names of the input features that will be passed to this UDF.
+
+        These are the features that the UDF will transform. Set by calling the UDF
+        with feature names: `my_udf("feature1", "feature2")`.
+
+        If not explicitly set, defaults to the argument names from the function signature.
+        """
         if self._feature_name_prefix:
             return [
                 self._feature_name_prefix + transformation_feature.feature_name
@@ -1073,7 +1268,11 @@ def renaming_wrapper(*args):
 
     @property
     def dropped_features(self) -> list[str]:
-        """List of features that will be dropped after the UDF is applied."""
+        """Input features to be removed from the output after transformation.
+
+        Features specified in the `drop` parameter of the [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+        Useful when the transformed feature replaces the original (e.g., after scaling).
+        """
         if self._feature_name_prefix and self._dropped_features:
             return [
                 self._feature_name_prefix + dropped_feature
@@ -1083,13 +1282,32 @@ def renaming_wrapper(*args):
 
     @property
     def execution_mode(self) -> UDFExecutionMode:
+        """Execution mode controlling how this UDF runs.
+
+        See [`UDFExecutionMode`][hsfs.hopsworks_udf.UDFExecutionMode] for details on each mode.
+        """
         return self._execution_mode
 
     @property
     def transformation_context(self) -> dict[str, Any]:
-        """Dictionary that contains the context variables required for the UDF.
+        """Context variables available to this UDF during execution.
 
-        These context variables passed to the UDF during execution.
+        Context variables are passed via the `transformation_context` parameter when
+        creating training data or retrieving feature vectors. They provide dynamic
+        values that can change between executions.
+
+        Example: Using context variables
+            ```python
+            @udf(return_type=int)
+            def time_since(event_time, context):
+                return (context["current_time"] - event_time).dt.days
+
+            # Pass context when getting feature vectors
+            fv.get_feature_vector(
+                entry={"id": 1},
+                transformation_context={"current_time": datetime.now()}
+            )
+            ```
         """
         return self._transformation_context if self._transformation_context else {}
 
