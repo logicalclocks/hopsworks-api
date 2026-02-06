@@ -50,12 +50,14 @@ nav:
     - Storage Connector: storage_connector_api.md
     - TrainingDataset: training_dataset_api.md
     - Transformation Functions:
+      - transformation_functions/index.md
       - HopsworksUDF: hopsworks_udf.md
       - Transformation Statistics:
         - FeatureTransformationStatistics: feature_transformation_statistics.md
         - TransformationStatistics: transformation_statistics.md
       - TransformationFunction: transformation_functions_api.md
       - UDF: udf.md
+      - Built-in Transformations: builtin_transformations.md
     - ValidationReport: validation_report_api.md
     - Online Ingestion: online_ingestion.md
     - Online Ingestion Result: online_ingestion_result.md
