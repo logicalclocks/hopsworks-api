@@ -421,6 +421,7 @@ def _initialize_module_apis():
     _secrets_api = secret_api.SecretsApi()
 
 
+@public
 def create_project(
     name: str, description: str | None = None, feature_store_topic: str | None = None
 ) -> project.Project | None:

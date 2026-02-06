@@ -36,6 +36,13 @@ from hopsworks_common.core import (
 
 @public("hopsworks.project.Project")
 class Project:
+    """Class representing a Hopsworks project.
+
+    Use [`hopsworks.login`][hopsworks.login] to get the current project after logging in.
+
+    Use [`hopsworks.create_project`](hopsworks.create_project) to create a new project and get the project object.
+    """
+
     def __init__(
         self,
         archived=None,
@@ -83,36 +90,43 @@ class Project:
             return cls(**json_decamelized)
         return None
 
+    @public
     @property
     def id(self):
         """Id of the project."""
         return self._id
 
+    @public
     @property
     def name(self):
         """Name of the project."""
         return self._name
 
+    @public
     @property
     def owner(self):
         """Owner of the project."""
         return self._owner
 
+    @public
     @property
     def description(self):
         """Description of the project."""
         return self._description
 
+    @public
     @property
     def created(self):
         """Timestamp when the project was created."""
         return self._created
 
+    @public
     @property
     def project_namespace(self):
         """Kubernetes namespace used by project."""
         return self._project_namespace
 
+    @public
     def get_feature_store(self, name: str | None = None):
         """Connect to Project's Feature Store.
 
@@ -139,6 +153,7 @@ class Project:
         """
         return client.get_connection().get_feature_store(name)
 
+    @public
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
 
@@ -159,6 +174,7 @@ class Project:
         """
         return client.get_connection().get_model_registry()
 
+    @public
     def get_model_serving(self):
         """Connect to Project's Model Serving API.
 
@@ -179,6 +195,7 @@ class Project:
         """
         return client.get_connection().get_model_serving()
 
+    @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:
         """Get the kafka api for the project.
 
@@ -190,6 +207,7 @@ class Project:
             _client.download_certs()
         return self._kafka_api
 
+    @public
     def get_opensearch_api(self) -> opensearch_api.OpenSearchApi:
         """Get the opensearch api for the project.
 
@@ -201,6 +219,7 @@ class Project:
             _client.download_certs()
         return self._opensearch_api
 
+    @public
     def get_job_api(self) -> job_api.JobApi:
         """Get the job API for the project.
 
@@ -213,6 +232,7 @@ class Project:
         """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage."""
         return self.get_job_api()
 
+    @public
     def get_flink_cluster_api(self) -> flink_cluster_api.FlinkClusterApi:
         """Get the flink cluster API for the project.
 
@@ -221,6 +241,7 @@ class Project:
         """
         return self._flink_cluster_api
 
+    @public
     def get_git_api(self) -> git_api.GitApi:
         """Get the git repository api for the project.
 
@@ -229,6 +250,7 @@ class Project:
         """
         return self._git_api
 
+    @public
     def get_dataset_api(self) -> dataset_api.DatasetApi:
         """Get the dataset api for the project.
 
@@ -237,6 +259,7 @@ class Project:
         """
         return self._dataset_api
 
+    @public
     def get_environment_api(self) -> environment_api.EnvironmentApi:
         """Get the Python environment API for the project.
 
@@ -245,6 +268,7 @@ class Project:
         """
         return self._environment_api
 
+    @public
     def get_alerts_api(self) -> alerts_api.AlertsApi:
         """Get the alerts api for the project.
 
@@ -253,6 +277,7 @@ class Project:
         """
         return self._alerts_api
 
+    @public
     def get_search_api(self) -> search_api.SearchApi:
         """Get the search api for the project.
 
@@ -261,6 +286,7 @@ class Project:
         """
         return self._search_api
 
+    @public
     def get_alerts(self) -> list[alert.ProjectAlert]:
         """Get all alerts for the project.
 
@@ -272,6 +298,7 @@ class Project:
         """
         return self._alerts_api.get_alerts()
 
+    @public
     def get_alert(self, alert_id: int) -> alert.ProjectAlert | None:
         """Get an alert for the project by ID.
 
@@ -283,6 +310,7 @@ class Project:
         """
         return self._alerts_api.get_alert(alert_id)
 
+    @public
     def create_job_alert(
         self,
         receiver: str,
@@ -312,6 +340,7 @@ class Project:
         """
         return self._alerts_api.create_project_alert(receiver, status, severity, "Jobs")
 
+    @public
     def create_featurestore_alert(
         self,
         receiver: str,
@@ -360,6 +389,7 @@ class Project:
             return f"Project({self._name!r}, {self._owner!r}, {self._description!r})"
         return f"Project({self._name!r}, {self._owner!r})"
 
+    @public
     def get_url(self):
         """Get url to the project in Hopsworks."""
         path = "/p/" + str(self.id)
