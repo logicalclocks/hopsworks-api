@@ -116,22 +116,22 @@ Control how transformations execute with the `mode` parameter:
 
 ### Core Classes
 
-- [`@udf`](udf.md) - Decorator to create transformation functions
-- [`TransformationFunction`](transformation_functions_api.md) - Wrapper for saved transformations
-- [`HopsworksUdf`](hopsworks_udf.md) - Metadata container for UDFs
+- [`@udf`](../udf.md) - Decorator to create transformation functions
+- [`TransformationFunction`](../transformation_functions_api.md) - Wrapper for saved transformations
+- [`HopsworksUdf`](../hopsworks_udf.md) - Metadata container for UDFs
 
 ### Statistics Classes
 
-- [`TransformationStatistics`](transformation_statistics.md) - Declare statistics requirements
-- [`FeatureTransformationStatistics`](feature_transformation_statistics.md) - Access computed statistics
+- [`TransformationStatistics`](../transformation_statistics.md) - Declare statistics requirements
+- [`FeatureTransformationStatistics`](../feature_transformation_statistics.md) - Access computed statistics
 
 ### Built-in Transformations
 
-- [`min_max_scaler`](builtin_transformations.md#min_max_scaler) - Scale to [0, 1]
-- [`standard_scaler`](builtin_transformations.md#standard_scaler) - Standardize (zero mean, unit variance)
-- [`robust_scaler`](builtin_transformations.md#robust_scaler) - Outlier-robust scaling
-- [`label_encoder`](builtin_transformations.md#label_encoder) - Encode categories as integers
-- [`one_hot_encoder`](builtin_transformations.md#one_hot_encoder) - One-hot encode categories
+- [`min_max_scaler`](../builtin_transformations.md#min_max_scaler) - Scale to [0, 1]
+- [`standard_scaler`](../builtin_transformations.md#standard_scaler) - Standardize (zero mean, unit variance)
+- [`robust_scaler`](../builtin_transformations.md#robust_scaler) - Outlier-robust scaling
+- [`label_encoder`](../builtin_transformations.md#label_encoder) - Encode categories as integers
+- [`one_hot_encoder`](../builtin_transformations.md#one_hot_encoder) - One-hot encode categories
 
 ### Feature Store Methods
 
