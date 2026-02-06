@@ -557,12 +557,9 @@ class FeatureStore:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
-<<<<<<< HEAD
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
-=======
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
->>>>>>> lc-enterprise/main
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -690,13 +687,11 @@ class FeatureStore:
                 When set to True data will be stored on disk, instead of in memory.
                 Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
-<<<<<<< HEAD
             sink_enabled:
                 Enable automatic ingestion from the configured data source using a sink job.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
                 Accepts either a job configuration object or a dictionary.
-=======
             tags:
                 Optionally, define tags for the feature group. Tags can be provided as:
                 - A single Tag object
@@ -704,7 +699,6 @@ class FeatureStore:
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
                 Tags will be attached to the feature group after it is saved. Defaults to None.
->>>>>>> lc-enterprise/main
 
         Returns:
             The feature group metadata object.
@@ -742,12 +736,9 @@ class FeatureStore:
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
-<<<<<<< HEAD
             sink_enabled=sink_enabled,
             sink_job_conf=sink_job_conf,
-=======
             tags=normalized_tags,
->>>>>>> lc-enterprise/main
         )
         feature_group_object.feature_store = self
         return feature_group_object

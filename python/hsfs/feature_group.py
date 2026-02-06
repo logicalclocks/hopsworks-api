@@ -145,11 +145,8 @@ class FeatureGroupBase:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
-<<<<<<< HEAD
         sink_enabled: bool | None = False,
-=======
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
->>>>>>> lc-enterprise/main
         **kwargs,
     ) -> None:
         """Initialize a feature group object.
@@ -199,11 +196,8 @@ class FeatureGroupBase:
         self._alert_api = alerts_api.AlertsApi()
         self.ttl = ttl
         self._ttl_enabled = ttl_enabled if ttl_enabled is not None else ttl is not None
-<<<<<<< HEAD
         self._sink_enabled = sink_enabled
-=======
         self._missing_mandatory_tags = missing_mandatory_tags or []
->>>>>>> lc-enterprise/main
 
         if storage_connector is not None and isinstance(storage_connector, dict):
             self._storage_connector = sc.StorageConnector.from_response_json(
@@ -2607,14 +2601,11 @@ class FeatureGroup(FeatureGroupBase):
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
-<<<<<<< HEAD
         sink_enabled: bool | None = False,
         sink_job_conf: SinkJobConfiguration | dict[str, Any] | None = None,
         sink_job: job.Job | dict[str, Any] | None = None,
-=======
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: list[tag.Tag] | None = None,
->>>>>>> lc-enterprise/main
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2637,11 +2628,8 @@ class FeatureGroup(FeatureGroupBase):
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
-<<<<<<< HEAD
             sink_enabled=sink_enabled,
-=======
             missing_mandatory_tags=missing_mandatory_tags,
->>>>>>> lc-enterprise/main
         )
 
         self._feature_store_name: str | None = featurestore_name

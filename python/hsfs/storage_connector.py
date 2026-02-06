@@ -400,7 +400,7 @@ class StorageConnector(ABC):
             self._featurestore_id, self._name, data_source
         )
 
-    def _get_no_sql_data(self, data_source: ds.DataSource):
+    def _get_no_sql_data(self, data_source: ds.DataSource) -> DataSourceData:
         data: DataSourceData = self._data_source_api.get_no_sql_data(
             self._featurestore_id, self._name, self.type, data_source
         )
