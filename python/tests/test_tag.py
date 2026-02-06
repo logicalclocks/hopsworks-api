@@ -15,6 +15,7 @@
 #
 
 import humps
+import pytest
 from hsml import tag
 
 
@@ -60,3 +61,39 @@ class TestTag:
         # Assert
         assert t.name == "test_name"
         assert t.value == "test_value"
+
+    def test_constructor_none_name_raises_error(self):
+        # Act & Assert
+        with pytest.raises(ValueError, match="Tag name cannot be None"):
+            tag.Tag(name=None, value="test_value")
+
+    def test_constructor_none_value_raises_error(self):
+        # Act & Assert
+        with pytest.raises(ValueError, match="Tag value cannot be None"):
+            tag.Tag(name="test_name", value=None)
+
+    def test_setter_none_name_raises_error(self):
+        # Arrange
+        t = tag.Tag(name="test_name", value="test_value")
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="Tag name cannot be None"):
+            t.name = None
+
+    def test_setter_none_value_raises_error(self):
+        # Arrange
+        t = tag.Tag(name="test_name", value="test_value")
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="Tag value cannot be None"):
+            t.value = None
+
+    def test_normalize_with_none_name_raises_error(self):
+        # Act & Assert
+        with pytest.raises(ValueError, match="Tag name cannot be None"):
+            tag.Tag.normalize([{"name": None, "value": "test_value"}])
+
+    def test_normalize_with_none_value_raises_error(self):
+        # Act & Assert
+        with pytest.raises(ValueError, match="Tag value cannot be None"):
+            tag.Tag.normalize([{"name": "test_name", "value": None}])
