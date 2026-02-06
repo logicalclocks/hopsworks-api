@@ -24,6 +24,11 @@ from hopsworks_common.core import secret_api
 
 @public("hopsworks.secret.Secret")
 class Secret:
+    """Represents a secret in Hopsworks.
+
+    Use [`SecretsApi`][hopsworks.core.secret_api.SecretsApi] to manage secrets; namely you can create a secret with [`SecretsApi.create`][hopsworks.core.secret_api.SecretsApi.create_secret] and get secrets with [`SecretsApi.get_secret`][hopsworks.core.secret_api.SecretsApi.get_secret] and [`SecretsApi.get_secrets`][hopsworks.core.secret_api.SecretsApi.get_secrets].
+    """
+
     NOT_FOUND_ERROR_CODE = 160048
 
     def __init__(
@@ -56,36 +61,43 @@ class Secret:
             return []
         return [cls(**secret) for secret in json_decamelized["items"]]
 
+    @public
     @property
     def name(self):
         """Name of the secret."""
         return self._name
 
+    @public
     @property
     def value(self):
         """Value of the secret."""
         return self._secret
 
+    @public
     @property
     def created(self):
         """Date when secret was created."""
         return self._added_on
 
+    @public
     @property
     def visibility(self):
         """Visibility of the secret."""
         return self._visibility
 
+    @public
     @property
     def scope(self):
         """Scope of the secret."""
         return self._scope
 
+    @public
     @property
     def owner(self):
         """Owner of the secret."""
         return self._owner
 
+    @public
     def delete(self):
         """Delete the secret.
 
@@ -108,6 +120,7 @@ class Secret:
             return f"Secret({self._name!r}, {self._visibility!r}, {self._owner!r})"
         return f"Secret({self._name!r}, {self._visibility!r})"
 
+    @public
     def get_url(self):
         """Get url to the secret in Hopsworks."""
         path = "/account/secrets"
