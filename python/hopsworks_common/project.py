@@ -40,7 +40,7 @@ class Project:
 
     Use [`hopsworks.login`][hopsworks.login] to get the current project after logging in.
 
-    Use [`hopsworks.create_project`](hopsworks.create_project) to create a new project and get the project object.
+    Use [`hopsworks.create_project`][hopsworks.create_project] to create a new project and get the project object.
     """
 
     def __init__(
