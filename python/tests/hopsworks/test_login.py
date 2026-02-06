@@ -67,7 +67,7 @@ class TestLogin(TestCase):
         path = hopsworks._get_cached_api_key_path()
 
         api_key_name = ".hw_api_key"
-        api_key_folder = ".{}_hopsworks_app".format(getpass.getuser())
+        api_key_folder = f".{getpass.getuser()}_hopsworks_app"
 
         # Path for current working directory api key
         cwd_api_key_path = os.path.join(os.getcwd(), api_key_name)
@@ -141,9 +141,11 @@ class TestLogin(TestCase):
         assert in_home is True and not os.path.exists(path)
         assert in_tmp is False
 
-        with self.assertRaises(exceptions.RestAPIError):
-            with input({"hidden": "incorrect_api_key"}):
-                hopsworks.login()
+        with (
+            self.assertRaises(exceptions.RestAPIError),
+            input({"hidden": "incorrect_api_key"}),
+        ):
+            hopsworks.login()
 
     @skip(
         "To be removed once https://hopsworks.atlassian.net/browse/FSTORE-1474 is resolved."
@@ -199,7 +201,7 @@ class TestLogin(TestCase):
         # Should use API key in home if exists
 
         api_key_folder_path = os.path.join(
-            os.path.expanduser("~"), ".{}_hopsworks_app".format(getpass.getuser())
+            os.path.expanduser("~"), f".{getpass.getuser()}_hopsworks_app"
         )
         os.mkdir(api_key_folder_path)
         with open(os.path.join(api_key_folder_path, ".hw_api_key"), "w") as f:

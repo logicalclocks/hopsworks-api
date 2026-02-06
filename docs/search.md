@@ -1,8 +1,8 @@
 # Search API
 
-You can obtain a `SearchApi` handle by calling [`Project.get_search_api`][hopsworks.project.Project.get_search_api].
+You can obtain a `SearchApi` handle by calling [`Project.get_search_api`][hopsworks_common.project.Project.get_search_api].
 
-::: hopsworks.core.search_api.SearchApi
+::: hopsworks_common.core.search_api.SearchApi
 
 ::: hopsworks_common.search_results.FeaturestoreSearchResult
 

@@ -381,7 +381,7 @@ class FeatureView:
                 Transformation statistics are fetched from training dataset and applied to the feature vector.
                 Defaults to 1 for online feature store.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             init_sql_client:
@@ -425,8 +425,8 @@ class FeatureView:
                   Defaults to True.
 
             feature_logger:
-                Custom feature logger which [`feature_view.log()`](#log) uses to log feature vectors.
-                If provided, feature vectors will not be inserted to logging feature group automatically when `feature_view.log()` is called.
+                Custom feature logger which [`FeatureView.log`][hsfs.feature_view.FeatureView.log] uses to log feature vectors.
+                If provided, feature vectors will not be inserted to logging feature group automatically when `FeatureView.log` is called.
         """
         # initiate batch scoring server
         # `training_dataset_version` should not be set if `None` otherwise backend will look up the td.
@@ -607,7 +607,7 @@ class FeatureView:
     ):
         """Returns assembled feature vector from online feature store.
 
-        Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed:
+        Call [`FeatureView.init_serving`][hsfs.feature_view.FeatureView.init_serving] before this method if the following configurations are needed:
 
         1. The training dataset version of the transformation statistics.
         2. Additional configurations of online serving engine.
@@ -686,13 +686,13 @@ class FeatureView:
         Parameters:
             entry:
                 Dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
                 If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
             passed_features:
                 Dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: In which format to return the feature vector.
@@ -767,7 +767,7 @@ class FeatureView:
     ):
         """Returns assembled feature vectors in batches from online feature store.
 
-        Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
+        Call [`FeatureView.init_serving`][hsfs.feature_view.FeatureView.init_serving] before this method if the following configurations are needed.
 
         1. The training dataset version of the transformation statistics.
         2. Additional configurations of online serving engine.
@@ -845,13 +845,13 @@ class FeatureView:
         Parameters:
             entry:
                 A list of dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
                 If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
             passed_features:
                 A list of dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the feature vectors.
@@ -930,9 +930,9 @@ class FeatureView:
         Parameters:
             entry:
                 Dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the dataframe.
@@ -984,9 +984,9 @@ class FeatureView:
         Parameters:
             entry:
                 A list of dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the dataframes.
@@ -1056,7 +1056,7 @@ class FeatureView:
             k: The number of nearest neighbors to retrieve.
             filter: A filter expression to restrict the search space.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the neighbors.
@@ -3915,7 +3915,7 @@ class FeatureView:
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -4643,7 +4643,7 @@ class FeatureView:
 
     @property
     def primary_keys(self) -> set[str]:
-        """Set of primary key names that is required as keys in input dict object for [`get_feature_vector(s)`](#get_feature_vector) method.
+        """Set of primary key names that is required as keys in input dict object for [`FeatureView.get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector] method.
 
         When there are duplicated primary key names and prefix is not defined in the query,
         prefix is generated and prepended to the primary key name in this format

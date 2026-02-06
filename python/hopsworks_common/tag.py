@@ -21,9 +21,11 @@ import json
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+@public("hopsworks.tag.Tag", "hsfs.tag.Tag", "hsml.tag.Tag")
 class Tag:
     NOT_FOUND_ERROR_CODE = 370002
 

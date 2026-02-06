@@ -24,6 +24,7 @@ import tempfile
 
 import hopsworks_common.client
 import requests
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
 
@@ -35,6 +36,7 @@ with contextlib.suppress(ImportError):
 _logger = logging.getLogger(__name__)
 
 
+@also_available_as("hopsworks.client.external.Client", "hsfs.client.external.Client", "hsml.client.external.Client")
 class Client(base.Client):
     def __init__(
         self,

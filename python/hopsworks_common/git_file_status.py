@@ -17,9 +17,11 @@
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+@public("hopsworks.git_file_status.GitFileStatus")
 class GitFileStatus:
     def __init__(
         self,

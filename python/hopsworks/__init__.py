@@ -24,16 +24,16 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
-from hopsworks import client, constants, project, version
-from hopsworks.client.exceptions import (
+from hopsworks_apigen import public
+from hopsworks_common import client, constants, project, usage, version
+from hopsworks_common.client.exceptions import (
     HopsworksSSLClientError,
     ProjectException,
     RestAPIError,
 )
-from hopsworks.connection import Connection
-from hopsworks.core import project_api, secret_api
-from hopsworks.decorators import NoHopsworksConnectionError
-from hopsworks_common import usage
+from hopsworks_common.connection import Connection
+from hopsworks_common.core import project_api, secret_api
+from hopsworks_common.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
 
@@ -76,6 +76,7 @@ logging.basicConfig(
 )
 
 
+@public(order=1)
 def login(
     host: str | None = None,
     port: int = 443,
@@ -391,6 +392,7 @@ def _is_connection_active():
     return isinstance(_hw_connection, Connection)
 
 
+@public
 def get_current_project() -> project.Project:
     """Get a reference to the current logged in project.
 
@@ -419,6 +421,7 @@ def _initialize_module_apis():
     _secrets_api = secret_api.SecretsApi()
 
 
+@public
 def create_project(
     name: str, description: str | None = None, feature_store_topic: str | None = None
 ) -> project.Project | None:
@@ -467,6 +470,7 @@ def create_project(
     return None
 
 
+@public
 def get_secrets_api() -> secret_api.SecretsApi:
     """Get the secrets api.
 
