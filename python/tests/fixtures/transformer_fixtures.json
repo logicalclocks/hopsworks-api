@@ -15,6 +15,16 @@
           "memory": 17,
           "gpus": 2
         }
+      },
+      "transformer_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 1,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -34,6 +44,16 @@
           "memory": 17,
           "gpus": 2
         }
+      },
+      "transformer_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 1,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -52,12 +72,50 @@
           "memory": 17,
           "gpus": 2
         }
+      },
+      "transformer_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 1,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
   "get_transformer_without_resources": {
     "response": {
-      "script_file": "transformer_file_name"
+      "script_file": "transformer_file_name",
+      "transformer_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 1,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
+      }
+    }
+  },
+  "get_transformer_without_scaling_config": {
+    "response": {
+      "script_file": "transformer_file_name",
+      "resources": {
+        "num_instances": 1,
+        "requests": {
+          "cores": 0.2,
+          "memory": 16,
+          "gpus": 1
+        },
+        "limits": {
+          "cores": 0.3,
+          "memory": 17,
+          "gpus": 2
+        }
+      }
     }
   }
 }

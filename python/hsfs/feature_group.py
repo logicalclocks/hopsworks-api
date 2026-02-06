@@ -145,7 +145,11 @@ class FeatureGroupBase:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+<<<<<<< HEAD
         sink_enabled: bool | None = False,
+=======
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
+>>>>>>> lc-enterprise/main
         **kwargs,
     ) -> None:
         """Initialize a feature group object.
@@ -195,7 +199,11 @@ class FeatureGroupBase:
         self._alert_api = alerts_api.AlertsApi()
         self.ttl = ttl
         self._ttl_enabled = ttl_enabled if ttl_enabled is not None else ttl is not None
+<<<<<<< HEAD
         self._sink_enabled = sink_enabled
+=======
+        self._missing_mandatory_tags = missing_mandatory_tags or []
+>>>>>>> lc-enterprise/main
 
         if storage_connector is not None and isinstance(storage_connector, dict):
             self._storage_connector = sc.StorageConnector.from_response_json(
@@ -1927,6 +1935,11 @@ class FeatureGroupBase:
     def version(self, version: int) -> None:
         self._version = version
 
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """List of missing mandatory tags for the feature group."""
+        return self._missing_mandatory_tags
+
     def get_fg_name(self) -> str:
         """Returns the full feature group name, that is, its base name combined with its version."""
         return f"{self.name}_{self.version}"
@@ -2594,9 +2607,14 @@ class FeatureGroup(FeatureGroupBase):
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+<<<<<<< HEAD
         sink_enabled: bool | None = False,
         sink_job_conf: SinkJobConfiguration | dict[str, Any] | None = None,
         sink_job: job.Job | dict[str, Any] | None = None,
+=======
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
+        tags: list[tag.Tag] | None = None,
+>>>>>>> lc-enterprise/main
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2619,7 +2637,11 @@ class FeatureGroup(FeatureGroupBase):
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+<<<<<<< HEAD
             sink_enabled=sink_enabled,
+=======
+            missing_mandatory_tags=missing_mandatory_tags,
+>>>>>>> lc-enterprise/main
         )
 
         self._feature_store_name: str | None = featurestore_name
@@ -2645,6 +2667,7 @@ class FeatureGroup(FeatureGroupBase):
         self._stream = stream
         self._parents = parents
         self._deltastreamer_jobconf = delta_streamer_job_conf
+        self._tags: list[tag.Tag] | None = tags
 
         self._materialization_job: Job = None
 
@@ -3992,6 +4015,10 @@ class FeatureGroup(FeatureGroupBase):
                 json_decamelized["embedding_index"] = EmbeddingIndex.from_response_json(
                     json_decamelized["embedding_index"]
                 )
+            if "tags" in json_decamelized and json_decamelized["tags"]:
+                json_decamelized["tags"] = tag.Tag.from_response_json(
+                    json_decamelized["tags"]
+                )
             if "transformation_functions" in json_decamelized:
                 transformation_functions = json_decamelized["transformation_functions"]
                 json_decamelized["transformation_functions"] = [
@@ -4114,6 +4141,9 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
         if self._storage_connector:
             fg_meta_dict["storageConnector"] = self._storage_connector.to_dict()
+        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        if tags_dict:
+            fg_meta_dict["tags"] = tags_dict
         return fg_meta_dict
 
     def _get_table_name(self) -> str:
@@ -4361,6 +4391,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4383,6 +4414,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            missing_mandatory_tags=missing_mandatory_tags,
         )
 
         self._feature_store_name = featurestore_name
@@ -4885,6 +4917,7 @@ class SpineGroup(FeatureGroupBase):
         online_config: OnlineConfig | dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         online_disk: bool | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4902,6 +4935,7 @@ class SpineGroup(FeatureGroupBase):
             online_config=online_config,
             data_source=data_source,
             online_disk=online_disk,
+            missing_mandatory_tags=missing_mandatory_tags,
         )
 
         self._feature_store_name = featurestore_name
