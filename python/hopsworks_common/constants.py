@@ -14,10 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import public
 
-
-@public("hopsworks.constants.Default")
 class Default:
     """An object of this class is used in place of optional arguments in cases when passing `None` should result in an exception or other behaviour.
 
@@ -34,7 +31,6 @@ class Default:
 DEFAULT = Default()  # TODO: figure out what to do with it
 
 
-@public("hopsworks.constants.JOBS")
 class JOBS:
     SUCCESS_STATES = ["FINISHED", "SUCCEEDED"]
     ERROR_STATES = [
@@ -46,18 +42,15 @@ class JOBS:
     ]
 
 
-@public("hopsworks.constants.GIT")
 class GIT:
     SUCCESS_STATES = ["SUCCESS"]
     ERROR_STATES = ["FAILED", "KILLED", "INITIALIZATION_FAILED", "TIMEDOUT"]
 
 
-@public("hopsworks.constants.SERVICES")
 class SERVICES:
     LIST = ["JOBS", "KAFKA", "JUPYTER", "HIVE", "SERVING", "FEATURESTORE", "AIRFLOW"]
 
 
-@public("hopsworks.constants.OPENSEARCH_CONFIG")
 class OPENSEARCH_CONFIG:
     SSL_CONFIG = "es.net.ssl"
     NODES_WAN_ONLY = "es.nodes.wan.only"
@@ -77,14 +70,12 @@ class OPENSEARCH_CONFIG:
     CA_CERTS = "ca_certs"
 
 
-@public("hopsworks.constants.FEATURES")
 class FEATURES:
     """Class that stores constants about a feature."""
 
     MAX_LENGTH_NAME = 63
 
 
-@public("hopsworks.constants.KAFKA_SSL_CONFIG")
 class KAFKA_SSL_CONFIG:
     """Kafka SSL constant strings for configuration."""
 
@@ -105,7 +96,6 @@ class KAFKA_SSL_CONFIG:
     )
 
 
-@public("hopsworks.constants.KAFKA_PRODUCER_CONFIG")
 class KAFKA_PRODUCER_CONFIG:
     """Constant strings for Kafka producers."""
 
@@ -114,7 +104,6 @@ class KAFKA_PRODUCER_CONFIG:
     VALUE_SERIALIZER_CLASS_CONFIG = "value.serializer"
 
 
-@public("hopsworks.constants.KAFKA_CONSUMER_CONFIG")
 class KAFKA_CONSUMER_CONFIG:
     """Constant strings for Kafka consumers."""
 
@@ -128,7 +117,6 @@ class KAFKA_CONSUMER_CONFIG:
     AUTO_OFFSET_RESET_CONFIG = "auto.offset.reset"
 
 
-@public("hopsworks.constants.ENV_VARS")
 class ENV_VARS:
     """Constant strings for environment variables."""
 
@@ -136,7 +124,6 @@ class ENV_VARS:
     ELASTIC_ENDPOINT_ENV_VAR = "ELASTIC_ENDPOINT"
 
 
-@public("hopsworks.constants.SSL_CONFIG")
 class SSL_CONFIG:
     """General SSL configuration constants for Hops-TLS."""
 
@@ -155,12 +142,10 @@ class SSL_CONFIG:
     SSL_ENABLED = "ipc.server.ssl.enabled"
 
 
-@public("hopsworks.constants.HOSTS")
 class HOSTS:
     APP_HOST = "c.app.hopsworks.ai"
 
 
-@public("hopsworks.constants.MODEL")
 class MODEL:
     FRAMEWORK_TENSORFLOW = "TENSORFLOW"
     FRAMEWORK_TORCH = "TORCH"
@@ -169,20 +154,17 @@ class MODEL:
     FRAMEWORK_LLM = "LLM"
 
 
-@public("hopsworks.constants.MODEL_REGISTRY")
 class MODEL_REGISTRY:
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
     MODELS_DATASET = "Models"
     MODEL_FILES_DIR_NAME = "Files"
 
 
-@public("hopsworks.constants.MODEL_SERVING")
 class MODEL_SERVING:
     DEPLOYMENTS_DATASET = "Deployments"
     ARTIFACTS_DIR_NAME = "Artifacts"  # legacy, kept for backward compatibility (<4.6)
 
 
-@public("hopsworks.constants.RESOURCES")
 class RESOURCES:
     # default values, not hard limits
     MIN_CORES = 0.2
@@ -192,7 +174,6 @@ class RESOURCES:
     MAX_MEMORY = 1024
 
 
-@public("hopsworks.constants.KAFKA_TOPIC")
 class KAFKA_TOPIC:
     NONE = "NONE"
     CREATE = "CREATE"
@@ -200,7 +181,6 @@ class KAFKA_TOPIC:
     NUM_PARTITIONS = 1
 
 
-@public("hopsworks.constants.INFERENCE_LOGGER")
 class INFERENCE_LOGGER:
     MODE_NONE = "NONE"
     MODE_ALL = "ALL"
@@ -208,18 +188,15 @@ class INFERENCE_LOGGER:
     MODE_PREDICTIONS = "PREDICTIONS"
 
 
-@public("hopsworks.constants.INFERENCE_BATCHER")
 class INFERENCE_BATCHER:
     ENABLED = False
 
 
-@public("hopsworks.constants.DEPLOYMENT")
 class DEPLOYMENT:
     ACTION_START = "START"
     ACTION_STOP = "STOP"
 
 
-@public("hopsworks.constants.PREDICTOR")
 class PREDICTOR:
     # model server
     MODEL_SERVER_PYTHON = "PYTHON"
@@ -230,7 +207,6 @@ class PREDICTOR:
     SERVING_TOOL_KSERVE = "KSERVE"
 
 
-@public("hopsworks.constants.PREDICTOR_STATE")
 class PREDICTOR_STATE:
     # status
     STATUS_CREATING = "Creating"
@@ -250,7 +226,6 @@ class PREDICTOR_STATE:
     CONDITION_TYPE_READY = "READY"
 
 
-@public("hopsworks.constants.INFERENCE_ENDPOINTS")
 class INFERENCE_ENDPOINTS:
     # endpoint type
     ENDPOINT_TYPE_KUBE_CLUSTER = "KUBE_CLUSTER"
@@ -265,13 +240,11 @@ class INFERENCE_ENDPOINTS:
     API_PROTOCOL_GRPC = "GRPC"
 
 
-@public("hopsworks.constants.DEPLOYABLE_COMPONENT")
 class DEPLOYABLE_COMPONENT:
     PREDICTOR = "predictor"
     TRANSFORMER = "transformer"
 
 
-@public("hopsworks.constants.FEATURE_LOGGING")
 class FEATURE_LOGGING:
     # Metadata column names
     LOG_ID_COLUMN_NAME = "log_id"

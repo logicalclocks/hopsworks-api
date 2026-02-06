@@ -76,7 +76,7 @@ logging.basicConfig(
 )
 
 
-@public
+@public(order=1)
 def login(
     host: str | None = None,
     port: int = 443,
