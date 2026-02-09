@@ -1919,6 +1919,56 @@ class TestFeatureGroupEngine:
         assert result[2].name == "multi_output_1"
         assert result[2].on_demand is True
 
+    def test_save_feature_group_metadata_corrects_topic_name(self, mocker):
+        # Arrange
+        feature_store_id = 99
+        feature_group_url = "test_url"
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
+        mocker.patch(
+            "hsfs.util.get_feature_group_url",
+            return_value=feature_group_url,
+        )
+        mocker.patch("builtins.print")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        f = feature.Feature(name="f", type="str")
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            online_enabled=True,
+            topic_name="my_topic",
+        )
+
+        # Act
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            fg_engine.save_feature_group_metadata(
+                feature_group=fg, dataframe_features=[f], write_options=None
+            )
+
+        # Assert
+        assert fg.topic_name == "my_topic_onlinefs"
+        assert len(w) == 1
+        assert issubclass(w[0].category, util.FeatureGroupWarning)
+        assert mock_fg_api.return_value.save.call_count == 1
+
     def test_topic_name_auto_suffix_when_online_enabled(self):
         fg = mock.MagicMock()
         fg.online_enabled = True
