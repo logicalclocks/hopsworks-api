@@ -446,7 +446,7 @@ class Engine:
                             inode_entry.path, data_format, read_options, dataframe_type
                         )
                         df_list.append(df)
-                    offset += 1
+                offset += len(inode_list)
         else:
             # Location is a single file, read it directly
             if not self._is_metadata_file(location):
