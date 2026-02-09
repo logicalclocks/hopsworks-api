@@ -15,14 +15,24 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
+import pandas as pd
+from hopsworks_common.client import exceptions
+from hsfs import (
+    engine,
+    feature_view,
+    statistics,
+    training_dataset,
+    transformation_function,
+)
 from hsfs.core import transformation_function_api
+from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
 
 
 if TYPE_CHECKING:
-    import pandas as pd
     import polars as pl
+    import pyspark.sql as spark_sql
     from hsfs import feature_view, statistics, training_dataset, transformation_function
 
 
@@ -73,7 +83,7 @@ class TransformationFunctionEngine:
             version `Optional[int]`: The version of the transformation function to be retrieved.
 
         Returns:
-            `Union[transformation_function.TransformationFunction, List[transformation_function.TransformationFunction]]` : A transformation function if name and version is provided. A list of transformation functions if only name is provided.
+            `Union[transformation_function.TransformationFunction, list[transformation_function.TransformationFunction]]` : A transformation function if name and version is provided. A list of transformation functions if only name is provided.
         """
         return self._transformation_function_api.get_transformation_fn(name, version)
 
@@ -83,7 +93,7 @@ class TransformationFunctionEngine:
         """Get all the transformation functions in the feature store.
 
         Returns:
-            `List[transformation_function.TransformationFunction]` : A list of transformation functions.
+            A list of transformation functions.
         """
         transformation_fn_instances = (
             self._transformation_function_api.get_transformation_fn(
@@ -96,6 +106,258 @@ class TransformationFunctionEngine:
         ) in transformation_fn_instances:  # todo what is the point of this?
             transformation_fns.append(transformation_fn_instance)
         return transformation_fns
+
+    @staticmethod
+    def _validate_transformation_function_arguments(
+        transformation_functions: list[transformation_function.TransformationFunction],
+        data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
+        request_parameters: dict[str, Any] = None,
+    ) -> None:
+        """Function to validate if all arguments required to execute the transformation functions are present are present in the passed data or request parameters.
+
+        Parameters:
+            transformation_functions: List of transformation functions to validate.
+            data: The dataframe or list of dictionaries to validate the transformation functions against.
+            request_parameters: Request parameters to validate the transformation functions against.
+
+        Raises:
+            exceptions.TransformationFunctionException: If the arguments required to execute the transformation functions are not present in the passed data or request parameters.
+        """
+        for tf in transformation_functions:
+            if engine.get_instance().check_supported_dataframe(data):
+                missing_features = set(tf.hopsworks_udf.transformation_features) - set(
+                    data.columns
+                )
+            elif isinstance(data, dict):
+                missing_features = set(tf.hopsworks_udf.transformation_features) - set(
+                    data.keys()
+                )
+            else:
+                raise exceptions.FeatureStoreException(
+                    f"Dataframe type {type(data)} not supported in the engine."
+                )
+
+            if request_parameters:
+                missing_features = missing_features - set(request_parameters.keys())
+                if tf.hopsworks_udf.feature_name_prefix:
+                    missing_features = missing_features - {
+                        tf.hopsworks_udf.feature_name_prefix + feature
+                        for feature in request_parameters
+                    }
+
+            if missing_features:
+                raise exceptions.TransformationFunctionException(
+                    message=f"The following feature(s): `{', '.join(missing_features)}`, required for the transformation function '{tf.hopsworks_udf.function_name}' are not available.",
+                    missing_features=missing_features,
+                    transformation_function_name=tf.hopsworks_udf.function_name,
+                    transformation_type=tf.transformation_type.value,
+                )
+
+    @staticmethod
+    def apply_transformation_functions(
+        transformation_functions: list[transformation_function.TransformationFunction],
+        data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
+        online: bool = False,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] = None,
+        expected_features: set[str] = None,
+    ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
+        """Function to apply the transformation functions to the passed data.
+
+        This function validates the arguments and calls the required function to apply the transformation functions to the passed data.
+        For spark engine, the transformation functions are pushed down to Spark and is completely handled by the Spark engine.
+
+        Parameters:
+            transformation_functions: List of transformation functions to apply.
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+            expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
+        if not transformation_functions or data is None:
+            return data
+        TransformationFunctionEngine._validate_transformation_function_arguments(
+            transformation_functions=transformation_functions,
+            data=data,
+            request_parameters=request_parameters,
+        )
+
+        if isinstance(data, dict) or engine.get_type() != "spark":
+            # If the data is a dictionary or if the engine is not spark, we execute the transformation functions using.
+            return TransformationFunctionEngine._apply_transformation_functions(
+                transformation_functions=transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+                expected_features=expected_features,
+            )
+        # In the case of spark, we execute the transformation functions using the spark engine since the transformations are pushed down to Spark and are not executed in Python.
+        return engine.get_instance()._apply_transformation_function(
+            transformation_functions=transformation_functions,
+            dataset=data,
+            transformation_context=transformation_context,
+            expected_features=expected_features,
+        )
+
+    @staticmethod
+    def _apply_transformation_functions(
+        transformation_functions: list[transformation_function.TransformationFunction],
+        data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
+        online: bool = False,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] = None,
+        expected_features: set[str] = None,
+    ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
+        """Function to apply the transformation functions to the passed dataframe or list of dictionaries.
+
+        This function is only used when the engine is python or if the passed data is a dictionary.
+
+        Parameters:
+            transformation_functions: List of transformation functions to apply.
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+            expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
+        dropped_features: set[str] = set()
+
+        if isinstance(data, dict):
+            transformed_data = data.copy()
+        else:
+            transformed_data = engine.get_instance().shallow_copy_dataframe(data)
+
+        if request_parameters:
+            for key in request_parameters:
+                transformed_data[key] = request_parameters[key]
+
+        for tf in transformation_functions:
+            udf = tf.hopsworks_udf
+            udf.transformation_context = transformation_context
+
+            if udf.dropped_features:
+                dropped_features.update(
+                    {f for f in udf.dropped_features if f not in expected_features}
+                    if expected_features
+                    else udf.dropped_features
+                )  # Drop features that are not expected, this is required to avoid dropping features having same name that are available from other feature groups.
+
+            transformed_data = TransformationFunctionEngine.execute_udf(
+                udf=udf, data=transformed_data, online=online
+            )
+
+        if isinstance(transformed_data, dict):
+            transformed_data = {
+                k: v for k, v in transformed_data.items() if k not in dropped_features
+            }
+        else:
+            transformed_data = engine.get_instance().drop_columns(
+                transformed_data, dropped_features
+            )
+
+        return transformed_data
+
+    @staticmethod
+    def execute_udf(
+        udf: HopsworksUdf,
+        data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
+        online: bool = False,
+    ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
+        """Function to execute the UDF used to defined a transformation function on passed data.
+
+        The functions pushes the execution of Pandas and Python Dataframes to the Python Engine and handles the execution dictionaries.
+
+        Parameters:
+            udf: The transformation function to execute.
+            data: The dataframe or list of dictionaries to execute the transformation function on.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
+        execution_engine = engine.get_instance()
+        if execution_engine.check_supported_dataframe(data):
+            return execution_engine.apply_udf_on_dataframe(
+                udf=udf, dataframe=data, online=online
+            )
+        if isinstance(data, dict):
+            return TransformationFunctionEngine.apply_udf_on_dict(
+                udf=udf, data=data, online=online
+            )
+        raise exceptions.FeatureStoreException(
+            f"Dataframe type {type(data)} not supported in the engine."
+        )
+
+    @staticmethod
+    def apply_udf_on_dict(
+        udf: HopsworksUdf,
+        data: dict[str, Any],
+        online: bool | None = True,
+    ) -> dict[str, Any]:
+        """Function to apply the UDF used to defined a transformation function on a dictionary.
+
+        The function is not pushed to the Python Engine since it should be executed this function in both the Python and Spark Kernel.
+
+        Parameters:
+            udf: The transformation function to execute.
+            data: The dictionary to execute the transformation function on.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+
+        Returns:
+            The updated dictionary with the transformations applied.
+        """
+        features = []
+
+        if not online and engine.get_type() == "spark":
+            raise exceptions.FeatureStoreException(
+                "Cannot apply transformation functions on a dictionary in offline mode when the engine is spark. Please use the python engine or use the online mode."
+            )
+
+        for unprefixed_feature in udf.unprefixed_transformation_features:
+            prefixed_feature = (
+                udf.feature_name_prefix + unprefixed_feature
+                if udf.feature_name_prefix
+                else unprefixed_feature
+            )
+            feature_value = data.get(prefixed_feature, data.get(unprefixed_feature))
+
+            if (
+                udf.execution_mode.get_current_execution_mode(online=online)
+                == UDFExecutionMode.PANDAS
+            ):
+                features.append(pd.Series(feature_value))
+            else:
+                features.append(feature_value)
+
+        transformed_result = udf.get_udf(online=online)(*features)
+
+        if (
+            udf.execution_mode.get_current_execution_mode(online=online)
+            == UDFExecutionMode.PANDAS
+        ):
+            # Pandas UDF return can return a pandas series or a pandas dataframe, so we need to cast it back to a dictionary.
+            if isinstance(transformed_result, pd.Series):
+                data[transformed_result.name] = transformed_result.values[0]
+            else:
+                for col in transformed_result:
+                    data[col] = transformed_result[col].values[0]
+        else:
+            # Python UDF return can return a tuple or a list, so we need to cast it back to a dictionary.
+            if isinstance(transformed_result, (tuple, list)):
+                for index, result in enumerate(transformed_result):
+                    data[udf.output_column_names[index]] = result
+            else:
+                data[udf.output_column_names[0]] = transformed_result
+
+        return data
 
     def delete(
         self,
@@ -121,14 +383,14 @@ class TransformationFunctionEngine:
         """Compute the statistics required for a training dataset object.
 
         Parameters:
-            training_dataset_obj `TrainingDataset`: The training dataset for which the statistics is to be computed.
-            statistics_features `List[str]`: The list of features for which the statistics should be computed.
-            label_encoder_features `List[str]`: Features used for label encoding.
-            feature_dataframe `Union[pd.DataFrame, pl.DataFrame, ps.DataFrame]`: The dataframe that contains the data for which the statistics must be computed.
-            feature_view_obj `FeatureView`: The feature view in which the training data is being created.
+            training_dataset_obj : The training dataset for which the statistics is to be computed.
+            statistics_features : The list of features for which the statistics should be computed.
+            label_encoder_features : Features used for label encoding.
+            feature_dataframe : The dataframe that contains the data for which the statistics must be computed.
+            feature_view_obj : The feature view in which the training data is being created.
 
         Returns:
-            `Statistics` : The statistics object that contains the statistics for each features.
+            The statistics object that contains the statistics for each features.
         """
         return training_dataset_obj._statistics_engine.compute_transformation_fn_statistics(
             td_metadata_instance=training_dataset_obj,
@@ -150,7 +412,7 @@ class TransformationFunctionEngine:
             training_dataset_version `TrainingDataset`: The training version used to update the statistics used in the transformation functions.
 
         Returns:
-            `List[transformation_function.TransformationFunction]` : List of transformation functions.
+            `list[transformation_function.TransformationFunction]` : List of transformation functions.
         """
         # check if transformation functions require statistics
         is_stat_required = any(
@@ -203,10 +465,10 @@ class TransformationFunctionEngine:
 
         The function assigns the statistics computed to hopsworks UDF object so that the statistics can be used when UDF is executed.
 
-        # Argument
-            training_dataset_obj `TrainingDataset`: The training dataset for which the statistics is to be computed.
-            feature_view `FeatureView`: The feature view in which the training data is being created.
-            dataset `Union[Dict[str,  Union[pd.DataFrame, pl.DataFrame, ps.DataFrame]],  Union[pd.DataFrame, pl.DataFrame, ps.DataFrame]]`: A dataframe that conqtains the training data or a dictionary that contains both the training and test data.
+        Parameters:
+            training_dataset : The training dataset for which the statistics is to be computed.
+            feature_view_obj : The feature view in which the training data is being created.
+            dataset : A dataframe that contains the training data or a dictionary that contains both the training and test data.
         """
         statistics_features: set[str] = set()
         label_encoder_features: set[str] = set()

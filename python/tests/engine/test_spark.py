@@ -783,7 +783,7 @@ class TestSpark:
         # Act
         with pytest.raises(TypeError) as e_info:
             spark_engine.convert_to_default_dataframe(
-                dataframe=list(),
+                dataframe=[],
             )
 
         # Assert
@@ -3631,7 +3631,7 @@ class TestSpark:
             transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
-        transformation_fn_dict = dict()
+        transformation_fn_dict = {}
 
         transformation_fn_dict["col_0"] = tf
 
@@ -3670,19 +3670,29 @@ class TestSpark:
     def test_write_training_dataset_single(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mock_spark_engine_apply_transformation_function = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
+        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
+        )
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        tf = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         spark_engine = spark.Engine()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=None,
-            feature_dataframe=None,
+            transformation_functions=[tf],
+            feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="csv",
             write_options={},
@@ -3692,10 +3702,13 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_apply_transformation_function.call_count == 1
+        assert (
+            mock_transformation_function_engine_apply_transformation_functions.call_count
+            == 1
+        )
         assert mock_spark_engine_setup_storage_connector.call_count == 1
         assert (
-            mock_spark_engine_apply_transformation_function.return_value.write.format.call_args[
+            mock_transformation_function_engine_apply_transformation_functions.return_value.write.format.call_args[
                 0
             ][0]
             == "csv"
@@ -3704,19 +3717,29 @@ class TestSpark:
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mock_spark_engine_apply_transformation_function = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
+        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
+        )
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        tf = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         spark_engine = spark.Engine()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=None,
-            feature_dataframe=None,
+            transformation_functions=[tf],
+            feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="tsv",
             write_options={},
@@ -3726,10 +3749,13 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_apply_transformation_function.call_count == 1
+        assert (
+            mock_transformation_function_engine_apply_transformation_functions.call_count
+            == 1
+        )
         assert mock_spark_engine_setup_storage_connector.call_count == 1
         assert (
-            mock_spark_engine_apply_transformation_function.return_value.write.format.call_args[
+            mock_transformation_function_engine_apply_transformation_functions.return_value.write.format.call_args[
                 0
             ][0]
             == "csv"
@@ -3738,19 +3764,29 @@ class TestSpark:
     def test_write_training_dataset_single_to_df(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mock_spark_engine_apply_transformation_function = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
+        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
+        )
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        tf = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         spark_engine = spark.Engine()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=None,
-            feature_dataframe=None,
+            transformation_functions=[tf],
+            feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format=None,
             write_options={},
@@ -3760,7 +3796,10 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_apply_transformation_function.call_count == 1
+        assert (
+            mock_transformation_function_engine_apply_transformation_functions.call_count
+            == 1
+        )
         assert mock_spark_engine_setup_storage_connector.call_count == 0
 
     def test_read_none_data_format(self, mocker):
@@ -4400,7 +4439,7 @@ class TestSpark:
 
         # Mock dataset API and file I/O for distribute=False case
         if distribute_arg is False:
-            mock_dataset_api.return_value.read_content.return_value.content = bytes()
+            mock_dataset_api.return_value.read_content.return_value.content = b""
             mocker.patch("builtins.open", mocker.mock_open())
 
         # Act
@@ -8453,7 +8492,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
         logging_features.append(feature.Feature("inference_helper_2", type="double"))
         logging_feature_group_features = meta_data_logging_columns + logging_features
         column_names["helper_columns"] = ["inference_helper_1", "inference_helper_2"]
@@ -8509,7 +8548,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
 
         logging_features.append(feature.Feature("inference_helper_2", type="double"))
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8568,7 +8607,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         inference_helper_features = ["inference_helper_1"]
@@ -9367,7 +9406,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
         spark_df = logging_test_dataframe.select("rp_1", "rp_2").withColumnRenamed(
