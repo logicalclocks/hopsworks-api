@@ -14,10 +14,14 @@
 #   limitations under the License.
 #
 
+import warnings
+from unittest import mock
+
 import pytest
-from hsfs import feature, feature_group, feature_group_commit, validation_report
+from hsfs import feature, feature_group, feature_group_commit, util, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
+from hsfs.core.feature_group_engine import FeatureGroupEngine
 from hsfs.hopsworks_udf import udf
 
 
@@ -1914,3 +1918,56 @@ class TestFeatureGroupEngine:
         assert result[1].on_demand is False
         assert result[2].name == "multi_output_1"
         assert result[2].on_demand is True
+
+
+class TestValidateTopicName:
+    def test_topic_name_auto_suffix_when_online_enabled(self):
+        fg = mock.MagicMock()
+        fg.online_enabled = True
+        fg.topic_name = "my_topic"
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            FeatureGroupEngine._validate_topic_name(fg)
+
+        assert fg.topic_name == "my_topic_onlinefs"
+        assert len(w) == 1
+        assert issubclass(w[0].category, util.FeatureGroupWarning)
+        assert "my_topic" in str(w[0].message)
+        assert "_onlinefs" in str(w[0].message)
+
+    def test_topic_name_no_warning_when_suffix_present(self):
+        fg = mock.MagicMock()
+        fg.online_enabled = True
+        fg.topic_name = "my_topic_onlinefs"
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            FeatureGroupEngine._validate_topic_name(fg)
+
+        assert fg.topic_name == "my_topic_onlinefs"
+        assert len(w) == 0
+
+    def test_topic_name_no_suffix_when_offline(self):
+        fg = mock.MagicMock()
+        fg.online_enabled = False
+        fg.topic_name = "my_topic"
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            FeatureGroupEngine._validate_topic_name(fg)
+
+        assert fg.topic_name == "my_topic"
+        assert len(w) == 0
+
+    def test_topic_name_none_no_validation(self):
+        fg = mock.MagicMock()
+        fg.online_enabled = True
+        fg.topic_name = None
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            FeatureGroupEngine._validate_topic_name(fg)
+
+        assert fg.topic_name is None
+        assert len(w) == 0
