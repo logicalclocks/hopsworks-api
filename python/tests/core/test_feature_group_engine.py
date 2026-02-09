@@ -1820,3 +1820,97 @@ class TestFeatureGroupEngine:
         assert len(result) == 2
         assert result[0].name == "col1"
         assert result[1].name == "test"
+
+    def test_update_feature_group_schema_on_demand_transformations_duplicate_feature_name(
+        self, mocker
+    ):
+        """Test that transformation output columns with the same name as existing features are not added."""
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        @udf(int)
+        def col2(col1):
+            return col1 + 1
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            transformation_functions=[col2("col1")],
+        )
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="int")
+
+        # Act
+        result = fg_engine._update_feature_group_schema_on_demand_transformations(
+            feature_group=fg, features=[f, f1]
+        )
+
+        # Assert
+        assert len(result) == 2
+        assert result[0].name == "col1"
+        assert result[1].name == "col2"
+        assert result[1].on_demand is False
+
+    def test_update_feature_group_schema_on_demand_transformations_partial_duplicate(
+        self, mocker
+    ):
+        """Test transformation with multiple outputs where some match existing feature names."""
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        @udf([int, int])
+        def multi_output(col1):
+            return col1 + 1, col1 + 2
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            transformation_functions=[multi_output("col1")],
+        )
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="multi_output_0", type="int")
+
+        # Act
+        result = fg_engine._update_feature_group_schema_on_demand_transformations(
+            feature_group=fg, features=[f, f1]
+        )
+
+        # Assert
+        assert len(result) == 3
+        assert result[0].name == "col1"
+        assert result[1].name == "multi_output_0"
+        assert result[1].on_demand is False
+        assert result[2].name == "multi_output_1"
+        assert result[2].on_demand is True
