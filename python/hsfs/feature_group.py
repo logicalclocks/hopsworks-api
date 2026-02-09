@@ -158,6 +158,8 @@ class FeatureGroupBase:
             expectation_suite: Great Expectations suite for data validation.
             online_topic_name: Name of the Kafka topic for online serving.
             topic_name: Name of the Kafka topic for streaming.
+                For online-enabled feature groups, the topic name must end with `_onlinefs`.
+                If a user-provided topic name is missing this suffix, it will be appended automatically.
             notification_topic_name: Name of the Kafka topic for notifications.
             deprecated: Whether this feature group is deprecated.
             online_config: Configuration for online serving.
@@ -2271,7 +2273,11 @@ class FeatureGroupBase:
 
     @property
     def topic_name(self) -> str | None:
-        """The topic used for feature group data ingestion."""
+        """The topic used for feature group data ingestion.
+
+        For online-enabled feature groups, the topic name must end with `_onlinefs`.
+        If a user-provided topic name is missing this suffix, it will be appended automatically when the feature group is saved.
+        """
         return self._topic_name
 
     @topic_name.setter

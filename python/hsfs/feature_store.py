@@ -645,6 +645,8 @@ class FeatureStore:
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
+                For online-enabled feature groups, the topic name must end with `_onlinefs`.
+                If a user-provided topic name is missing this suffix, it will be appended automatically when the feature group is saved.
             notification_topic_name:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
@@ -848,6 +850,8 @@ class FeatureStore:
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
+                For online-enabled feature groups, the topic name must end with `_onlinefs`.
+                If a user-provided topic name is missing this suffix, it will be appended automatically when the feature group is saved.
             notification_topic_name:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
@@ -1009,6 +1013,8 @@ class FeatureStore:
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
+                For online-enabled feature groups, the topic name must end with `_onlinefs`.
+                If a user-provided topic name is missing this suffix, it will be appended automatically when the feature group is saved.
             notification_topic_name:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
@@ -1195,6 +1201,8 @@ class FeatureStore:
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
+                For online-enabled feature groups, the topic name must end with `_onlinefs`.
+                If a user-provided topic name is missing this suffix, it will be appended automatically when the feature group is saved.
             notification_topic_name:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
