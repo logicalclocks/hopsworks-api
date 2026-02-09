@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     import polars as pl
     from hsfs.transformation_function import TransformationFunction
 
-ONLINE_TOPIC_NAME_SUFFIX = "_onlinefs"
+_ONLINE_TOPIC_NAME_SUFFIX = "_onlinefs"
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -556,12 +556,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if (
             feature_group.online_enabled
             and feature_group.topic_name is not None
-            and not feature_group.topic_name.endswith(ONLINE_TOPIC_NAME_SUFFIX)
+            and not feature_group.topic_name.endswith(_ONLINE_TOPIC_NAME_SUFFIX)
         ):
-            corrected = feature_group.topic_name + ONLINE_TOPIC_NAME_SUFFIX
+            corrected = feature_group.topic_name + _ONLINE_TOPIC_NAME_SUFFIX
             warnings.warn(
                 f"Topic name '{feature_group.topic_name}' does not end with "
-                f"required suffix '{ONLINE_TOPIC_NAME_SUFFIX}'. The suffix has "
+                f"required suffix '{_ONLINE_TOPIC_NAME_SUFFIX}'. The suffix has "
                 f"been added automatically. Topic name set to: '{corrected}'.",
                 util.FeatureGroupWarning,
                 stacklevel=2,
