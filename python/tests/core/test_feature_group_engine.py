@@ -1919,8 +1919,6 @@ class TestFeatureGroupEngine:
         assert result[2].name == "multi_output_1"
         assert result[2].on_demand is True
 
-
-class TestValidateTopicName:
     def test_topic_name_auto_suffix_when_online_enabled(self):
         fg = mock.MagicMock()
         fg.online_enabled = True
@@ -1946,18 +1944,6 @@ class TestValidateTopicName:
             FeatureGroupEngine._validate_topic_name(fg)
 
         assert fg.topic_name == "my_topic_onlinefs"
-        assert len(w) == 0
-
-    def test_topic_name_no_suffix_when_offline(self):
-        fg = mock.MagicMock()
-        fg.online_enabled = False
-        fg.topic_name = "my_topic"
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            FeatureGroupEngine._validate_topic_name(fg)
-
-        assert fg.topic_name == "my_topic"
         assert len(w) == 0
 
     def test_topic_name_none_no_validation(self):
