@@ -1477,3 +1477,247 @@ class TestExternalFeatureGroup:
         assert new_fg.features[0].name == "primarykey"
         assert new_fg.features[1].name == "event_time"
         assert new_fg.features[2].name == "feat"
+
+
+class TestFeatureGroupExecuteOdts:
+    def test_execute_odts_with_transformations(self, mocker):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[odt("col1")],
+        )
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline)
+        df_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+        result_df = fg.execute_odts(data=df_test_data, online=False)
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=df_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online)
+        dict_test_data = {"col1": 1}
+        result_dict = fg.execute_odts(data=dict_test_data, online=True)
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_odts_with_transformation_context_and_request_parameters(
+        self, mocker
+    ):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_context_value(feature, context):
+            return feature + context["value"]
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_context_value,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[odt("col1")],
+        )
+
+        context = {"value": 10}
+        request_params = {"param1": "value1"}
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline) and transformation_context
+        df_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+        result_df = fg.execute_odts(
+            data=df_test_data, online=False, transformation_context=context
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=df_test_data,
+            online=False,
+            transformation_context=context,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online) and request_parameters
+        dict_test_data = {"col1": 1}
+        result_dict = fg.execute_odts(
+            data=dict_test_data, online=True, request_parameters=request_params
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=request_params,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_odts_no_transformations(self, mocker, caplog):
+        import logging
+
+        import pandas as pd
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[],
+        )
+
+        test_data = pd.DataFrame({"col1": [1, 2, 3]})
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+        )
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = fg.execute_odts(data=test_data, online=False)
+
+        # Assert
+        mock_apply.assert_not_called()
+        assert (
+            "No on-demand transformation functions attached to the feature group"
+            in caplog.text
+        )
+        pd.testing.assert_frame_equal(result, test_data)
+
+    @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
+    def test_execute_odts_execution_modes(self, mocker, execution_mode):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int, mode=execution_mode)
+        def add_one(feature):
+            return feature + 1
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[odt("col1")],
+        )
+
+        if execution_mode == "default":
+            online_test_data = {"col1": 1}
+            offline_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+        elif execution_mode == "python":
+            online_test_data = offline_test_data = {"col1": 1}
+        elif execution_mode == "pandas":
+            online_test_data = offline_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Act - online
+        fg.execute_odts(data=online_test_data, online=True)
+
+        # Assert - online
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=online_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+
+        # Act - offline
+        fg.execute_odts(data=offline_test_data, online=False)
+
+        # Assert - offline
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=offline_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )

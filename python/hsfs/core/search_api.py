@@ -13,18 +13,26 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-from pydantic import BaseModel
+from hopsworks_common.core.search_api import (
+    SearchApi,
+    TagSearchFilter,
+)
+from hopsworks_common.search_results import (
+    FeatureGroupSearchResult,
+    FeatureSearchResult,
+    FeaturestoreSearchResult,
+    FeatureViewSearchResult,
+    TrainingDatasetSearchResult,
+)
 
 
-class FeatureStore(BaseModel):
-    """Model representing a feature store in Hopsworks MCP."""
-
-    name: str
-    id: int
-    project_id: int
-    project_name: str
-    online_featurestore_name: str | None = None
-    online_enabled: bool
-    offline_featurestore_name: str | None = None
+__all__ = [
+    "FeatureGroupSearchResult",
+    "FeatureSearchResult",
+    "FeaturestoreSearchResult",
+    "FeatureViewSearchResult",
+    "SearchApi",
+    "TagSearchFilter",
+    "TrainingDatasetSearchResult",
+]

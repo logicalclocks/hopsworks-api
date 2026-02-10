@@ -62,7 +62,6 @@ from hsfs import (
     engine,
     feature,
     feature_view,
-    transformation_function,
     util,
 )
 from hsfs import storage_connector as sc
@@ -344,9 +343,8 @@ class Engine:
             raise FeatureStoreException("data_format is not specified")
 
         if storage_connector.type == storage_connector.HOPSFS:
-            df_list = self._read_hopsfs(
-                location, data_format, read_options, dataframe_type
-            )
+            path = storage_connector._get_path(location)
+            df_list = self._read_hopsfs(path, data_format, read_options, dataframe_type)
         elif storage_connector.type == storage_connector.S3:
             df_list = self._read_s3(
                 storage_connector, location, data_format, dataframe_type
@@ -425,47 +423,60 @@ class Engine:
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
     ) -> list[pd.DataFrame | pl.DataFrame]:
-        total_count = 10000
-        offset = 0
         df_list = []
         if read_options is None:
             read_options = {}
 
-        while offset < total_count:
-            total_count, inode_list = self._dataset_api._list_dataset_path(
-                location, inode.Inode, offset=offset, limit=100
-            )
+        # Check if the location is a file or directory
+        path_metadata = self._dataset_api._get(location)
+        is_dir = path_metadata.get("attributes", {}).get("dir", False)
 
-            for inode_entry in inode_list:
-                if not self._is_metadata_file(inode_entry.path):
-                    from hsfs.core import arrow_flight_client
+        if is_dir:
+            # Location is a directory, list all files
+            total_count = 10000
+            offset = 0
+            while offset < total_count:
+                total_count, inode_list = self._dataset_api._list_dataset_path(
+                    location, inode.Inode, offset=offset, limit=100
+                )
 
-                    if arrow_flight_client.is_data_format_supported(
-                        data_format, read_options
-                    ):
-                        arrow_flight_config = read_options.get("arrow_flight_config")
-                        df = arrow_flight_client.get_instance().read_path(
-                            inode_entry.path,
-                            arrow_flight_config,
-                            dataframe_type=dataframe_type,
+                for inode_entry in inode_list:
+                    if not self._is_metadata_file(inode_entry.path):
+                        df = self._read_single_hopsfs_file(
+                            inode_entry.path, data_format, read_options, dataframe_type
                         )
-                    else:
-                        content_stream = self._dataset_api.read_content(
-                            inode_entry.path
-                        )
-                        if dataframe_type.lower() == "polars":
-                            df = self._read_polars(
-                                data_format, BytesIO(content_stream.content)
-                            )
-                        else:
-                            df = self._read_pandas(
-                                data_format, BytesIO(content_stream.content)
-                            )
-
-                    df_list.append(df)
-                offset += 1
+                        df_list.append(df)
+                offset += len(inode_list)
+        else:
+            # Location is a single file, read it directly
+            if not self._is_metadata_file(location):
+                df = self._read_single_hopsfs_file(
+                    location, data_format, read_options, dataframe_type
+                )
+                df_list.append(df)
 
         return df_list
+
+    def _read_single_hopsfs_file(
+        self,
+        path: str,
+        data_format: str,
+        read_options: dict[str, Any],
+        dataframe_type: str,
+    ) -> pd.DataFrame | pl.DataFrame:
+        from hsfs.core import arrow_flight_client
+
+        if arrow_flight_client.is_data_format_supported(data_format, read_options):
+            arrow_flight_config = read_options.get("arrow_flight_config")
+            return arrow_flight_client.get_instance().read_path(
+                path,
+                arrow_flight_config,
+                dataframe_type=dataframe_type,
+            )
+        content_stream = self._dataset_api.read_content(path)
+        if dataframe_type.lower() == "polars":
+            return self._read_polars(data_format, BytesIO(content_stream.content))
+        return self._read_pandas(data_format, BytesIO(content_stream.content))
 
     def _read_s3(
         self,
@@ -1130,7 +1141,7 @@ class Engine:
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1159,10 +1170,12 @@ class Engine:
         #    transformation_function_engine.TransformationFunctionEngine.get_and_set_feature_statistics(
         #        training_dataset_obj, feature_view_obj, training_dataset_version
         #    )
-        return self._apply_transformation_function(
-            feature_view_obj.transformation_functions,
-            df,
+        return transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            transformation_functions=feature_view_obj.transformation_functions,
+            data=df,
+            online=False,
             transformation_context=transformation_context,
+            request_parameters=None,
         )
 
     def split_labels(
@@ -1183,6 +1196,10 @@ class Engine:
     def drop_columns(
         self, df: pd.DataFrame | pl.DataFrame, drop_cols: list[str]
     ) -> pd.DataFrame | pl.DataFrame:
+        if HAS_POLARS and (
+            isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        ):
+            return df.drop(*drop_cols)
         return df.drop(columns=drop_cols)
 
     def _prepare_transform_split_df(
@@ -1205,7 +1222,7 @@ class Engine:
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1277,10 +1294,16 @@ class Engine:
         #    )
         # and the apply them
         for split_name in result_dfs:
-            result_dfs[split_name] = self._apply_transformation_function(
-                feature_view_obj.transformation_functions,
-                result_dfs.get(split_name),
-                transformation_context=transformation_context,
+            result_dfs[split_name] = (
+                transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                    transformation_functions=feature_view_obj.transformation_functions,
+                    data=result_dfs.get(split_name),
+                    online=False,
+                    transformation_context=transformation_context,
+                    request_parameters=None,
+                )
+                if feature_view_obj.transformation_functions
+                else result_dfs.get(split_name)
             )
 
         return result_dfs
@@ -1526,90 +1549,42 @@ class Engine:
                 f.write(bytesio_object.getbuffer())
         return local_file
 
-    def _apply_transformation_function(
-        self,
-        transformation_functions: list[transformation_function.TransformationFunction],
-        dataset: pd.DataFrame | pl.DataFrame,
-        online_inference: bool = False,
-        transformation_context: dict[str, Any] = None,
+    def shallow_copy_dataframe(
+        self, dataframe: pd.DataFrame | pl.DataFrame
     ) -> pd.DataFrame | pl.DataFrame:
-        """Apply transformation function to the dataframe.
-
-        Parameters:
-            transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
-            dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
-
-        Returns:
-            `DataFrame`: A pandas dataframe with the transformed data.
-
-        Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
-        """
-        dropped_features = set()
-
-        # Shallow copy done prevent overwriting metadata in the dataframe like the columns in it.
         if HAS_POLARS and (
-            isinstance(dataset, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+            isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
-            dataset = dataset.clone()
-        else:
-            dataset = dataset.copy()
+            return dataframe.clone()
+        if HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
+            return dataframe.copy()
+        raise ValueError(
+            f"Dataframe type {type(dataframe)} not supported in the Python engine."
+        )
 
-        if HAS_POLARS and (
-            isinstance(dataset, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+    def apply_udf_on_dataframe(
+        self,
+        udf: HopsworksUdf,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        online: bool = False,
+    ) -> pd.DataFrame | pl.DataFrame:
+        """Apply a udf to a dataframe."""
+        if (
+            udf.execution_mode.get_current_execution_mode(online=online)
+            == UDFExecutionMode.PANDAS
         ):
-            # Converting polars dataframe to pandas because currently we support only pandas UDF's as transformation functions.
-            if HAS_PYARROW:
-                dataset = dataset.to_pandas(
-                    use_pyarrow_extension_array=True
-                )  # Zero copy if pyarrow extension can be used.
-            else:
-                dataset = dataset.to_pandas(use_pyarrow_extension_array=False)
-
-        for tf in transformation_functions:
-            hopsworks_udf = tf.hopsworks_udf
-
-            # Setting transformation function context variables.
-            hopsworks_udf.transformation_context = transformation_context
-
-            missing_features = set(hopsworks_udf.transformation_features) - set(
-                dataset.columns
+            return self._apply_pandas_udf(
+                hopsworks_udf=udf, dataframe=dataframe, online=online
             )
-            if missing_features:
-                if (
-                    tf.transformation_type
-                    == transformation_function.TransformationType.ON_DEMAND
-                ):
-                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
-                    raise FeatureStoreException(
-                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
-                        "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
-                    )
-                raise FeatureStoreException(
-                    f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
-                )
-            if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(tf.hopsworks_udf.dropped_features)
-
-            if (
-                hopsworks_udf.execution_mode.get_current_execution_mode(
-                    online=online_inference
-                )
-                == UDFExecutionMode.PANDAS
-            ):
-                dataset = self._apply_pandas_udf(
-                    hopsworks_udf=hopsworks_udf, dataframe=dataset
-                )
-            else:
-                dataset = self._apply_python_udf(
-                    hopsworks_udf=hopsworks_udf, dataframe=dataset
-                )
-        return dataset.drop(dropped_features, axis=1)
+        return self._apply_python_udf(
+            hopsworks_udf=udf, dataframe=dataframe, online=online
+        )
 
     def _apply_python_udf(
         self,
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
+        online: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a python udf to a dataframe.
 
@@ -1623,7 +1598,7 @@ class Engine:
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        udf = hopsworks_udf.get_udf(online=False)
+        udf = hopsworks_udf.get_udf(online=online)
         if isinstance(dataframe, pd.DataFrame):
             if len(hopsworks_udf.return_types) > 1:
                 dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
@@ -1644,7 +1619,9 @@ class Engine:
                         cols.pop(cols.index(hopsworks_udf.output_column_names[0]))
                     )
                     dataframe = dataframe[cols]
-        else:
+        elif HAS_POLARS and (
+            isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        ):
             # Dynamically creating lambda function so that we do not need to loop though to extract features required for the udf.
             # This is done because polars 'map_rows' provides rows as tuples to the udf.
             transformation_features = ", ".join(
@@ -1673,6 +1650,7 @@ class Engine:
         self,
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
+        online: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a pandas udf to a dataframe.
 
@@ -1686,9 +1664,21 @@ class Engine:
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
+        # Cast to pandas if polars dataframe to avoid errors when applying the pandas UDF.
+        if HAS_POLARS and (
+            isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        ):
+            # Converting polars dataframe to pandas because currently we support only pandas UDF's as transformation functions.
+            if HAS_PYARROW:
+                dataframe = dataframe.to_pandas(
+                    use_pyarrow_extension_array=True
+                )  # Zero copy if pyarrow extension can be used.
+            else:
+                dataframe = dataframe.to_pandas(use_pyarrow_extension_array=False)
+
         if len(hopsworks_udf.return_types) > 1:
             dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
-                online=False
+                online=online
             )(
                 *(
                     [
@@ -1701,7 +1691,7 @@ class Engine:
             )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
         else:
             dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
-                online=False
+                online=online
             )(
                 *(
                     [

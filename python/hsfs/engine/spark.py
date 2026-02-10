@@ -869,7 +869,7 @@ class Engine:
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -927,7 +927,7 @@ class Engine:
             to_df `bool`: Return dataframe instead of writing the data.
             training_dataset_version `Optional[int]`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1200,9 +1200,10 @@ class Engine:
         transformation_context: dict[str, Any] = None,
     ):
         # apply transformation functions (they are applied separately to each split)
-        feature_dataframe = self._apply_transformation_function(
-            transformation_functions,
-            dataset=feature_dataframe,
+        feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            transformation_functions=transformation_functions,
+            data=feature_dataframe,
+            online=False,
             transformation_context=transformation_context,
         )
         if to_df:
@@ -1615,11 +1616,15 @@ class Engine:
             location
         )
 
+    def shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
+        return dataframe.copy(deep=False)
+
     def _apply_transformation_function(
         self,
         transformation_functions: list[transformation_function.TransformationFunction],
         dataset: DataFrame,
         transformation_context: dict[str, Any] = None,
+        expected_features: set[str] = None,
     ):
         """Apply transformation function to the dataframe.
 
@@ -1627,7 +1632,7 @@ class Engine:
             transformation_functions `List[TransformationFunction]` : List of transformation functions.
             dataset `Union[DataFrame]`: A spark dataframe.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             `DataFrame`: A spark dataframe with the transformed data.
@@ -1646,25 +1651,16 @@ class Engine:
             # Setting transformation function context variables.
             hopsworks_udf.transformation_context = transformation_context
 
-            missing_features = set(hopsworks_udf.transformation_features) - set(
-                dataset.columns
-            )
-
-            if missing_features:
-                if (
-                    tf.transformation_type
-                    == transformation_function.TransformationType.ON_DEMAND
-                ):
-                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
-                    raise FeatureStoreException(
-                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
-                        "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
-                    )
-                raise FeatureStoreException(
-                    f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
-                )
             if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(hopsworks_udf.dropped_features)
+                dropped_features.update(
+                    {
+                        f
+                        for f in hopsworks_udf.dropped_features
+                        if f not in expected_features
+                    }
+                    if expected_features
+                    else hopsworks_udf.dropped_features
+                )
 
             # Add to dropped features if the feature need to overwritten to avoid ambiguous columns.
             if len(hopsworks_udf.return_types) == 1 and (
