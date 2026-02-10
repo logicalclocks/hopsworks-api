@@ -18,6 +18,9 @@ import copy
 import os
 
 import humps
+import pytest
+from hopsworks_common import util
+from hopsworks_common.client.exceptions import ModelRegistryException
 from hsml import model
 from hsml.constants import MODEL
 from hsml.core import explicit_provenance
@@ -202,6 +205,7 @@ class TestModel:
             "script_file": p_json["transformer"],
             "resources": copy.deepcopy(p_json["transformer_resources"]),
         }
+        scaling_configuration = copy.deepcopy(p_json["predictor_scaling_config"])
 
         # Act
         m = model.Model.from_response_json(m_json)
@@ -214,6 +218,7 @@ class TestModel:
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
+            scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=p_json["api_protocol"],
             environment=p_json["environment_dto"]["name"],
@@ -230,6 +235,7 @@ class TestModel:
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
+            scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=p_json["api_protocol"],
             environment=p_json["environment_dto"]["name"],
@@ -482,3 +488,45 @@ class TestModel:
         mock_td_provenance.assert_called_once()
         assert mock_fv.init_serving.called
         assert not mock_fv.init_batch_scoring.called
+
+
+class TestModelNameValidation:
+    """Tests for model name validation."""
+
+    @pytest.mark.parametrize(
+        "valid_name",
+        [
+            "my_model",
+            "Model123",
+            "test_model_v1",
+            "a",
+            "A",
+            "model",
+            "MODEL",
+            "model_1_2_3",
+            "_underscore_start",
+            "end_underscore_",
+        ],
+    )
+    def test_valid_model_names(self, valid_name):
+        # Should not raise any exception
+        util.validate_model_name(valid_name)
+
+    @pytest.mark.parametrize(
+        "invalid_name,description",
+        [
+            ("my-model", "hyphen"),
+            ("model.v1", "dot"),
+            ("model name", "space"),
+            ("", "empty string"),
+            ("model/path", "slash"),
+            ("model@name", "at symbol"),
+            ("model#1", "hash"),
+            ("model$name", "dollar sign"),
+        ],
+    )
+    def test_invalid_model_names(self, invalid_name, description):
+        with pytest.raises(ModelRegistryException) as exc_info:
+            util.validate_model_name(invalid_name)
+        assert f"Invalid model name '{invalid_name}'" in str(exc_info.value)
+        assert "[a-zA-Z0-9_]+" in str(exc_info.value)

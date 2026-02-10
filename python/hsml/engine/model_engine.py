@@ -373,6 +373,7 @@ class ModelEngine:
             model_instance._project_name = _client._project_name
 
         util.validate_metrics(model_instance.training_metrics)
+        util.validate_model_name(model_instance._name)
 
         if not self._dataset_api.path_exists(dataset_models_root_path):
             raise AssertionError(
@@ -415,6 +416,11 @@ class ModelEngine:
                     self._engine.mkdir(model_instance.version_path)
                     self._engine.mkdir(model_instance.model_files_path)
                 if step["id"] == 1:
+                    if not keep_original_files:
+                        print(
+                            f"Moving model files from '{model_path}' to the model registry... "
+                            "This is the default behavior. Set keep_original_files=True to copy files instead."
+                        )
 
                     def update_upload_progress(n_dirs=0, n_files=0, step=step):
                         pbar.set_description(

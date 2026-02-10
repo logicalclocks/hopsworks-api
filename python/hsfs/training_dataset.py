@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 import humps
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
-from hsfs import engine, training_dataset_feature, util
+from hsfs import engine, tag, training_dataset_feature, util
 from hsfs.constructor import filter, query
 from hsfs.core import data_source as ds
 from hsfs.core import (
@@ -83,6 +83,8 @@ class TrainingDatasetBase:
         time_split_size=None,
         extra_filter=None,
         data_source=None,
+        missing_mandatory_tags=None,
+        tags=None,
         **kwargs,
     ):
         self._name = name
@@ -101,6 +103,8 @@ class TrainingDatasetBase:
         self._seed = seed
         self._location = location
         self._train_split = train_split
+        self._missing_mandatory_tags = missing_mandatory_tags or []
+        self._tags: list[tag.Tag] | None = tags
 
         if training_dataset_type:
             self.training_dataset_type = training_dataset_type
@@ -284,6 +288,11 @@ class TrainingDatasetBase:
     def description(self, description: str | None) -> None:
         """Description of the training dataset contents."""
         self._description = description
+
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """List of missing mandatory tags for the training dataset."""
+        return self._missing_mandatory_tags
 
     @property
     def data_format(self):
@@ -572,6 +581,8 @@ class TrainingDataset(TrainingDatasetBase):
         time_split_size=None,
         extra_filter=None,
         data_source=None,
+        missing_mandatory_tags=None,
+        tags=None,
         **kwargs,
     ):
         super().__init__(
@@ -603,6 +614,8 @@ class TrainingDataset(TrainingDatasetBase):
             time_split_size=time_split_size,
             extra_filter=extra_filter,
             data_source=data_source,
+            missing_mandatory_tags=missing_mandatory_tags,
+            tags=tags,
         )
 
         self._id = id
@@ -893,6 +906,8 @@ class TrainingDataset(TrainingDatasetBase):
                 td.pop("type", None)
                 td.pop("href", None)
                 cls._rewrite_location(td)
+                if "tags" in td and td["tags"]:
+                    td["tags"] = tag.Tag.from_response_json(td["tags"])
                 tds.append(cls(**td))
             return tds
         if isinstance(json_decamelized, dict):
@@ -909,6 +924,10 @@ class TrainingDataset(TrainingDatasetBase):
         json_decamelized.pop("type", None)
         json_decamelized.pop("href", None)
         cls._rewrite_location(json_decamelized)
+        if "tags" in json_decamelized and json_decamelized["tags"]:
+            json_decamelized["tags"] = tag.Tag.from_response_json(
+                json_decamelized["tags"]
+            )
         return cls(**json_decamelized)
 
     def update_from_response_json(self, json_dict):
@@ -916,6 +935,10 @@ class TrainingDataset(TrainingDatasetBase):
         _ = json_decamelized.pop("type")
         # here we lose the information that the user set, e.g. write_options
         self._rewrite_location(json_decamelized)
+        if "tags" in json_decamelized and json_decamelized["tags"]:
+            json_decamelized["tags"] = tag.Tag.from_response_json(
+                json_decamelized["tags"]
+            )
         self.__init__(**json_decamelized)
         return self
 
@@ -935,7 +958,7 @@ class TrainingDataset(TrainingDatasetBase):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        td_meta_dict = {
+        td_dict = {
             "name": self._name,
             "version": self._version,
             "description": self._description,
@@ -954,8 +977,11 @@ class TrainingDataset(TrainingDatasetBase):
             "type": "trainingDatasetDTO",
         }
         if self._data_source:
-            td_meta_dict["dataSource"] = self._data_source.to_dict()
-        return td_meta_dict
+            td_dict["dataSource"] = self._data_source.to_dict()
+        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        if tags_dict:
+            td_dict["tags"] = tags_dict
+        return td_dict
 
     @property
     def id(self):

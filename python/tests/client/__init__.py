@@ -1,5 +1,5 @@
 #
-#   Copyright 2025 Hopsworks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,26 +13,3 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-
-from hopsworks_common.core.search_api import (
-    SearchApi,
-    TagSearchFilter,
-)
-from hopsworks_common.search_results import (
-    FeatureGroupSearchResult,
-    FeatureSearchResult,
-    FeaturestoreSearchResult,
-    FeatureViewSearchResult,
-    TrainingDatasetSearchResult,
-)
-
-
-__all__ = [
-    "FeatureGroupSearchResult",
-    "FeatureSearchResult",
-    "FeaturestoreSearchResult",
-    "FeatureViewSearchResult",
-    "SearchApi",
-    "TagSearchFilter",
-    "TrainingDatasetSearchResult",
-]

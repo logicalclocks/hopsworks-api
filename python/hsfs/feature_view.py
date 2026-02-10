@@ -144,10 +144,13 @@ class FeatureView:
         serving_keys: list[skm.ServingKey] | None = None,
         logging_enabled: bool | None = False,
         extra_log_columns: list[Feature] | dict[str, str] | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
+        tags: list[tag.Tag] | None = None,
         **kwargs,
     ) -> None:
         self._name = name
         self._id = id
+        self._tags: list[tag.Tag] | None = tags
         self._query = query
         # Check if query has any ambiguous columns and print warning in these cases:
         query.check_and_warn_ambiguous_features()
@@ -216,6 +219,7 @@ class FeatureView:
         self._logging_enabled = True if extra_log_columns else logging_enabled
         self._feature_logging = None
         self._alert_api = alerts_api.AlertsApi()
+        self._missing_mandatory_tags = missing_mandatory_tags or []
 
         self._extra_log_columns: list[Feature] = (
             [
@@ -689,6 +693,7 @@ class FeatureView:
             passed_features:
                 Dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
+                These values take priority over features retrieved from the online feature store but are overridden by `request_parameters` if the same key exists in both.
             external:
                 If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
@@ -704,9 +709,10 @@ class FeatureView:
                 If set to `False`, the function returns the feature vector without applying any model-dependent transformations.
             on_demand_features: Setting this to `False` returns untransformed feature vectors without any on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and `passed_features` or in the retrieved feature vector, the value from `request_parameters` is used.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
                 If no context variables are provided, this parameter defaults to `None`.
             logging_data:
                 Setting this to `True` return feature vector with logging metadata.
@@ -848,6 +854,7 @@ class FeatureView:
             passed_features:
                 A list of dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
+                These values take priority over features retrieved from the online feature store but are overridden by `request_parameters` if the same key exists in both.
             external:
                 If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
@@ -861,9 +868,10 @@ class FeatureView:
                 If set to `False`, the function returns the feature vector without applying any model-dependent transformations.
             on_demand_features: Setting this to `False` returns untransformed feature vectors without any on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and `passed_features` or in the retrieved feature vectors, the value from `request_parameters` is used.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
                 If no context variables are provided, this parameter defaults to `None`.
             logging_data:
                 Setting this to `True` return feature vector with logging metadata.
@@ -1233,7 +1241,7 @@ class FeatureView:
             transformed: Setting to `False` returns the untransformed feature vectors.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
                 If no context variables are provided, this parameter defaults to `None`.
             logging_data:
                 Setting this to `True` return batch data with logging metadata.
@@ -1478,6 +1486,7 @@ class FeatureView:
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1642,7 +1651,7 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the feature join, however, the same features as in the original feature group that is being replaced need to be available in the spine group.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
         Returns:
@@ -1656,6 +1665,8 @@ class FeatureView:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, path=location
             )
+        normalized_tags = tag.Tag.normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -1670,6 +1681,7 @@ class FeatureView:
             statistics_config=statistics_config,
             coalesce=coalesce,
             extra_filter=extra_filter,
+            tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine.create_training_dataset(
@@ -1708,6 +1720,7 @@ class FeatureView:
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -1922,7 +1935,7 @@ class FeatureView:
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
         Returns:
@@ -1940,6 +1953,8 @@ class FeatureView:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, path=location
             )
+        normalized_tags = tag.Tag.normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -1958,6 +1973,7 @@ class FeatureView:
             statistics_config=statistics_config,
             coalesce=coalesce,
             extra_filter=extra_filter,
+            tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine.create_training_dataset(
@@ -1998,6 +2014,7 @@ class FeatureView:
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2197,7 +2214,7 @@ class FeatureView:
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
         Returns:
@@ -2220,6 +2237,8 @@ class FeatureView:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, path=location
             )
+        normalized_tags = tag.Tag.normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -2241,6 +2260,7 @@ class FeatureView:
             statistics_config=statistics_config,
             coalesce=coalesce,
             extra_filter=extra_filter,
+            tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine.create_training_dataset(
@@ -2319,7 +2339,7 @@ class FeatureView:
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             `Job`: When using the `python` engine, it returns the Hopsworks Job
@@ -2454,7 +2474,7 @@ class FeatureView:
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
@@ -2621,7 +2641,7 @@ class FeatureView:
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -2828,7 +2848,7 @@ class FeatureView:
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -2977,6 +2997,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
+        util.check_missing_mandatory_tags(td.missing_mandatory_tags)
         return df
 
     @usage.method_logger
@@ -3031,7 +3052,7 @@ class FeatureView:
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -3105,7 +3126,7 @@ class FeatureView:
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3151,7 +3172,13 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_view_engine.get_training_datasets(self)
+        tds = self._feature_view_engine.get_training_datasets(self)
+        for td in tds:
+            util.check_missing_mandatory_tags(
+                td.missing_mandatory_tags,
+                message=f"Training dataset '{td.name}' version {td.version} has missing mandatory tags",
+            )
+        return tds
 
     @usage.method_logger
     def get_training_dataset_statistics(
@@ -3782,6 +3809,10 @@ class FeatureView:
                 skm.ServingKey.from_response_json(sk) for sk in serving_keys
             ]
         transformation_functions = json_decamelized.get("transformation_functions", {})
+        tags_response = json_decamelized.get("tags", None)
+        tags = None
+        if tags_response:
+            tags = tag.Tag.from_response_json(tags_response)
         fv = cls(
             id=json_decamelized.get("id", None),
             name=json_decamelized["name"],
@@ -3805,6 +3836,8 @@ class FeatureView:
                 if transformation_functions
                 else []
             ),
+            missing_mandatory_tags=json_decamelized.get("missing_mandatory_tags", None),
+            tags=tags,
         )
         features = json_decamelized.get("features", [])
         if features:
@@ -3870,8 +3903,9 @@ class FeatureView:
         Parameters:
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+                These parameters take **higheshighestt priority** when resolving feature values - if a key exists in both `request_parameters` and the feature vector, the value from `request_parameters` is used.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
 
         Returns:
@@ -3905,7 +3939,7 @@ class FeatureView:
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
 
         Returns:
@@ -4372,6 +4406,159 @@ class FeatureView:
             },
         )
 
+    def execute_odts(
+        self,
+        data: pd.DataFrame | pl.DataFrame | dict[str, Any],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Apply on-demand transformations attached to the feature view on the provided data.
+
+        This method allows you to test on-demand transformation functions locally.
+        It executes all on-demand transformations (ODTs) attached to the feature view on the input data.
+
+        !!! example "Testing on-demand transformations"
+            ```python
+            @udf(return_type=float)
+            def compute_ratio(amount, quantity):
+                return amount / quantity
+
+            fv = fs.get_or_create_feature_view(name="transactions_fv",
+                                        version=1,
+                                        query=fg.select_features(),
+                                        transformation_functions=[compute_ratio("amount", "quantity")])
+
+            # Test with a DataFrame (offline mode)
+            test_df = pd.DataFrame({
+                "amount": [100.0, 200.0, 300.0],
+                "quantity": [2, 4, 5]
+            })
+            result_df = fv.execute_odts(test_df)
+
+            # Test with a dictionary (single record, online inference simulation)
+            test_dict = {"amount": 100.0, "quantity": 2}
+            result_dict = fv.execute_odts(test_dict, online=True)
+            ```
+
+        Parameters:
+            data: Input data to apply transformations to. This can a dataframe or a dictionary.
+            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized). Defaults to offline mode
+            transformation_context: A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
+                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
+            request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+
+        Returns:
+            The transformed data in the same format as the input:
+                - `pd.DataFrame` if input was a DataFrame
+                - `dict[str, Any]` if input was a dictionary
+        """
+        if self._on_demand_transformation_functions:
+            data = self._feature_view_engine.apply_transformations(
+                transformation_functions=self._on_demand_transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+            )
+        else:
+            _logger.info(
+                "No on-demand transformation functions attached to the feature view, no transformations applied."
+            )
+        return data
+
+    def execute_mdts(
+        self,
+        data: pd.DataFrame | pl.DataFrame | dict[str, Any],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Apply model-dependent transformations attached to the feature view on the provided data.
+
+        This method allows you to test model-dependent transformation functions locally.
+        It executes all model-dependent transformations (MDTs) attached to the feature view, using the statistics computed from training data.
+
+        !!! example "Testing model-dependent transformations with statistics"
+            ```python
+            from hsfs.transformation_statistics import TransformationStatistics
+
+            @udf(return_type=float)
+            def normalize(amount, statistics=TransformationStatistics("amount")):
+                return (amount - statistics.amount.mean) / statistics.amount.std_dev
+
+            fv = fs.get_or_create_feature_view(name="transactions_fv",
+                                        version=1,
+                                        query=fg.select_features(),
+                                        transformation_functions=[normalize("amount")])
+
+            # Create training data for training dataset statistics
+            # Alternatively you can initialize the feature view with statistics of previously created training data using `init_batch_scoring` or `init_serving`.
+            features, labels = fv.create_training_data()
+
+            # Testing with a DataFrame
+            test_df = pd.DataFrame({"amount": [100.0, 200.0, 300.0]})
+            result_df = fv.execute_mdts(test_df)
+
+            # Testing with a dictionary (online inference simulation)
+            test_dict = {"amount": 100.0}
+            result_dict = fv.execute_mdts(test_dict, online=True)
+            ```
+
+        Parameters:
+            data: Input data to apply transformations to. This can a dataframe or a dictionary.
+            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized). Defaults to offline mode
+            transformation_context: A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
+                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
+            request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+
+        Returns:
+            The transformed data in the same format as the input:
+                - `pd.DataFrame` if input was a DataFrame
+                - `dict[str, Any]` if input was a dictionary
+        """
+        if self.transformation_functions:
+            data = self._feature_view_engine.apply_transformations(
+                transformation_functions=self.transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+            )
+        else:
+            _logger.info(
+                "No model dependent transformation functions attached to the feature view, no transformations applied."
+            )
+        return data
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self.__getitem__(name)
+        except KeyError as err:
+            raise AttributeError(
+                f"'FeatureView' object has no attribute '{name}'. "
+            ) from err
+
+    def __getitem__(self, name: str):
+        if not isinstance(name, str):
+            raise TypeError(
+                f"Expected type `str`, got `{type(name)}`. "
+                "Transformations are accessible by name."
+            )
+        transformations = [
+            tf.hopsworks_udf
+            for tf in self.__getattribute__("transformation_functions")
+            + self.__getattribute__("_on_demand_transformation_functions")
+            if tf.hopsworks_udf.function_name == name
+        ]
+        if len(transformations) == 1:
+            return transformations[0]
+        raise KeyError(
+            f"'FeatureView' object has no transformation function called '{name}'."
+        )
+
     @staticmethod
     def _update_attribute_if_present(this: FeatureView, new: Any, key: str) -> None:
         if getattr(new, key):
@@ -4407,7 +4594,7 @@ class FeatureView:
         Returns:
             `Dict`: Dictionary that contains all data required to json serialize the object.
         """
-        return {
+        fv_dict = {
             "featurestoreId": self._featurestore_id,
             "name": self._name,
             "version": self._version,
@@ -4419,6 +4606,10 @@ class FeatureView:
             "type": "featureViewDTO",
             "extraLogColumns": self._extra_log_columns,
         }
+        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        if tags_dict:
+            fv_dict["tags"] = tags_dict
+        return fv_dict
 
     def get_training_dataset_schema(
         self, training_dataset_version: int | None = None
@@ -4484,6 +4675,11 @@ class FeatureView:
     @version.setter
     def version(self, version: int) -> None:
         self._version = version
+
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """List of missing mandatory tags for the feature view."""
+        return self._missing_mandatory_tags
 
     @property
     def labels(self) -> list[str]:

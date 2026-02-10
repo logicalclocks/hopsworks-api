@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from hsml.inference_logger import InferenceLogger
     from hsml.predictor_state import PredictorState
     from hsml.resources import Resources
+    from hsml.scaling_config import PredictorScalingConfig
     from hsml.transformer import Transformer
 
 
@@ -563,6 +564,15 @@ class Deployment:
     @project_name.setter
     def project_name(self, project_name: str):
         self._predictor._project_name = project_name
+
+    @property
+    def scaling_configuration(self):
+        """Scaling configuration for the deployment."""
+        return self._predictor.scaling_configuration
+
+    @scaling_configuration.setter
+    def scaling_configuration(self, scaling_configuration: PredictorScalingConfig):
+        self._predictor.scaling_configuration = scaling_configuration
 
     def __repr__(self):
         desc = (

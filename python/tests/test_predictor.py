@@ -17,6 +17,7 @@
 import copy
 
 import pytest
+from hopsworks_common.constants import SCALING_CONFIG
 from hsml import (
     inference_batcher,
     inference_logger,
@@ -25,7 +26,7 @@ from hsml import (
     transformer,
     util,
 )
-from hsml.constants import MODEL, PREDICTOR, RESOURCES
+from hsml.constants import MODEL, PREDICTOR
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -90,6 +91,11 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
 
     def test_from_response_json_list(self, mocker, backend_fixtures):
         # Arrange
@@ -134,6 +140,11 @@ class TestPredictor:
             assert p.inference_batcher.enabled == bool(
                 p_json["batching_configuration"]["batching_enabled"]
             )
+            assert p.scaling_configuration is not None
+            assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+            assert p.scaling_configuration.min_instances == 0
+            assert p.scaling_configuration.scale_metric.name == "RPS"
+            assert p.scaling_configuration.target == 100
 
     def test_from_response_json_single(self, mocker, backend_fixtures):
         # Arrange
@@ -173,6 +184,11 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
 
     # constructor
 
@@ -220,12 +236,16 @@ class TestPredictor:
             transformer={
                 "script_file": p_json["transformer"],
                 "resources": copy.deepcopy(p_json["transformer_resources"]),
+                "scaling_configuration": copy.deepcopy(
+                    p_json["transformer_scaling_config"]
+                ),
             },
             inference_logger={
                 "mode": p_json["inference_logging"],
                 "kafka_topic": copy.deepcopy(p_json["kafka_topic_dto"]),
             },
             inference_batcher=copy.deepcopy(p_json["batching_configuration"]),
+            scaling_configuration=copy.deepcopy(p_json["predictor_scaling_config"]),
         )
 
         # Assert
@@ -255,6 +275,12 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
+
         mock_validate_serving_tool.assert_called_once_with(p_json["serving_tool"])
         assert mock_validate_resources.call_count == 1
         mock_validate_script_file.assert_called_once_with(
@@ -563,7 +589,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_non_kserve_with_scale_to_zero(self, mocker):
         # Arrange
@@ -576,7 +602,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_kserve_without_scale_to_zero(self, mocker):
         # Arrange
@@ -589,7 +615,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_kserve_with_scale_to_zero(self, mocker):
         # Arrange
@@ -678,6 +704,13 @@ class TestPredictor:
         assert isinstance(
             kwargs["transformer"].resources, resources.TransformerResources
         )
+        assert kwargs["scaling_configuration"] is not None
+        assert isinstance(
+            kwargs["scaling_configuration"], predictor.PredictorScalingConfig
+        )
+        assert kwargs["scaling_configuration"].min_instances == 0
+        assert kwargs["scaling_configuration"].scale_metric.name == "RPS"
+        assert kwargs["scaling_configuration"].target == 100
 
     # deploy
 

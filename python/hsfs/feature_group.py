@@ -140,6 +140,7 @@ class FeatureGroupBase:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         """Initialize a feature group object.
@@ -186,6 +187,7 @@ class FeatureGroupBase:
         self._alert_api = alerts_api.AlertsApi()
         self.ttl = ttl
         self._ttl_enabled = ttl_enabled if ttl_enabled is not None else ttl is not None
+        self._missing_mandatory_tags = missing_mandatory_tags or []
 
         self._online_config = (
             OnlineConfig.from_response_json(online_config)
@@ -1835,12 +1837,21 @@ class FeatureGroupBase:
         if not isinstance(name, str):
             raise TypeError(
                 f"Expected type `str`, got `{type(name)}`. "
-                "Features are accessible by name."
+                "Features and transformations are accessible by name."
             )
         feature = [f for f in self.__getattribute__("_features") if f.name == name]
+        transformations = [
+            tf.hopsworks_udf
+            for tf in self.__getattribute__("_transformation_functions")
+            if tf.hopsworks_udf.function_name == name
+        ]
         if len(feature) == 1:
             return feature[0]
-        raise KeyError(f"'FeatureGroup' object has no feature called '{name}'.")
+        if len(transformations) == 1:
+            return transformations[0]
+        raise KeyError(
+            f"'FeatureGroup' object has no feature or transformation called '{name}'."
+        )
 
     @property
     def statistics_config(self) -> StatisticsConfig:
@@ -1952,6 +1963,11 @@ class FeatureGroupBase:
     @version.setter
     def version(self, version: int) -> None:
         self._version = version
+
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """List of missing mandatory tags for the feature group."""
+        return self._missing_mandatory_tags
 
     def get_fg_name(self) -> str:
         """Returns the full feature group name, that is, its base name combined with its version."""
@@ -2624,6 +2640,8 @@ class FeatureGroup(FeatureGroupBase):
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
+        tags: list[tag.Tag] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2645,6 +2663,7 @@ class FeatureGroup(FeatureGroupBase):
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            missing_mandatory_tags=missing_mandatory_tags,
         )
 
         self._feature_store_name: str | None = featurestore_name
@@ -2664,6 +2683,7 @@ class FeatureGroup(FeatureGroupBase):
         self._stream = stream
         self._parents = parents
         self._deltastreamer_jobconf = delta_streamer_job_conf
+        self._tags: list[tag.Tag] | None = tags
 
         self._materialization_job: Job = None
 
@@ -3337,6 +3357,9 @@ class FeatureGroup(FeatureGroupBase):
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration] to configure the Hopsworks Job used to write data into the feature group.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished. By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished. By default it does not wait.
+                - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
+                  Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
+                  Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
                   `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
@@ -3363,7 +3386,7 @@ class FeatureGroup(FeatureGroupBase):
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations
                 In this case, all required on-demand features must already exist in the provided dataframe.
@@ -3539,7 +3562,7 @@ class FeatureGroup(FeatureGroupBase):
 
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations.
                 In this case, all required on-demand features must already exist in the provided dataframe.
@@ -3654,7 +3677,7 @@ class FeatureGroup(FeatureGroupBase):
             write_options: Additional write options for Spark as key-value pairs.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations.
                 In this case, all required on-demand features must already exist in the provided dataframe.
@@ -3983,6 +4006,10 @@ class FeatureGroup(FeatureGroupBase):
                 json_decamelized["embedding_index"] = EmbeddingIndex.from_response_json(
                     json_decamelized["embedding_index"]
                 )
+            if "tags" in json_decamelized and json_decamelized["tags"]:
+                json_decamelized["tags"] = tag.Tag.from_response_json(
+                    json_decamelized["tags"]
+                )
             if "transformation_functions" in json_decamelized:
                 transformation_functions = json_decamelized["transformation_functions"]
                 json_decamelized["transformation_functions"] = [
@@ -4096,6 +4123,9 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
+        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        if tags_dict:
+            fg_meta_dict["tags"] = tags_dict
         return fg_meta_dict
 
     def _get_table_name(self) -> str:
@@ -4107,6 +4137,69 @@ class FeatureGroup(FeatureGroupBase):
             self._time_travel_format is not None
             and self._time_travel_format.upper() != "NONE"
         )
+
+    def execute_odts(
+        self,
+        data: pd.DataFrame | pl.DataFrame | dict[str, Any],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+    ) -> list[dict[str, Any]] | pd.DataFrame:
+        """Apply on-demand transformations attached to the feature group on the provided data.
+
+        This method allows you to test on-demand transformation functions locally.
+        It executes all on-demand transformations(ODTs) attached to the feature group on the input data.
+
+        !!! example "Testing on-demand transformations"
+            ```python
+            # Define and attach an on-demand transformation
+            @udf(return_type=float)
+            def compute_ratio(amount, quantity):
+                return amount / quantity
+
+            fg = fs.get_or_create_feature_group(name="transactions",
+                                                version=1,
+                                                primary_key=["pk"],
+                                                transformation_functions=[compute_ratio("amount", "quantity")])
+
+            # Test with a DataFrame (offline mode)
+            test_df = pd.DataFrame({
+                "amount": [100.0, 200.0, 300.0],
+                "quantity": [2, 4, 5]
+            })
+            result_df = fg.execute_odts(test_df)
+
+            # Test with a dictionary (online inference simulation)
+            test_dict = {"amount": 100.0, "quantity": 2}
+            result_dict = fg.execute_odts(test_dict, online=True)
+            ```
+
+        Parameters:
+            data: Input data to apply transformations to. This can a dataframe or a dictionary.
+            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized). Defaults to offline mode
+            transformation_context: A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
+                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
+            request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+
+        Returns:
+            The transformed data in the same format as the input:
+                - `pd.DataFrame` if input was a DataFrame
+                - `dict[str, Any]` if input was a dictionary
+        """
+        if self.transformation_functions:
+            data = self._feature_group_engine.apply_on_demand_transformations(
+                transformation_functions=self.transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+            )
+        else:
+            _logger.info(
+                "No on-demand transformation functions attached to the feature group, no transformations applied."
+            )
+        return data
 
     @property
     def id(self) -> int | None:
@@ -4310,6 +4403,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4331,6 +4425,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            missing_mandatory_tags=missing_mandatory_tags,
         )
 
         self._feature_store_name = featurestore_name
@@ -4451,6 +4546,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
                   By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
                   By default it does not wait.
+                - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
+                  Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
+                  Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
                 - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
                   To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
@@ -4824,6 +4922,7 @@ class SpineGroup(FeatureGroupBase):
         online_config: OnlineConfig | dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         online_disk: bool | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4841,6 +4940,7 @@ class SpineGroup(FeatureGroupBase):
             online_config=online_config,
             data_source=data_source,
             online_disk=online_disk,
+            missing_mandatory_tags=missing_mandatory_tags,
         )
 
         self._feature_store_name = featurestore_name
