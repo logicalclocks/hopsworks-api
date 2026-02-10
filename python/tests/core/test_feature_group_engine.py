@@ -1740,6 +1740,61 @@ class TestFeatureGroupEngine:
         )
         mock_save_empty_table.assert_not_called()
 
+    def test_save_feature_group_metadata_client_only_options(self, mocker):
+        # Arrange
+        feature_store_id = 99
+        feature_group_url = "test_url"
+        write_options = {
+            "kafka_producer_config": {"bootstrap.servers": "localhost:9092"},
+            "online_ingestion_options": {"timeout": 120, "period": 2},
+            "some_server_option": "value",
+        }
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
+        mocker.patch(
+            "hsfs.util.get_feature_group_url",
+            return_value=feature_group_url,
+        )
+        mocker.patch("builtins.print")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        f = feature.Feature(name="f", type="str")
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            stream=True,
+            id=10,
+        )
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[f], write_options=write_options
+        )
+
+        # Assert
+        assert mock_fg_api.return_value.save.call_count == 1
+        job_conf = fg._deltastreamer_jobconf
+        write_opts = job_conf._options
+        option_names = [opt["name"] for opt in write_opts]
+        assert "kafka_producer_config" not in option_names
+        assert "online_ingestion_options" not in option_names
+        assert "some_server_option" in option_names
+
     def test_update_feature_group_schema_on_demand_transformations(self, mocker):
         # Arrange
         feature_store_id = 99
