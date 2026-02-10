@@ -501,11 +501,12 @@ class TestFeatureViewExecuteOdts:
         result_df = fv.execute_odts(data=df_test_data, online=False)
 
         mock_apply.assert_called_with(
-            transformation_functions=odts_list,
+            execution_graph=fv._on_demand_transformation_execution_graph,
             data=df_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -514,11 +515,12 @@ class TestFeatureViewExecuteOdts:
         result_dict = fv.execute_odts(data=dict_test_data, online=True)
 
         mock_apply.assert_called_with(
-            transformation_functions=odts_list,
+            execution_graph=fv._on_demand_transformation_execution_graph,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
 
@@ -576,11 +578,12 @@ class TestFeatureViewExecuteOdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=odts_list,
+            execution_graph=fv._on_demand_transformation_execution_graph,
             data=df_test_data,
             online=False,
             transformation_context=context,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -591,11 +594,12 @@ class TestFeatureViewExecuteOdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=odts_list,
+            execution_graph=fv._on_demand_transformation_execution_graph,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=request_params,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
 
@@ -699,11 +703,12 @@ class TestFeatureViewExecuteOdts:
 
         # Assert - online
         mock_apply.assert_called_with(
-            transformation_functions=odts_list,
+            execution_graph=fv._on_demand_transformation_execution_graph,
             data=online_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
 
         # Act - offline
@@ -711,11 +716,12 @@ class TestFeatureViewExecuteOdts:
 
         # Assert - offline
         mock_apply.assert_called_with(
-            transformation_functions=odts_list,
+            execution_graph=fv._on_demand_transformation_execution_graph,
             data=offline_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
 
 
@@ -761,11 +767,12 @@ class TestFeatureViewExecuteMdts:
         result_df = fv.execute_mdts(data=df_test_data, online=False)
 
         mock_apply.assert_called_with(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=fv._model_dependent_transformation_execution_graph,
             data=df_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -774,11 +781,12 @@ class TestFeatureViewExecuteMdts:
         result_dict = fv.execute_mdts(data=dict_test_data, online=True)
 
         mock_apply.assert_called_with(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=fv._model_dependent_transformation_execution_graph,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
 
@@ -830,11 +838,12 @@ class TestFeatureViewExecuteMdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=fv._model_dependent_transformation_execution_graph,
             data=df_test_data,
             online=False,
             transformation_context=context,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -845,11 +854,12 @@ class TestFeatureViewExecuteMdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=fv._model_dependent_transformation_execution_graph,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=request_params,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
 
@@ -902,11 +912,12 @@ class TestFeatureViewExecuteMdts:
 
         # Assert
         mock_apply.assert_called_once_with(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=fv._model_dependent_transformation_execution_graph,
             data=test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         assert result is expected_result
 
@@ -998,11 +1009,12 @@ class TestFeatureViewExecuteMdts:
 
         # Assert - online
         mock_apply.assert_called_with(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=fv._model_dependent_transformation_execution_graph,
             data=online_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
 
         # Act - offline
@@ -1010,9 +1022,10 @@ class TestFeatureViewExecuteMdts:
 
         # Assert - offline
         mock_apply.assert_called_with(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=fv._model_dependent_transformation_execution_graph,
             data=offline_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
