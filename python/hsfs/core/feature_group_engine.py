@@ -582,11 +582,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             # a spark_job_configuration object as part of the write_options with the key "spark"
             # filter out consumer config, not needed for delta streamer
             _spark_options = write_options.pop("spark", None)
+            _client_only_options = {
+                "kafka_producer_config",
+                "online_ingestion_options",
+            }
             _write_options = (
                 [
                     {"name": k, "value": v}
                     for k, v in write_options.items()
-                    if k != "kafka_producer_config"
+                    if k not in _client_only_options
                 ]
                 if write_options
                 else None
