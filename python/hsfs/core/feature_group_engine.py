@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     import polars as pl
     from hsfs.transformation_function import TransformationFunction
 
+_ONLINE_TOPIC_NAME_SUFFIX = "_onlinefs"
+
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def __init__(self, feature_store_id: int):
@@ -543,6 +545,29 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             write_options,
         )
 
+    @staticmethod
+    def _validate_topic_name(feature_group):
+        """Validate that topic_name ends with '_onlinefs' for online-enabled feature groups.
+
+        The online feature store only ingests from topics ending with '_onlinefs'.
+        If a user-provided topic_name is missing this suffix, it is appended
+        automatically and a warning is issued.
+        """
+        if (
+            feature_group.online_enabled
+            and feature_group.topic_name is not None
+            and not feature_group.topic_name.endswith(_ONLINE_TOPIC_NAME_SUFFIX)
+        ):
+            corrected = feature_group.topic_name + _ONLINE_TOPIC_NAME_SUFFIX
+            warnings.warn(
+                f"Topic name '{feature_group.topic_name}' does not end with "
+                f"required suffix '{_ONLINE_TOPIC_NAME_SUFFIX}'. The suffix has "
+                f"been added automatically. Topic name set to: '{corrected}'.",
+                util.FeatureGroupWarning,
+                stacklevel=2,
+            )
+            feature_group.topic_name = corrected
+
     def save_feature_group_metadata(
         self, feature_group, dataframe_features, write_options
     ):
@@ -598,6 +623,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._deltastreamer_jobconf = DeltaStreamerJobConf(
                 _write_options, _spark_options
             )
+
+        self._validate_topic_name(feature_group)
 
         self._feature_group_api.save(feature_group)
 
