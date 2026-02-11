@@ -1,7 +1,7 @@
 [project]
 name = "hopsworks"
 dynamic = ["version"]
-requires-python = ">=3.9,<3.14"
+requires-python = ">=3.10,<3.14"
 readme = "README.md"
 description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature Store, Model Registry and Model Serving"
 keywords = [
@@ -43,7 +43,7 @@ dependencies = [
     "boto3",
     "pandas[mysql]<2.4.0",
     "numpy>=1.26.3,<2.5.0",
-    "pyjks",
+    "cryptography",
     "mock",
     "avro==1.12.0",
     "PyMySQL[rsa]",
@@ -51,7 +51,7 @@ dependencies = [
     "fsspec<2025.12.0",
     "retrying",
     "hopsworks_aiomysql[sa]==0.2.2",
-    "opensearch-py>=1.1.0,<=2.4.2",
+    "opensearch-py>=1.1.0,<=2.8.0",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
     "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
