@@ -293,14 +293,21 @@ def offline_fg_materialization(
             starting_offset_string = spark.read.json(offset_location).toJSON().first()
     except Exception as e:
         print(f"Failed to use existing offsets: {e}")
-        # if all else fails read from the beggining
-        initial_check_point_string = kafka_engine.kafka_get_offsets(
-            topic_name=entity._online_topic_name,
-            feature_store_id=entity.feature_store_id,
-            offline_write_options={},
-            high=False,
-        )
-        starting_offset_string = json.dumps(_build_offsets(initial_check_point_string))
+        starting_offset_string = None
+
+    # get the current low watermark offsets for all partitions
+    low_offsets_string = kafka_engine.kafka_get_offsets(
+        topic_name=entity._online_topic_name,
+        feature_store_id=entity.feature_store_id,
+        offline_write_options={},
+        high=False,
+    )
+    low_offsets = _build_offsets(low_offsets_string)
+
+    # validate and reconcile saved offsets against current topic state
+    starting_offset_string = json.dumps(
+        _reconcile_offsets(starting_offset_string, low_offsets, entity._online_topic_name)
+    )
     print(f"startingOffsets: {starting_offset_string}")
 
     # get ending offsets
@@ -427,6 +434,42 @@ def _build_offsets(initial_check_point_string: str):
     # Create the final dictionary structure
     result = {topic: offsets_dict}
     return result
+
+
+def _reconcile_offsets(
+    starting_offset_string: str | None,
+    low_offsets: dict,
+    topic_name: str,
+) -> dict:
+    """Reconcile saved offsets against current topic state.
+
+    Handles cases where:
+    - No saved offsets exist (returns low watermark offsets)
+    - The topic has changed (returns low watermark offsets)
+    - Partitions were added (uses low watermark for new partitions)
+    - Saved offsets are behind the low watermark (uses low watermark)
+    """
+    if not starting_offset_string or not low_offsets:
+        return low_offsets if low_offsets else {}
+
+    saved_offsets = json.loads(starting_offset_string)
+
+    # topic changed — start from low watermark
+    if topic_name not in saved_offsets:
+        return low_offsets
+
+    saved_partition_offsets = saved_offsets[topic_name]
+    low_partition_offsets = low_offsets[topic_name]
+
+    reconciled = {}
+    for partition, low_offset in low_partition_offsets.items():
+        saved_offset = saved_partition_offsets.get(partition)
+        if saved_offset is not None and saved_offset >= low_offset:
+            reconciled[partition] = saved_offset
+        else:
+            reconciled[partition] = low_offset
+
+    return {topic_name: reconciled}
 
 
 if __name__ == "__main__":
