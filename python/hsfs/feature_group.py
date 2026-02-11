@@ -31,7 +31,11 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    RestAPIError,
+    TransformationFunctionException,
+)
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
     HAS_DELTALAKE_PYTHON,
@@ -70,6 +74,7 @@ from hsfs.core import (
     online_ingestion_api,
     spine_group_engine,
     statistics_engine,
+    transformation_function_engine,
     validation_report_engine,
     validation_result_engine,
 )
@@ -2726,13 +2731,25 @@ class FeatureGroup(FeatureGroupBase):
                             TransformationType.ON_DEMAND
                         )
                     self._transformation_functions.append(transformation_function)
-
+        self._transformation_function_execution_graph: list[
+            list[TransformationFunction]
+        ] = None
         if self._transformation_functions:
             self._transformation_functions = (
                 FeatureGroup._sort_transformation_functions(
                     self._transformation_functions
                 )
             )
+            try:
+                self._transformation_function_execution_graph: list[
+                    list[TransformationFunction]
+                ] = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+                    self.transformation_functions
+                )
+            except TransformationFunctionException as e:
+                raise FeatureStoreException(
+                    "Cyclic dependency detected in on-demand transformation functions, present in the feature group. Please verify that the on-demand features present in the feature group do not have cyclic dependencies."
+                ) from e
 
     def _init_time_travel_and_stream(
         self,
@@ -3068,6 +3085,7 @@ class FeatureGroup(FeatureGroupBase):
         write_options: dict[str, Any] | None = None,
         validation_options: dict[str, Any] | None = None,
         wait: bool = False,
+        n_processes: int = None,
     ) -> tuple[
         Job | None,
         great_expectations.core.ExpectationSuiteValidationResult | None,
@@ -3119,6 +3137,12 @@ class FeatureGroup(FeatureGroupBase):
             wait:
                 Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
+
+            n_processes:
+                Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             When using the `python` engine, it returns the Hopsworks Job that was launched to ingest the feature group data.
@@ -3189,7 +3213,11 @@ class FeatureGroup(FeatureGroupBase):
 
         # fg_job is used only if the python engine is used
         fg_job, ge_report = self._feature_group_engine.save(
-            self, feature_dataframe, write_options, validation_options or {}
+            self,
+            feature_dataframe,
+            write_options,
+            validation_options or {},
+            n_processes=n_processes,
         )
 
         # Compute stats in client if there is no backfill job:
@@ -3232,6 +3260,7 @@ class FeatureGroup(FeatureGroupBase):
         wait: bool = False,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int = None,
     ) -> tuple[Job | None, ValidationReport | None]:
         """Persist the metadata and materialize the feature group to the feature store or insert data from a dataframe into the existing feature group.
 
@@ -3342,6 +3371,10 @@ class FeatureGroup(FeatureGroupBase):
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations
                 In this case, all required on-demand features must already exist in the provided dataframe.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             Job: The job information if python engine is used.
@@ -3391,6 +3424,7 @@ class FeatureGroup(FeatureGroupBase):
             validation_options={"save_report": True, **validation_options},
             transformation_context=transformation_context,
             transform=transform,
+            n_processes=n_processes,
         )
 
         # Compute stats in client if there is no backfill job:
@@ -4098,6 +4132,7 @@ class FeatureGroup(FeatureGroupBase):
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
         """Apply on-demand transformations attached to the feature group on the provided data.
 
@@ -4135,6 +4170,10 @@ class FeatureGroup(FeatureGroupBase):
                 The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
             request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4143,17 +4182,35 @@ class FeatureGroup(FeatureGroupBase):
         """
         if self.transformation_functions:
             data = self._feature_group_engine.apply_on_demand_transformations(
-                transformation_functions=self.transformation_functions,
+                execution_graph=self._transformation_function_execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         else:
             _logger.info(
                 "No on-demand transformation functions attached to the feature group, no transformations applied."
             )
         return data
+
+    def visualize_transformations(self):
+        """Print the DAG used for the execution of on-demand transformation functions attached to this feature group.
+
+        The DAG shows how transformation functions are organized into levels based on their dependencies.
+        Transformations within the same level are independent and can be executed in parallel.
+        Transformations at subsequent levels depend on the outputs of earlier levels.
+
+        Example: Visualize transformations
+            ```python
+            fg = fs.get_feature_group("my_feature_group", version=1)
+            fg.visualize_transformations()
+            ```
+        """
+        transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
+            self._transformation_function_execution_graph
+        )
 
     @property
     def id(self) -> int | None:

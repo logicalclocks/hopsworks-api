@@ -853,6 +853,7 @@ class TestFeatureGroup:
             validation_options={"save_report": True},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
@@ -903,6 +904,7 @@ class TestFeatureGroup:
             validation_options={"save_report": False},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
@@ -1325,10 +1327,11 @@ class TestExternalFeatureGroup:
             == "Updated expectation suite attached to Feature Group, edit it at"
         )
 
-    def test_from_response_json_transformation_functions(self, backend_fixtures):
+    def test_from_response_json_transformation_functions(
+        self, backend_fixtures, mocker
+    ):
         # Arrange
         json = backend_fixtures["feature_group"]["get_transformations"]["response"]
-
         # Act
         fg = feature_group.FeatureGroup.from_response_json(json)
 
@@ -1522,11 +1525,12 @@ class TestFeatureGroupExecuteOdts:
         result_df = fg.execute_odts(data=df_test_data, online=False)
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_graph,
             data=df_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -1535,11 +1539,12 @@ class TestFeatureGroupExecuteOdts:
         result_dict = fg.execute_odts(data=dict_test_data, online=True)
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_graph,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
 
@@ -1592,11 +1597,12 @@ class TestFeatureGroupExecuteOdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_graph,
             data=df_test_data,
             online=False,
             transformation_context=context,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -1607,11 +1613,12 @@ class TestFeatureGroupExecuteOdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_graph,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=request_params,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
 
@@ -1703,11 +1710,12 @@ class TestFeatureGroupExecuteOdts:
 
         # Assert - online
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_graph,
             data=online_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
 
         # Act - offline
@@ -1715,9 +1723,10 @@ class TestFeatureGroupExecuteOdts:
 
         # Assert - offline
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_graph,
             data=offline_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )

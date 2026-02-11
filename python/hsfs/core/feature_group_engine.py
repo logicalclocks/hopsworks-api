@@ -92,6 +92,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         write_options,
         transformation_context: dict[str, Any] = None,
         validation_options: dict = None,
+        n_processes: int = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
@@ -106,10 +107,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if feature_group.transformation_functions:
             if not isinstance(feature_group, fg.ExternalFeatureGroup):
                 feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=feature_group.transformation_functions,
+                    execution_graph=feature_group._transformation_function_execution_graph,
                     data=feature_dataframe,
                     online=False,
                     transformation_context=transformation_context,
+                    n_processes=n_processes,
                 )
             else:
                 warnings.warn(
@@ -167,31 +169,38 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def apply_on_demand_transformations(
         self,
-        transformation_functions: list[TransformationFunction],
+        execution_graph: list[list[TransformationFunction]],
         data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
         online: bool = False,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
-        """Function to apply on demand transformations to the passed dataframe or list of dictionaries.
+        """Apply on-demand transformations to the passed dataframe or list of dictionaries.
 
         Parameters:
-            transformation_functions: List of transformation functions to apply.
+            execution_graph: The transformation DAG containing on-demand transformation functions organized by dependency level.
             data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            online: Apply the transformations for online or offline usecase.
+                This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, defaults to the number of available CPU cores.
+                Only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
         try:
             df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                transformation_functions=transformation_functions,
+                execution_graph=execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         except exceptions.TransformationFunctionException as e:
             raise exceptions.FeatureStoreException(
@@ -211,6 +220,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         validation_options: dict = None,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe,
@@ -226,10 +236,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         ):
             try:
                 feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=feature_group.transformation_functions,
+                    execution_graph=feature_group._transformation_function_execution_graph,
                     data=feature_dataframe,
                     transformation_context=transformation_context,
                     online=False,
+                    n_processes=n_processes,
                 )
             except exceptions.TransformationFunctionException as e:
                 raise exceptions.FeatureStoreException(
@@ -483,7 +494,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if feature_group.transformation_functions and transform:
             try:
                 dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=feature_group.transformation_functions,
+                    execution_graph=feature_group._transformation_function_execution_graph,
                     data=dataframe,
                     online=False,
                     transformation_context=transformation_context,

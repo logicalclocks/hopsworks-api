@@ -419,6 +419,7 @@ class FeatureViewEngine:
         training_helper_columns=False,
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -497,6 +498,7 @@ class FeatureViewEngine:
                 dataframe_type,
                 training_dataset_version,
                 transformation_context=transformation_context,
+                n_processes=n_processes,
             )
             self.compute_training_dataset_statistics(
                 feature_view_obj, td_updated, split_df
@@ -890,31 +892,37 @@ class FeatureViewEngine:
 
     def apply_transformations(
         self,
-        transformation_functions: list[TransformationFunction],
+        execution_graph: list[list[TransformationFunction]],
         data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
-        """Apply transformations functions to the passed dataframe or list of dictionaries.
+        """Apply transformation functions to the passed dataframe or list of dictionaries.
 
         Parameters:
-            transformation_functions: List of transformation functions to apply.
+            execution_graph: The transformation DAG containing transformation functions organized by dependency level.
             data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            online: Apply the transformations for online or offline use case.
+                This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, defaults to the number of available CPU cores.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
         try:
             df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                transformation_functions=transformation_functions,
+                execution_graph=execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         except exceptions.TransformationFunctionException as e:
             raise FeatureStoreException(
@@ -929,7 +937,7 @@ class FeatureViewEngine:
         start_time,
         end_time,
         training_dataset_version,
-        transformation_functions,
+        execution_graph,
         read_options=None,
         spine=None,
         primary_keys=False,
@@ -939,6 +947,7 @@ class FeatureViewEngine:
         transformed=True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -964,13 +973,14 @@ class FeatureViewEngine:
             training_dataset_version=training_dataset_version,
             spine=spine,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
-        if (transformation_functions and transformed) or logging_data:
+        if (execution_graph and transformed) or logging_data:
             try:
                 transformed_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=transformation_functions,
+                    execution_graph=execution_graph,
                     data=feature_dataframe,
                     online=False,
                     transformation_context=transformation_context,
+                    n_processes=n_processes,
                 )
             except exceptions.TransformationFunctionException as e:
                 raise FeatureStoreException(
@@ -982,7 +992,7 @@ class FeatureViewEngine:
 
         batch_dataframe = (
             transformed_dataframe
-            if (transformation_functions and transformed)
+            if (execution_graph and transformed)
             else feature_dataframe
         )
 

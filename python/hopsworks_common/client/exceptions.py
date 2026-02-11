@@ -94,13 +94,15 @@ class TransformationFunctionException(Exception):
     def __init__(
         self,
         message: str,
-        missing_features: set[str],
-        transformation_function_name: str,
-        transformation_type: str,
+        missing_features: set[str] | None = None,
+        transformation_function_name: str | None = None,
+        transformation_type: str | None = None,
     ) -> None:
         self.missing_features = missing_features
         self.transformation_function_name = transformation_function_name
-        self.transformation_type = transformation_type.replace("_", "-")
+        self.transformation_type = (
+            transformation_type.replace("_", "-") if transformation_type else None
+        )
         super().__init__(message)
 
 
