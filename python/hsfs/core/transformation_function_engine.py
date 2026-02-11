@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import atexit
 import multiprocessing
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -134,8 +135,11 @@ class TransformationFunctionEngine:
         """
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.shutdown_process_pool()
+        mp_context = multiprocessing.get_context(
+            "fork" if sys.platform != "win32" else "spawn"
+        )
         TransformationFunctionEngine.__process_pool = ProcessPoolExecutor(
-            max_workers=n_processes, mp_context=multiprocessing.get_context("fork")
+            max_workers=n_processes, mp_context=mp_context
         )
 
     @staticmethod

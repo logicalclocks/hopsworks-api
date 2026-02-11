@@ -4186,7 +4186,7 @@ class FeatureGroup(FeatureGroupBase):
             )
         return data
 
-    def print_odt_execution_graph(self):
+    def visualize_transformations(self):
         transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
             self._transformation_function_execution_graph
         )

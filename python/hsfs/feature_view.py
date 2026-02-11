@@ -4695,15 +4695,35 @@ class FeatureView:
             self, training_dataset_version
         )
 
-    def print_mdt_execution_graph(self):
-        transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
-            self._model_dependent_transformation_execution_graph
-        )
+    def visualize_transformations(self, transformation_type: str = "all"):
+        """Print the execution graph for transformation functions.
 
-    def print_odt_execution_graph(self):
-        transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
-            self._on_demand_transformation_execution_graph
-        )
+        Parameters:
+            transformation_type: Which transformations to visualize.
+                `"model_dependent"`, `"on_demand"`, or `"all"` (default).
+
+        Raises:
+            ValueError: If kind is not one of the accepted values.
+        """
+        valid_kinds = {"model_dependent", "on_demand", "all"}
+        if transformation_type not in valid_kinds:
+            raise ValueError(
+                f"Invalid kind '{transformation_type}'. Must be one of {sorted(valid_kinds)}."
+            )
+
+        if transformation_type in ("model_dependent", "all"):
+            if transformation_type == "all":
+                print("Model-Dependent Transformations:")
+            self._transformation_function_engine.print_transformation_function_execution_graph(
+                self._model_dependent_transformation_execution_graph
+            )
+
+        if transformation_type in ("on_demand", "all"):
+            if transformation_type == "all":
+                print("\nOn-Demand Transformations:")
+            self._transformation_function_engine.print_transformation_function_execution_graph(
+                self._on_demand_transformation_execution_graph
+            )
 
     @property
     def id(self) -> int:
