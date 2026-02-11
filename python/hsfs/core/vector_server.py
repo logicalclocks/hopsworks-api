@@ -301,7 +301,7 @@ class VectorServer:
         self._fetch_inference_helpers_for_transformations = (
             self._requires_inference_helpers_for_transformations()
         )
-        # Rebuild the execution graph for on-demand and model-dependent transformation functions.
+        # Rebuild the transformation DAG for on-demand and model-dependent transformation functions.
         # This is necessary because the transformation functions will be updated with required statistics.
         self._on_demand_transformation_functions_execution_graph = tf_engine_mod.TransformationFunctionEngine.build_transformation_function_execution_graph(
             self._on_demand_transformation_functions
@@ -962,7 +962,9 @@ class VectorServer:
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
 
         Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector.
@@ -1034,7 +1036,9 @@ class VectorServer:
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
 
         Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.

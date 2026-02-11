@@ -1279,7 +1279,8 @@ class FeatureView:
             n_processes:
                 Number of processes to use for parallel execution of transformation functions.
                 If not provided, the number of processes will be set to the number of available CPU cores.
-                This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             DataFrame: The spark dataframe containing the feature data.
@@ -2493,7 +2494,10 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
@@ -2664,7 +2668,10 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -2875,7 +2882,10 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.A
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3012,7 +3022,10 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels
@@ -3086,7 +3099,10 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -3163,7 +3179,10 @@ class FeatureView:
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3952,11 +3971,14 @@ class FeatureView:
         Parameters:
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
-                These parameters take **higheshighestt priority** when resolving feature values - if a key exists in both `request_parameters` and the feature vector, the value from `request_parameters` is used.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the feature vector, the value from `request_parameters` is used.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
@@ -3993,7 +4015,10 @@ class FeatureView:
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector obtained by applying Model-Dependent Transformations.
@@ -4503,7 +4528,10 @@ class FeatureView:
                 The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
             request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4571,7 +4599,10 @@ class FeatureView:
                 The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
             request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4695,30 +4726,48 @@ class FeatureView:
             self, training_dataset_version
         )
 
-    def visualize_transformations(self, transformation_type: str = "all"):
-        """Print the execution graph for transformation functions.
+    def visualize_transformations(
+        self, transformation_type: Literal["mdt", "odt", "all"] = "all"
+    ):
+        """Print the DAG used for the execution of transformation functions attached to this feature view.
+
+        The DAG shows how transformation functions are organized into levels based on their dependencies.
+        Transformations within the same level are independent and can be executed in parallel.
+        Transformations at subsequent levels depend on the outputs of earlier levels.
+
+        Example: Visualize all transformations
+            ```python
+            feature_view = fs.get_feature_view("my_feature_view", version=1)
+            feature_view.visualize_transformations()
+            ```
+
+        Example: Visualize only model-dependent transformations
+            ```python
+            feature_view.visualize_transformations(transformation_type="mdt")
+            ```
 
         Parameters:
-            transformation_type: Which transformations to visualize.
-                `"model_dependent"`, `"on_demand"`, or `"all"` (default).
+            transformation_type:
+                Which transformations to visualize.
+                `"mdt"` for model-dependent transformations only, `"odt"` for on-demand transformations only, or `"all"` for both.
 
         Raises:
-            ValueError: If kind is not one of the accepted values.
+            ValueError: If `transformation_type` is not one of the accepted values.
         """
-        valid_kinds = {"model_dependent", "on_demand", "all"}
+        valid_kinds = {"mdt", "odt", "all"}
         if transformation_type not in valid_kinds:
             raise ValueError(
                 f"Invalid kind '{transformation_type}'. Must be one of {sorted(valid_kinds)}."
             )
 
-        if transformation_type in ("model_dependent", "all"):
+        if transformation_type in ("mdt", "all"):
             if transformation_type == "all":
                 print("Model-Dependent Transformations:")
             self._transformation_function_engine.print_transformation_function_execution_graph(
                 self._model_dependent_transformation_execution_graph
             )
 
-        if transformation_type in ("on_demand", "all"):
+        if transformation_type in ("odt", "all"):
             if transformation_type == "all":
                 print("\nOn-Demand Transformations:")
             self._transformation_function_engine.print_transformation_function_execution_graph(
@@ -5077,15 +5126,25 @@ class FeatureView:
         return self.__extra_logging_column_names
 
     @property
-    def on_demand_transformation_execution_graph(
+    def on_demand_transformation_execution_dag(
         self,
     ) -> list[list[TransformationFunction]]:
-        """Get the execution graph for the on-demand transformations."""
+        """DAG used for the execution of the on-demand transformation functions attached to this feature view.
+
+        Each inner list represents a level of independent transformations that can run in parallel.
+        Levels are ordered by dependency.
+        Transformations at level `n` depend on outputs from level `n-1`.
+        """
         return self._on_demand_transformation_execution_graph
 
     @property
-    def model_dependent_transformation_execution_graph(
+    def model_dependent_transformation_execution_dag(
         self,
     ) -> list[list[TransformationFunction]]:
-        """Get the execution graph for the model-dependent transformations."""
+        """Transformation DAG for the model-dependent transformation functions attached to this feature view.
+
+        Each inner list represents a level of independent transformations that can run in parallel.
+        Levels are ordered by dependency.
+        Transformations at level `n` depend on outputs from level `n-1`.
+        """
         return self._model_dependent_transformation_execution_graph

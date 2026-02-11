@@ -121,17 +121,25 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def shutdown_process_pool():
-        """Shutdown the process pool used for parallel execution of transformation functions."""
+        """Shut down the process pool used for parallel execution of transformation functions.
+
+        Waits for all running tasks to complete before shutting down.
+        Safe to call even if no process pool has been created.
+        """
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.__process_pool.shutdown(wait=True)
             TransformationFunctionEngine.__process_pool = None
 
     @staticmethod
     def create_process_pool(n_processes: int = None):
-        """Create a process pool to use for parallel execution of transformation functions.
+        """Create a process pool for parallel execution of transformation functions.
+
+        If a process pool already exists, it is shut down before creating a new one.
+        Uses `fork` on Unix-based systems and `spawn` on Windows.
 
         Parameters:
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores.
+            n_processes: Number of worker processes.
+                If not provided, defaults to the number of available CPU cores.
         """
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.shutdown_process_pool()
@@ -148,11 +156,11 @@ class TransformationFunctionEngine:
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         request_parameters: dict[str, Any] = None,
     ) -> None:
-        """Function to validate if all arguments required to execute the transformation functions are present are present in the passed data or request parameters.
+        """Validate that all arguments required to execute the transformation functions are present in the passed data or request parameters.
 
         Parameters:
-            transformation_functions: List of transformation functions to validate.
-            data: The dataframe or list of dictionaries to validate the transformation functions against.
+            execution_graph: The transformation DAG containing the transformation functions to validate, organized by dependency level.
+            data: The dataframe or dictionary to validate the transformation functions against.
             request_parameters: Request parameters to validate the transformation functions against.
 
         Raises:
@@ -216,19 +224,25 @@ class TransformationFunctionEngine:
         expected_features: set[str] = None,
         n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
-        """Function to apply the transformation functions to the passed data.
+        """Apply the transformation functions from the DAG to the passed data.
 
-        This function validates the arguments and calls the required function to apply the transformation functions to the passed data.
-        For spark engine, the transformation functions are pushed down to Spark and is completely handled by the Spark engine.
+        Iterates through each level of the DAG, applying transformations at each level.
+        Transformations within the same level are executed in parallel using a process pool.
+        For the Spark engine, the transformation functions are pushed down to Spark.
 
         Parameters:
-            transformation_functions: List of transformation functions to apply.
-            data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            execution_graph: The transformation DAG containing transformation functions organized by dependency level.
+            data: The dataframe, dictionary, or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase.
+                This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
-            expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            expected_features: Expected features to be present in the data.
+                This is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                With Spark, the transformations are pushed down to the Spark engine.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
@@ -270,6 +284,17 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def _update_request_parameter_data(transformed_data, request_parameters):
+        """Merge request parameters into the transformed data.
+
+        Handles both single-record and batch request parameters by inserting them as additional columns or keys into the transformed data.
+
+        Parameters:
+            transformed_data: The data to update with request parameters.
+            request_parameters: Request parameters as a dictionary for a single record or a list of dictionaries for batch operations.
+
+        Returns:
+            The updated data with request parameters merged in.
+        """
         if isinstance(request_parameters, list):
             if isinstance(transformed_data, pd.DataFrame):
                 request_parameters = pd.DataFrame(request_parameters)
@@ -306,19 +331,24 @@ class TransformationFunctionEngine:
         n_processes: int = None,
         dropped_features: set[str] = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
-        """Function to apply the transformation functions to the passed dataframe or list of dictionaries.
+        """Apply a single level of transformation functions in parallel using a process pool.
 
-        This function is only used when the engine is python or if the passed data is a dictionary.
+        This function handles one level of the DAG, submitting each transformation function to a process pool for concurrent execution.
+        It is only used when the engine is Python or if the passed data is a dictionary.
 
         Parameters:
-            transformation_functions: List of transformation functions to apply.
-            data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_functions: List of transformation functions at the same execution level to apply in parallel.
+            data: The dataframe, dictionary, or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase.
+                This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
-            expected_features: Expected features to be present in the data, this is required to avoid dropping features with same names that are available from other feature groups in a feature view.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
-            dropped_features: Features to be dropped from the data, this argument contains all features that are dropped in the previous parallel execution of transformation functions.
+            expected_features: Expected features to be present in the data.
+                This is required to avoid dropping features with same names that are available from other feature groups in a feature view.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+            dropped_features: Accumulator set of features to be dropped from the data.
+                Contains features that were marked for removal in previous DAG levels.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
@@ -416,7 +446,9 @@ class TransformationFunctionEngine:
 
         Parameters:
             udf: The transformation function to execute.
-            data: The dataframe or list of dictionaries to execute the transformation function on.
+            data: The dataframe, dictionary, or list of dictionaries to execute the transformation function on.
+            engine_type: The engine type to use for execution.
+                When set to `"spark"`, offline dictionary execution is not supported.
             online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
 
         Returns:
@@ -451,17 +483,19 @@ class TransformationFunctionEngine:
         online: bool | None = True,
         engine_type: str | None = None,
     ) -> dict[str, Any]:
-        """Function to apply the UDF used to defined a transformation function on a dictionary.
+        """Apply the UDF of a transformation function on a single dictionary record.
 
-        The function is not pushed to the Python Engine since it should be executed this function in both the Python and Spark Kernel.
+        This function is not pushed to the Python Engine since it needs to be executable in both the Python and Spark kernels.
 
         Parameters:
             udf: The transformation function to execute.
             data: The dictionary to execute the transformation function on.
             online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            engine_type: The engine type to use for execution.
+                When set to `"spark"`, offline dictionary execution raises an error because Spark requires DataFrames.
 
         Returns:
-            The updated dictionary with the transformations applied.
+            A dictionary containing only the transformed output columns.
         """
         features = []
 
@@ -664,6 +698,21 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def build_transformation_function_execution_graph(transformation_functions):
+        """Build a DAG (Directed Acyclic Graph) to determine the execution order of transformation functions.
+
+        Analyzes the dependencies between transformation functions by inspecting their input and output features.
+        The resulting DAG is a list of levels, where each level contains transformation functions that are independent of each other and can be executed in parallel.
+        Transformation functions at level `n` depend on outputs from level `n-1`.
+
+        Parameters:
+            transformation_functions: Flat list of transformation functions to organize into a DAG.
+
+        Returns:
+            A list of lists of [`TransformationFunction`][hsfs.transformation_function.TransformationFunction] instances, where each inner list represents a level of independent transformations.
+
+        Raises:
+            TransformationFunctionException: If a cyclic dependency is detected among the transformation functions.
+        """
         funcs = {
             output_column_name: tf
             for tf in transformation_functions
@@ -710,6 +759,14 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def print_transformation_function_execution_graph(execution_graph):
+        """Print a visual representation of the transformation function DAG.
+
+        Displays the DAG as a series of levels separated by arrows, showing the order in which transformation functions will be executed.
+        Transformation functions on the same level are independent and can run in parallel.
+
+        Parameters:
+            execution_graph: The DAG to print, as returned by [`build_transformation_function_execution_graph`][hsfs.core.transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph].
+        """
         if not execution_graph:
             return
         udfs = [[tf.hopsworks_udf for tf in tfs] for tfs in execution_graph]

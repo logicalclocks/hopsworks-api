@@ -3139,7 +3139,10 @@ class FeatureGroup(FeatureGroupBase):
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
             n_processes:
-                Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+                Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             When using the `python` engine, it returns the Hopsworks Job that was launched to ingest the feature group data.
@@ -3368,7 +3371,10 @@ class FeatureGroup(FeatureGroupBase):
             transform:
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations
                 In this case, all required on-demand features must already exist in the provided dataframe.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             Job: The job information if python engine is used.
@@ -4164,7 +4170,10 @@ class FeatureGroup(FeatureGroupBase):
                 The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
             request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
+                This parameter is only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4187,6 +4196,18 @@ class FeatureGroup(FeatureGroupBase):
         return data
 
     def visualize_transformations(self):
+        """Print the DAG used for the execution of on-demand transformation functions attached to this feature group.
+
+        The DAG shows how transformation functions are organized into levels based on their dependencies.
+        Transformations within the same level are independent and can be executed in parallel.
+        Transformations at subsequent levels depend on the outputs of earlier levels.
+
+        Example: Visualize transformations
+            ```python
+            fg = fs.get_feature_group("my_feature_group", version=1)
+            fg.visualize_transformations()
+            ```
+        """
         transformation_function_engine.TransformationFunctionEngine.print_transformation_function_execution_graph(
             self._transformation_function_execution_graph
         )

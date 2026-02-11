@@ -176,15 +176,19 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
         n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
-        """Function to apply on demand transformations to the passed dataframe or list of dictionaries.
+        """Apply on-demand transformations to the passed dataframe or list of dictionaries.
 
         Parameters:
-            transformation_functions: List of transformation functions to apply.
+            execution_graph: The transformation DAG containing on-demand transformation functions organized by dependency level.
             data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            online: Apply the transformations for online or offline usecase.
+                This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores. This parameter is only applicable when the engine is `python`, in the case of spark, the transformations are pushed down to Spark.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, defaults to the number of available CPU cores.
+                Only applicable when the engine is `python`.
+                In the `spark` engine, the transformations are pushed down to Spark.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.

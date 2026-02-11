@@ -1143,7 +1143,8 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1231,7 +1232,8 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            n_processes: Number of processes to use for parallel execution of transformation functions. If not provided, the number of processes will be set to the number of available CPU cores.
+            n_processes: Number of processes to use for parallel execution of transformation functions.
+                If not provided, the number of processes will be set to the number of available CPU cores.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
