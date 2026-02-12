@@ -308,6 +308,72 @@ class Deployment:
         return util.get_hostname_replaced_url(path)
 
     @public
+    def get_endpoint_url(self) -> str | None:
+        """Get the base endpoint URL for this deployment.
+
+        Returns the base URL that can be used with external HTTP clients.
+        This is the path-based routing base endpoint without any protocol-specific
+        suffixes like `:predict` or `/v1`.
+
+        If Istio client is not available, returns None.
+
+        Returns:
+            str | None: Base endpoint URL, or None if unavailable
+
+        Example:
+            ```python
+            deployment = ms.get_deployment("my_deployment")
+            url = deployment.get_endpoint_url()
+            # url = "https://host:port/v1/project/name"
+            ```
+        """
+        return self._predictor.get_endpoint_url()
+
+    @public
+    def get_openai_url(self) -> str | None:
+        """Get the OpenAI-compatible API URL for vLLM deployments.
+
+        Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
+        This method only returns a URL for vLLM (LLM) deployments.
+
+        Returns:
+            str | None: OpenAI-compatible URL (base URL + "/v1"), or None if not a vLLM deployment
+
+        Example:
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            url = deployment.get_openai_url()
+            # url = "https://host:port/v1/project/name/v1"
+            # Then use: url + "/chat/completions"
+            ```
+        """
+        return self._predictor.get_openai_url()
+
+    @public
+    def get_inference_url(self) -> str | None:
+        """Get the KServe inference URL for standard model deployments.
+
+        Returns the full URL with `:predict` suffix for KServe inference protocol.
+        This method only returns a URL for standard model deployments (non-vLLM,
+        with a model attached).
+
+        If Istio client is not available, falls back to Hopsworks REST API path.
+
+        Returns:
+            str | None: Inference URL with :predict suffix, or None if not a standard model deployment
+
+        Example:
+            ```python
+            deployment = ms.get_deployment("my_deployment")
+            url = deployment.get_inference_url()
+            # Use with any HTTP client
+            import requests
+            response = requests.post(url, json={"instances": [[1, 2, 3]]})
+            ```
+        """
+        return self._predictor.get_inference_url()
+
+    @public
     def describe(self):
         """Print a JSON description of the deployment."""
         util.pretty_print(self)

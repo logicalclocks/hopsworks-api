@@ -738,6 +738,265 @@ class TestPredictor:
         )
         mock_deployment_save.assert_called_once()
 
+    # get_endpoint_url
+
+    def test_get_endpoint_url_with_istio(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_endpoint_url()
+
+        # Assert
+        assert url == "https://istio.example.com/v1/my_project/my_model"
+
+    def test_get_endpoint_url_no_istio_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=None,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_endpoint_url()
+
+        # Assert
+        assert url is None
+
+    # get_openai_url
+
+    def test_get_openai_url_vllm_with_istio(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_name="my_llm",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_LLM,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url == "https://istio.example.com/v1/my_project/my_llm/v1"
+
+    def test_get_openai_url_non_vllm_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url is None
+
+    def test_get_openai_url_no_model_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_server",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="script.py",
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url is None
+
+    def test_get_openai_url_vllm_no_istio_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=None,
+        )
+
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_name="my_llm",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_LLM,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url is None
+
+    # get_inference_url
+
+    def test_get_inference_url_standard_model_with_istio(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert (
+            url
+            == "https://istio.example.com/v1/my_project/my_model/v1/models/my_model:predict"
+        )
+
+    def test_get_inference_url_standard_model_fallback_hopsworks(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=None,
+        )
+        mock_hopsworks_client = mocker.MagicMock()
+        mock_hopsworks_client._base_url = "https://hopsworks.example.com"
+        mock_hopsworks_client._project_id = 123
+        mocker.patch(
+            "hopsworks_common.client.get_instance",
+            return_value=mock_hopsworks_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert (
+            url
+            == "https://hopsworks.example.com/hopsworks-api/api/project/123/inference/models/my_model:predict"
+        )
+
+    def test_get_inference_url_vllm_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_name="my_llm",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_LLM,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert url is None
+
+    def test_get_inference_url_no_model_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_server",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="script.py",
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert url is None
+
     # auxiliary methods
 
     def _mock_serving_variables(

@@ -21,24 +21,63 @@ from hopsworks_common.client.istio.grpc.proto.grpc_predict_v2_pb2_grpc import (
 from hopsworks_common.client.istio.utils.infer_type import InferRequest, InferResponse
 
 
+@also_available_as("hsml.client.istio.grpc.inference_client._PathPrefixInterceptor")
+class _PathPrefixInterceptor(grpc.UnaryUnaryClientInterceptor):
+    """Interceptor that prepends a path prefix to gRPC method calls for path-based routing."""
+
+    def __init__(self, path_prefix: str):
+        self._path_prefix = path_prefix
+
+    def intercept_unary_unary(self, continuation, client_call_details, request):
+        new_method = self._path_prefix + client_call_details.method
+        new_details = _ClientCallDetails(
+            method=new_method,
+            timeout=client_call_details.timeout,
+            metadata=client_call_details.metadata,
+            credentials=client_call_details.credentials,
+            wait_for_ready=client_call_details.wait_for_ready,
+            compression=client_call_details.compression,
+        )
+        return continuation(new_details, request)
+
+@also_available_as("hsml.client.istio.grpc.inference_client._ClientCallDetails")
+class _ClientCallDetails(
+    grpc.ClientCallDetails,
+):
+    """Implementation of grpc.ClientCallDetails for use by interceptors."""
+
+    def __init__(
+        self, method, timeout, metadata, credentials, wait_for_ready, compression
+    ):
+        self.method = method
+        self.timeout = timeout
+        self.metadata = metadata
+        self.credentials = credentials
+        self.wait_for_ready = wait_for_ready
+        self.compression = compression
+
 @also_available_as("hsml.client.istio.grpc.inference_client.GRPCInferenceServerClient")
 class GRPCInferenceServerClient:
     def __init__(
         self,
         url,
         serving_api_key,
-        channel_args=None,
+        path_prefix=None,
     ):
-        if channel_args is not None:
-            channel_opt = channel_args
-        else:
-            channel_opt = [
-                ("grpc.max_send_message_length", -1),
-                ("grpc.max_receive_message_length", -1),
-            ]
+        channel_opt = [
+            ("grpc.max_send_message_length", -1),
+            ("grpc.max_receive_message_length", -1),
+        ]
 
         # Authentication is done via API Key in the Authorization header
         self._channel = grpc.insecure_channel(url, options=channel_opt)
+
+        # Apply path prefix interceptor for path-based routing
+        if path_prefix:
+            self._channel = grpc.intercept_channel(
+                self._channel, _PathPrefixInterceptor(path_prefix)
+            )
+
         self._client_stub = GRPCInferenceServiceStub(self._channel)
         self._serving_api_key = serving_api_key
 
