@@ -54,6 +54,9 @@ import org.apache.hudi.metadata.HoodieTableMetadata;
 import org.apache.hudi.storage.StorageConfiguration;
 import org.apache.hudi.storage.hadoop.HoodieHadoopStorage;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.parquet.Strings;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.Dataset;
@@ -137,6 +140,7 @@ public class HudiEngine {
 
   protected static final String HUDI_KAFKA_TOPIC = "hoodie.streamer.source.kafka.topic";
   protected static final String COMMIT_METADATA_KEYPREFIX_OPT_KEY = "hoodie.datasource.write.commitmeta.key.prefix";
+  protected static final String STREAMER_CHECKPOINT_KEY_V2 = "streamer.checkpoint.key.v2";
   protected static final String DELTASTREAMER_CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
   protected static final String INITIAL_CHECKPOINT_STRING = "initialCheckPointString";
   protected static final String FEATURE_GROUP_SCHEMA = "com.logicalclocks.hsfs.spark.StreamFeatureGroup.avroSchema";
@@ -231,11 +235,23 @@ public class HudiEngine {
       throw new FeatureStoreException("No commit information was found for this feature group");
     }
   }
+
+  private HoodieTimeline getHoodieTimeline(SparkSession sparkSession, String basePath)
+      throws IOException {
+    FileSystem hopsfsConf = FileSystem.get(sparkSession.sparkContext().hadoopConfiguration());
+    return HoodieDataSourceHelpers.allCompletedCommitsCompactions(hopsfsConf, basePath);
+  }
+
+  private HoodieCommitMetadata getCommitMetadata(HoodieTimeline commitTimeline, HoodieInstant instant)
+      throws IOException {
+    byte[] commitsToReturn = commitTimeline.getInstantDetails(instant).get();
+    return new CommitMetadataSerDeV2().deserialize(instant,
+        new ByteArrayInputStream(commitsToReturn), () -> false, HoodieCommitMetadata.class);
+  }
   
   private FeatureGroupCommit getLastCommitMetadata(SparkSession sparkSession, String basePath)
       throws IOException, FeatureStoreException, ParseException {
-    FileSystem hopsfsConf = FileSystem.get(sparkSession.sparkContext().hadoopConfiguration());
-    HoodieTimeline commitTimeline = HoodieDataSourceHelpers.allCompletedCommitsCompactions(hopsfsConf, basePath);
+    HoodieTimeline commitTimeline = getHoodieTimeline(sparkSession, basePath);
     Option<HoodieInstant> lastInstant = commitTimeline.lastInstant();
     if (lastInstant.isPresent()) {
       fgCommitMetadata.setCommitDateString(lastInstant.get().getCompletionTime());
@@ -245,9 +261,7 @@ public class HudiEngine {
           FeatureGroupUtils.getTimeStampFromDateString(commitTimeline.firstInstant().get().getCompletionTime())
       );
 
-      byte[] commitsToReturn = commitTimeline.getInstantDetails(lastInstant.get()).get();
-      HoodieCommitMetadata commitMetadata = new CommitMetadataSerDeV2().deserialize(lastInstant.get(),
-          new ByteArrayInputStream(commitsToReturn), () -> false, HoodieCommitMetadata.class);
+      HoodieCommitMetadata commitMetadata = getCommitMetadata(commitTimeline, lastInstant.get());
       fgCommitMetadata.setRowsUpdated(commitMetadata.fetchTotalUpdateRecordsWritten());
       fgCommitMetadata.setRowsInserted(commitMetadata.fetchTotalInsertRecordsWritten());
       fgCommitMetadata.setRowsDeleted(commitMetadata.getTotalRecordsDeleted());
@@ -259,6 +273,64 @@ public class HudiEngine {
     }
   }
   
+  /**
+   * Extract the topic name from the last commit's checkpoint.
+   * The checkpoint format is "topicName,partition:offset,partition:offset,...".
+   * Returns null if no checkpoint exists or the format is unexpected.
+   */
+  private String getCheckpointTopic(HoodieTimeline commitTimeline) {
+    try {
+      Option<HoodieInstant> lastInstant = commitTimeline.lastInstant();
+      if (!lastInstant.isPresent()) {
+        return null;
+      }
+      HoodieCommitMetadata commitMetadata = getCommitMetadata(commitTimeline, lastInstant.get());
+      Map<String, String> extraMetadata = commitMetadata.getExtraMetadata();
+      String checkpoint = extraMetadata.get(STREAMER_CHECKPOINT_KEY_V2);
+      if (checkpoint == null) {
+        checkpoint = extraMetadata.get(DELTASTREAMER_CHECKPOINT_KEY);
+      }
+      if (checkpoint == null || checkpoint.isEmpty()) {
+        return null;
+      }
+      // Topic name is the part before the first comma
+      int commaIdx = checkpoint.indexOf(',');
+      return commaIdx > 0 ? checkpoint.substring(0, commaIdx) : null;
+    } catch (Exception e) {
+      LOGGER.log(Level.WARNING, "Failed to read checkpoint topic from commit metadata", e);
+      return null;
+    }
+  }
+
+  /**
+   * Build a checkpoint string with all partitions set to their earliest available offset.
+   * Format: "topicName,0:offset,1:offset,2:offset,..."
+   */
+  private String buildResetCheckpoint(String topic, Map<String, String> writeOptions) {
+    Properties kafkaProps = new Properties();
+    // writeOptions keys are Spark-formatted with "kafka." prefix (e.g. "kafka.bootstrap.servers").
+    // Strip the prefix to get standard Kafka consumer property names.
+    writeOptions.entrySet().stream()
+        .filter(e -> e.getKey().startsWith("kafka."))
+        .forEach(e -> kafkaProps.put(e.getKey().substring("kafka.".length()), e.getValue()));
+    kafkaProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+    kafkaProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+
+    try (KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(kafkaProps)) {
+      List<PartitionInfo> partitions = consumer.partitionsFor(topic);
+      List<org.apache.kafka.common.TopicPartition> topicPartitions = partitions.stream()
+          .map(p -> new org.apache.kafka.common.TopicPartition(topic, p.partition()))
+          .collect(Collectors.toList());
+      Map<org.apache.kafka.common.TopicPartition, Long> beginningOffsets =
+          consumer.beginningOffsets(topicPartitions);
+      StringBuilder sb = new StringBuilder(topic);
+      for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
+        sb.append(",").append(tp.partition()).append(":").append(beginningOffsets.get(tp));
+      }
+      return sb.toString();
+    }
+  }
+
   private String getPrimaryColumns(FeatureGroupBase featureGroup) {
     String primaryColumns = utils.getPrimaryColumns(featureGroup).mkString(",");
     if (!Strings.isNullOrEmpty(featureGroup.getEventTime())) {
@@ -470,9 +542,22 @@ public class HudiEngine {
     }
 
     // it is possible that table was generated from empty topic
-    if (getLastCommitMetadata(sparkSession, streamFeatureGroup.getLocation()) == null) {
+    HoodieTimeline commitTimeline = getHoodieTimeline(sparkSession, streamFeatureGroup.getLocation());
+    if (commitTimeline.empty()) {
       // set "kafka.auto.offset.reset": "earliest"
       hudiWriteOpts.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    } else {
+      if (!writeOptions.containsKey(HudiEngine.INITIAL_CHECKPOINT_STRING)) {
+        // Detect topic change: if the checkpoint references a different topic, reset offsets
+        String currentTopic = streamFeatureGroup.getOnlineTopicName();
+        String checkpointTopic = getCheckpointTopic(commitTimeline);
+        if (checkpointTopic != null && !checkpointTopic.equals(currentTopic)) {
+          LOGGER.warning("Kafka topic changed from '" + checkpointTopic + "' to '" + currentTopic
+              + "'. Resetting checkpoint to read from earliest offset of new topic.");
+          hudiWriteOpts.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+          hudiWriteOpts.put(INITIAL_CHECKPOINT_STRING, buildResetCheckpoint(currentTopic, hudiWriteOpts));
+        }
+      }
     }
     
     // Testing...
