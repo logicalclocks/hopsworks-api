@@ -452,23 +452,49 @@ def _reconcile_offsets(
     if not starting_offset_string or not low_offsets:
         return low_offsets if low_offsets else {}
 
-    saved_offsets = json.loads(starting_offset_string)
+    try:
+        saved_offsets = json.loads(starting_offset_string)
+    except (ValueError, TypeError):
+        # Malformed or unexpected JSON — fall back to low watermark offsets
+        return low_offsets
+
+    # Expect a mapping of {topic_name: {partition: offset}}
+    if not isinstance(saved_offsets, dict):
+        return low_offsets
 
     # topic changed — start from low watermark
     if topic_name not in saved_offsets:
         return low_offsets
 
     saved_partition_offsets = saved_offsets[topic_name]
-    low_partition_offsets = low_offsets[topic_name]
+    low_partition_offsets = low_offsets.get(topic_name)
+
+    if not isinstance(saved_partition_offsets, dict) or not isinstance(
+        low_partition_offsets, dict
+    ):
+        return low_offsets
 
     reconciled = {}
     for partition, low_offset in low_partition_offsets.items():
-        saved_offset = saved_partition_offsets.get(partition)
-        if saved_offset is not None and saved_offset >= low_offset:
-            reconciled[partition] = saved_offset
-        else:
+        # Normalize low watermark offset to int; if it cannot be parsed, keep original.
+        try:
+            low_offset_int = int(low_offset)
+        except (TypeError, ValueError):
             reconciled[partition] = low_offset
+            continue
 
+        saved_raw_offset = saved_partition_offsets.get(partition)
+        try:
+            saved_offset_int = (
+                int(saved_raw_offset) if saved_raw_offset is not None else None
+            )
+        except (TypeError, ValueError):
+            saved_offset_int = None
+
+        if saved_offset_int is not None and saved_offset_int >= low_offset_int:
+            reconciled[partition] = saved_offset_int
+        else:
+            reconciled[partition] = low_offset_int
     return {topic_name: reconciled}
 
 
