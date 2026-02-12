@@ -55,6 +55,10 @@ public class FeatureGroupEngineBase {
     featureGroupApi.delete(featureGroupBase);
   }
 
+  public Long getRowCount(FeatureGroupBase featureGroupBase) throws FeatureStoreException, IOException {
+    return featureGroupApi.getRowCount(featureGroupBase);
+  }
+
   public void addTag(FeatureGroupBase featureGroupBase, String name, Object value)
       throws FeatureStoreException, IOException {
     tagsApi.add(featureGroupBase, name, value);
