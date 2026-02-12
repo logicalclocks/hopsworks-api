@@ -318,6 +318,10 @@ public class HudiEngine {
 
     try (KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(kafkaProps)) {
       List<PartitionInfo> partitions = consumer.partitionsFor(topic);
+      if (partitions == null || partitions.isEmpty()) {
+        LOGGER.log(Level.WARNING, "No partitions found for Kafka topic \"{0}\" while building reset checkpoint", topic);
+        return null;
+      }
       List<org.apache.kafka.common.TopicPartition> topicPartitions = partitions.stream()
           .map(p -> new org.apache.kafka.common.TopicPartition(topic, p.partition()))
           .collect(Collectors.toList());
