@@ -79,6 +79,7 @@ class ServingApi:
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
         deployment_instance.model_registry_id = _client._project_id
         deployment_instance.project_name = _client._project_name
+        print(deployment_json)
         return deployment_instance
 
     def get_all(self, model_name: str = None, status: str = None):
