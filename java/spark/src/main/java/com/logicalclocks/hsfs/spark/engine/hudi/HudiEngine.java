@@ -315,6 +315,8 @@ public class HudiEngine {
         .forEach(e -> kafkaProps.put(e.getKey().substring("kafka.".length()), e.getValue()));
     kafkaProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
     kafkaProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+    kafkaProps.put(ConsumerConfig.GROUP_ID_CONFIG, "materialization-job-group-" + java.util.UUID.randomUUID());
+    kafkaProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 
     try (KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(kafkaProps)) {
       List<PartitionInfo> partitions = consumer.partitionsFor(topic);
