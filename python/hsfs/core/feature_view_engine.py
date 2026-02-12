@@ -101,13 +101,17 @@ class FeatureViewEngine:
                 " feature view does not support time travel query.",
                 stacklevel=1,
             )
+
+        # Build feature lookup cache once to avoid rebuilding it for every column
+        feature_lookup_cache = self._build_feature_lookup_cache(feature_view_obj.query)
+
         if feature_view_obj.labels:
             for label_name in feature_view_obj.labels:
                 (
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(label_name)
+                ) = self._get_feature_from_cache(label_name, feature_lookup_cache)
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -121,7 +125,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = self._get_feature_from_cache(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -136,7 +142,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = self._get_feature_from_cache(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -1943,3 +1951,84 @@ class FeatureViewEngine:
     def delete_feature_logs(self, fv, feature_logging, transformed):
         self._feature_view_api.delete_feature_logs(fv.name, fv.version, transformed)
         feature_logging.update(self.get_feature_logging(fv))
+
+    def _build_feature_lookup_cache(self, query):
+        """Build a feature lookup dictionary cache for efficient lookups.
+
+        This method builds the feature lookup dictionary once, which can then be
+        reused for multiple feature lookups, avoiding the overhead of rebuilding
+        it for each feature.
+
+        Parameters:
+            query: The Query object to build the cache from.
+
+        Returns:
+            dict: A dictionary mapping feature names to lists of (feature, prefix, fg) tuples.
+        """
+        query_features = {}
+
+        # Add features from the left feature group
+        for feat in query._left_features:
+            feature_entry = (feat, None, query._left_feature_group)
+            query_features[feat.name] = query_features.get(feat.name, []) + [
+                feature_entry
+            ]
+
+        # Collect joins recursively
+        joins = set(query.joins)
+        [query._fg_rec_add_joins(q_join, joins) for q_join in query.joins]
+
+        # Add features from all joins
+        for join_obj in joins:
+            for feat in join_obj.query._left_features:
+                feature_entry = (
+                    feat,
+                    join_obj.prefix,
+                    join_obj.query._left_feature_group,
+                )
+                query_features[feat.name] = query_features.get(feat.name, []) + [
+                    feature_entry
+                ]
+                # If the join has a prefix, add a lookup for "prefix.feature_name"
+                if join_obj.prefix:
+                    name_with_prefix = f"{join_obj.prefix}{feat.name}"
+                    query_features[name_with_prefix] = query_features.get(
+                        name_with_prefix, []
+                    ) + [feature_entry]
+
+        return query_features
+
+    def _get_feature_from_cache(self, feature_name, feature_lookup_cache):
+        """Get a feature from the pre-built lookup cache.
+
+        Parameters:
+            feature_name: The name of the feature to look up.
+            feature_lookup_cache: The pre-built feature lookup dictionary.
+
+        Returns:
+            tuple: A tuple of (feature, prefix, fg).
+
+        Raises:
+            FeatureStoreException: If the feature is not found or is ambiguous.
+        """
+        from hsfs.constructor import query as query_mod
+
+        if feature_name not in feature_lookup_cache:
+            raise FeatureStoreException(
+                query_mod.Query.ERROR_MESSAGE_FEATURE_NOT_FOUND.format(feature_name)
+            )
+
+        # Return (feature, prefix, fg) tuple, if only one match was found
+        feats = feature_lookup_cache[feature_name]
+        if len(feats) == 1:
+            return feats[0]
+
+        # If multiple matches were found, return the one without prefix
+        feats_without_prefix = [feat for feat in feats if feat[1] is None]
+        if len(feats_without_prefix) == 1:
+            return feats_without_prefix[0]
+
+        # There were multiple ambiguous matches
+        raise FeatureStoreException(
+            query_mod.Query.ERROR_MESSAGE_FEATURE_AMBIGUOUS.format(feature_name)
+        )
