@@ -2472,13 +2472,34 @@ class RestConnectorHeader:
     def value(self) -> str:
         return self._value
 
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "name": self._name,
+            "value": self._value,
+        }
+
 
 class RestConnectorClientConfig:
     def __init__(
         self, base_url: str, headers: list[RestConnectorHeader] | None = None
     ) -> None:
         self._base_url = base_url
-        self._headers = headers or []
+        self._headers = self._normalize_headers(headers or [])
+
+    def _normalize_headers(
+        self, headers: list[RestConnectorHeader | dict[str, str]]
+    ) -> list[RestConnectorHeader]:
+        normalized_headers: list[RestConnectorHeader] = []
+        for header in headers:
+            if isinstance(header, RestConnectorHeader):
+                normalized_headers.append(header)
+            elif isinstance(header, dict):
+                normalized_headers.append(RestConnectorHeader(**header))
+            else:
+                raise TypeError(
+                    "REST connector headers must be RestConnectorHeader or dict."
+                )
+        return normalized_headers
 
     @property
     def base_url(self) -> str:
@@ -2488,10 +2509,17 @@ class RestConnectorClientConfig:
     def headers(self):
         return self._headers
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "baseUrl": self._base_url,
+            "headers": [header.to_dict() for header in self._headers],
+        }
+
 
 class RestConnectorAuthConfig:
     def __init__(
         self,
+        auth_type: RestConnectorAuthType | str | None = None,
         bearer_token: str | None = None,
         api_key: str | None = None,
         username: str | None = None,
@@ -2503,6 +2531,7 @@ class RestConnectorAuthConfig:
         access_token_request_params: list[dict[str, Any]] | None = None,
         default_token_timeout_minutes: int | None = None,
     ) -> None:
+        self._auth_type = self._normalize_auth_type(auth_type)
         self._bearer_token = bearer_token
         self._api_key = api_key
         self._username = username
@@ -2513,6 +2542,32 @@ class RestConnectorAuthConfig:
         self._client_secret = client_secret
         self._access_token_request_params = access_token_request_params or []
         self._default_token_timeout_minutes = default_token_timeout_minutes
+
+    def _normalize_auth_type(
+        self, auth_type: RestConnectorAuthType | str | None
+    ) -> RestConnectorAuthType | str | None:
+        if isinstance(auth_type, RestConnectorAuthType) or auth_type is None:
+            return auth_type
+        if isinstance(auth_type, str):
+            try:
+                return RestConnectorAuthType[auth_type.upper()]
+            except KeyError:
+                try:
+                    return RestConnectorAuthType(auth_type)
+                except ValueError:
+                    return auth_type
+        return auth_type
+
+    def _serialize_auth_type(self) -> str | None:
+        if isinstance(self._auth_type, RestConnectorAuthType):
+            return self._auth_type.name
+        if isinstance(self._auth_type, str):
+            return self._auth_type
+        return None
+
+    @property
+    def auth_type(self):
+        return self._auth_type
 
     @property
     def bearer_token(self):
@@ -2554,6 +2609,27 @@ class RestConnectorAuthConfig:
     def default_token_timeout_minutes(self):
         return self._default_token_timeout_minutes
 
+    def to_dict(self) -> dict[str, Any]:
+        access_token_request_params = (
+            self._access_token_request_params
+            if self._access_token_request_params
+            else None
+        )
+        payload = {
+            "authType": self._serialize_auth_type(),
+            "bearerToken": self._bearer_token,
+            "apiKey": self._api_key,
+            "username": self._username,
+            "password": self._password,
+            "accessToken": self._access_token,
+            "accessTokenUrl": self._access_token_url,
+            "clientId": self._client_id,
+            "clientSecret": self._client_secret,
+            "accessTokenRequestParams": access_token_request_params,
+            "defaultTokenTimeoutMinutes": self._default_token_timeout_minutes,
+        }
+        return {key: value for key, value in payload.items() if value is not None}
+
 
 class RestConnectorAuthType(Enum):
     NONE = "none"
@@ -2579,9 +2655,40 @@ class RestConnector(StorageConnector):
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
-        self._client_config = client_config
-        self._auth_config = auth_config
-        self._auth_type = auth_type
+        self._client_config = self._normalize_client_config(client_config)
+        self._auth_config = self._normalize_auth_config(auth_config, auth_type)
+        self._auth_type = (
+            self._auth_config.auth_type if self._auth_config else auth_type
+        )
+
+    def _normalize_client_config(
+        self, client_config: RestConnectorClientConfig | dict[str, Any] | None
+    ) -> RestConnectorClientConfig | None:
+        if client_config is None:
+            return None
+        if isinstance(client_config, RestConnectorClientConfig):
+            return client_config
+        if isinstance(client_config, dict):
+            return RestConnectorClientConfig(**humps.decamelize(client_config))
+        raise TypeError("REST connector client config must be dict or object.")
+
+    def _normalize_auth_config(
+        self,
+        auth_config: RestConnectorAuthConfig | dict[str, Any] | None,
+        auth_type: RestConnectorAuthType | None,
+    ) -> RestConnectorAuthConfig | None:
+        if auth_config is None:
+            if auth_type is None:
+                return None
+            return RestConnectorAuthConfig(auth_type=auth_type)
+        if isinstance(auth_config, RestConnectorAuthConfig):
+            return auth_config
+        if isinstance(auth_config, dict):
+            config = humps.decamelize(auth_config)
+            if "auth_type" not in config and auth_type is not None:
+                config["auth_type"] = auth_type
+            return RestConnectorAuthConfig(**config)
+        raise TypeError("REST connector auth config must be dict or object.")
 
     @property
     def client_config(self):
@@ -2593,7 +2700,25 @@ class RestConnector(StorageConnector):
 
     @property
     def auth_type(self):
+        if self._auth_config and self._auth_config.auth_type is not None:
+            return self._auth_config.auth_type
         return self._auth_type
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "type": "featurestoreRESTConnectorDTO",
+                "description": self._description,
+                "authConfig": (
+                    self._auth_config.to_dict() if self._auth_config else None
+                ),
+                "clientConfig": (
+                    self._client_config.to_dict() if self._client_config else None
+                ),
+            }
+        )
+        return payload
 
     def spark_options(self):
         """Return prepared options to be passed to Spark.

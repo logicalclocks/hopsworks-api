@@ -17,25 +17,16 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
-<<<<<<< HEAD
+from hopsworks_common.client import exceptions
 from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
-from hsfs.client import exceptions
-=======
-from hopsworks_common.client import exceptions
-from hsfs import engine, feature, util
-from hsfs import feature_group as fg
->>>>>>> lc-enterprise/main
 from hsfs.core import (
     delta_engine,
     feature_group_base_engine,
     hudi_engine,
-<<<<<<< HEAD
     job_api,
-=======
     transformation_function_engine,
->>>>>>> lc-enterprise/main
 )
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hsfs.core.schema_validation import DataFrameValidator
