@@ -43,6 +43,7 @@ from hsfs.core.type_systems import (
 
 if TYPE_CHECKING:
     import great_expectations
+    from hsfs.constructor.filter import Filter, Logic
     from hsfs.training_dataset import TrainingDataset
 
 import boto3
@@ -342,9 +343,8 @@ class Engine:
             raise FeatureStoreException("data_format is not specified")
 
         if storage_connector.type == storage_connector.HOPSFS:
-            df_list = self._read_hopsfs(
-                location, data_format, read_options, dataframe_type
-            )
+            path = storage_connector._get_path(location)
+            df_list = self._read_hopsfs(path, data_format, read_options, dataframe_type)
         elif storage_connector.type == storage_connector.S3:
             df_list = self._read_s3(
                 storage_connector, location, data_format, dataframe_type
@@ -423,47 +423,60 @@ class Engine:
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
     ) -> list[pd.DataFrame | pl.DataFrame]:
-        total_count = 10000
-        offset = 0
         df_list = []
         if read_options is None:
             read_options = {}
 
-        while offset < total_count:
-            total_count, inode_list = self._dataset_api._list_dataset_path(
-                location, inode.Inode, offset=offset, limit=100
-            )
+        # Check if the location is a file or directory
+        path_metadata = self._dataset_api._get(location)
+        is_dir = path_metadata.get("attributes", {}).get("dir", False)
 
-            for inode_entry in inode_list:
-                if not self._is_metadata_file(inode_entry.path):
-                    from hsfs.core import arrow_flight_client
+        if is_dir:
+            # Location is a directory, list all files
+            total_count = 10000
+            offset = 0
+            while offset < total_count:
+                total_count, inode_list = self._dataset_api._list_dataset_path(
+                    location, inode.Inode, offset=offset, limit=100
+                )
 
-                    if arrow_flight_client.is_data_format_supported(
-                        data_format, read_options
-                    ):
-                        arrow_flight_config = read_options.get("arrow_flight_config")
-                        df = arrow_flight_client.get_instance().read_path(
-                            inode_entry.path,
-                            arrow_flight_config,
-                            dataframe_type=dataframe_type,
+                for inode_entry in inode_list:
+                    if not self._is_metadata_file(inode_entry.path):
+                        df = self._read_single_hopsfs_file(
+                            inode_entry.path, data_format, read_options, dataframe_type
                         )
-                    else:
-                        content_stream = self._dataset_api.read_content(
-                            inode_entry.path
-                        )
-                        if dataframe_type.lower() == "polars":
-                            df = self._read_polars(
-                                data_format, BytesIO(content_stream.content)
-                            )
-                        else:
-                            df = self._read_pandas(
-                                data_format, BytesIO(content_stream.content)
-                            )
-
-                    df_list.append(df)
-                offset += 1
+                        df_list.append(df)
+                offset += len(inode_list)
+        else:
+            # Location is a single file, read it directly
+            if not self._is_metadata_file(location):
+                df = self._read_single_hopsfs_file(
+                    location, data_format, read_options, dataframe_type
+                )
+                df_list.append(df)
 
         return df_list
+
+    def _read_single_hopsfs_file(
+        self,
+        path: str,
+        data_format: str,
+        read_options: dict[str, Any],
+        dataframe_type: str,
+    ) -> pd.DataFrame | pl.DataFrame:
+        from hsfs.core import arrow_flight_client
+
+        if arrow_flight_client.is_data_format_supported(data_format, read_options):
+            arrow_flight_config = read_options.get("arrow_flight_config")
+            return arrow_flight_client.get_instance().read_path(
+                path,
+                arrow_flight_config,
+                dataframe_type=dataframe_type,
+            )
+        content_stream = self._dataset_api.read_content(path)
+        if dataframe_type.lower() == "polars":
+            return self._read_polars(data_format, BytesIO(content_stream.content))
+        return self._read_pandas(data_format, BytesIO(content_stream.content))
 
     def _read_s3(
         self,
@@ -559,11 +572,12 @@ class Engine:
         feature_group: hsfs.feature_group.FeatureGroup,
         n: int = None,
         dataframe_type: str = "default",
+        filter: Filter | Logic = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[list[Any]]:
         dataframe_type = dataframe_type.lower()
         self._validate_dataframe_type(dataframe_type)
 
-        results = VectorDbClient.read_feature_group(feature_group, n)
+        results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
         feature_names = [f.name for f in feature_group.features]
         if dataframe_type == "polars":
             if not HAS_POLARS:
