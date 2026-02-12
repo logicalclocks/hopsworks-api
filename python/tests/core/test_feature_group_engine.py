@@ -1606,6 +1606,7 @@ class TestFeatureGroupEngine:
             hudi_precombine_key="f",
             time_travel_format="HUDI",
         )
+        mock_fg_api.return_value.save.return_value = fg
 
         # Act
         fg_engine.save_feature_group_metadata(
@@ -1768,6 +1769,7 @@ class TestFeatureGroupEngine:
             partition_key=[],
             features=[],
         )
+        mock_fg_api.return_value.save.return_value = fg
 
         # Act
         fg_engine.save_feature_group_metadata(
