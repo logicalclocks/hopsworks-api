@@ -26,6 +26,7 @@ import org.apache.log4j.Appender;
 import org.apache.log4j.spi.LoggingEvent;
 import org.junit.Assert;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -36,6 +37,15 @@ import java.io.IOException;
 
 
 class TestStreamFeatureGroup {
+
+  @BeforeAll
+  static void beforeAll() {
+    // Trigger class loading before any test to prevent SLF4J/log4j
+    // initialization log events from being captured by mock appenders
+    new StreamFeatureGroup();
+    Logger.getRootLogger().removeAllAppenders();
+  }
+
   @Test
   void testParsingJson() throws JsonProcessingException {
     // Arrange
