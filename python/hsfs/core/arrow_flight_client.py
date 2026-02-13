@@ -502,14 +502,16 @@ class ArrowFlightClient:
                 if arrow_flight_config
                 else self.timeout
             ),
-            headers=[
-                (
-                    b"hopsworks-signature",
-                    query_object.hqs_payload_signature.encode("ascii"),
-                )
-            ]
-            if query_object.hqs_payload_signature
-            else None,
+            headers=(
+                [
+                    (
+                        b"hopsworks-signature",
+                        query_object.hqs_payload_signature.encode("ascii"),
+                    )
+                ]
+                if query_object.hqs_payload_signature
+                else None
+            ),
             dataframe_type=dataframe_type,
         )
 
@@ -519,9 +521,11 @@ class ArrowFlightClient:
         descriptor = pyarrow.flight.FlightDescriptor.for_path(path)
         return self._get_dataset(
             descriptor,
-            timeout=arrow_flight_config.get("timeout", self.timeout)
-            if arrow_flight_config
-            else self.timeout,
+            timeout=(
+                arrow_flight_config.get("timeout", self.timeout)
+                if arrow_flight_config
+                else self.timeout
+            ),
             dataframe_type=dataframe_type,
         )
 

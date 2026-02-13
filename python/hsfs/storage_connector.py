@@ -20,20 +20,23 @@ import logging
 import os
 import posixpath
 import re
+import time
 import warnings
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import DataSourceException
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
+from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
-from hsfs.core import data_source_data as dsd
 
 
 if TYPE_CHECKING:
@@ -44,6 +47,7 @@ if TYPE_CHECKING:
     if HAS_POLARS:
         import polars as pl
     import pandas as pd
+    from hsfs.core.data_source_data import DataSourceData
     from hsfs.core.explicit_provenance import Links
     from hsfs.feature_group import FeatureGroup
 
@@ -63,6 +67,9 @@ class StorageConnector(ABC):
     BIGQUERY = "BIGQUERY"
     RDS = "RDS"
     OPENSEARCH = "OPENSEARCH"
+    CRM = "CRM"
+    REST = "REST"
+
     NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
@@ -94,6 +101,8 @@ class StorageConnector(ABC):
         | BigQueryConnector
         | RdsConnector
         | OpenSearchConnector
+        | CRMAndAnalyticsConnector
+        | RestConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -115,6 +124,8 @@ class StorageConnector(ABC):
         | BigQueryConnector
         | RdsConnector
         | OpenSearchConnector
+        | CRMAndAnalyticsConnector
+        | RestConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -318,6 +329,8 @@ class StorageConnector(ABC):
         Returns:
             list[str]: A list of database names available in the storage connector.
         """
+        if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
+            raise ValueError("This connector type does not support fetching databases.")
         return self._data_source_api.get_databases(self._featurestore_id, self._name)
 
     def get_tables(self, database: str):
@@ -340,7 +353,9 @@ class StorageConnector(ABC):
         Returns:
             list[DataSource]: A list of DataSource objects representing the tables.
         """
-        if not database:
+        if self.type == StorageConnector.REST:
+            raise ValueError("This connector type does not support fetching tables.")
+        if not database and self.type != StorageConnector.CRM:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
             elif self.type == StorageConnector.SNOWFLAKE:
@@ -354,9 +369,18 @@ class StorageConnector(ABC):
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
+        if self.type == StorageConnector.CRM:
+            data: DataSourceData = self._data_source_api.get_crm_resources(
+                self._featurestore_id, self._name
+            )
+            return [
+                ds.DataSource(table=resource)
+                for resource in (data.supported_resources or [])
+            ]
+
         return self._data_source_api.get_tables(self, database)
 
-    def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
+    def get_data(self, data_source: ds.DataSource) -> DataSourceData:
         """Retrieve the data from the data source.
 
         !!! example
@@ -377,6 +401,14 @@ class StorageConnector(ABC):
         Returns:
             DataSourceData: An object containing the data retrieved from the data source.
         """
+        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
+            if not data_source.table:
+                raise ValueError(
+                    f"{self.type} data sources require a table name in data_source.table."
+                )
+            if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
+                data_source.rest_endpoint = RestEndpointConfig()
+            return self._get_no_sql_data(data_source)
         return self._data_source_api.get_data(data_source)
 
     def get_metadata(self, data_source: ds.DataSource) -> dict:
@@ -400,7 +432,27 @@ class StorageConnector(ABC):
         Returns:
             dict: A dictionary containing metadata about the data source.
         """
+        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
+            raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api.get_metadata(data_source)
+
+    def _get_no_sql_data(self, data_source: ds.DataSource) -> DataSourceData:
+        data: DataSourceData = self._data_source_api.get_no_sql_data(
+            self._featurestore_id, self._name, self.type, data_source
+        )
+
+        while data.schema_fetch_in_progress:
+            time.sleep(3)
+            data = self._data_source_api.get_no_sql_data(
+                self._featurestore_id, self._name, self.type, data_source
+            )
+            _logger.info("Schema fetch in progress...")
+
+        if data.schema_fetch_failed:
+            raise DataSourceException(f"Schema fetch failed:\n{data.schema_fetch_logs}")
+        _logger.info("Schema fetch succeeded.")
+
+        return data
 
 
 class HopsFSConnector(StorageConnector):
@@ -2330,3 +2382,390 @@ class OpenSearchConnector(StorageConnector):
         raise NotImplementedError(
             "Cannot read from OpenSearch connector. Please use feature_group.read() instead."
         )
+
+
+class CRMSource(Enum):
+    HUBSPOT = "hubspot"
+    FACEBOOK_ADS = "facebook_ads"
+    SALESFORCE = "salesforce"
+    PIPEDRIVE = "pipedrive"
+    FRESHDESK = "freshdesk"
+    GOOGLE_ADS = "google_ads"
+    GOOGLE_ANALYTICS = "google_analytics"
+
+
+class CRMAndAnalyticsConnector(StorageConnector):
+    type = StorageConnector.CRM
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        crm_type: CRMSource,
+        description: str | None = None,
+        # members specific to type of connector
+        api_key: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        domain: str | None = None,
+        account_id: str | None = None,
+        key_path: str | None = None,
+        property_id: str | None = None,
+        dev_token: str | None = None,
+        customer_id: str | None = None,
+        impersonated_email: str | None = None,
+        refresh_token: str | None = None,
+        headers: dict[str, Any] | None = None,
+        parameters: dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._api_key = api_key
+        self._crm_type = crm_type
+        self._username = username
+        self._password = password
+        self._domain = domain
+        self._account_id = account_id
+        self._key_path = key_path
+        self._property_id = property_id
+        self._dev_token = dev_token
+        self._customer_id = customer_id
+        self._impersonated_email = impersonated_email
+        self._refresh_token = refresh_token
+        self._headers = headers or {}
+        self._parameters = parameters or {}
+
+    @property
+    def api_key(self):
+        return self._api_key
+
+    @property
+    def crm_type(self):
+        return self._crm_type
+
+    @property
+    def username(self):
+        return self._username
+
+    @property
+    def password(self):
+        return self._password
+
+    @property
+    def domain(self):
+        return self._domain
+
+    @property
+    def account_id(self):
+        return self._account_id
+
+    @property
+    def key_path(self):
+        return self._key_path
+
+    @property
+    def property_id(self):
+        return self._property_id
+
+    @property
+    def dev_token(self):
+        return self._dev_token
+
+    @property
+    def customer_id(self):
+        return self._customer_id
+
+    @property
+    def impersonated_email(self):
+        return self._impersonated_email
+
+    @property
+    def refresh_token(self):
+        return self._refresh_token
+
+    @property
+    def headers(self):
+        """Additional headers."""
+        return self._headers
+
+    @property
+    def parameters(self):
+        """Additional parameters."""
+        return self._parameters
+
+    def spark_options(self):
+        """Return prepared options to be passed to Spark.
+
+        Based on the additional arguments.
+        """
+        return {}
+
+
+class RestConnectorHeader:
+    def __init__(self, name: str, value: str) -> None:
+        self._name = name
+        self._value = value
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "name": self._name,
+            "value": self._value,
+        }
+
+
+class RestConnectorClientConfig:
+    def __init__(
+        self, base_url: str, headers: list[RestConnectorHeader] | None = None
+    ) -> None:
+        self._base_url = base_url
+        self._headers = self._normalize_headers(headers or [])
+
+    def _normalize_headers(
+        self, headers: list[RestConnectorHeader | dict[str, str]]
+    ) -> list[RestConnectorHeader]:
+        normalized_headers: list[RestConnectorHeader] = []
+        for header in headers:
+            if isinstance(header, RestConnectorHeader):
+                normalized_headers.append(header)
+            elif isinstance(header, dict):
+                normalized_headers.append(RestConnectorHeader(**header))
+            else:
+                raise TypeError(
+                    "REST connector headers must be RestConnectorHeader or dict."
+                )
+        return normalized_headers
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    @property
+    def headers(self):
+        return self._headers
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "baseUrl": self._base_url,
+            "headers": [header.to_dict() for header in self._headers],
+        }
+
+
+class RestConnectorAuthConfig:
+    def __init__(
+        self,
+        auth_type: RestConnectorAuthType | str | None = None,
+        bearer_token: str | None = None,
+        api_key: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        access_token: str | None = None,
+        access_token_url: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        access_token_request_params: list[dict[str, Any]] | None = None,
+        default_token_timeout_minutes: int | None = None,
+    ) -> None:
+        self._auth_type = self._normalize_auth_type(auth_type)
+        self._bearer_token = bearer_token
+        self._api_key = api_key
+        self._username = username
+        self._password = password
+        self._access_token = access_token
+        self._access_token_url = access_token_url
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._access_token_request_params = access_token_request_params or []
+        self._default_token_timeout_minutes = default_token_timeout_minutes
+
+    def _normalize_auth_type(
+        self, auth_type: RestConnectorAuthType | str | None
+    ) -> RestConnectorAuthType | str | None:
+        if isinstance(auth_type, RestConnectorAuthType) or auth_type is None:
+            return auth_type
+        if isinstance(auth_type, str):
+            try:
+                return RestConnectorAuthType[auth_type.upper()]
+            except KeyError:
+                try:
+                    return RestConnectorAuthType(auth_type)
+                except ValueError:
+                    return auth_type
+        return auth_type
+
+    def _serialize_auth_type(self) -> str | None:
+        if isinstance(self._auth_type, RestConnectorAuthType):
+            return self._auth_type.name
+        if isinstance(self._auth_type, str):
+            return self._auth_type
+        return None
+
+    @property
+    def auth_type(self):
+        return self._auth_type
+
+    @property
+    def bearer_token(self):
+        return self._bearer_token
+
+    @property
+    def api_key(self):
+        return self._api_key
+
+    @property
+    def username(self):
+        return self._username
+
+    @property
+    def password(self):
+        return self._password
+
+    @property
+    def access_token(self):
+        return self._access_token
+
+    @property
+    def access_token_url(self):
+        return self._access_token_url
+
+    @property
+    def client_id(self):
+        return self._client_id
+
+    @property
+    def client_secret(self):
+        return self._client_secret
+
+    @property
+    def access_token_request_params(self):
+        return self._access_token_request_params
+
+    @property
+    def default_token_timeout_minutes(self):
+        return self._default_token_timeout_minutes
+
+    def to_dict(self) -> dict[str, Any]:
+        access_token_request_params = (
+            self._access_token_request_params
+            if self._access_token_request_params
+            else None
+        )
+        payload = {
+            "authType": self._serialize_auth_type(),
+            "bearerToken": self._bearer_token,
+            "apiKey": self._api_key,
+            "username": self._username,
+            "password": self._password,
+            "accessToken": self._access_token,
+            "accessTokenUrl": self._access_token_url,
+            "clientId": self._client_id,
+            "clientSecret": self._client_secret,
+            "accessTokenRequestParams": access_token_request_params,
+            "defaultTokenTimeoutMinutes": self._default_token_timeout_minutes,
+        }
+        return {key: value for key, value in payload.items() if value is not None}
+
+
+class RestConnectorAuthType(Enum):
+    NONE = "none"
+    BASIC = "http_basic"
+    BEARER = "bearer"
+    API_KEY = "api_key"
+    OAUTH2 = "oauth2_client_credentials"
+
+
+class RestConnector(StorageConnector):
+    type = StorageConnector.REST
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        # members specific to type of connector
+        client_config: RestConnectorClientConfig | None = None,
+        auth_config: RestConnectorAuthConfig | None = None,
+        auth_type: RestConnectorAuthType | None = RestConnectorAuthType.NONE,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._client_config = self._normalize_client_config(client_config)
+        self._auth_config = self._normalize_auth_config(auth_config, auth_type)
+        self._auth_type = (
+            self._auth_config.auth_type if self._auth_config else auth_type
+        )
+
+    def _normalize_client_config(
+        self, client_config: RestConnectorClientConfig | dict[str, Any] | None
+    ) -> RestConnectorClientConfig | None:
+        if client_config is None:
+            return None
+        if isinstance(client_config, RestConnectorClientConfig):
+            return client_config
+        if isinstance(client_config, dict):
+            return RestConnectorClientConfig(**humps.decamelize(client_config))
+        raise TypeError("REST connector client config must be dict or object.")
+
+    def _normalize_auth_config(
+        self,
+        auth_config: RestConnectorAuthConfig | dict[str, Any] | None,
+        auth_type: RestConnectorAuthType | None,
+    ) -> RestConnectorAuthConfig | None:
+        if auth_config is None:
+            if auth_type is None:
+                return None
+            return RestConnectorAuthConfig(auth_type=auth_type)
+        if isinstance(auth_config, RestConnectorAuthConfig):
+            return auth_config
+        if isinstance(auth_config, dict):
+            config = humps.decamelize(auth_config)
+            if "auth_type" not in config and auth_type is not None:
+                config["auth_type"] = auth_type
+            return RestConnectorAuthConfig(**config)
+        raise TypeError("REST connector auth config must be dict or object.")
+
+    @property
+    def client_config(self):
+        return self._client_config
+
+    @property
+    def auth_config(self):
+        return self._auth_config
+
+    @property
+    def auth_type(self):
+        if self._auth_config and self._auth_config.auth_type is not None:
+            return self._auth_config.auth_type
+        return self._auth_type
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "type": "featurestoreRESTConnectorDTO",
+                "description": self._description,
+                "authConfig": (
+                    self._auth_config.to_dict() if self._auth_config else None
+                ),
+                "clientConfig": (
+                    self._client_config.to_dict() if self._client_config else None
+                ),
+            }
+        )
+        return payload
+
+    def spark_options(self):
+        """Return prepared options to be passed to Spark.
+
+        Based on the additional arguments.
+        """
+        return {}

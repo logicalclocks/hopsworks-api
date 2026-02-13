@@ -31,6 +31,7 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
+from hopsworks_common import job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -39,6 +40,7 @@ from hopsworks_common.core.constants import (
     HAS_NUMPY,
     HAS_POLARS,
 )
+from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 from hsfs import (
     engine,
     feature,
@@ -127,10 +129,12 @@ class FeatureGroupBase:
         online_enabled: bool = False,
         id: int | None = None,
         embedding_index: EmbeddingIndex | None = None,
-        expectation_suite: hsfs.expectation_suite.ExpectationSuite
-        | great_expectations.core.ExpectationSuite
-        | dict[str, Any]
-        | None = None,
+        expectation_suite: (
+            hsfs.expectation_suite.ExpectationSuite
+            | great_expectations.core.ExpectationSuite
+            | dict[str, Any]
+            | None
+        ) = None,
         online_topic_name: str | None = None,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
@@ -140,6 +144,7 @@ class FeatureGroupBase:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        sink_enabled: bool | None = False,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
@@ -169,6 +174,8 @@ class FeatureGroupBase:
                 Whether to enable online disk storage for this feature group.
                 Overrides `online_config.table_space`.
                 Defaults to using cluster wide configuration `featurestore_online_tablespace` to identify tablespace for disk storage.
+            sink_enabled: Whether to enable sink from data source to feature group. A storage connector and data source must be defined for the feature group.
+            **kwargs: Additional keyword arguments
         """
         self._version = version
         self._name = name
@@ -187,6 +194,7 @@ class FeatureGroupBase:
         self._alert_api = alerts_api.AlertsApi()
         self.ttl = ttl
         self._ttl_enabled = ttl_enabled if ttl_enabled is not None else ttl is not None
+        self._sink_enabled = sink_enabled
         self._missing_mandatory_tags = missing_mandatory_tags or []
 
         self._online_config = (
@@ -227,9 +235,9 @@ class FeatureGroupBase:
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
         )
-        self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
-            featurestore_id
-        )
+        self._great_expectation_engine: (
+            great_expectation_engine.GreatExpectationEngine
+        ) = great_expectation_engine.GreatExpectationEngine(featurestore_id)
         if self._id is not None:
             if expectation_suite:
                 self._expectation_suite._init_expectation_engine(
@@ -256,7 +264,9 @@ class FeatureGroupBase:
                 feature_store_id=featurestore_id,
                 feature_group_id=self._id,
             )
-            self._feature_monitoring_result_engine: feature_monitoring_result_engine.FeatureMonitoringResultEngine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            self._feature_monitoring_result_engine: (
+                feature_monitoring_result_engine.FeatureMonitoringResultEngine
+            ) = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._id,
             )
@@ -1180,8 +1190,10 @@ class FeatureGroupBase:
 
     def save_expectation_suite(
         self,
-        expectation_suite: hsfs.expectation_suite.ExpectationSuite
-        | great_expectations.core.ExpectationSuite,
+        expectation_suite: (
+            hsfs.expectation_suite.ExpectationSuite
+            | great_expectations.core.ExpectationSuite
+        ),
         run_validation: bool = True,
         validation_ingestion_policy: Literal["always", "strict"] = "always",
         overwrite: bool = False,
@@ -1348,9 +1360,11 @@ class FeatureGroupBase:
 
     def save_validation_report(
         self,
-        validation_report: dict[str, Any]
-        | ValidationReport
-        | great_expectations.core.expectation_validation_result.ExpectationSuiteValidationResult,
+        validation_report: (
+            dict[str, Any]
+            | ValidationReport
+            | great_expectations.core.expectation_validation_result.ExpectationSuiteValidationResult
+        ),
         ingestion_result: Literal[
             "UNKNOWN", "INGESTED", "REJECTED", "EXPERIMENT", "FG_DATA"
         ] = "UNKNOWN",
@@ -2253,10 +2267,12 @@ class FeatureGroupBase:
     @expectation_suite.setter
     def expectation_suite(
         self,
-        expectation_suite: hsfs.expectation_suite.ExpectationSuite
-        | great_expectations.core.ExpectationSuite
-        | dict[str, Any]
-        | None,
+        expectation_suite: (
+            hsfs.expectation_suite.ExpectationSuite
+            | great_expectations.core.ExpectationSuite
+            | dict[str, Any]
+            | None
+        ),
     ) -> None:
         if isinstance(expectation_suite, hsfs.expectation_suite.ExpectationSuite):
             tmp_expectation_suite = expectation_suite.to_json_dict(decamelize=True)
@@ -2622,24 +2638,30 @@ class FeatureGroup(FeatureGroupBase):
         notification_topic_name: str | None = None,
         event_time: str | None = None,
         stream: bool = False,
-        expectation_suite: great_expectations.core.ExpectationSuite
-        | hsfs.expectation_suite.ExpectationSuite
-        | dict[str, Any]
-        | None = None,
+        expectation_suite: (
+            great_expectations.core.ExpectationSuite
+            | hsfs.expectation_suite.ExpectationSuite
+            | dict[str, Any]
+            | None
+        ) = None,
         parents: list[explicit_provenance.Links] | None = None,
         href: str | None = None,
-        delta_streamer_job_conf: dict[str, Any]
-        | deltastreamer_jobconf.DeltaStreamerJobConf
-        | None = None,
+        delta_streamer_job_conf: (
+            dict[str, Any] | deltastreamer_jobconf.DeltaStreamerJobConf | None
+        ) = None,
         deprecated: bool = False,
-        transformation_functions: list[TransformationFunction | HopsworksUdf]
-        | None = None,
+        transformation_functions: (
+            list[TransformationFunction | HopsworksUdf] | None
+        ) = None,
         online_config: OnlineConfig | dict[str, Any] | None = None,
         offline_backfill_every_hr: str | int | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        sink_enabled: bool | None = False,
+        sink_job_conf: SinkJobConfiguration | dict[str, Any] | None = None,
+        sink_job: job.Job | dict[str, Any] | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: list[tag.Tag] | None = None,
         **kwargs,
@@ -2663,6 +2685,7 @@ class FeatureGroup(FeatureGroupBase):
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            sink_enabled=sink_enabled,
             missing_mandatory_tags=missing_mandatory_tags,
         )
 
@@ -2670,6 +2693,12 @@ class FeatureGroup(FeatureGroupBase):
         self._description: str | None = description
         self._created = created
         self._creator = user.User.from_response_json(creator)
+        self._sink_job = sink_job
+
+        if sink_job_conf is not None and isinstance(sink_job_conf, dict):
+            self._sink_job_conf = SinkJobConfiguration.from_response_json(sink_job_conf)
+        else:
+            self._sink_job_conf = sink_job_conf
 
         self._features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
@@ -2716,6 +2745,7 @@ class FeatureGroup(FeatureGroupBase):
             self._offline_backfill_every_hr = None
 
         else:
+            self._resolve_sink_enabled()
             # Set time travel format and streaming based on engine type and online status
             self._init_time_travel_and_stream(
                 stream,
@@ -2798,7 +2828,8 @@ class FeatureGroup(FeatureGroupBase):
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
         )
-        if engine.get_type() == "python":
+
+        if engine.get_type() == "python" and not self._sink_enabled:
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
@@ -2811,6 +2842,14 @@ class FeatureGroup(FeatureGroupBase):
         return self.storage_connector is None or (
             self.storage_connector is not None
             and self.storage_connector.type == sc.StorageConnector.HOPSFS
+        )
+
+    def _resolve_sink_enabled(self):
+        """Check if sink enabled must enabled based on storage connector."""
+        self._sink_enabled = (
+            self._storage_connector is not None
+            and self._storage_connector.type
+            in [sc.StorageConnector.CRM, sc.StorageConnector.REST]
         )
 
     @staticmethod
@@ -3107,12 +3146,14 @@ class FeatureGroup(FeatureGroupBase):
 
     def save(
         self,
-        features: pd.DataFrame
-        | pl.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[feature.Feature] = None,
+        features: (
+            pd.DataFrame
+            | pl.DataFrame
+            | TypeVar("pyspark.sql.DataFrame")
+            | TypeVar("pyspark.RDD")
+            | np.ndarray
+            | list[feature.Feature]
+        ) = None,
         write_options: dict[str, Any] | None = None,
         validation_options: dict[str, Any] | None = None,
         wait: bool = False,
@@ -3174,6 +3215,20 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        self._resolve_sink_enabled()
+        if self._sink_enabled and self._storage_connector is None:
+            raise FeatureStoreException(
+                "Sink cannot be enabled for the feature group without a storage connector."
+            )
+        if self._sink_enabled and self._data_source is None:
+            raise FeatureStoreException(
+                "Sink cannot be enabled for the feature group without a data source."
+            )
+        if self._sink_enabled and self.time_travel_format != "DELTA":
+            raise FeatureStoreException(
+                "Sink can only be enabled for feature groups with time travel format DELTA."
+            )
+
         if write_options is None:
             write_options = {}
         if all(
@@ -3205,9 +3260,7 @@ class FeatureGroup(FeatureGroupBase):
             self._features = (
                 self._features
                 if len(self._features) > 0
-                else features
-                if features
-                else []
+                else features if features else []
             )
 
             self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
@@ -3266,12 +3319,14 @@ class FeatureGroup(FeatureGroupBase):
 
     def insert(
         self,
-        features: pd.DataFrame
-        | pl.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[list],
+        features: (
+            pd.DataFrame
+            | pl.DataFrame
+            | TypeVar("pyspark.sql.DataFrame")
+            | TypeVar("pyspark.RDD")
+            | np.ndarray
+            | list[list]
+        ),
         overwrite: bool = False,
         operation: Literal["insert", "upsert"] = "upsert",
         storage: str | None = None,
@@ -3461,13 +3516,15 @@ class FeatureGroup(FeatureGroupBase):
 
     def multi_part_insert(
         self,
-        features: pd.DataFrame
-        | pl.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[list]
-        | None = None,
+        features: (
+            pd.DataFrame
+            | pl.DataFrame
+            | TypeVar("pyspark.sql.DataFrame")
+            | TypeVar("pyspark.RDD")
+            | np.ndarray
+            | list[list]
+            | None
+        ) = None,
         overwrite: bool = False,
         operation: Literal["insert", "upsert"] = "upsert",
         storage: str | None = None,
@@ -4021,6 +4078,10 @@ class FeatureGroup(FeatureGroupBase):
                     )
                     for transformation_function in transformation_functions
                 ]
+            if "sink_job" in json_decamelized:
+                json_decamelized["sink_job"] = job.Job.from_response_json(
+                    json_decamelized["sink_job"]
+                )
             return cls(**json_decamelized)
         for fg in json_decamelized:
             if "type" in fg:
@@ -4042,6 +4103,8 @@ class FeatureGroup(FeatureGroupBase):
                     )
                     for transformation_function in transformation_functions
                 ]
+            if "sink_job" in fg:
+                fg["sink_job"] = job.Job.from_response_json(fg["sink_job"])
         return [cls(**fg) for fg in json_decamelized]
 
     def update_from_response_json(self, json_dict: dict[str, Any]) -> FeatureGroup:
@@ -4099,9 +4162,9 @@ class FeatureGroup(FeatureGroupBase):
             "timeTravelFormat": self._time_travel_format,
             "features": self._features,
             "featurestoreId": self._feature_store_id,
-            "type": "cachedFeaturegroupDTO"
-            if not self._stream
-            else "streamFeatureGroupDTO",
+            "type": (
+                "cachedFeaturegroupDTO" if not self._stream else "streamFeatureGroupDTO"
+            ),
             "statisticsConfig": self._statistics_config,
             "eventTime": self.event_time,
             "expectationSuite": self._expectation_suite,
@@ -4114,6 +4177,7 @@ class FeatureGroup(FeatureGroupBase):
             ],
             "ttl": self.ttl,
             "ttlEnabled": self._ttl_enabled,
+            "sinkEnabled": self._sink_enabled,
         }
         if self.data_source:
             fg_meta_dict["dataSource"] = self.data_source.to_dict()
@@ -4360,6 +4424,36 @@ class FeatureGroup(FeatureGroupBase):
             )
         self._offline_backfill_every_hr = new_offline_backfill_every_hr
 
+    @property
+    def sink_enabled(self) -> bool:
+        """Get whether sink is enabled for this feature group."""
+        return self._sink_enabled
+
+    @property
+    def sink_job(self) -> job.Job | None:
+        """Return the sink job created for this feature group, if any."""
+        return self._sink_job
+
+    @property
+    def sink_job_conf(self) -> SinkJobConfiguration:
+        """Sink job configuration object defining the settings for sink job of the feature group."""
+        return self._sink_job_conf
+
+    @sink_job_conf.setter
+    def sink_job_conf(
+        self, sink_job_conf: SinkJobConfiguration | dict[str, Any] | None
+    ):
+        if isinstance(sink_job_conf, SinkJobConfiguration):
+            self._sink_job_conf = sink_job_conf
+        elif isinstance(sink_job_conf, dict):
+            self._sink_job_conf = SinkJobConfiguration(**sink_job_conf)
+        elif sink_job_conf is None:
+            self._sink_job_conf = SinkJobConfiguration()
+        else:
+            raise TypeError(
+                f"The argument `sink_job_conf` has to be of type `SinkJobConfiguration` or `dict`, or be `None`, but is of type: `{type(sink_job_conf)}`"
+            )
+
 
 @typechecked
 class ExternalFeatureGroup(FeatureGroupBase):
@@ -4386,10 +4480,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
         location: str | None = None,
         statistics_config: StatisticsConfig | dict[str, Any] | None = None,
         event_time: str | None = None,
-        expectation_suite: hsfs.expectation_suite.ExpectationSuite
-        | great_expectations.core.ExpectationSuite
-        | dict[str, Any]
-        | None = None,
+        expectation_suite: (
+            hsfs.expectation_suite.ExpectationSuite
+            | great_expectations.core.ExpectationSuite
+            | dict[str, Any]
+            | None
+        ) = None,
         online_enabled: bool = False,
         href: str | None = None,
         online_topic_name: str | None = None,
@@ -4439,9 +4535,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
             for feat in (features or [])
         ]
 
-        self._feature_group_engine: external_feature_group_engine.ExternalFeatureGroupEngine = external_feature_group_engine.ExternalFeatureGroupEngine(
-            featurestore_id
-        )
+        self._feature_group_engine: (
+            external_feature_group_engine.ExternalFeatureGroupEngine
+        ) = external_feature_group_engine.ExternalFeatureGroupEngine(featurestore_id)
 
         if self._id:
             # Got from Hopsworks, deserialize features and storage connector
@@ -4498,11 +4594,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     def insert(
         self,
-        features: pd.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[list],
+        features: (
+            pd.DataFrame
+            | TypeVar("pyspark.sql.DataFrame")
+            | TypeVar("pyspark.RDD")
+            | np.ndarray
+            | list[list]
+        ),
         write_options: dict[str, Any] | None = None,
         validation_options: dict[str, Any] | None = None,
         wait: bool = False,
@@ -4821,9 +4919,11 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "features": self._features,
             "featurestoreId": self._feature_store_id,
             "dataFormat": self._data_format,
-            "options": [{"name": k, "value": v} for k, v in self._options.items()]
-            if self._options
-            else None,
+            "options": (
+                [{"name": k, "value": v} for k, v in self._options.items()]
+                if self._options
+                else None
+            ),
             "type": "onDemandFeaturegroupDTO",
             "statisticsConfig": self._statistics_config,
             "eventTime": self._event_time,
@@ -4908,9 +5008,11 @@ class SpineGroup(FeatureGroupBase):
         location: str | None = None,
         statistics_config: StatisticsConfig | None = None,
         event_time: str | None = None,
-        expectation_suite: hsfs.expectation_suite.ExpectationSuite
-        | great_expectations.core.ExpectationSuite
-        | None = None,
+        expectation_suite: (
+            hsfs.expectation_suite.ExpectationSuite
+            | great_expectations.core.ExpectationSuite
+            | None
+        ) = None,
         # spine groups are online enabled by default such that feature_view.get_feature_vector can be used
         online_enabled: bool = True,
         href: str | None = None,
@@ -4962,9 +5064,11 @@ class SpineGroup(FeatureGroupBase):
             # Got from Hopsworks, deserialize features and storage connector
             self._features = (
                 [
-                    feature.Feature.from_response_json(feat)
-                    if isinstance(feat, dict)
-                    else feat
+                    (
+                        feature.Feature.from_response_json(feat)
+                        if isinstance(feat, dict)
+                        else feat
+                    )
                     for feat in features
                 ]
                 if features
@@ -5018,12 +5122,14 @@ class SpineGroup(FeatureGroupBase):
     @dataframe.setter
     def dataframe(
         self,
-        dataframe: pd.DataFrame
-        | pl.DataFrame
-        | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | None,
+        dataframe: (
+            pd.DataFrame
+            | pl.DataFrame
+            | np.ndarray
+            | TypeVar("pyspark.sql.DataFrame")
+            | TypeVar("pyspark.RDD")
+            | None
+        ),
     ) -> None:
         """Update the spine dataframe contained in the spine group."""
         if dataframe is None:
