@@ -40,26 +40,128 @@ _logger = logging.getLogger(__name__)
 
 
 class TransformationType(Enum):
-    """Class that store the possible types of transformation functions."""
+    """Type of transformation function, determining when and how it is executed.
+
+    Hopsworks supports two types of transformation functions that serve different purposes
+    in the ML pipeline:
+
+    Attributes:
+        MODEL_DEPENDENT: Transformations attached to feature views that are parameterized by training dataset statistics.
+            These transformations (e.g., scaling, encoding) use statistics like mean, std_dev, min, max
+            computed from the training data. They are applied consistently during:
+
+            - Training dataset creation
+            - Batch inference via `get_batch_data()`
+            - Online inference via `get_feature_vector()`
+
+            Model-dependent transformations prevent training-serving skew by ensuring the same
+            statistical parameters are used in both training and inference.
+
+            Example use cases: min-max scaling, standard scaling, label encoding, one-hot encoding.
+
+        ON_DEMAND: Transformations attached to feature groups that compute features at request time.
+            These transformations typically require parameters only available during inference
+            (e.g., current timestamp, request metadata). They are:
+
+            - Executed during data insertion to backfill historical values
+            - Computed in real-time during online inference using `request_parameters`
+            - Cannot access training dataset statistics
+
+            Example use cases: time since last event, geolocation lookups, real-time calculations.
+
+        UNDEFINED: Internal state for transformation functions not yet attached to a feature view or feature group.
+            This is a transient state; the type is set to MODEL_DEPENDENT or ON_DEMAND when
+            the transformation is attached.
+
+    See Also:
+        - [`FeatureView`][hsfs.feature_view.FeatureView]: Attach transformations as MODEL_DEPENDENT.
+        - [`FeatureGroup`][hsfs.feature_group.FeatureGroup]: Attach transformations as ON_DEMAND.
+        - [`TransformationStatistics`][hsfs.transformation_statistics.TransformationStatistics]: Statistics available to MODEL_DEPENDENT transformations.
+    """
 
     MODEL_DEPENDENT = "model_dependent"
     ON_DEMAND = "on_demand"
-    UNDEFINED = "undefined"  # This type is used when the UDF created is not attached to a feature view / feature group. Hence the transformation function is neither model dependent nor on-demand.
+    UNDEFINED = "undefined"
 
 
 @typechecked
 class TransformationFunction:
-    NOT_FOUND_ERROR_CODE = 270160
-    """
-    DTO class for transformation functions.
+    """A transformation function that can be saved to the feature store and attached to feature views or feature groups.
 
-    Parameters:
-        featurestore_id : `int`. Id of the feature store in which the transformation function is saved.
-        hopsworks_udf : `HopsworksUDF`. The meta data object for UDF in Hopsworks, which can be created using the `@udf` decorator.
-        version : `int`. The version of the transformation function.
-        id : `int`. The id of the transformation function in the feature store.
-        transformation_type : `UDFType`. The type of the transformation function. Can be "on-demand" or "model-dependent"
+    Transformation functions wrap a [`HopsworksUdf`][hsfs.hopsworks_udf.HopsworksUdf] (created via the
+    [`@udf`][hsfs.hopsworks_udf.udf] decorator) with metadata for persistence and type classification.
+
+    There are two types of transformation functions:
+
+    - **Model-Dependent**: Attached to feature views, these transformations have access to training dataset
+      statistics and are applied during training data creation, batch inference, and online inference.
+      Use for scaling, encoding, and other transformations that must be consistent between training and serving.
+
+    - **On-Demand**: Attached to feature groups, these transformations compute features that require
+      request-time parameters. They are executed during data insertion (to backfill historical values)
+      and in real-time during online inference.
+
+    Example: Create and save a transformation function
+        ```python
+        from hopsworks import udf
+
+        @udf(return_type=float)
+        def add_one(feature):
+            return feature + 1
+
+        # Create transformation function metadata
+        tf = fs.create_transformation_function(
+            transformation_function=add_one,
+            version=1
+        )
+
+        # Save to feature store for reuse
+        tf.save()
+        ```
+
+    Example: Retrieve and attach to a feature view (model-dependent)
+        ```python
+        # Retrieve saved transformation function
+        add_one_tf = fs.get_transformation_function(name="add_one", version=1)
+
+        # Attach to feature view - becomes model-dependent
+        feature_view = fs.create_feature_view(
+            name="my_view",
+            query=fg.select_all(),
+            transformation_functions=[add_one_tf("my_feature")]
+        )
+        ```
+
+    Example: Attach to a feature group (on-demand)
+        ```python
+        @udf(return_type=int, drop=["event_time"])
+        def days_since_event(event_time, context):
+            return (context["current_time"] - event_time).dt.days
+
+        # Attach to feature group - becomes on-demand
+        fg = fs.create_feature_group(
+            name="my_fg",
+            transformation_functions=[days_since_event]
+        )
+        ```
+
+    Note: Output Column Naming
+        By default, output columns are named using the pattern:
+
+        - Model-dependent: `{function_name}_{input_features}` (e.g., `min_max_scaler_age`)
+        - On-demand with single output: `{function_name}` (e.g., `days_since_event`)
+        - Multiple outputs: `{base_name}_{index}` (e.g., `split_feature_0`, `split_feature_1`)
+
+        Use the [`alias()`][hsfs.transformation_function.TransformationFunction.alias] method to set custom names.
+
+    See Also:
+        - [`udf`][hsfs.hopsworks_udf.udf]: Decorator to create transformation functions.
+        - [`FeatureStore.create_transformation_function`][hsfs.feature_store.FeatureStore.create_transformation_function]: Create a TransformationFunction.
+        - [`FeatureStore.get_transformation_function`][hsfs.feature_store.FeatureStore.get_transformation_function]: Retrieve a saved TransformationFunction.
+        - [`TransformationType`][hsfs.transformation_function.TransformationType]: Enum describing transformation types.
     """
+
+    NOT_FOUND_ERROR_CODE = 270160
 
     def __init__(
         self,
@@ -105,57 +207,67 @@ class TransformationFunction:
             self.__hopsworks_udf._output_column_names = []
 
     def save(self) -> None:
-        """Save a transformation function into the backend.
+        """Save this transformation function to the feature store for later reuse.
 
-        Example:
+        Once saved, the transformation function can be retrieved by name and version
+        using [`FeatureStore.get_transformation_function()`][hsfs.feature_store.FeatureStore.get_transformation_function].
+
+        This enables sharing transformation functions across feature views and projects,
+        and ensures consistent transformations are applied to the same features.
+
+        Example: Save and reuse a transformation function
             ```python
-            # import hopsworks udf decorator
-            from hopworks import udf
+            from hopsworks import udf
 
-            # define function
-            @udf(int)
-            def plus_one(value):
-                return value + 1
+            @udf(return_type=float)
+            def normalize(value):
+                return value / 100.0
 
-            # create transformation function
-            plus_one_meta = fs.create_transformation_function(
-                    transformation_function=plus_one,
-                    version=1
-                )
+            # Create and save
+            tf = fs.create_transformation_function(
+                transformation_function=normalize,
+                version=1
+            )
+            tf.save()
 
-            # persist transformation function in backend
-            plus_one_meta.save()
+            # Later, retrieve and use
+            normalize_fn = fs.get_transformation_function(name="normalize", version=1)
+            feature_view = fs.create_feature_view(
+                name="my_view",
+                query=fg.select_all(),
+                transformation_functions=[normalize_fn("my_feature")]
+            )
             ```
+
+        Raises:
+            FeatureStoreException: If a transformation function with the same name and version already exists.
+
+        See Also:
+            - [`delete()`][hsfs.transformation_function.TransformationFunction.delete]: Remove from feature store.
+            - [`FeatureStore.get_transformation_function()`][hsfs.feature_store.FeatureStore.get_transformation_function]: Retrieve saved functions.
         """
         self._transformation_function_engine.save(self)
 
     def delete(self) -> None:
-        """Delete transformation function from backend.
+        """Delete this transformation function from the feature store.
 
-        Example:
+        Removes the transformation function metadata from the feature store.
+        This does not affect feature views or feature groups that already use this transformation.
+
+        Example: Delete a transformation function
             ```python
-            # import hopsworks udf decorator
-            from hopworks import udf
+            # Retrieve the transformation function
+            tf = fs.get_transformation_function(name="my_transform", version=1)
 
-            # define function
-            @udf(int)
-            def plus_one(value):
-                return value + 1
-
-            # create transformation function
-            plus_one_meta = fs.create_transformation_function(
-                    transformation_function=plus_one,
-                    version=1
-                )
-            # persist transformation function in backend
-            plus_one_meta.save()
-
-            # retrieve transformation function
-            plus_one_fn = fs.get_transformation_function(name="plus_one")
-
-            # delete transformation function from backend
-            plus_one_fn.delete()
+            # Delete it
+            tf.delete()
             ```
+
+        Raises:
+            FeatureStoreException: If the transformation function does not exist or cannot be deleted.
+
+        See Also:
+            - [`save()`][hsfs.transformation_function.TransformationFunction.save]: Save to feature store.
         """
         self._transformation_function_engine.delete(self)
 
@@ -252,7 +364,46 @@ class TransformationFunction:
         }
 
     def alias(self, *args: str):
-        """Set the names of the transformed features output by the transformation function."""
+        """Set custom names for the output features produced by this transformation.
+
+        By default, Hopsworks generates output feature names using the pattern:
+
+        - Model-dependent: `{function_name}_{input_features}` (e.g., `min_max_scaler_age`)
+        - On-demand single output: `{function_name}` (e.g., `days_since_event`)
+        - Multiple outputs: `{base_name}_{index}` (e.g., `split_0`, `split_1`)
+
+        Use `alias()` to override these defaults with meaningful names.
+        Each name must be unique and at most 63 characters long.
+
+        Example: Set custom output names
+            ```python
+            from hopsworks import udf
+
+            @udf(return_type=[float, float])
+            def normalize_coords(lat, lon):
+                return lat / 90.0, lon / 180.0
+
+            # Set custom names for the two output features
+            normalize_coords.alias("normalized_latitude", "normalized_longitude")
+
+            feature_view = fs.create_feature_view(
+                name="locations",
+                query=fg.select_all(),
+                transformation_functions=[normalize_coords("latitude", "longitude")]
+            )
+            ```
+
+        Parameters:
+            *args: Output feature names.
+                The number of names must match the number of outputs from the transformation.
+
+        Returns:
+            This TransformationFunction instance (for method chaining).
+
+        Raises:
+            FeatureStoreException: If the number of names doesn't match the number of outputs,
+                names are not unique, or names exceed the 63-character limit.
+        """
         self.__hopsworks_udf.alias(*args)
 
         return self
@@ -547,7 +698,11 @@ class TransformationFunction:
 
     @property
     def id(self) -> id:
-        """Transformation function id."""
+        """Unique identifier of this transformation function in the feature store.
+
+        Assigned by Hopsworks when the transformation function is saved.
+        Returns `None` for unsaved transformation functions.
+        """
         return self._id
 
     @id.setter
@@ -556,7 +711,11 @@ class TransformationFunction:
 
     @property
     def version(self) -> int:
-        """Version of the transformation function."""
+        """Version number of this transformation function.
+
+        Enables versioning of transformation functions with the same name.
+        Use different versions to track changes to transformation logic over time.
+        """
         return self._version
 
     @version.setter
@@ -565,7 +724,11 @@ class TransformationFunction:
 
     @property
     def hopsworks_udf(self) -> HopsworksUdf:
-        """Meta data class for the user defined transformation function."""
+        """The underlying UDF metadata containing the transformation logic.
+
+        Provides access to the [`HopsworksUdf`][hsfs.hopsworks_udf.HopsworksUdf] instance
+        which contains the function source code, input/output mappings, and execution configuration.
+        """
         # Make sure that the output column names for a model-dependent or on-demand transformation function, when accessed externally from the class.
         if (
             self.transformation_type
@@ -577,7 +740,15 @@ class TransformationFunction:
 
     @property
     def transformation_type(self) -> TransformationType:
-        """Type of the Transformation: can be `model dependent` or `on-demand`."""
+        """Type of this transformation: MODEL_DEPENDENT or ON_DEMAND.
+
+        - `MODEL_DEPENDENT`: Attached to feature views, has access to training dataset statistics.
+        - `ON_DEMAND`: Attached to feature groups, computed at request time.
+        - `UNDEFINED`: Not yet attached to a feature view or feature group.
+
+        See Also:
+            - [`TransformationType`][hsfs.transformation_function.TransformationType]: Full description of each type.
+        """
         return self._transformation_type
 
     @transformation_type.setter
@@ -588,7 +759,16 @@ class TransformationFunction:
     def transformation_statistics(
         self,
     ) -> TransformationStatistics | None:
-        """Feature statistics required for the defined UDF."""
+        """Training dataset statistics available to this transformation (model-dependent only).
+
+        For model-dependent transformations, this provides access to statistics like mean, stddev,
+        min, max computed from the training dataset. Returns `None` for on-demand transformations.
+
+        Statistics are populated when a training dataset is created or when serving is initialized.
+
+        See Also:
+            - [`TransformationStatistics`][hsfs.transformation_statistics.TransformationStatistics]: Container for feature statistics.
+        """
         return self.__hopsworks_udf.transformation_statistics
 
     @transformation_statistics.setter
@@ -603,7 +783,23 @@ class TransformationFunction:
 
     @property
     def output_column_names(self) -> list[str]:
-        """Names of the output columns generated by the transformation functions."""
+        """Names of the output features produced by this transformation.
+
+        Output names are either:
+
+        - Custom names set via [`alias()`][hsfs.transformation_function.TransformationFunction.alias]
+        - Auto-generated names following the pattern:
+            - Model-dependent: `{function_name}_{input_features}` (e.g., `min_max_scaler_age`)
+            - On-demand single output: `{function_name}` (e.g., `days_since_event`)
+            - Multiple outputs: `{base_name}_{index}` (e.g., `one_hot_encoder_category_0`)
+
+        Example: Access output column names
+            ```python
+            tf = min_max_scaler("age")
+            print(tf.output_column_names)
+            # Output: ["min_max_scaler_age"]
+            ```
+        """
         if (
             self.__hopsworks_udf.function_name == "one_hot_encoder"
             and len(self.__hopsworks_udf.output_column_names)

@@ -4729,7 +4729,39 @@ class FeatureView:
     def transformation_functions(
         self,
     ) -> list[TransformationFunction]:
-        """Get transformation functions."""
+        """Model-dependent transformation functions attached to this feature view.
+
+        Model-dependent transformations are applied consistently during:
+
+        - Training dataset creation via `create_training_data()` or `create_train_test_split()`
+        - Batch inference via `get_batch_data()`
+        - Online inference via `get_feature_vector()` or `get_feature_vectors()`
+
+        These transformations have access to training dataset statistics (mean, stddev, min, max, etc.)
+        computed when the training dataset is created. This ensures the same statistical parameters
+        are used during both training and inference, preventing training-serving skew.
+
+        Example: Attaching transformations when creating a feature view
+            ```python
+            from hsfs.builtin_transformations import min_max_scaler, label_encoder
+
+            feature_view = fs.create_feature_view(
+                name="my_view",
+                query=fg.select_all(),
+                transformation_functions=[
+                    min_max_scaler("age"),
+                    label_encoder("category")
+                ]
+            )
+            ```
+
+        Returns:
+            List of model-dependent transformation functions.
+
+        See Also:
+            - [`TransformationType.MODEL_DEPENDENT`][hsfs.transformation_function.TransformationType]: Transformation type description.
+            - [`on_demand_transformations`][hsfs.feature_view.FeatureView.on_demand_transformations]: On-demand transformations from feature groups.
+        """
         return self._transformation_functions
 
     @transformation_functions.setter
@@ -4741,7 +4773,26 @@ class FeatureView:
 
     @property
     def model_dependent_transformations(self) -> dict[str, Callable]:
-        """Get Model-Dependent transformations as a dictionary mapping transformed feature names to transformation function."""
+        """Executable model-dependent transformations as a dictionary.
+
+        Returns a dictionary mapping output feature names to callable transformation functions.
+        Use this to manually apply transformations to feature data.
+
+        Example: Manually applying a transformation
+            ```python
+            transformations = feature_view.model_dependent_transformations
+            # transformations = {"min_max_scaler_age": <callable>, ...}
+
+            # Apply a specific transformation
+            scaled_age = transformations["min_max_scaler_age"](age_series)
+            ```
+
+        Returns:
+            Dictionary mapping transformed feature names to callable functions.
+
+        See Also:
+            - [`transform()`][hsfs.feature_view.FeatureView.transform]: Apply all transformations to a feature vector.
+        """
         return {
             transformation_function.hopsworks_udf.output_column_names[
                 0
@@ -4751,7 +4802,31 @@ class FeatureView:
 
     @property
     def on_demand_transformations(self) -> dict[str, Callable]:
-        """Get On-Demand transformations as a dictionary mapping on-demand feature names to transformation function."""
+        """On-demand transformations inherited from feature groups in this view.
+
+        On-demand transformations are defined on feature groups and compute features
+        at request time using `request_parameters`. They are automatically included
+        when the feature view selects on-demand features from a feature group.
+
+        Returns a dictionary mapping on-demand feature names to callable transformation functions.
+        Use this to manually compute on-demand features.
+
+        Example: Manually computing an on-demand feature
+            ```python
+            on_demand = feature_view.on_demand_transformations
+            # on_demand = {"days_since_event": <callable>, ...}
+
+            # Compute the on-demand feature
+            days = on_demand["days_since_event"](event_time, current_time)
+            ```
+
+        Returns:
+            Dictionary mapping on-demand feature names to callable functions.
+
+        See Also:
+            - [`compute_on_demand_features()`][hsfs.feature_view.FeatureView.compute_on_demand_features]: Compute all on-demand features.
+            - [`request_parameters`][hsfs.feature_view.FeatureView.request_parameters]: Parameters needed for on-demand computation.
+        """
         return {
             feature.on_demand_transformation_function.hopsworks_udf.function_name: feature.on_demand_transformation_function.hopsworks_udf.get_udf()
             for feature in self.features
@@ -4769,7 +4844,37 @@ class FeatureView:
 
     @property
     def request_parameters(self) -> list[str]:
-        """Get request parameters required for the for on-demand transformations atatched to the feature view."""
+        """Parameter names required by on-demand transformations at inference time.
+
+        On-demand transformations may require parameters that are not stored in the feature store
+        but are provided at request time (e.g., current timestamp, user location).
+        This property lists all such parameters across all on-demand transformations in the view.
+
+        Pass these parameters via the `request_parameters` argument when calling
+        `get_feature_vector()` or `get_feature_vectors()`.
+
+        Example: Providing request parameters during inference
+            ```python
+            # Check what parameters are needed
+            print(feature_view.request_parameters)
+            # Output: ["current_time", "user_location"]
+
+            # Provide parameters when getting feature vectors
+            vector = feature_view.get_feature_vector(
+                entry={"user_id": 123},
+                request_parameters={
+                    "current_time": datetime.now(),
+                    "user_location": "US"
+                }
+            )
+            ```
+
+        Returns:
+            List of parameter names required by on-demand transformations.
+
+        See Also:
+            - [`on_demand_transformations`][hsfs.feature_view.FeatureView.on_demand_transformations]: The on-demand transformation functions.
+        """
         if self._request_parameters is None:
             feature_names = [feature.name for feature in self.features]
             self._request_parameters = []

@@ -1,3 +1,3 @@
-# Feature Transformation Statistics
+# FeatureTransformationStatistics
 
 ::: hsfs.transformation_statistics.FeatureTransformationStatistics
