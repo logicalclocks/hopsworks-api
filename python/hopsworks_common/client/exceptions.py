@@ -204,3 +204,7 @@ class ModelServingException(Exception):
     ERROR_CODE_DUPLICATED_ENTRY = 240011
 
     ERROR_CODE_DEPLOYMENT_NOT_RUNNING = 250001
+
+
+class DataSourceException(Exception):
+    """Generic data source exception."""

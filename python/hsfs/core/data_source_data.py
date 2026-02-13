@@ -35,11 +35,19 @@ class DataSourceData:
         limit: int | None = None,
         features: list[feature.Feature] | None = None,
         preview: list[dict] | None = None,
+        schema_fetch_failed: bool | None = False,
+        schema_fetch_in_progress: bool | None = False,
+        schema_fetch_logs: str | None = None,
+        supported_resources: list[str] | None = None,
         **kwargs,
     ):
         self._limit = limit
         self._features = features
         self._preview = preview
+        self._schema_fetch_failed = schema_fetch_failed
+        self._schema_fetch_in_progress = schema_fetch_in_progress
+        self._schema_fetch_logs = schema_fetch_logs
+        self._supported_resources = supported_resources
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> DataSourceData:
@@ -61,3 +69,19 @@ class DataSourceData:
     @property
     def preview(self) -> list[dict] | None:
         return self._preview
+
+    @property
+    def schema_fetch_failed(self) -> bool | None:
+        return self._schema_fetch_failed
+
+    @property
+    def schema_fetch_in_progress(self) -> bool | None:
+        return self._schema_fetch_in_progress
+
+    @property
+    def schema_fetch_logs(self) -> str | None:
+        return self._schema_fetch_logs
+
+    @property
+    def supported_resources(self) -> list[str] | None:
+        return self._supported_resources

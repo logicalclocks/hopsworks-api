@@ -18,16 +18,19 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client import exceptions
+from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.core import (
     delta_engine,
     feature_group_base_engine,
     hudi_engine,
+    job_api,
     transformation_function_engine,
 )
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hsfs.core.schema_validation import DataFrameValidator
+from hsfs.storage_connector import StorageConnector
 
 
 if TYPE_CHECKING:
@@ -42,6 +45,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         # cache online feature store connector
         self._online_conn = None
+        self._job_api = job_api.JobApi()
 
     def _update_feature_group_schema_on_demand_transformations(
         self, feature_group: fg.FeatureGroup, features: list[feature.Feature]
@@ -154,9 +158,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             engine.get_instance().save_dataframe(
                 feature_group,
                 feature_dataframe,
-                hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                if feature_group.time_travel_format in ["HUDI", "DELTA"]
-                else None,
+                (
+                    hudi_engine.HudiEngine.HUDI_BULK_INSERT
+                    if feature_group.time_travel_format in ["HUDI", "DELTA"]
+                    else None
+                ),
                 feature_group.online_enabled,
                 None,
                 offline_write_options,
@@ -519,9 +525,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 engine.get_instance().save_dataframe(
                     feature_group,
                     engine.get_instance().create_empty_df(dataframe),
-                    hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                    if feature_group.time_travel_format == "HUDI"
-                    else None,
+                    (
+                        hudi_engine.HudiEngine.HUDI_BULK_INSERT
+                        if feature_group.time_travel_format == "HUDI"
+                        else None
+                    ),
                     feature_group.online_enabled,
                     None,
                     offline_write_options,
@@ -607,7 +615,31 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 _write_options, _spark_options
             )
 
-        self._feature_group_api.save(feature_group)
+        if (
+            feature_group.sink_enabled
+            and feature_group.storage_connector.type == StorageConnector.REST
+            and (
+                not feature_group.data_source
+                or not feature_group.data_source.rest_endpoint
+            )
+        ):
+            raise exceptions.FeatureStoreException(
+                "REST endpoint configuration is missing in the data source."
+            )
+        is_new_feature_group = feature_group.id is None
+        pre_save_rest_endpoint = (
+            feature_group.data_source.rest_endpoint
+            if feature_group.data_source
+            else None
+        )
+        new_fg = self._feature_group_api.save(feature_group)
+        if (
+            pre_save_rest_endpoint
+            and new_fg.data_source
+            and not new_fg.data_source.rest_endpoint
+        ):
+            new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
+        self._create_sink_job_if_needed(new_fg, is_new_feature_group)
 
         if feature_schema_available:
             # create empty table to write feature schema to table path
@@ -654,3 +686,34 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_context,
             )
             delta_engine_instance.save_empty_table(write_options=write_options)
+
+    def _create_sink_job_if_needed(
+        self, feature_group: fg.FeatureGroup, is_new_feature_group: bool
+    ) -> None:
+        if not is_new_feature_group or not feature_group.sink_enabled:
+            return
+        sink_job_conf = feature_group.sink_job_conf or SinkJobConfiguration()
+        job_name = sink_job_conf.name
+        job_name = job_name or self._get_default_ingestion_job_name(feature_group)
+        kwargs: dict[str, Any] = {}
+        kwargs["featuregroup_id"] = feature_group.id
+        kwargs["featurestore_id"] = feature_group.feature_store_id
+        kwargs["storage_connector_id"] = feature_group.storage_connector.id
+        if (
+            feature_group.storage_connector.type == StorageConnector.REST
+            and feature_group.data_source.rest_endpoint
+        ):
+            kwargs["endpoint_config"] = (
+                feature_group.data_source.rest_endpoint.to_dict()
+            )
+        sink_job_conf.set_extra_params(**kwargs)
+
+        job = self._job_api.create(job_name, sink_job_conf)
+        print(f"Sink job created successfully, explore it at {job.get_url()}")
+        if sink_job_conf.schedule_config:
+            self._job_api.create_or_update_schedule_job(
+                job_name, sink_job_conf.schedule_config
+            )
+
+    def _get_default_ingestion_job_name(self, feature_group: fg.FeatureGroup) -> str:
+        return f"{feature_group.storage_connector.name}_to_{util.feature_group_name(feature_group)}"
