@@ -141,16 +141,18 @@ def _is_query_supported_rec(query: query.Query):
     )
     supported_connector = (
         isinstance(query._left_feature_group, feature_group.ExternalFeatureGroup)
-        and query._left_feature_group.storage_connector.type
+        and query._left_feature_group.data_source.storage_connector.type
         in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
     )
     delta_data_sources = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
         and query._left_feature_group.time_travel_format == "DELTA"
-        and query._left_feature_group.storage_connector
+        and query._left_feature_group.data_source.storage_connector
         and (
-            query._left_feature_group.storage_connector.type == StorageConnector.S3
-            or query._left_feature_group.storage_connector.type == StorageConnector.GCS
+            query._left_feature_group.data_source.storage_connector.type
+            == StorageConnector.S3
+            or query._left_feature_group.data_source.storage_connector.type
+            == StorageConnector.GCS
         )
     )
 
@@ -627,7 +629,7 @@ def supports(featuregroups):
         lambda fg: isinstance(fg, feature_group.ExternalFeatureGroup), featuregroups
     ):
         if (
-            fg.storage_connector.type
+            fg.data_source.storage_connector.type
             not in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
         ):
             return False

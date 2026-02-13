@@ -23,6 +23,7 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import engine, tag, training_dataset_feature, util
 from hsfs.constructor import filter, query
+from hsfs.core import data_source as ds
 from hsfs.core import (
     statistics_engine,
     training_dataset_api,
@@ -62,7 +63,6 @@ class TrainingDatasetBase:
         event_end_time=None,
         coalesce=False,
         description=None,
-        storage_connector=None,
         splits=None,
         validation_size=None,
         test_size=None,
@@ -82,6 +82,7 @@ class TrainingDatasetBase:
         train_split=None,
         time_split_size=None,
         extra_filter=None,
+        data_source=None,
         missing_mandatory_tags=None,
         tags=None,
         **kwargs,
@@ -109,13 +110,15 @@ class TrainingDatasetBase:
             self.training_dataset_type = training_dataset_type
         else:
             self._training_dataset_type = None
+
+        self.data_source = data_source
+
         # set up depending on user initialized or coming from backend response
         if created is None:
             self._start_time = util.convert_event_time_to_timestamp(event_start_time)
             self._end_time = util.convert_event_time_to_timestamp(event_end_time)
             # no type -> user init
             self._features = features
-            self.storage_connector = storage_connector
             self.splits = splits
             self.statistics_config = statistics_config
             self._label = label
@@ -146,10 +149,6 @@ class TrainingDatasetBase:
             self._start_time = event_start_time
             self._end_time = event_end_time
             # type available -> init from backend response
-            # make rest call to get all connector information, description etc.
-            self._storage_connector = StorageConnector.from_response_json(
-                storage_connector
-            )
 
             if features is None:
                 features = []
@@ -243,14 +242,12 @@ class TrainingDatasetBase:
         )
 
     def to_dict(self):
-        return {
+        td_meta_dict = {
             "name": self._name,
             "version": self._version,
             "description": self._description,
             "dataFormat": self._data_format,
             "coalesce": self._coalesce,
-            "storageConnector": self._storage_connector,
-            "location": self._location,
             "trainingDatasetType": self._training_dataset_type,
             "splits": self._splits,
             "seed": self._seed,
@@ -260,6 +257,9 @@ class TrainingDatasetBase:
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
         }
+        if self._data_source:
+            td_meta_dict["dataSource"] = self._data_source.to_dict()
+        return td_meta_dict
 
     @property
     def name(self) -> str:
@@ -316,17 +316,40 @@ class TrainingDatasetBase:
         self._coalesce = coalesce
 
     @property
-    def storage_connector(self):
-        """Storage connector."""
-        return self._storage_connector
+    def data_source(self) -> ds.DataSource:
+        return self._data_source
+
+    @data_source.setter
+    def data_source(self, data_source):
+        self._data_source = (
+            ds.DataSource.from_response_json(data_source)
+            if isinstance(data_source, dict)
+            else data_source
+        )
+        if self._data_source is None:
+            self._data_source = ds.DataSource()
+        self.storage_connector = self._data_source.storage_connector
+
+    @property
+    def storage_connector(self) -> StorageConnector:
+        """Get the storage connector.
+
+        !!! warning "Deprecated"
+            `storage_connector` method is deprecated. Use
+            `data_source` instead.
+        """
+        return self._data_source.storage_connector
 
     @storage_connector.setter
     def storage_connector(self, storage_connector):
+        if self._data_source is None:
+            self._data_source = ds.DataSource()
+
         if isinstance(storage_connector, StorageConnector):
-            self._storage_connector = storage_connector
+            self._data_source.storage_connector = storage_connector
         elif storage_connector is None:
             # init empty connector, otherwise will have to handle it at serialization time
-            self._storage_connector = HopsFSConnector(
+            self._data_source.storage_connector = HopsFSConnector(
                 None, None, None, None, None, None
             )
         else:
@@ -335,7 +358,7 @@ class TrainingDatasetBase:
             )
         if self.training_dataset_type != self.IN_MEMORY:
             self._training_dataset_type = self._infer_training_dataset_type(
-                self._storage_connector.type
+                self._data_source.storage_connector.type
             )
 
     @property
@@ -365,12 +388,8 @@ class TrainingDatasetBase:
 
     @property
     def location(self) -> str:
-        """Path to the training dataset location. Can be an empty string if e.g. the training dataset is in-memory."""
+        """Storage specific location. Including data source path if specified. Can be an empty string if e.g. the training dataset is in-memory."""
         return self._location
-
-    @location.setter
-    def location(self, location: str):
-        self._location = location
 
     @property
     def seed(self) -> int | None:
@@ -537,7 +556,6 @@ class TrainingDataset(TrainingDatasetBase):
         event_end_time=None,
         coalesce=False,
         description=None,
-        storage_connector=None,
         splits=None,
         validation_size=None,
         test_size=None,
@@ -562,6 +580,7 @@ class TrainingDataset(TrainingDatasetBase):
         train_split=None,
         time_split_size=None,
         extra_filter=None,
+        data_source=None,
         missing_mandatory_tags=None,
         tags=None,
         **kwargs,
@@ -575,7 +594,6 @@ class TrainingDataset(TrainingDatasetBase):
             event_end_time=event_end_time,
             coalesce=coalesce,
             description=description,
-            storage_connector=storage_connector,
             splits=splits,
             validation_size=validation_size,
             test_size=test_size,
@@ -595,6 +613,7 @@ class TrainingDataset(TrainingDatasetBase):
             train_split=train_split,
             time_split_size=time_split_size,
             extra_filter=extra_filter,
+            data_source=data_source,
             missing_mandatory_tags=missing_mandatory_tags,
             tags=tags,
         )
@@ -663,7 +682,7 @@ class TrainingDataset(TrainingDatasetBase):
         training_dataset, td_job = self._training_dataset_engine.save(
             self, features, write_options or {}
         )
-        self.storage_connector = training_dataset.storage_connector
+        self.data_source = training_dataset.data_source
         # currently we do not save the training dataset statistics config for training datasets
         self.statistics_config = user_stats_config
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
@@ -884,16 +903,18 @@ class TrainingDataset(TrainingDatasetBase):
                 return []
             tds = []
             for td in json_decamelized["items"]:
-                td.pop("type")
-                td.pop("href")
+                td.pop("type", None)
+                td.pop("href", None)
                 cls._rewrite_location(td)
                 if "tags" in td and td["tags"]:
                     td["tags"] = tag.Tag.from_response_json(td["tags"])
                 tds.append(cls(**td))
             return tds
+        if isinstance(json_decamelized, dict):
+            return cls(**json_decamelized)
         # backwards compatibility
         for td in json_decamelized:
-            _ = td.pop("type")
+            _ = td.pop("type", None)
             cls._rewrite_location(td)
         return [cls(**td) for td in json_decamelized]
 
@@ -943,8 +964,6 @@ class TrainingDataset(TrainingDatasetBase):
             "description": self._description,
             "dataFormat": self._data_format,
             "coalesce": self._coalesce,
-            "storageConnector": self._storage_connector,
-            "location": self._location,
             "trainingDatasetType": self._training_dataset_type,
             "features": self._features,
             "splits": self._splits,
@@ -957,6 +976,8 @@ class TrainingDataset(TrainingDatasetBase):
             "extraFilter": self._extra_filter,
             "type": "trainingDatasetDTO",
         }
+        if self._data_source:
+            td_dict["dataSource"] = self._data_source.to_dict()
         tags_dict = tag.Tag.tags_to_dict(self._tags)
         if tags_dict:
             td_dict["tags"] = tags_dict

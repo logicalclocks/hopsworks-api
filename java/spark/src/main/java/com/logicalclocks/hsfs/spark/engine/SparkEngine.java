@@ -214,10 +214,10 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row> registerOnDemandTemporaryTable(ExternalFeatureGroup onDemandFeatureGroup, String alias)
       throws FeatureStoreException, IOException {
     DataSource dataSource = onDemandFeatureGroup.getDataSource();
-    dataSource.setPath(onDemandFeatureGroup.getStorageConnector().getPath(
-        onDemandFeatureGroup.getDataSource().getPath()));
+    dataSource.setPath(dataSource.getStorageConnector().getPath(
+        dataSource.getPath()));
 
-    Dataset<Row> dataset = storageConnectorUtils.read(onDemandFeatureGroup.getStorageConnector(),
+    Dataset<Row> dataset = storageConnectorUtils.read(dataSource.getStorageConnector(),
         dataSource,
         onDemandFeatureGroup.getDataFormat() != null ? onDemandFeatureGroup.getDataFormat().toString() : null,
         getOnDemandOptions(onDemandFeatureGroup));
@@ -279,7 +279,7 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row>[] write(TrainingDataset trainingDataset, Query query, Map<String, String> queryReadOptions,
                               Map<String, String> writeOptions, SaveMode saveMode)
       throws FeatureStoreException, IOException {
-    setupConnectorHadoopConf(trainingDataset.getStorageConnector());
+    setupConnectorHadoopConf(trainingDataset.getDataSource().getStorageConnector());
 
     if (trainingDataset.getSplits() == null || trainingDataset.getSplits().isEmpty()) {
       // Write a single dataset

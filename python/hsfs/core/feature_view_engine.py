@@ -673,7 +673,7 @@ class FeatureViewEngine:
         dataframe_type,
     ):
         try:
-            df = training_data_obj.storage_connector.read(
+            df = training_data_obj.data_source.storage_connector.read(
                 # always read from materialized dataset, not query object
                 query=None,
                 data_format=training_data_obj.data_format,
