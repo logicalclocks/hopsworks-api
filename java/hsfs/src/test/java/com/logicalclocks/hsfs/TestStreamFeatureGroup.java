@@ -20,18 +20,32 @@ package com.logicalclocks.hsfs;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.spi.LoggingEvent;
 import org.junit.Assert;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.apache.log4j.Level;
 
+import java.io.IOException;
+
 
 class TestStreamFeatureGroup {
+
+  @BeforeAll
+  static void beforeAll() {
+    // Trigger class loading before any test to prevent SLF4J/log4j
+    // initialization log events from being captured by mock appenders
+    new StreamFeatureGroup();
+    Logger.getRootLogger().removeAllAppenders();
+  }
+
   @Test
   void testParsingJson() throws JsonProcessingException {
     // Arrange
@@ -92,5 +106,22 @@ class TestStreamFeatureGroup {
 
     // Assert
     Mockito.verify(ds, Mockito.times(1)).updateStorageConnector(sc);
+  }
+
+  @Test
+  void testGetRowCountDelegatesToEngine() throws FeatureStoreException, IOException {
+    // Arrange
+    FeatureGroupEngineBase engineBase = Mockito.mock(FeatureGroupEngineBase.class);
+    Mockito.when(engineBase.getRowCount(Mockito.any())).thenReturn(500L);
+
+    StreamFeatureGroup fg = new StreamFeatureGroup();
+    fg.featureGroupEngineBase = engineBase;
+
+    // Act
+    Long result = fg.getRowCount();
+
+    // Assert
+    Assertions.assertEquals(500L, result);
+    Mockito.verify(engineBase, Mockito.times(1)).getRowCount(fg);
   }
 }

@@ -48,6 +48,7 @@ public class FeatureGroupApi {
   public static final String FEATURE_GROUP_COMMIT_PATH = FEATURE_GROUP_ID_PATH
       + "/commits{?filter_by,sort_by,offset,limit}";
   public static final String FEATURE_GROUP_CLEAR_PATH = FEATURE_GROUP_ID_PATH + "/clear";
+  public static final String FEATURE_GROUP_ROW_COUNT_PATH = FEATURE_GROUP_ROOT_PATH + "{/fgId}/rowcount";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FeatureGroupApi.class);
 
@@ -293,6 +294,24 @@ public class FeatureGroupApi {
     }
 
     return featureGroup;
+  }
+
+  @SuppressWarnings("unchecked")
+  public Long getRowCount(FeatureGroupBase featureGroupBase) throws IOException, FeatureStoreException {
+    HopsworksClient hopsworksClient = HopsworksClient.getInstance();
+    String pathTemplate = HopsworksClient.PROJECT_PATH
+        + FeatureStoreApi.FEATURE_STORE_PATH
+        + FEATURE_GROUP_ROW_COUNT_PATH;
+
+    String uri = UriTemplate.fromTemplate(pathTemplate)
+        .set("projectId", hopsworksClient.getProject().getProjectId())
+        .set("fsId", featureGroupBase.getFeatureStore().getId())
+        .set("fgId", featureGroupBase.getId())
+        .expand();
+
+    LOGGER.info("Sending metadata request: " + uri);
+    Map<String, Object> response = hopsworksClient.handleRequest(new HttpGet(uri), Map.class);
+    return ((Number) response.get("count")).longValue();
   }
 
   private <T extends FeatureGroupBase> void checkFeatures(T fg) {

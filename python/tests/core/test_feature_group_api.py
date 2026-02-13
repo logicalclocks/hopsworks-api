@@ -15,10 +15,10 @@
 #
 
 import warnings
+from unittest.mock import Mock
 
 from hsfs import feature_group as fg_mod
 from hsfs.core import feature_group_api
-from mock import Mock
 
 
 class TestFeatureGroupApi:
@@ -63,6 +63,30 @@ class TestFeatureGroupApi:
 
         # Assert
         assert len(warning_record) == 0
+
+    def test_get_row_count(self, mocker, backend_fixtures):
+        # Arrange
+        fg_api = feature_group_api.FeatureGroupApi()
+
+        client_mock = Mock()
+        client_mock.configure_mock(
+            **{"_send_request.return_value": {"count": 42}, "_project_id": 1}
+        )
+        mocker.patch(
+            "hopsworks_common.client.get_instance",
+            return_value=client_mock,
+        )
+        mocker.patch("hsfs.engine.get_instance")
+
+        json = backend_fixtures["feature_group"]["get"]["response"]
+        fg = fg_mod.FeatureGroup.from_response_json(json)
+
+        # Act
+        result = fg_api.get_row_count(fg)
+
+        # Assert
+        assert result == 42
+        assert client_mock._send_request.call_count == 1
 
     def test_check_features_no_features(self, mocker, backend_fixtures):
         # Arrange

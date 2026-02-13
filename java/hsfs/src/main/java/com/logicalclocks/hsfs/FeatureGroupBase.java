@@ -184,6 +184,29 @@ public abstract class FeatureGroupBase<T> {
   }
 
   /**
+   * Get the number of rows in this feature group.
+   *
+   * <pre>
+   * {@code
+   *        // get feature store handle
+   *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
+   *        // get feature group handle
+   *        FeatureGroup fg = fs.getFeatureGroup("electricity_prices", 1);
+   *        // get row count
+   *        Long rowCount = fg.getRowCount();
+   * }
+   * </pre>
+   *
+   * @return the number of rows in the feature group
+   * @throws FeatureStoreException FeatureStoreException
+   * @throws IOException IOException
+   */
+  @JsonIgnore
+  public Long getRowCount() throws FeatureStoreException, IOException {
+    return featureGroupEngineBase.getRowCount(this);
+  }
+
+  /**
    * Add name/value tag to the feature group.
    *
    * @param name  name of the tag
