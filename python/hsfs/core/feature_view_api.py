@@ -169,13 +169,17 @@ class FeatureViewApi:
             query_params={"expand": ["features"]} if with_features else None,
         )["items"]
 
-    def delete_by_name(self, name: str) -> None:
+    def delete_by_name(self, name: str, force: bool = False) -> None:
         path = self._base_path + [name]
-        self._client._send_request(self._DELETE, path)
+        query_params = {"force": force} if force else {}
+        self._client._send_request(self._DELETE, path, query_params)
 
-    def delete_by_name_version(self, name: str, version: int) -> None:
+    def delete_by_name_version(
+        self, name: str, version: int, force: bool = False
+    ) -> None:
         path = self._base_path + [name, self._VERSION, version]
-        self._client._send_request(self._DELETE, path)
+        query_params = {"force": force} if force else {}
+        self._client._send_request(self._DELETE, path, query_params)
 
     def get_batch_query(
         self,
