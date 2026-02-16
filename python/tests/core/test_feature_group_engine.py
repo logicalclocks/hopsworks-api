@@ -19,8 +19,8 @@ from hopsworks_common.core import sink_job_configuration
 from hsfs import feature, feature_group, feature_group_commit, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
-from hsfs.hopsworks_udf import udf
 from hsfs.core.data_source import DataSource
+from hsfs.hopsworks_udf import udf
 from hsfs.storage_connector import CRMAndAnalyticsConnector, CRMSource
 
 
