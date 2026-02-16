@@ -15,8 +15,8 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 import json
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client
 from hsfs.core import data_source as ds
