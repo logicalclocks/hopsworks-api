@@ -16,9 +16,9 @@
 
 from __future__ import annotations
 
-from hopsworks_apigen import also_available_as
 import re
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 
@@ -34,7 +34,9 @@ LOADBALANCER_SERVICES = {
 }
 
 
-@also_available_as("hopsworks.core.variable_api.VariableApi", "hsfs.core.variable_api.VariableApi")
+@also_available_as(
+    "hopsworks.core.variable_api.VariableApi", "hsfs.core.variable_api.VariableApi"
+)
 class VariableApi:
     def get_variable(self, variable: str):
         """Get the configured value of a variable.

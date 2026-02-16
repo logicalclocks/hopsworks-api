@@ -14,12 +14,12 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 import warnings
 from abc import ABC, abstractmethod
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.constants import RESOURCES, Default
 

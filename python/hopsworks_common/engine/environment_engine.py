@@ -14,9 +14,9 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import also_available_as
 import time
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client, command, environment, library
 from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
 

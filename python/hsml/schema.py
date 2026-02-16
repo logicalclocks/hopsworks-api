@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from typing import TYPE_CHECKING, TypeVar
 
 import numpy
+from hopsworks_apigen import public
 from hsml.utils.schema.columnar_schema import ColumnarSchema
 from hsml.utils.schema.tensor_schema import TensorSchema
 

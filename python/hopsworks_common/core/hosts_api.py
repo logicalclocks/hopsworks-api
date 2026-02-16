@@ -16,9 +16,9 @@
 
 from __future__ import annotations
 
-from hopsworks_apigen import also_available_as
 from typing import Any
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client
 
 

@@ -28,7 +28,11 @@ with contextlib.suppress(ImportError):
 from hopsworks_apigen import also_available_as
 
 
-@also_available_as("hopsworks.client.hopsworks.Client", "hsfs.client.hopsworks.Client", "hsml.client.hopsworks.Client")
+@also_available_as(
+    "hopsworks.client.hopsworks.Client",
+    "hsfs.client.hopsworks.Client",
+    "hsml.client.hopsworks.Client",
+)
 class Client(base.Client):
     HOPSWORKS_HOSTNAME_VERIFICATION = "HOPSWORKS_HOSTNAME_VERIFICATION"
     DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"

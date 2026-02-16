@@ -14,10 +14,10 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import also_available_as
 import logging
 import time
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.core import git_op_execution_api
 

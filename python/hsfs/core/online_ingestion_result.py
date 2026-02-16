@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 

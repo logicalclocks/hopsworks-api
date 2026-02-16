@@ -14,12 +14,12 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import public
 import json
 import logging
 from enum import Enum
 
 import humps
+from hopsworks_apigen import public
 
 
 _logger = logging.getLogger(__name__)

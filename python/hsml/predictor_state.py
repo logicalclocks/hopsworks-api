@@ -14,8 +14,8 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hsml.predictor_state_condition import PredictorStateCondition
 

@@ -15,7 +15,6 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 import logging
 import os
@@ -31,6 +30,7 @@ from typing import (
 
 import humps
 import pandas as pd
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api

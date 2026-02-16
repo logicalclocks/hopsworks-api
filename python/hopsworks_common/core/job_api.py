@@ -39,7 +39,11 @@ if TYPE_CHECKING:
 from hopsworks_apigen import public
 
 
-@public("hopsworks.core.job_api.JobApi", "hopsworks.core.job_api.JobsApi", "hsfs.core.job_api.JobApi")
+@public(
+    "hopsworks.core.job_api.JobApi",
+    "hopsworks.core.job_api.JobsApi",
+    "hsfs.core.job_api.JobApi",
+)
 class JobApi:
     @public
     @usage.method_logger

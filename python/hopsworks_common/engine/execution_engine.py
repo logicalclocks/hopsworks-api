@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-from hopsworks_apigen import also_available_as
 import logging
 import os
 import time
@@ -24,13 +23,13 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client.exceptions import JobExecutionException, RestAPIError
 from hopsworks_common.core import dataset_api, execution_api
 
 
 if TYPE_CHECKING:
     from hopsworks_common.execution import Execution
-
 
 
 @also_available_as("hopsworks.engine.execution_engine.ExecutionEngine")

@@ -15,7 +15,6 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import base64
 import logging
 import os
@@ -28,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar
 import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG

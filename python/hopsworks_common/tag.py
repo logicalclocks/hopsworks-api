@@ -16,12 +16,12 @@
 
 from __future__ import annotations
 
-from hopsworks_apigen import also_available_as
 import contextlib
 import json
 from typing import Any
 
 import humps
+from hopsworks_apigen import also_available_as
 from hopsworks_common import util
 
 

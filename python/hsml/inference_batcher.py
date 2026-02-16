@@ -14,10 +14,10 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.constants import INFERENCE_BATCHER
 

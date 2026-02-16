@@ -42,7 +42,9 @@ urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-@also_available_as("hopsworks.client.base.Client", "hsfs.client.base.Client", "hsml.client.base.Client")
+@also_available_as(
+    "hopsworks.client.base.Client", "hsfs.client.base.Client", "hsml.client.base.Client"
+)
 class Client:
     TOKEN_FILE = "token.jwt"
     TOKEN_EXPIRED_RETRY_INTERVAL = 0.6

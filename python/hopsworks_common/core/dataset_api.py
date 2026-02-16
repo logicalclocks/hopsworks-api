@@ -42,7 +42,11 @@ class Chunk:
         self.retries = 0
 
 
-@public("hopsworks.core.dataset_api.DatasetApi", "hsfs.core.dataset_api.DatasetApi", "hsml.core.dataset_api.DatasetApi")
+@public(
+    "hopsworks.core.dataset_api.DatasetApi",
+    "hsfs.core.dataset_api.DatasetApi",
+    "hsml.core.dataset_api.DatasetApi",
+)
 class DatasetApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)

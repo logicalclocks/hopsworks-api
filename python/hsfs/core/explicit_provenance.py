@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from enum import Enum
 
 import humps
+from hopsworks_apigen import public
 from hsfs import feature_group, feature_view, storage_connector, training_dataset, util
 
 

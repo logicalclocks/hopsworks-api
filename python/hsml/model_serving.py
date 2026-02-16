@@ -15,10 +15,10 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import os
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import PREDICTOR_STATE
@@ -316,7 +316,11 @@ class ModelServing:
         Returns:
             `Transformer`. The transformer metadata object.
         """
-        return Transformer(script_file=script_file, resources=resources, scaling_configuration=scaling_configuration)
+        return Transformer(
+            script_file=script_file,
+            resources=resources,
+            scaling_configuration=scaling_configuration,
+        )
 
     @public
     @usage.method_logger

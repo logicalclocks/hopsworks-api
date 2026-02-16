@@ -16,11 +16,11 @@
 
 from __future__ import annotations
 
-from hopsworks_apigen import also_available_as
 import functools
 import importlib
 import os
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
@@ -31,7 +31,11 @@ from hopsworks_common.core.constants import (
 )
 
 
-@also_available_as("hopsworks.decorators.not_connected", "hsfs.decorators.not_connected", "hsml.decorators.not_connected")
+@also_available_as(
+    "hopsworks.decorators.not_connected",
+    "hsfs.decorators.not_connected",
+    "hsml.decorators.not_connected",
+)
 def not_connected(fn):
     @functools.wraps(fn)
     def if_not_connected(inst, *args, **kwargs):
@@ -42,7 +46,11 @@ def not_connected(fn):
     return if_not_connected
 
 
-@also_available_as("hopsworks.decorators.connected", "hsfs.decorators.connected", "hsml.decorators.connected")
+@also_available_as(
+    "hopsworks.decorators.connected",
+    "hsfs.decorators.connected",
+    "hsml.decorators.connected",
+)
 def connected(fn):
     @functools.wraps(fn)
     def if_connected(inst, *args, **kwargs):
@@ -53,7 +61,11 @@ def connected(fn):
     return if_connected
 
 
-@also_available_as("hopsworks.decorators.catch_not_found", "hsfs.decorators.catch_not_found", "hsml.decorators.catch_not_found")
+@also_available_as(
+    "hopsworks.decorators.catch_not_found",
+    "hsfs.decorators.catch_not_found",
+    "hsml.decorators.catch_not_found",
+)
 def catch_not_found(*class_import_paths, fallback_return=None):
     def decorator(f):
         @functools.wraps(f)
@@ -83,7 +95,11 @@ def catch_not_found(*class_import_paths, fallback_return=None):
     return decorator
 
 
-@also_available_as("hopsworks.decorators.HopsworksConnectionError", "hsfs.decorators.HopsworksConnectionError", "hsml.decorators.HopsworksConnectionError")
+@also_available_as(
+    "hopsworks.decorators.HopsworksConnectionError",
+    "hsfs.decorators.HopsworksConnectionError",
+    "hsml.decorators.HopsworksConnectionError",
+)
 class HopsworksConnectionError(Exception):
     """Thrown when attempted to change connection attributes while connected."""
 
@@ -93,7 +109,11 @@ class HopsworksConnectionError(Exception):
         )
 
 
-@also_available_as("hopsworks.decorators.NoHopsworksConnectionError", "hsfs.decorators.NoHopsworksConnectionError", "hsml.decorators.NoHopsworksConnectionError")
+@also_available_as(
+    "hopsworks.decorators.NoHopsworksConnectionError",
+    "hsfs.decorators.NoHopsworksConnectionError",
+    "hsml.decorators.NoHopsworksConnectionError",
+)
 class NoHopsworksConnectionError(Exception):
     """Thrown when attempted to perform operation on connection while not connected."""
 
@@ -110,14 +130,22 @@ else:
 
     _T = TypeVar("_T")
 
-    @also_available_as("hopsworks.decorators.typechecked", "hsfs.decorators.typechecked", "hsml.decorators.typechecked")
+    @also_available_as(
+        "hopsworks.decorators.typechecked",
+        "hsfs.decorators.typechecked",
+        "hsml.decorators.typechecked",
+    )
     def typechecked(
         target: _T,
     ) -> _T:
         return target if target else typechecked
 
 
-@also_available_as("hopsworks.decorators.uses_great_expectations", "hsfs.decorators.uses_great_expectations", "hsml.decorators.uses_great_expectations")
+@also_available_as(
+    "hopsworks.decorators.uses_great_expectations",
+    "hsfs.decorators.uses_great_expectations",
+    "hsml.decorators.uses_great_expectations",
+)
 def uses_great_expectations(f):
     @functools.wraps(f)
     def g(*args, **kwds):

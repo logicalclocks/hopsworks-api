@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 from hsfs import util
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.split_statistics import SplitStatistics

@@ -16,11 +16,11 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
+from hopsworks_apigen import public
 from hsfs import (
     expectation_suite,
     feature,

@@ -29,6 +29,7 @@ class SecretsApi:
 
     You can get an instance of this class with [`hopsworks.get_secrets_api`][hopsworks.get_secrets_api].
     """
+
     def __init__(
         self,
     ):

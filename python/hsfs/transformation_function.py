@@ -14,7 +14,6 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import copy
 import json
 import logging
@@ -22,6 +21,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES

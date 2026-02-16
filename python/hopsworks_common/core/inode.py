@@ -15,10 +15,10 @@
 
 from __future__ import annotations
 
-from hopsworks_apigen import also_available_as
 from typing import Any
 
 import humps
+from hopsworks_apigen import also_available_as
 
 
 @also_available_as("hopsworks.core.inode.Inode", "hsfs.core.inode.Inode")

@@ -14,12 +14,12 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 import warnings
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import engine, tag, training_dataset_feature, util

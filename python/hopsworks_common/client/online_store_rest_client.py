@@ -34,7 +34,9 @@ _logger = logging.getLogger(__name__)
 _online_store_rest_client = None
 
 
-@also_available_as("hsfs.client.online_store_rest_client.init_or_reset_online_store_rest_client")
+@also_available_as(
+    "hsfs.client.online_store_rest_client.init_or_reset_online_store_rest_client"
+)
 def init_or_reset_online_store_rest_client(
     transport: requests.adapters.HTTPAdapter
     | requests.adapters.BaseAdapter
@@ -74,7 +76,9 @@ def get_instance() -> OnlineStoreRestClientSingleton:
     return _online_store_rest_client
 
 
-@also_available_as("hsfs.client.online_store_rest_client.OnlineStoreRestClientSingleton")
+@also_available_as(
+    "hsfs.client.online_store_rest_client.OnlineStoreRestClientSingleton"
+)
 class OnlineStoreRestClientSingleton:
     HOST = "host"
     PORT = "port"

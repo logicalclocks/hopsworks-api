@@ -16,12 +16,12 @@
 
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 
 
 if TYPE_CHECKING:

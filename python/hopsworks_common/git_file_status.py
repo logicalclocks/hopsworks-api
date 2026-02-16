@@ -14,10 +14,10 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import also_available_as
 import json
 
 import humps
+from hopsworks_apigen import also_available_as
 from hopsworks_common import util
 
 

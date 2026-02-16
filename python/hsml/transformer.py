@@ -14,8 +14,8 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, util
 from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG, Default
 from hsml.deployable_component import DeployableComponent

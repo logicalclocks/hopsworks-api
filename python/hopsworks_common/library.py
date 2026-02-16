@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import also_available_as
 import humps
+from hopsworks_apigen import also_available_as
 from hopsworks_common import command
 
 

@@ -36,7 +36,11 @@ with contextlib.suppress(ImportError):
 _logger = logging.getLogger(__name__)
 
 
-@also_available_as("hopsworks.client.external.Client", "hsfs.client.external.Client", "hsml.client.external.Client")
+@also_available_as(
+    "hopsworks.client.external.Client",
+    "hsfs.client.external.Client",
+    "hsml.client.external.Client",
+)
 class Client(base.Client):
     def __init__(
         self,

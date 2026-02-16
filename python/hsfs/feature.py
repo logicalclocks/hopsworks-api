@@ -15,13 +15,13 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import hsfs
 import humps
+from hopsworks_apigen import public
 from hsfs import util
 from hsfs.constructor import filter
 from hsfs.decorators import typechecked

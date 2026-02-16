@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 
-from hopsworks_apigen import public, also_available_as
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client
 
 

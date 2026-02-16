@@ -14,9 +14,9 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import also_available_as
 import json
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client, git_provider
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.engine import git_engine

@@ -15,7 +15,6 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 import logging
 import os
@@ -24,6 +23,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY

@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from dataclasses import dataclass
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util

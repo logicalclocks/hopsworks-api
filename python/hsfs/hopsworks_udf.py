@@ -15,7 +15,6 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import ast
 import copy
 import inspect
@@ -28,6 +27,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES

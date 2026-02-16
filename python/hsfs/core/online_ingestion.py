@@ -15,7 +15,6 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 import time
 import warnings
@@ -26,6 +25,7 @@ from typing import (
 )
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, util
 from hsfs.core import online_ingestion_result
 from hsfs.core.opensearch import OpenSearchClientSingleton

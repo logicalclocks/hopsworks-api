@@ -79,7 +79,9 @@ class TagsApi:
 
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def get(self, metadata_instance, name: str | None = None, training_dataset_version=None):
+    def get(
+        self, metadata_instance, name: str | None = None, training_dataset_version=None
+    ):
         """Get the tags of a training dataset or feature group.
 
         Gets all tags if no tag name is specified.

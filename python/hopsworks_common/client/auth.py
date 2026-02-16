@@ -24,7 +24,11 @@ from hopsworks_apigen import also_available_as
 from hopsworks_common.client import exceptions
 
 
-@also_available_as("hopsworks.client.auth.BearerAuth", "hsfs.client.auth.BearerAuth", "hsml.client.auth.BearerAuth")
+@also_available_as(
+    "hopsworks.client.auth.BearerAuth",
+    "hsfs.client.auth.BearerAuth",
+    "hsml.client.auth.BearerAuth",
+)
 class BearerAuth(requests.auth.AuthBase):
     """Class to encapsulate a Bearer token."""
 
@@ -36,7 +40,11 @@ class BearerAuth(requests.auth.AuthBase):
         return r
 
 
-@also_available_as("hopsworks.client.auth.ApiKeyAuth", "hsfs.client.auth.ApiKeyAuth", "hsml.client.auth.ApiKeyAuth")
+@also_available_as(
+    "hopsworks.client.auth.ApiKeyAuth",
+    "hsfs.client.auth.ApiKeyAuth",
+    "hsml.client.auth.ApiKeyAuth",
+)
 class ApiKeyAuth(requests.auth.AuthBase):
     """Class to encapsulate an API key."""
 
@@ -48,7 +56,11 @@ class ApiKeyAuth(requests.auth.AuthBase):
         return r
 
 
-@also_available_as("hopsworks.client.auth.OnlineStoreKeyAuth", "hsfs.client.auth.OnlineStoreKeyAuth", "hsml.client.auth.OnlineStoreKeyAuth")
+@also_available_as(
+    "hopsworks.client.auth.OnlineStoreKeyAuth",
+    "hsfs.client.auth.OnlineStoreKeyAuth",
+    "hsml.client.auth.OnlineStoreKeyAuth",
+)
 class OnlineStoreKeyAuth(requests.auth.AuthBase):
     """Class to encapsulate an API key."""
 

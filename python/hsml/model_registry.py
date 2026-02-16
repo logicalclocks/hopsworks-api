@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import warnings
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hsml.core import model_api
 from hsml.llm import signature as llm_signature  # noqa: F401

@@ -15,12 +15,12 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hsfs import util
 from hsfs.core import monitoring_window_config_engine
 

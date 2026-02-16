@@ -15,9 +15,10 @@
 #
 from __future__ import annotations
 
-from hopsworks_apigen import public
 import json
 from typing import TYPE_CHECKING
+
+from hopsworks_apigen import public
 
 
 if TYPE_CHECKING:

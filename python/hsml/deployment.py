@@ -14,9 +14,9 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from hopsworks_apigen import public
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hsml import predictor as predictor_mod
 from hsml.client.exceptions import ModelServingException
