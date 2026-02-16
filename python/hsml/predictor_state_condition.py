@@ -14,12 +14,14 @@
 #   limitations under the License.
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import json
 
 import humps
 from hopsworks_common import util
 
 
+@public
 class PredictorStateCondition:
     """Condition of a predictor state."""
 
@@ -34,6 +36,7 @@ class PredictorStateCondition:
         self._status = status
         self._reason = reason
 
+    @public
     def describe(self):
         """Print a JSON description of the predictor state condition."""
         util.pretty_print(self)
@@ -72,16 +75,19 @@ class PredictorStateCondition:
             }
         }
 
+    @public
     @property
     def type(self):
         """Condition type of the predictor state."""
         return self._type
 
+    @public
     @property
     def status(self):
         """Condition status of the predictor state."""
         return self._status
 
+    @public
     @property
     def reason(self):
         """Condition reason of the predictor state."""

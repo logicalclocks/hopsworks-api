@@ -14,6 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import json
 import warnings
 from abc import ABC, abstractmethod
@@ -23,6 +24,7 @@ from hopsworks_common import util
 from hopsworks_common.constants import RESOURCES, Default
 
 
+@public
 class Resources:
     """Resource configuration for a predictor or transformer.
 
@@ -46,6 +48,7 @@ class Resources:
         self._memory = memory
         self._gpus = gpus
 
+    @public
     def describe(self):
         """Print a JSON description of the resource configuration."""
         util.pretty_print(self)
@@ -73,6 +76,7 @@ class Resources:
     def to_dict(self):
         return {"cores": self._cores, "memory": self._memory, "gpus": self._gpus}
 
+    @public
     @property
     def cores(self):
         """Number of CPUs to be allocated per instance."""
@@ -82,6 +86,7 @@ class Resources:
     def cores(self, cores: int):
         self._cores = cores
 
+    @public
     @property
     def memory(self):
         """Memory resources to be allocated per instance."""
@@ -91,6 +96,7 @@ class Resources:
     def memory(self, memory: int):
         self._memory = memory
 
+    @public
     @property
     def gpus(self):
         """Number of GPUs to be allocated per instance."""

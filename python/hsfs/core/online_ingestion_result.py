@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import json
 from typing import Any
 
@@ -22,6 +23,7 @@ import humps
 from hopsworks_common import util
 
 
+@public
 class OnlineIngestionResult:
     """Metadata object used to provide Online Ingestion Batch Result information.
 
@@ -90,6 +92,7 @@ class OnlineIngestionResult:
         """
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def online_ingestion_id(self) -> int:
         """Get the unique identifier for the online ingestion batch.
@@ -99,6 +102,7 @@ class OnlineIngestionResult:
         """
         return self._online_ingestion_id
 
+    @public
     @property
     def status(self) -> str:
         """Get the status of the ingestion batch.
@@ -108,6 +112,7 @@ class OnlineIngestionResult:
         """
         return self._status
 
+    @public
     @property
     def rows(self) -> int:
         """Get the number of rows processed in this batch.

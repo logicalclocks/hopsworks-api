@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import json
 import re
 from typing import TYPE_CHECKING, Any, Literal
@@ -43,6 +44,7 @@ if HAS_GREAT_EXPECTATIONS:
     import great_expectations
 
 
+@public
 class ExpectationSuite:
     """Metadata object representing a feature validation expectation in the Feature Store."""
 
@@ -127,6 +129,7 @@ class ExpectationSuite:
             ]
         return cls(**json_decamelized)
 
+    @public
     @classmethod
     @uses_great_expectations
     def from_ge_type(
@@ -179,6 +182,7 @@ class ExpectationSuite:
             "validationIngestionPolicy": self._validation_ingestion_policy.upper(),
         }
 
+    @public
     def to_json_dict(self, decamelize: bool = False) -> dict[str, Any]:
         the_dict = {
             "id": self._id,
@@ -202,6 +206,7 @@ class ExpectationSuite:
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuite:
         """Convert to Great Expectations ExpectationSuite type."""
@@ -287,6 +292,7 @@ class ExpectationSuite:
             return GeExpectation(**expectation)
         raise TypeError(f"Expectation of type {type(expectation)} is not supported.")
 
+    @public
     def get_expectation(
         self, expectation_id: int, ge_type: bool = HAS_GREAT_EXPECTATIONS
     ) -> GeExpectation | great_expectations.core.ExpectationConfiguration:
@@ -323,6 +329,7 @@ class ExpectationSuite:
             initialise_expectation_suite_for_single_expectation_api_message
         )
 
+    @public
     def add_expectation(
         self,
         expectation: GeExpectation | great_expectations.core.ExpectationConfiguration,
@@ -381,6 +388,7 @@ class ExpectationSuite:
             initialise_expectation_suite_for_single_expectation_api_message
         )
 
+    @public
     def replace_expectation(
         self,
         expectation: GeExpectation | great_expectations.core.ExpectationConfiguration,
@@ -423,6 +431,7 @@ class ExpectationSuite:
             initialise_expectation_suite_for_single_expectation_api_message
         )
 
+    @public
     def remove_expectation(self, expectation_id: int | None = None) -> None:
         """Remove an expectation from the suite locally and from the backend if attached to a Feature Group.
 
@@ -474,6 +483,7 @@ class ExpectationSuite:
         es += ")"
         return es
 
+    @public
     @property
     def id(self) -> int | None:
         """Id of the expectation suite, set by backend."""
@@ -483,6 +493,7 @@ class ExpectationSuite:
     def id(self, id: int) -> None:
         self._id = id
 
+    @public
     @property
     def expectation_suite_name(self) -> str:
         """Name of the expectation suite."""
@@ -496,6 +507,7 @@ class ExpectationSuite:
                 **humps.decamelize(self.to_dict())
             )
 
+    @public
     @property
     def data_asset_type(self) -> str | None:
         """Data asset type of the expectation suite, not used by backend."""
@@ -505,6 +517,7 @@ class ExpectationSuite:
     def data_asset_type(self, data_asset_type: str | None) -> None:
         self._data_asset_type = data_asset_type
 
+    @public
     @property
     def ge_cloud_id(self) -> int | None:
         """ge_cloud_id of the expectation suite, not used by backend."""
@@ -514,6 +527,7 @@ class ExpectationSuite:
     def ge_coud_id(self, ge_cloud_id: int | None) -> None:
         self._ge_cloud_id = ge_cloud_id
 
+    @public
     @property
     def run_validation(self) -> bool:
         """Boolean to determine whether or not the expectation suite shoudl run on ingestion."""
@@ -527,6 +541,7 @@ class ExpectationSuite:
                 **humps.decamelize(self.to_dict())
             )
 
+    @public
     @property
     def validation_ingestion_policy(self) -> Literal["always", "strict"]:
         """Whether to ingest a df based on the validation result.
@@ -546,6 +561,7 @@ class ExpectationSuite:
                 **humps.decamelize(self.to_dict())
             )
 
+    @public
     @property
     def expectations(self) -> list[GeExpectation]:
         """List of expectations to run at validation."""
@@ -570,6 +586,7 @@ class ExpectationSuite:
                 f"Type {type(expectations)} not supported. Expectations must be None or a list."
             )
 
+    @public
     @property
     def meta(self) -> dict[str, Any]:
         """Meta field of the expectation suite to store additional information."""

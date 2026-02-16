@@ -14,6 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import humps
 from hopsworks_common import client, util
 from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG, Default
@@ -22,6 +23,7 @@ from hsml.resources import TransformerResources
 from hsml.scaling_config import TransformerScalingConfig
 
 
+@public
 class Transformer(DeployableComponent):
     """Metadata object representing a transformer to be used in a predictor."""
 
@@ -63,6 +65,7 @@ class Transformer(DeployableComponent):
             script_file, resources, scaling_configuration=self._scaling_configuration
         )
 
+    @public
     def describe(self):
         """Print a JSON description of the transformer."""
         util.pretty_print(self)

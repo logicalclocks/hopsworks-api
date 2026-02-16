@@ -66,6 +66,7 @@ class OpenSearchApi:
             )
         return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 
+    @public
     @usage.method_logger
     def get_project_index(self, index: str) -> str:
         """This helper method prefixes the supplied index name with the project name to avoid index name clashes.
@@ -79,6 +80,7 @@ class OpenSearchApi:
         _client = client.get_instance()
         return (_client._project_name + "_" + index).lower()
 
+    @public
     @usage.method_logger
     def get_default_py_config(self, feature_store_id: int = None) -> dict[str, Any]:
         """Get the required opensearch configuration to setup a connection using the *opensearch-py* library.

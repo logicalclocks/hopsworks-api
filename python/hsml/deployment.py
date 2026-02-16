@@ -14,6 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
+from hopsworks_apigen import public
 from typing import TYPE_CHECKING
 
 from hopsworks_common import client, usage, util
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from hsml.transformer import Transformer
 
 
+@public
 class Deployment:
     NOT_FOUND_ERROR_CODE = 240000
     """Metadata object representing a deployment in Model Serving."""
@@ -71,6 +73,7 @@ class Deployment:
         self._grpc_channel = None
         self._model_registry_id = None
 
+    @public
     @usage.method_logger
     def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
@@ -85,6 +88,7 @@ class Deployment:
         """
         self._serving_engine.save(self, await_update)
 
+    @public
     @usage.method_logger
     def start(self, await_running: int | None = 600):
         """Start the deployment.
@@ -99,6 +103,7 @@ class Deployment:
         """
         self._serving_engine.start(self, await_status=await_running)
 
+    @public
     @usage.method_logger
     def stop(self, await_stopped: int | None = 600):
         """Stop the deployment.
@@ -113,6 +118,7 @@ class Deployment:
         """
         self._serving_engine.stop(self, await_status=await_stopped)
 
+    @public
     @usage.method_logger
     def delete(self, force=False):
         """Delete the deployment.
@@ -130,6 +136,7 @@ class Deployment:
         """
         self._serving_engine.delete(self, force)
 
+    @public
     def get_state(self) -> PredictorState:
         """Get the current state of the deployment.
 
@@ -141,6 +148,7 @@ class Deployment:
         """
         return self._serving_engine.get_state(self)
 
+    @public
     def is_created(self) -> bool:
         """Check whether the deployment is created.
 
@@ -155,6 +163,7 @@ class Deployment:
             != PREDICTOR_STATE.STATUS_CREATING
         )
 
+    @public
     def is_running(self, or_idle=True, or_updating=True) -> bool:
         """Check whether the deployment is ready to handle inference requests.
 
@@ -175,6 +184,7 @@ class Deployment:
             or (or_updating and status == PREDICTOR_STATE.STATUS_UPDATING)
         )
 
+    @public
     def is_stopped(self, or_created=True) -> bool:
         """Check whether the deployment is stopped.
 
@@ -196,6 +206,7 @@ class Deployment:
             )
         )
 
+    @public
     def predict(
         self,
         data: dict | InferInput = None,
@@ -240,12 +251,14 @@ class Deployment:
         """
         return self._serving_engine.predict(self, data, inputs)
 
+    @public
     def get_model(self):
         """Retrieve the metadata object for the model being used by this deployment."""
         return self._model_api.get(
             self.model_name, self.model_version, self.model_registry_id
         )
 
+    @public
     @usage.method_logger
     def download_artifact_files(self, local_path=None):
         """Download the artifact files served by the deployment.
@@ -258,6 +271,7 @@ class Deployment:
         """
         return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
+    @public
     def get_logs(self, component="predictor", tail=10):
         """Prints the deployment logs of the predictor or transformer.
 
@@ -282,6 +296,7 @@ class Deployment:
             for log in logs:
                 print(log, end="\n\n")
 
+    @public
     def get_url(self):
         """Get url to the deployment in Hopsworks."""
         path = (
@@ -292,6 +307,7 @@ class Deployment:
         )
         return util.get_hostname_replaced_url(path)
 
+    @public
     def describe(self):
         """Print a JSON description of the deployment."""
         util.pretty_print(self)
@@ -331,11 +347,13 @@ class Deployment:
 
     # Deployment
 
+    @public
     @property
     def id(self):
         """Id of the deployment."""
         return self._predictor.id
 
+    @public
     @property
     def name(self):
         """Name of the deployment."""
@@ -345,11 +363,13 @@ class Deployment:
     def name(self, name: str):
         self._predictor.name = name
 
+    @public
     @property
     def version(self):
         """Version of the deployment."""
         return self._predictor.version
 
+    @public
     @property
     def description(self):
         """Description of the deployment."""
@@ -359,11 +379,13 @@ class Deployment:
     def description(self, description: str):
         self._description = description
 
+    @public
     @property
     def has_model(self):
         """Whether the deployment has a model associated."""
         return self.model_name is not None and self.model_version is not None
 
+    @public
     @property
     def predictor(self):
         """Predictor used in the deployment."""
@@ -373,6 +395,7 @@ class Deployment:
     def predictor(self, predictor):
         self._predictor = predictor
 
+    @public
     @property
     def requested_instances(self):
         """Total number of requested instances in the deployment."""
@@ -380,6 +403,7 @@ class Deployment:
 
     # Single predictor
 
+    @public
     @property
     def model_name(self):
         """Name of the model deployed by the predictor."""
@@ -389,6 +413,7 @@ class Deployment:
     def model_name(self, model_name: str):
         self._predictor.model_name = model_name
 
+    @public
     @property
     def model_path(self):
         """Model path deployed by the predictor."""
@@ -398,6 +423,7 @@ class Deployment:
     def model_path(self, model_path: str):
         self._predictor.model_path = model_path
 
+    @public
     @property
     def model_version(self):
         """Model version deployed by the predictor."""
@@ -407,6 +433,7 @@ class Deployment:
     def model_version(self, model_version: int):
         self._predictor.model_version = model_version
 
+    @public
     @property
     def artifact_version(self):
         """Artifact version deployed by the predictor.
@@ -420,11 +447,13 @@ class Deployment:
     def artifact_version(self, version: int | str):
         pass  # do nothing, kept for backward compatibility
 
+    @public
     @property
     def artifact_files_path(self):
         """Path of the artifact files deployed by the predictor."""
         return self._predictor.artifact_files_path
 
+    @public
     @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor.
@@ -434,6 +463,7 @@ class Deployment:
         """
         return self.artifact_files_path
 
+    @public
     @property
     def model_server(self):
         """Model server ran by the predictor."""
@@ -443,6 +473,7 @@ class Deployment:
     def model_server(self, model_server: str):
         self._predictor.model_server = model_server
 
+    @public
     @property
     def serving_tool(self):
         """Serving tool used to run the model server."""
@@ -452,6 +483,7 @@ class Deployment:
     def serving_tool(self, serving_tool: str):
         self._predictor.serving_tool = serving_tool
 
+    @public
     @property
     def script_file(self):
         """Script file used by the predictor."""
@@ -461,6 +493,7 @@ class Deployment:
     def script_file(self, script_file: str):
         self._predictor.script_file = script_file
 
+    @public
     @property
     def config_file(self):
         """Model server configuration file passed to the model deployment.
@@ -474,6 +507,7 @@ class Deployment:
     def config_file(self, config_file: str):
         self._predictor.config_file = config_file
 
+    @public
     @property
     def resources(self):
         """Resource configuration for the predictor."""
@@ -483,6 +517,7 @@ class Deployment:
     def resources(self, resources: Resources):
         self._predictor.resources = resources
 
+    @public
     @property
     def inference_logger(self):
         """Configuration of the inference logger attached to this predictor."""
@@ -492,6 +527,7 @@ class Deployment:
     def inference_logger(self, inference_logger: InferenceLogger):
         self._predictor.inference_logger = inference_logger
 
+    @public
     @property
     def inference_batcher(self):
         """Configuration of the inference batcher attached to this predictor."""
@@ -501,6 +537,7 @@ class Deployment:
     def inference_batcher(self, inference_batcher: InferenceBatcher):
         self._predictor.inference_batcher = inference_batcher
 
+    @public
     @property
     def transformer(self):
         """Transformer configured in the predictor."""
@@ -510,6 +547,7 @@ class Deployment:
     def transformer(self, transformer: Transformer):
         self._predictor.transformer = transformer
 
+    @public
     @property
     def model_registry_id(self):
         """Model Registry Id of the deployment."""
@@ -519,16 +557,19 @@ class Deployment:
     def model_registry_id(self, model_registry_id: int):
         self._model_registry_id = model_registry_id
 
+    @public
     @property
     def created_at(self):
         """Created at date of the predictor."""
         return self._predictor.created_at
 
+    @public
     @property
     def creator(self):
         """Creator of the predictor."""
         return self._predictor.creator
 
+    @public
     @property
     def api_protocol(self):
         """API protocol enabled in the deployment (e.g., HTTP or GRPC)."""
@@ -538,6 +579,7 @@ class Deployment:
     def api_protocol(self, api_protocol: str):
         self._predictor.api_protocol = api_protocol
 
+    @public
     @property
     def environment(self):
         """Name of inference environment."""
@@ -547,6 +589,7 @@ class Deployment:
     def environment(self, environment: str):
         self._predictor.environment = environment
 
+    @public
     @property
     def project_namespace(self):
         """Name of inference environment."""
@@ -556,6 +599,7 @@ class Deployment:
     def project_namespace(self, project_namespace: str):
         self._predictor.project_namespace = project_namespace
 
+    @public
     @property
     def project_name(self):
         """Name of the project the deployment belongs to."""
@@ -565,6 +609,7 @@ class Deployment:
     def project_name(self, project_name: str):
         self._predictor._project_name = project_name
 
+    @public
     @property
     def scaling_configuration(self):
         """Scaling configuration for the deployment."""

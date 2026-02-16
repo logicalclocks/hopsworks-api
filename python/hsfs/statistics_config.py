@@ -15,12 +15,14 @@
 #
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import json
 
 import humps
 from hsfs import util
 
 
+@public
 class StatisticsConfig:
     def __init__(
         self,
@@ -56,6 +58,7 @@ class StatisticsConfig:
             "columns": self._columns,
         }
 
+    @public
     @property
     def enabled(self):
         """Enable statistics, by default this computes only descriptive statistics."""
@@ -65,6 +68,7 @@ class StatisticsConfig:
     def enabled(self, enabled):
         self._enabled = enabled
 
+    @public
     @property
     def correlations(self):
         """Enable correlations as an additional statistic to be computed for each feature pair."""
@@ -74,6 +78,7 @@ class StatisticsConfig:
     def correlations(self, correlations):
         self._correlations = correlations
 
+    @public
     @property
     def histograms(self):
         """Enable histograms as an additional statistic to be computed for each feature."""
@@ -83,6 +88,7 @@ class StatisticsConfig:
     def histograms(self, histograms):
         self._histograms = histograms
 
+    @public
     @property
     def exact_uniqueness(self):
         """Enable exact uniqueness as an additional statistic to be computed for each feature."""
@@ -92,6 +98,7 @@ class StatisticsConfig:
     def exact_uniqueness(self, exact_uniqueness):
         self._exact_uniqueness = exact_uniqueness
 
+    @public
     @property
     def columns(self):
         """Specify a subset of columns to compute statistics for."""

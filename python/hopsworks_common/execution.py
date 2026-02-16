@@ -82,21 +82,25 @@ class Execution:
         self.__init__(**json_decamelized)
         return self
 
+    @public
     @property
     def id(self):
         """Id of the execution."""
         return self._id
 
+    @public
     @property
     def job_name(self):
         """Name of the job the execution belongs to."""
         return self._job.name
 
+    @public
     @property
     def job_type(self):
         """Type of the job the execution belongs to."""
         return self._job.job_type
 
+    @public
     @property
     def state(self):
         """Current state of the execution.
@@ -108,56 +112,67 @@ class Execution:
         """
         return self._state
 
+    @public
     @property
     def final_status(self):
         """Final status of the execution. Can be UNDEFINED, SUCCEEDED, FAILED or KILLED."""
         return self._final_status
 
+    @public
     @property
     def submission_time(self):
         """Timestamp when the execution was submitted."""
         return self._submission_time
 
+    @public
     @property
     def stdout_path(self):
         """Path in Hopsworks Filesystem to stdout log file."""
         return self._stdout_path
 
+    @public
     @property
     def stderr_path(self):
         """Path in Hopsworks Filesystem to stderr log file."""
         return self._stderr_path
 
+    @public
     @property
     def app_id(self):
         """Application id for the execution."""
         return self._app_id
 
+    @public
     @property
     def hdfs_user(self):
         """Filesystem user for the execution."""
         return self._hdfs_user
 
+    @public
     @property
     def args(self):
         """Arguments set for the execution."""
         return self._args
 
+    @public
     @property
     def progress(self):
         """Progress of the execution."""
         return self._progress
 
+    @public
     @property
     def user(self):
         """User that submitted the execution."""
         return self._user
 
+    @public
     @property
     def duration(self):
         """Duration in milliseconds the execution ran."""
         return self._duration
 
+    @public
     @property
     def success(self):
         """Boolean to indicate if execution ran successfully or failed.
@@ -182,6 +197,7 @@ class Execution:
             return True
         return None
 
+    @public
     def download_logs(self, path: str | None = None) -> tuple[str | None, str | None]:
         """Download stdout and stderr logs for the execution.
 
@@ -206,6 +222,7 @@ class Execution:
         """
         return self._execution_engine.download_logs(self, path)
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the execution.
@@ -218,6 +235,7 @@ class Execution:
         """
         self._execution_api._delete(self._job.name, self.id)
 
+    @public
     @usage.method_logger
     def stop(self):
         """Stop the execution.
@@ -230,6 +248,7 @@ class Execution:
         """
         self._execution_api._stop(self.job_name, self.id)
 
+    @public
     def await_termination(self, timeout: float | None = None):
         """Wait until execution terminates.
 
@@ -263,6 +282,7 @@ class Execution:
     def __repr__(self):
         return f"Execution({self._final_status!r}, {self._state!r}, {self._submission_time!r}, {self._args!r})"
 
+    @public
     def get_url(self):
         """Get url to view execution details in Hopsworks UI."""
         _client = client.get_instance()

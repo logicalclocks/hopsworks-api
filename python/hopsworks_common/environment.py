@@ -85,6 +85,7 @@ class Environment:
         """Description of the environment."""
         return self._description
 
+    @public
     @usage.method_logger
     def install_wheel(
         self, path: str, await_installation: bool | None = True
@@ -140,6 +141,7 @@ class Environment:
 
         return library_rest
 
+    @public
     @usage.method_logger
     def install_requirements(
         self, path: str, await_installation: bool | None = True
@@ -195,6 +197,7 @@ class Environment:
 
         return library_rest
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the environment.

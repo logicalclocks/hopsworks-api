@@ -42,6 +42,7 @@ class FlinkClusterApi:
         """
         return self._job_api.get_configuration("FLINK")
 
+    @public
     @usage.method_logger
     def setup_cluster(self, name: str, config=None) -> flink_cluster.FlinkCluster:
         """Create a new flink job representing a flink cluster, or update an existing one.
@@ -103,6 +104,7 @@ class FlinkClusterApi:
         )
         return flink_cluster_obj
 
+    @public
     @usage.method_logger
     @decorators.catch_not_found(
         "hopsworks_common.flink_cluster.FlinkCluster", fallback_return=None

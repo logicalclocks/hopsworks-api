@@ -51,16 +51,19 @@ class GitRemote:
             return [cls(**remote) for remote in json_decamelized["items"]]
         return cls(**json_decamelized)
 
+    @public
     @property
     def name(self):
         """Name of the remote."""
         return self._name
 
+    @public
     @property
     def url(self):
         """Url of the remote."""
         return self._url
 
+    @public
     @usage.method_logger
     def delete(self):
         """Remove the git remote from the repo.

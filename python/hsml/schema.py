@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import json
 from typing import TYPE_CHECKING, TypeVar
 
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     import pandas
 
 
+@public
 class Schema:
     """Create a schema for a model input or output.
 
@@ -74,6 +76,7 @@ class Schema:
             self, default=lambda o: getattr(o, "__dict__", o), sort_keys=True, indent=2
         )
 
+    @public
     def to_dict(self):
         """Get dict representation of the Schema."""
         return json.loads(self.json())

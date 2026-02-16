@@ -64,6 +64,7 @@ class KafkaTopic:
 
         self._kafka_api = kafka_api.KafkaApi()
 
+    @public
     def describe(self):
         """Print a JSON description of the Kafka topic."""
         util.pretty_print(self)
@@ -118,6 +119,7 @@ class KafkaTopic:
         self.__init__(**json_decamelized)
         return self
 
+    @public
     @property
     def name(self):
         """Name of the Kafka topic."""
@@ -127,11 +129,13 @@ class KafkaTopic:
     def name(self, name: str):
         self._name = name
 
+    @public
     @property
     def replicas(self):
         """Number of replicas of the Kafka topic."""
         return self._num_of_replicas
 
+    @public
     @property
     def num_replicas(self):
         """Number of replicas of the Kafka topic."""
@@ -141,11 +145,13 @@ class KafkaTopic:
     def num_replicas(self, num_replicas: int):
         self._num_of_replicas = num_replicas
 
+    @public
     @property
     def partitions(self):
         """Number of partitions of the Kafka topic."""
         return self._num_of_partitions
 
+    @public
     @property
     def num_partitions(self):
         """Number of partitions of the Kafka topic."""
@@ -155,6 +161,7 @@ class KafkaTopic:
     def topic_num_partitions(self, num_partitions: int):
         self._num_partitions = num_partitions
 
+    @public
     @property
     def schema(self):
         """Schema for the topic."""
@@ -162,6 +169,7 @@ class KafkaTopic:
             self._schema_name, self._schema_version
         )
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the topic.

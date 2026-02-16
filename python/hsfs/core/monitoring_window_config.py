@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+from hopsworks_apigen import public
 import json
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -64,6 +65,7 @@ class WindowConfigType(str, Enum):
         return self.value
 
 
+@public
 class MonitoringWindowConfig:
     # TODO: Add docstring
     DEFAULT_ROW_PERCENTAGE = 1.0
@@ -189,11 +191,13 @@ class MonitoringWindowConfig:
     def __repr__(self):
         return f"MonitoringWindowConfig({self._window_config_type!r})"
 
+    @public
     @property
     def id(self) -> int | None:
         """Id of the window configuration."""
         return self._id
 
+    @public
     @property
     def window_config_type(self) -> WindowConfigType:
         """Type of the window. It can be one of `ALL_TIME`, `ROLLING_TIME`, `TRAINING_DATASET` or `SPECIFIC_VALUE`."""
@@ -221,11 +225,13 @@ class MonitoringWindowConfig:
             )
         self._window_config_type = WindowConfigType.from_str(window_config_type)
 
+    @public
     @property
     def time_offset(self) -> str | None:
         """The time offset from the current time to the start of the time window. Only used for windows of type `ROLLING_TIME`."""
         return self._time_offset
 
+    @public
     @property
     def window_length(self) -> str | None:
         """The length of the time window. Only used for windows of type `ROLLING_TIME`."""
@@ -245,6 +251,7 @@ class MonitoringWindowConfig:
         else:
             raise TypeError("window_length must be a string.")
 
+    @public
     @property
     def training_dataset_version(self) -> int | None:
         """The version of the training dataset to use as reference. Only used for windows of type `TRAINING_DATASET`."""
@@ -261,6 +268,7 @@ class MonitoringWindowConfig:
             )
         self._training_dataset_version = training_dataset_version
 
+    @public
     @property
     def specific_value(self) -> float | None:
         """The specific value to use as reference. Only used for windows of type `SPECIFIC_VALUE`."""
@@ -277,6 +285,7 @@ class MonitoringWindowConfig:
             )
         self._specific_value = specific_value
 
+    @public
     @property
     def row_percentage(self) -> float | None:
         """The percentage of rows to fetch and compute the statistics on. Only used for windows of type `ROLLING_TIME` and `ALL_TIME`."""

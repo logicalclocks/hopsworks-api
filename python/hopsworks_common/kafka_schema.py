@@ -54,26 +54,31 @@ class KafkaSchema:
         self.__init__(**json_decamelized)
         return self
 
+    @public
     @property
     def id(self):
         """Id of the kafka schema."""
         return self._id
 
+    @public
     @property
     def subject(self):
         """Name of the subject for the schema."""
         return self._subject
 
+    @public
     @property
     def version(self):
         """Version of the schema."""
         return self._version
 
+    @public
     @property
     def schema(self):
         """Schema definition."""
         return self._schema
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the schema.
