@@ -40,6 +40,9 @@ class DataSource:
         _table (Optional[str]): Table name for the data source.
         _path (Optional[str]): File system path for the data source.
         _storage_connector (Optional[StorageConnector]): Storage connector object holds configuration for accessing the data source.
+        _metrics (List[str]): List of metric column names for the data source.
+        _dimensions (List[str]): List of dimension column names for the data source.
+        _rest_endpoint (Optional[RestEndpointConfig]): REST endpoint configuration for the data source.
     """
 
     def __init__(
@@ -64,6 +67,9 @@ class DataSource:
             table (Optional[str]): Table name for the data source.
             path (Optional[str]): File system path for the data source.
             storage_connector (Union[StorageConnector, Dict[str, Any]], optional): Storage connector object holds configuration for accessing the data source.
+            metrics (Optional[List[str]]): List of metric column names for the data source.
+            dimensions (Optional[List[str]]): List of dimension column names for the data source.
+            rest_endpoint (Union[RestEndpointConfig, Dict, None]): REST endpoint configuration for the data source.
             **kwargs: Additional keyword arguments.
         """
         self._data_source_api = data_source_api.DataSourceApi()
