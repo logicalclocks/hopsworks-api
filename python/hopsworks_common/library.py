@@ -14,12 +14,12 @@
 #   limitations under the License.
 #
 
+from hopsworks_apigen import also_available_as
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import command
 
 
-@public("hopsworks.library.Library")
+@also_available_as("hopsworks.library.Library")
 class Library:
     def __init__(
         self,

@@ -16,16 +16,16 @@
 
 from __future__ import annotations
 
+from hopsworks_apigen import also_available_as
 import contextlib
 import json
 from typing import Any
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@public("hopsworks.tag.Tag", "hsfs.tag.Tag", "hsml.tag.Tag")
+@also_available_as("hopsworks.tag.Tag", "hsfs.tag.Tag", "hsml.tag.Tag")
 class Tag:
     """Represents a tag in Hopsworks.
 

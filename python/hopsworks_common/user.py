@@ -16,16 +16,16 @@
 
 from __future__ import annotations
 
+from hopsworks_apigen import also_available_as
 import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@public("hopsworks.user.User", "hsfs.user.User")
+@also_available_as("hopsworks.user.User", "hsfs.user.User")
 @dataclass
 class User:
     email: str | None = None

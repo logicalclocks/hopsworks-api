@@ -14,12 +14,12 @@
 #   limitations under the License.
 #
 
+from hopsworks_apigen import also_available_as
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import constants, git_repo
 
 
-@public("hopsworks.git_op_execution.GitOpExecution")
+@also_available_as("hopsworks.git_op_execution.GitOpExecution")
 class GitOpExecution:
     def __init__(
         self,

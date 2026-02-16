@@ -20,7 +20,7 @@ import logging
 from typing import Literal, get_args
 from urllib.parse import quote
 
-from hopsworks_apigen import public
+from hopsworks_apigen import public, also_available_as
 from hopsworks_common import client
 from hopsworks_common.search_results import (
     FeatureGroupSearchResult,
@@ -37,7 +37,7 @@ DOC_TYPE_ARG = Literal[
 ]
 
 
-@public("hopsworks.core.search_api.TagSearchFilter")
+@also_available_as("hopsworks.core.search_api.TagSearchFilter")
 class TagSearchFilter:
     """Filter for searching entities by tag.
 

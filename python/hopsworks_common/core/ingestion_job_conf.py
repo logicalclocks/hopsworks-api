@@ -16,13 +16,13 @@
 
 from __future__ import annotations
 
+from hopsworks_apigen import also_available_as
 import json
 
-from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@public("hopsworks.core.ingestion_job_conf.IngestionJobConf", "hsfs.core.ingestion_job_conf.IngestionJobConf")
+@also_available_as("hopsworks.core.ingestion_job_conf.IngestionJobConf", "hsfs.core.ingestion_job_conf.IngestionJobConf")
 class IngestionJobConf:
     def __init__(
         self, data_format, data_options, write_options, spark_job_configuration

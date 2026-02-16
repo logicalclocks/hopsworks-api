@@ -19,13 +19,13 @@ from __future__ import annotations
 from typing import Any
 
 from furl import furl
-from hopsworks_apigen import public
+from hopsworks_apigen import public, also_available_as
 from hopsworks_common import client, usage
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.variable_api import VariableApi
 
 
-@public("hopsworks.core.opensearch_api.OPENSEARCH_CONFIG", "hsfs.core.opensearch_api.OPENSEARCH_CONFIG")
+@also_available_as("hopsworks.core.opensearch_api.OPENSEARCH_CONFIG", "hsfs.core.opensearch_api.OPENSEARCH_CONFIG")
 class OPENSEARCH_CONFIG:
     ELASTIC_ENDPOINT_ENV_VAR = "ELASTIC_ENDPOINT"
     SSL_CONFIG = "es.net.ssl"

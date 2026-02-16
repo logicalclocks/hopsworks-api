@@ -16,13 +16,13 @@
 
 from __future__ import annotations
 
+from hopsworks_apigen import also_available_as
 from typing import Any
 
-from hopsworks_apigen import public
 from hopsworks_common import client
 
 
-@public("hopsworks.core.hosts_api.HostsApi", "hsfs.core.hosts_api.HostsApi")
+@also_available_as("hopsworks.core.hosts_api.HostsApi", "hsfs.core.hosts_api.HostsApi")
 class HostsApi:
     def get(self) -> list[Any]:
         _client = client.get_instance()

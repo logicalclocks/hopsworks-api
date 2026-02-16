@@ -14,14 +14,14 @@
 #   limitations under the License.
 #
 
+from hopsworks_apigen import also_available_as
 import json
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@public("hopsworks.git_commit.GitCommit")
+@also_available_as("hopsworks.git_commit.GitCommit")
 class GitCommit:
     def __init__(
         self,

@@ -15,13 +15,13 @@
 
 from __future__ import annotations
 
+from hopsworks_apigen import also_available_as
 from typing import Any
 
 import humps
-from hopsworks_apigen import public
 
 
-@public("hopsworks.core.inode.Inode", "hsfs.core.inode.Inode")
+@also_available_as("hopsworks.core.inode.Inode", "hsfs.core.inode.Inode")
 class Inode:
     def __init__(
         self,

@@ -14,13 +14,13 @@
 #   limitations under the License.
 #
 
+from hopsworks_apigen import also_available_as
 import json
 
-from hopsworks_apigen import public
 from hopsworks_common import client, library
 
 
-@public("hopsworks.core.library_api.LibraryApi")
+@also_available_as("hopsworks.core.library_api.LibraryApi")
 class LibraryApi:
     def _install(
         self, library_name: str, name: str, library_spec: dict

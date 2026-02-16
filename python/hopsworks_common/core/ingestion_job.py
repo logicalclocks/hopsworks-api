@@ -16,12 +16,12 @@
 
 from __future__ import annotations
 
+from hopsworks_apigen import also_available_as
 import humps
-from hopsworks_apigen import public
 from hopsworks_common.job import Job
 
 
-@public("hopsworks.core.ingestion_job.IngestionJob", "hsfs.core.ingestion_job.IngestionJob")
+@also_available_as("hopsworks.core.ingestion_job.IngestionJob", "hsfs.core.ingestion_job.IngestionJob")
 class IngestionJob:
     def __init__(
         self,

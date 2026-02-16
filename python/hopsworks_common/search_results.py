@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import logging
 
-from hopsworks_apigen import public
+from hopsworks_apigen import public, also_available_as
 from hopsworks_common import client
 
 
-@public("hopsworks.core.search_api.Project")
+@also_available_as("hopsworks.core.search_api.Project")
 class Project:
     """Represents a project associated with a search result."""
 
@@ -48,7 +48,7 @@ class Project:
         return f"Project(id={self._id}, name='{self._name}')"
 
 
-@public("hopsworks.core.search_api.Highlights")
+@also_available_as("hopsworks.core.search_api.Highlights")
 class Highlights:
     """Container for search result highlights showing where matches occurred."""
 
@@ -139,7 +139,7 @@ class Highlights:
         return "Highlights(none)"
 
 
-@public("hopsworks.core.search_api.SearchResultItem")
+@also_available_as("hopsworks.core.search_api.SearchResultItem")
 class SearchResultItem:
     """Base class for search result items."""
 

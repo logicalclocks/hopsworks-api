@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import public
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client, git_op_execution
 
 
-@public("hopsworks.core.git_op_execution_api.GitOpExecutionApi")
+@also_available_as("hopsworks.core.git_op_execution_api.GitOpExecutionApi")
 class GitOpExecutionApi:
     def _get_execution(self, repo_id, execution_id):
         _client = client.get_instance()

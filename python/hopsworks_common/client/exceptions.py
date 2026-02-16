@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     import requests
 
 
-@public("hopsworks.client.exceptions.RestAPIError", "hsml.client.exceptions.RestAPIError")
+@also_available_as("hopsworks.client.exceptions.RestAPIError", "hsml.client.exceptions.RestAPIError")
 class RestAPIError(Exception):
     """REST Exception encapsulating the response object and url."""
 
@@ -76,12 +76,12 @@ class RestAPIError(Exception):
         self.response = response
 
 
-@public("hopsworks.client.exceptions.UnknownSecretStorageError", "hsml.client.exceptions.UnknownSecretStorageError")
+@also_available_as("hopsworks.client.exceptions.UnknownSecretStorageError", "hsml.client.exceptions.UnknownSecretStorageError")
 class UnknownSecretStorageError(Exception):
     """This exception will be raised if an unused secrets storage is passed as a parameter."""
 
 
-@public("hopsworks.client.exceptions.FeatureStoreException", "hsml.client.exceptions.FeatureStoreException")
+@also_available_as("hopsworks.client.exceptions.FeatureStoreException", "hsml.client.exceptions.FeatureStoreException")
 class FeatureStoreException(Exception):
     """Generic feature store exception."""
 
@@ -92,7 +92,7 @@ class FeatureStoreException(Exception):
     )
 
 
-@public("hopsworks.client.exceptions.VectorDatabaseException", "hsml.client.exceptions.VectorDatabaseException")
+@also_available_as("hopsworks.client.exceptions.VectorDatabaseException", "hsml.client.exceptions.VectorDatabaseException")
 class VectorDatabaseException(Exception):
     # reason
     REQUESTED_K_TOO_LARGE = "REQUESTED_K_TOO_LARGE"
@@ -117,7 +117,7 @@ class VectorDatabaseException(Exception):
         return self._info
 
 
-@public("hopsworks.client.exceptions.DataValidationException", "hsml.client.exceptions.DataValidationException")
+@also_available_as("hopsworks.client.exceptions.DataValidationException", "hsml.client.exceptions.DataValidationException")
 class DataValidationException(FeatureStoreException):
     """Raised when data validation fails only when using "STRICT" validation ingestion policy."""
 
@@ -125,7 +125,7 @@ class DataValidationException(FeatureStoreException):
         super().__init__(message)
 
 
-@public("hopsworks.client.exceptions.ExternalClientError", "hsml.client.exceptions.ExternalClientError")
+@also_available_as("hopsworks.client.exceptions.ExternalClientError", "hsml.client.exceptions.ExternalClientError")
 class ExternalClientError(TypeError):
     """Raised when external client cannot be initialized due to missing arguments."""
 
@@ -145,7 +145,7 @@ class InternalClientError(TypeError):
         super().__init__(message)
 
 
-@public("hopsworks.client.exceptions.HopsworksSSLClientError", "hsml.client.exceptions.HopsworksSSLClientError")
+@also_available_as("hopsworks.client.exceptions.HopsworksSSLClientError", "hsml.client.exceptions.HopsworksSSLClientError")
 class HopsworksSSLClientError(SSLError):
     """Raised when the client connection fails with SSL related errors."""
 
@@ -153,42 +153,42 @@ class HopsworksSSLClientError(SSLError):
         super().__init__(message)
 
 
-@public("hopsworks.client.exceptions.GitException", "hsml.client.exceptions.GitException")
+@also_available_as("hopsworks.client.exceptions.GitException", "hsml.client.exceptions.GitException")
 class GitException(Exception):
     """Generic git exception."""
 
 
-@public("hopsworks.client.exceptions.JobException", "hsml.client.exceptions.JobException")
+@also_available_as("hopsworks.client.exceptions.JobException", "hsml.client.exceptions.JobException")
 class JobException(Exception):
     """Generic job exception."""
 
 
-@public("hopsworks.client.exceptions.EnvironmentException", "hsml.client.exceptions.EnvironmentException")
+@also_available_as("hopsworks.client.exceptions.EnvironmentException", "hsml.client.exceptions.EnvironmentException")
 class EnvironmentException(Exception):
     """Generic python environment exception."""
 
 
-@public("hopsworks.client.exceptions.KafkaException", "hsml.client.exceptions.KafkaException")
+@also_available_as("hopsworks.client.exceptions.KafkaException", "hsml.client.exceptions.KafkaException")
 class KafkaException(Exception):
     """Generic kafka exception."""
 
 
-@public("hopsworks.client.exceptions.DatasetException", "hsml.client.exceptions.DatasetException")
+@also_available_as("hopsworks.client.exceptions.DatasetException", "hsml.client.exceptions.DatasetException")
 class DatasetException(Exception):
     """Generic dataset exception."""
 
 
-@public("hopsworks.client.exceptions.ProjectException", "hsml.client.exceptions.ProjectException")
+@also_available_as("hopsworks.client.exceptions.ProjectException", "hsml.client.exceptions.ProjectException")
 class ProjectException(Exception):
     """Generic project exception."""
 
 
-@public("hopsworks.client.exceptions.OpenSearchException", "hsml.client.exceptions.OpenSearchException")
+@also_available_as("hopsworks.client.exceptions.OpenSearchException", "hsml.client.exceptions.OpenSearchException")
 class OpenSearchException(Exception):
     """Generic opensearch exception."""
 
 
-@public("hopsworks.client.exceptions.JobExecutionException", "hsml.client.exceptions.JobExecutionException")
+@also_available_as("hopsworks.client.exceptions.JobExecutionException", "hsml.client.exceptions.JobExecutionException")
 class JobExecutionException(Exception):
     """Generic job executions exception."""
 

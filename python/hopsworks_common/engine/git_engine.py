@@ -14,15 +14,15 @@
 #   limitations under the License.
 #
 
+from hopsworks_apigen import also_available_as
 import logging
 import time
 
-from hopsworks_apigen import public
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.core import git_op_execution_api
 
 
-@public("hopsworks.engine.git_engine.GitEngine")
+@also_available_as("hopsworks.engine.git_engine.GitEngine")
 class GitEngine:
     def __init__(self):
         self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi()
