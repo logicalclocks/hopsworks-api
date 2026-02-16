@@ -2847,8 +2847,8 @@ class FeatureGroup(FeatureGroupBase):
     def _resolve_sink_enabled(self):
         """Check if sink enabled must enabled based on storage connector."""
         self._sink_enabled = (
-            self._storage_connector is not None
-            and self._storage_connector.type
+            self.storage_connector is not None
+            and self.storage_connector.type
             in [sc.StorageConnector.CRM, sc.StorageConnector.REST]
         )
 
@@ -3216,7 +3216,7 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._resolve_sink_enabled()
-        if self._sink_enabled and self._storage_connector is None:
+        if self._sink_enabled and self.storage_connector is None:
             raise FeatureStoreException(
                 "Sink cannot be enabled for the feature group without a storage connector."
             )
