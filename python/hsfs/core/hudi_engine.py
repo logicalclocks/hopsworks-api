@@ -288,6 +288,7 @@ class HudiEngine:
         commit_metadata = spark_context._jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata(
             latest_commit, commit_timeline
         )
+        oldest_commit = commit_timeline.firstInstant().get()
 
         table_size = spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine.getInstance().getHudiTableSize(
             spark_context._jsc, base_path
@@ -302,7 +303,7 @@ class HudiEngine:
             rows_updated=commit_metadata.fetchTotalUpdateRecordsWritten(),
             rows_deleted=commit_metadata.getTotalRecordsDeleted(),
             last_active_commit_time=util.get_timestamp_from_date_string(
-                latest_commit.getCompletionTime()
+                oldest_commit.getCompletionTime()
             ),
             table_size=table_size,
         )
