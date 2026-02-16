@@ -444,13 +444,10 @@ class HopsFSConnector(StorageConnector):
         return {}
 
     def _get_path(self, sub_path: str) -> str:
-        if self._hopsfs_path is None:
-            raise ValueError(
-                "HopsFS connector path is not set. Please provide 'hopsfs_path' when "
-                "creating the HopsFSConnector."
-            )
         if sub_path:
-            return os.path.join(self._hopsfs_path, sub_path)
+            if self._hopsfs_path:
+                return os.path.join(self._hopsfs_path, sub_path)
+            return sub_path
         return self._hopsfs_path
 
 
