@@ -244,9 +244,9 @@ class FeatureGroupBase:
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
         )
-        self._great_expectation_engine: (
-            great_expectation_engine.GreatExpectationEngine
-        ) = great_expectation_engine.GreatExpectationEngine(featurestore_id)
+        self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
+            featurestore_id
+        )
         if self._id is not None:
             if expectation_suite:
                 self._expectation_suite._init_expectation_engine(
@@ -273,9 +273,7 @@ class FeatureGroupBase:
                 feature_store_id=featurestore_id,
                 feature_group_id=self._id,
             )
-            self._feature_monitoring_result_engine: (
-                feature_monitoring_result_engine.FeatureMonitoringResultEngine
-            ) = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            self._feature_monitoring_result_engine: feature_monitoring_result_engine.FeatureMonitoringResultEngine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._id,
             )
@@ -3219,7 +3217,9 @@ class FeatureGroup(FeatureGroupBase):
             self._features = (
                 self._features
                 if len(self._features) > 0
-                else features if features else []
+                else features
+                if features
+                else []
             )
 
             self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
@@ -4523,9 +4523,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
             for feat in (features or [])
         ]
 
-        self._feature_group_engine: (
-            external_feature_group_engine.ExternalFeatureGroupEngine
-        ) = external_feature_group_engine.ExternalFeatureGroupEngine(featurestore_id)
+        self._feature_group_engine: external_feature_group_engine.ExternalFeatureGroupEngine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            featurestore_id
+        )
 
         if self._id:
             # Got from Hopsworks, deserialize features and storage connector

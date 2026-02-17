@@ -292,4 +292,5 @@ class SCALING_CONFIG:
 
 class CLIENT:
     """Constants for Hopsworks client configuration."""
+
     CERT_FOLDER_DEFAULT = "/tmp"

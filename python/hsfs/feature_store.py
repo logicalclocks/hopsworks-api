@@ -124,9 +124,9 @@ class FeatureStore:
             feature_group_engine.FeatureGroupEngine(self._id)
         )
 
-        self._transformation_function_engine: (
-            transformation_function_engine.TransformationFunctionEngine
-        ) = transformation_function_engine.TransformationFunctionEngine(self._id)
+        self._transformation_function_engine: transformation_function_engine.TransformationFunctionEngine = transformation_function_engine.TransformationFunctionEngine(
+            self._id
+        )
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
         )

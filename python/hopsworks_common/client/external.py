@@ -187,7 +187,9 @@ class Client(base.Client):
         # Custom cert_folder: use directly
         # Default /tmp: use hierarchical structure for multi-user support
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
-            return os.path.join(self._cert_folder_base, self._host, self._project_name, self._username)
+            return os.path.join(
+                self._cert_folder_base, self._host, self._project_name, self._username
+            )
         return self._cert_folder_base
 
     def _materialize_certs(self):

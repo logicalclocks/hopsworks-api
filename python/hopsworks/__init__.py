@@ -24,6 +24,9 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
+from hopsworks.connection import Connection
+from hopsworks.core import project_api, secret_api
+from hopsworks.decorators import NoHopsworksConnectionError
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
 from hopsworks_common.client.exceptions import (
@@ -32,13 +35,9 @@ from hopsworks_common.client.exceptions import (
     RestAPIError,
 )
 from hopsworks_common.connection import Connection
+from hopsworks_common.constants import CLIENT
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.decorators import NoHopsworksConnectionError
-from hopsworks.connection import Connection
-from hopsworks.core import project_api, secret_api
-from hopsworks.decorators import NoHopsworksConnectionError
-from hopsworks_common import usage
-from hopsworks_common.constants import CLIENT
 from requests.exceptions import SSLError
 
 
