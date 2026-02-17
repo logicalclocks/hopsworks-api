@@ -20,13 +20,13 @@ import base64
 import contextlib
 import logging
 import os
-import tempfile
 
 import hopsworks_common.client
 import requests
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.constants import CLIENT
 
 
 with contextlib.suppress(ImportError):
@@ -90,6 +90,8 @@ class Client(base.Client):
 
         self._engine = engine
 
+        self._username = None
+
         if not project:
             # This should only happen due to the way of work of and in hopsworks.login:
             # It first initalizes a client, and then uses it to figure out which project to use.
@@ -105,6 +107,9 @@ class Client(base.Client):
         project_info = self._get_project_info(project)
         self._project_id = str(project_info["projectId"])
         _logger.debug("Setting Project ID: %s", self._project_id)
+
+        self._username = self._get_username()
+        _logger.debug("Username: %s", self._username)
 
         if self._engine == "python":
             self.download_certs()
@@ -179,16 +184,37 @@ class Client(base.Client):
         return res
 
     def get_certs_folder(self):
-        return self._cert_folder
+        # Custom cert_folder: use directly
+        # Default /tmp: use hierarchical structure for multi-user support
+        if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
+            return os.path.join(self._cert_folder_base, self._host, self._project_name, self._username)
+        return self._cert_folder_base
 
     def _materialize_certs(self):
-        os.makedirs(self._cert_folder_base, exist_ok=True)
-        self._cert_folder = tempfile.mkdtemp(
-            prefix="hopsworks_certs_", dir=self._cert_folder_base
-        )
-        _logger.debug(f"Created certificates folder {self._cert_folder}")
+        # Custom cert_folder: use directly
+        # Default /tmp: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}
+        self._cert_folder = self.get_certs_folder()
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
+
+        try:
+            if os.path.exists(self._cert_folder):
+                _logger.debug(
+                    f"Running in Python environment, certificates folder already exists {self._cert_folder}"
+                )
+                _logger.debug("Found certificates: %s", os.listdir(self._cert_folder))
+            else:
+                _logger.debug(
+                    f"Running in Python environment, creating certificates folder {self._cert_folder}"
+                )
+                self._makedirs_with_sticky_bit()
+        except PermissionError as e:
+            raise PermissionError(
+                f"Permission denied for certificate folder '{self._cert_folder}'. "
+                f"This can happen when the folder was created by another system user. "
+                f"Please specify a custom certificate folder: "
+                f"hopsworks.login(cert_folder='/home/$USER/hopsworks-certs', ...)"
+            ) from e
 
         credentials = self._get_credentials(self._project_id)
         self._write_b64_cert_to_bytes(
@@ -201,8 +227,8 @@ class Client(base.Client):
         )
 
         self._cert_key = str(credentials["password"])
-        self._cert_key_path = os.path.join(self._cert_folder, "material_passwd")
-        self._write_secure_file(self._cert_key, self._cert_key_path)
+        self._cert_key_path = self._get_material_passwd_path()
+        self._write_pem_file(self._cert_key, self._cert_key_path)
 
         # Return the credentials object for the Python engine to materialize the pem files.
         return credentials
@@ -243,15 +269,16 @@ class Client(base.Client):
             # certificates need to be provided before the Spark application starts.
             return
 
-        # Clean up only on AWS
-        _logger.debug("Cleaning up certificates. AWS only.")
+        # Clean up certificate files in user-specific directory
+        _logger.debug("Cleaning up certificate files.")
         self._cleanup_file(self._get_jks_key_store_path())
         self._cleanup_file(self._get_jks_trust_store_path())
-        self._cleanup_file(os.path.join(self._cert_folder, "material_passwd"))
+        self._cleanup_file(self._get_material_passwd_path())
         self._cleanup_file(self._get_ca_chain_path())
         self._cleanup_file(self._get_client_cert_path())
         self._cleanup_file(self._get_client_key_path())
 
+        # Try to remove user-specific directory (will only succeed if empty)
         with contextlib.suppress(OSError):
             os.rmdir(self._cert_folder)
 
@@ -264,6 +291,11 @@ class Client(base.Client):
     def _get_jks_key_store_path(self):
         _logger.debug("Getting key store path: %s", self._key_store_path)
         return self._key_store_path
+
+    def _get_material_passwd_path(self) -> str:
+        path = os.path.join(self._cert_folder, "material_passwd")
+        _logger.debug(f"Getting material passwd path {path}")
+        return path
 
     def _get_ca_chain_path(self) -> str:
         path = os.path.join(self._cert_folder, "ca_chain.pem")
@@ -280,6 +312,40 @@ class Client(base.Client):
         _logger.debug(f"Getting client key path {path}")
         return path
 
+    def _write_pem_file(self, content: str, path: str, mode: str = "w") -> None:
+        """Write file with secure permissions (owner read/write only)."""
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, mode) as f:
+            f.write(content)
+
+    def _makedirs_with_sticky_bit(self) -> None:
+        """Create cert directories with appropriate permissions.
+
+        For default /tmp: Creates hierarchical structure with sticky bit (1777)
+        on shared directories for multi-user support, and 0700 on user directory.
+
+        For custom cert_folder: Creates the directory with 0700 permissions.
+        """
+        if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
+            # Hierarchical structure for multi-user support
+            host_dir = os.path.join(self._cert_folder_base, self._host)
+            project_dir = os.path.join(host_dir, self._project_name)
+
+            # Shared directories with sticky bit
+            for directory in (host_dir, project_dir):
+                if not os.path.exists(directory):
+                    os.mkdir(directory)
+                    os.chmod(directory, 0o1777)
+
+            # User-specific directory with restricted permissions
+            if not os.path.exists(self._cert_folder):
+                os.mkdir(self._cert_folder)
+                os.chmod(self._cert_folder, 0o700)
+        else:
+            # Custom cert_folder: create directly with restricted permissions
+            if not os.path.exists(self._cert_folder):
+                os.makedirs(self._cert_folder, mode=0o700, exist_ok=True)
+
     def _get_project_info(self, project_name):
         """Makes a REST call to hopsworks to get all metadata of a project for the provided project.
 
@@ -291,6 +357,18 @@ class Client(base.Client):
         _logger.debug("Getting project info for project: %s", project_name)
         return self._send_request("GET", ["project", "getProjectInfo", project_name])
 
+    def _get_username(self):
+        """Get the username of the logged in user.
+
+        :return: the username of the logged in user
+        :rtype: str
+        """
+        _logger.debug("Getting username of logged in user")
+        project_teams = self._send_request("GET", ["project"])
+        if project_teams:
+            return project_teams[0]["user"]["username"]
+        return None
+
     def _write_b64_cert_to_bytes(self, b64_string, path):
         """Converts b64 encoded certificate to bytes file .
 
@@ -300,8 +378,7 @@ class Client(base.Client):
         :type path: str
         """
         _logger.debug(f"Writing b64 encoded certificate to {path}")
-        cert_b64 = base64.b64decode(b64_string)
-        self._write_secure_file(cert_b64, path)
+        self._write_pem_file(base64.b64decode(b64_string), path, mode="wb")
 
     def _cleanup_file(self, file_path):
         """Removes local files with `file_path`."""

@@ -100,6 +100,22 @@ class FeatureStoreException(Exception):
     )
 
 
+class TransformationFunctionException(Exception):
+    """Exception raised when a transformation function fails."""
+
+    def __init__(
+        self,
+        message: str,
+        missing_features: set[str],
+        transformation_function_name: str,
+        transformation_type: str,
+    ) -> None:
+        self.missing_features = missing_features
+        self.transformation_function_name = transformation_function_name
+        self.transformation_type = transformation_type.replace("_", "-")
+        super().__init__(message)
+
+
 @also_available_as(
     "hopsworks.client.exceptions.VectorDatabaseException",
     "hsml.client.exceptions.VectorDatabaseException",
@@ -249,3 +265,7 @@ class ModelServingException(Exception):
     ERROR_CODE_DUPLICATED_ENTRY = 240011
 
     ERROR_CODE_DEPLOYMENT_NOT_RUNNING = 250001
+
+
+class DataSourceException(Exception):
+    """Generic data source exception."""

@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 import humps
@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
 
 @public
-@dataclass
 class FeatureTransformationStatistics:
     """Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function."""
 
@@ -262,10 +261,17 @@ class TransformationStatistics:
     def init_statistics(self, feature_name: str) -> FeatureTransformationStatistics:
         return FeatureTransformationStatistics(feature_name=feature_name)
 
-    def set_statistics(self, feature_name: str, statistics: dict[str, Any]) -> None:
-        self.__dict__[feature_name] = (
-            FeatureTransformationStatistics.from_response_json(statistics)
-        )
+    def set_statistics(
+        self,
+        feature_name: str,
+        statistics: dict[str, Any] | FeatureTransformationStatistics,
+    ) -> None:
+        if isinstance(statistics, FeatureTransformationStatistics):
+            self.__dict__[feature_name] = statistics
+        else:
+            self.__dict__[feature_name] = (
+                FeatureTransformationStatistics.from_response_json(statistics)
+            )
 
     def __repr__(self) -> str:
         return ",\n ".join([repr(self.__dict__[feature]) for feature in self._features])

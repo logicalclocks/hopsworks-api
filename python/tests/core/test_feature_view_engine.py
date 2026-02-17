@@ -2398,7 +2398,16 @@ class TestFeatureViewEngine:
     def test_get_batch_data(self, mocker):
         # Arrange
         feature_store_id = 99
-        tf_value = "123"
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        tf_value = TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch(
@@ -2408,7 +2417,9 @@ class TestFeatureViewEngine:
         mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        tf_engine_patch = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
 
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
@@ -2420,21 +2431,18 @@ class TestFeatureViewEngine:
             start_time=None,
             end_time=None,
             training_dataset_version=None,
-            transformation_functions=tf_value,
+            transformation_functions=[tf_value],
             read_options=None,
         )
 
         # Assert
         assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_args[
-                0
-            ][0]
-            == tf_value
+            tf_engine_patch.apply_transformation_functions.call_args[1][
+                "transformation_functions"
+            ][0].hopsworks_udf.function_name
+            == tf_value.hopsworks_udf.function_name
         )
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
-        )
+        assert tf_engine_patch.apply_transformation_functions.call_count == 1
 
     def test_add_tag(self, mocker):
         # Arrange

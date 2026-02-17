@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import hsfs
@@ -286,7 +286,7 @@ class Feature:
     def _get_filter_value(self, value: Any) -> Any:
         if self.type == "timestamp":
             return datetime.fromtimestamp(
-                util.convert_event_time_to_timestamp(value) / 1000
+                util.convert_event_time_to_timestamp(value) / 1000, tz=timezone.utc
             ).strftime("%Y-%m-%d %H:%M:%S")
         return value
 

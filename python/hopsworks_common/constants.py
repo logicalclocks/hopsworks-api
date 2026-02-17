@@ -288,3 +288,8 @@ class SCALING_CONFIG:
     DEFAULT_STABLE_WINDOW_SECONDS = 60
     DEFAULT_PANIC_THRESHOLD_PERCENTAGE = 200.0
     DEFAULT_SCALE_TO_ZERO_RETENTION_SECONDS = 0
+
+
+class CLIENT:
+    """Constants for Hopsworks client configuration."""
+    CERT_FOLDER_DEFAULT = "/tmp"

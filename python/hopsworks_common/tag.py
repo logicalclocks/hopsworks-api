@@ -47,6 +47,10 @@ class Tag:
         type=None,
         **kwargs,
     ):
+        if name is None:
+            raise ValueError("Tag name cannot be None")
+        if value is None:
+            raise ValueError("Tag value cannot be None")
         self._name = name
         self._value = value
 
@@ -131,6 +135,8 @@ class Tag:
 
     @name.setter
     def name(self, name: str):
+        if name is None:
+            raise ValueError("Tag name cannot be None")
         self._name = name
 
     @property
@@ -140,6 +146,8 @@ class Tag:
 
     @value.setter
     def value(self, value: Any):
+        if value is None:
+            raise ValueError("Tag value cannot be None")
         self._value = value
 
     def __str__(self):

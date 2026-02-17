@@ -34,6 +34,11 @@ from hopsworks_common.client.exceptions import (
 from hopsworks_common.connection import Connection
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.decorators import NoHopsworksConnectionError
+from hopsworks.connection import Connection
+from hopsworks.core import project_api, secret_api
+from hopsworks.decorators import NoHopsworksConnectionError
+from hopsworks_common import usage
+from hopsworks_common.constants import CLIENT
 from requests.exceptions import SSLError
 
 
@@ -85,6 +90,7 @@ def login(
     api_key_file: str | None = None,
     hostname_verification: bool = False,
     trust_store_path: str | None = None,
+    cert_folder: str | None = None,
     engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
     | None = None,
 ) -> project.Project:
@@ -111,7 +117,7 @@ def login(
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH` and `HOPSWORKS_ENGINE`.
+    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH`, `HOPSWORKS_CERT_FOLDER` and `HOPSWORKS_ENGINE`.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
@@ -123,6 +129,7 @@ def login(
         api_key_file: Path to file wih API Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
+        cert_folder: The directory to store downloaded certificates. Defaults to the system temp directory.
         engine:
             Specifies the engine to use.
             The default value is `None`, which automatically selects the engine based on the environment:
@@ -197,6 +204,10 @@ def login(
 
     trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH", trust_store_path)
 
+    # If cert_folder not provided, check environment variable, then fall back to default
+    if cert_folder is None:
+        cert_folder = os.getenv("HOPSWORKS_CERT_FOLDER", CLIENT.CERT_FOLDER_DEFAULT)
+
     # This .hw_api_key is created when a user logs into Serverless Hopsworks the first time.
     # It is then used only for future login calls to Serverless. For other Hopsworks installations it's ignored.
     api_key_path = _get_cached_api_key_path()
@@ -221,6 +232,7 @@ def login(
                 api_key_file=api_key_path,
                 hostname_verification=hostname_verification,
                 trust_store_path=trust_store_path,
+                cert_folder=cert_folder,
             )
             _connected_project = _prompt_project(_hw_connection, project, is_app)
             if _connected_project:
@@ -261,6 +273,7 @@ def login(
             api_key_value=api_key,
             hostname_verification=hostname_verification,
             trust_store_path=trust_store_path,
+            cert_folder=cert_folder,
         )
         _connected_project = _prompt_project(_hw_connection, project, is_app)
         if _connected_project:
