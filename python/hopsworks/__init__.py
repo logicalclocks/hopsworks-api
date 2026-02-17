@@ -34,10 +34,7 @@ from hopsworks_common.client.exceptions import (
     ProjectException,
     RestAPIError,
 )
-from hopsworks_common.connection import Connection
 from hopsworks_common.constants import CLIENT
-from hopsworks_common.core import project_api, secret_api
-from hopsworks_common.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
 
