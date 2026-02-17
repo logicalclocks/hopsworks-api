@@ -430,6 +430,9 @@ class FeatureStore:
 
         If you want to connect to the online feature store, see the `get_online_storage_connector` method to get the JDBC connector for the Online Feature Store.
 
+        !!! warning "Deprecated"
+            `get_storage_connector` method is deprecated. Use `get_data_source` instead.
+
         Example:
             ```python
             # connect to the Feature Store
@@ -456,9 +459,6 @@ class FeatureStore:
         If you want to connect to the online feature store, see the
         `get_online_data_source` method to get the JDBC connector for the Online
         Feature Store.
-
-        Warning "Deprecated"
-                    `get_storage_connector` method is deprecated. Use `get_data_source` instead.
 
         Example:
             ```python
@@ -526,8 +526,8 @@ class FeatureStore:
 
         The returned storage connector depends on the project that you are connected to.
 
-        Warning "Deprecated"
-                    `get_online_storage_connector` method is deprecated. Use `get_online_data_source` instead.
+        !!! warning "Deprecated"
+            `get_online_storage_connector` method is deprecated. Use `get_online_data_source` instead.
 
         Example:
             ```python
@@ -763,6 +763,13 @@ class FeatureStore:
 
         if not data_source:
             data_source = ds.DataSource(storage_connector=storage_connector, path=path)
+        elif storage_connector is not None or path is not None:
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector` and `path` "
+                "parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -971,6 +978,13 @@ class FeatureStore:
                 data_source = ds.DataSource(
                     storage_connector=storage_connector, path=path
                 )
+            elif storage_connector is not None or path is not None:
+                warnings.warn(
+                    "When `data_source` is provided, `storage_connector` and `path` "
+                    "parameters are ignored. Use `data_source` only.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -1125,6 +1139,13 @@ class FeatureStore:
                 )
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
+            )
+        elif storage_connector is not None or query is not None or path not in (None, ""):
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector`, `query` and "
+                "`path` parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
             )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
@@ -1319,6 +1340,13 @@ class FeatureStore:
                 )
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
+            )
+        elif storage_connector is not None or query is not None or path not in (None, ""):
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector`, `query` and "
+                "`path` parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
             )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,

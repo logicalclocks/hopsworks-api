@@ -736,7 +736,7 @@ class FeatureGroupBase:
         These storage connector can be accessible, deleted or inaccessible.
         For deleted and inaccessible storage connector, only minimal information is returned.
 
-        Warning "Deprecated"
+        !!! warning "Deprecated"
             `get_storage_connector_provenance` method is deprecated. Use `get_data_source_provenance` instead.
 
         Returns:
@@ -769,7 +769,7 @@ class FeatureGroupBase:
         Only the accessible storage connector is returned.
         For more items use the base method, see [`get_storage_connector_provenance`][hsfs.feature_group.FeatureGroup.get_storage_connector_provenance].
 
-        Warning "Deprecated"
+        !!! warning "Deprecated"
             `get_storage_connector_provenance` method is deprecated. Use `get_data_source_provenance` instead.
 
         Returns:
