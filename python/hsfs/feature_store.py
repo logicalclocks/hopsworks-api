@@ -1009,7 +1009,7 @@ class FeatureStore:
     def create_on_demand_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: storage_connector.StorageConnector | None = None,
         query: str | None = None,
         data_format: str | None = None,
         path: str | None = "",
@@ -1154,7 +1154,7 @@ class FeatureStore:
     def create_external_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: storage_connector.StorageConnector | None = None,
         query: str | None = None,
         data_format: str | None = None,
         path: str | None = "",

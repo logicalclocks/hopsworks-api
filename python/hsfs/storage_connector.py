@@ -331,7 +331,7 @@ class StorageConnector(ABC):
         """
         if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching databases.")
-        return self._data_source_api.get_databases(self._featurestore_id, self._name)
+        return self._data_source_api.get_databases(self)
 
     def get_tables(self, database: str):
         """Retrieve the list of tables from the specified database.
@@ -370,9 +370,7 @@ class StorageConnector(ABC):
                     "Please provide a database name."
                 )
         if self.type == StorageConnector.CRM:
-            data: DataSourceData = self._data_source_api.get_crm_resources(
-                self._featurestore_id, self._name
-            )
+            data: DataSourceData = self._data_source_api.get_crm_resources(self)
             return [
                 ds.DataSource(table=resource)
                 for resource in (data.supported_resources or [])
@@ -438,13 +436,13 @@ class StorageConnector(ABC):
 
     def _get_no_sql_data(self, data_source: ds.DataSource) -> DataSourceData:
         data: DataSourceData = self._data_source_api.get_no_sql_data(
-            self._featurestore_id, self._name, self.type, data_source
+            self, data_source
         )
 
         while data.schema_fetch_in_progress:
             time.sleep(3)
             data = self._data_source_api.get_no_sql_data(
-                self._featurestore_id, self._name, self.type, data_source
+                self, data_source
             )
             _logger.info("Schema fetch in progress...")
 
