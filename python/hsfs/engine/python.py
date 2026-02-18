@@ -1186,7 +1186,12 @@ class Engine:
     ) -> tuple[pd.DataFrame | pl.DataFrame, pd.DataFrame | pl.DataFrame | None]:
         if labels:
             labels_df = df[labels]
-            df_new = df.drop(columns=labels)
+            if HAS_POLARS and (
+                    isinstance(df, pl.DataFrame) or isinstance(df, pl.dataframe.frame.DataFrame)
+            ):
+                df_new = df.drop(labels)
+            else:
+                df_new = df.drop(columns=labels)
             return (
                 self._return_dataframe_type(df_new, dataframe_type),
                 self._return_dataframe_type(labels_df, dataframe_type),
