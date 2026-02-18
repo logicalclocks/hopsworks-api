@@ -18,9 +18,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client
 
 
+@also_available_as(
+    "hopsworks.core.services_api.ServicesApi", "hsfs.core.services_api.ServicesApi"
+)
 class ServicesApi:
     def get_service(self, service: str) -> dict[str, Any]:
         _client = client.get_instance()

@@ -4,6 +4,6 @@
     options:
       show_root_full_path: true
 
-::: hopsworks.project.Project
+::: hopsworks_common.project.Project
     options:
       show_root_full_path: true
