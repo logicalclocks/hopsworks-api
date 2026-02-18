@@ -198,14 +198,12 @@ As a convention, for methods and properties include the class name as well to re
 
 Note that you can link entities defined in other libraries as well, like `pandas` or `numpy`.
 
-To link a page of documentation and not an API refeerence object, use a relative link:
+To link a page of documentation, use its main header (h1) ID in square brackets:
 
 ```markdown
-[Model Training](../concepts/mlops/training.md)
-[Hopsworks On-Premise Installation](../setup_installation/on_prem/contact_hopsworks.md)
+[MData Transformations][data-transformations]
+[Hopsworks On-Premise Installation][hopsworks-on-premise-installation]
 ```
-
-Always start it with `..` to escape from the API reference page to the root.
 
 For external links, use the normal Markdown syntax:
 
