@@ -81,11 +81,16 @@ class DataSourceApi:
         name: str,
         connector_type: str,
         data_source: ds.DataSource,
+        use_cached=True,
     ) -> dsd.DataSourceData:
         if connector_type == "REST":
-            return self._get_rest_data(feature_store_id, name, data_source)
+            return self._get_rest_data(
+                feature_store_id, name, data_source, use_cached
+            )
         if connector_type == "CRM":
-            return self._get_crm_data(feature_store_id, name, data_source)
+            return self._get_crm_data(
+                feature_store_id, name, data_source, use_cached
+            )
         raise ValueError("This connector type does not support fetching NoSQL data.")
 
     def _get_rest_data(
@@ -93,6 +98,7 @@ class DataSourceApi:
         feature_store_id: int,
         name: str,
         data_source: ds.DataSource,
+        use_cached=True,
     ) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
@@ -106,11 +112,13 @@ class DataSourceApi:
             "resources",
             data_source.table,
         ]
-
+        
+        query_params = {"forceRefetch": not use_cached}
         return dsd.DataSourceData.from_response_json(
             _client._send_request(
                 "POST",
                 path_params,
+                query_params=query_params,
                 headers={"content-type": "application/json"},
                 data=json.dumps(data_source.rest_endpoint.to_dict()),
             )
@@ -121,6 +129,7 @@ class DataSourceApi:
         feature_store_id: int,
         name: str,
         data_source: ds.DataSource,
+        use_cached=True,
     ) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
@@ -134,11 +143,12 @@ class DataSourceApi:
             "resources",
             data_source.table,
         ]
+        query_params = data_source.to_dict()
+        if use_cached is not None:
+            query_params["forceRefetch"] = not use_cached
 
         return dsd.DataSourceData.from_response_json(
-            _client._send_request(
-                "GET", path_params, query_params=data_source.to_dict()
-            )
+            _client._send_request("GET", path_params, query_params=query_params)
         )
 
     def get_data(

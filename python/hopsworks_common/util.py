@@ -481,6 +481,7 @@ def validate_job_conf(config, project_name):
     if (
         config["type"] != "dockerJobConfiguration"
         and config["type"] != "flinkJobConfiguration"
+        and config["type"] != "ingestionJobConfiguration"
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")

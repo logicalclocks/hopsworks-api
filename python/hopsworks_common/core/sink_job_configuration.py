@@ -17,15 +17,19 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import util
 from hopsworks_common.job_schedule import JobSchedule
+from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 
 
 if TYPE_CHECKING:
+    pass
+else:
     from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 
 
@@ -53,7 +57,7 @@ class FeatureColumnMapping:
         return cls(**json_decamelized)
 
     def to_json(self):
-        return json.dumps(self, cls=util.Encoder)
+        return humps.decamelize(self.to_dict())
 
     @property
     def source_column(self) -> str:
@@ -99,31 +103,70 @@ class LoadingConfig:
         self._initial_value = initial_value
 
     def to_dict(self):
+        incremental_config = {
+            "sourceCursorField": self._source_cursor_field,
+        }
+        if self._loading_strategy in [
+            LoadingStrategy.INCREMENTAL_ID,
+            LoadingStrategy.INCREMENTAL_TIMESTAMP,
+        ]:
+            incremental_config["initialValue"] = self._initial_value
+        elif self._loading_strategy == LoadingStrategy.INCREMENTAL_DATE:
+            if self._initial_value is not None:
+                if isinstance(self._initial_value, (int, float)):
+                    incremental_config["initialIngestionDate"] = int(
+                        self._initial_value
+                    )
+                else:
+                    initial_value = str(self._initial_value)
+                    parsed = None
+                    if "T" in initial_value:
+                        if initial_value.endswith("Z"):
+                            parsed = datetime.fromisoformat(initial_value[:-1])
+                            if parsed.tzinfo is None:
+                                parsed = parsed.replace(tzinfo=timezone.utc)
+                        else:
+                            parsed = datetime.fromisoformat(initial_value)
+                            if parsed.tzinfo is None:
+                                parsed = parsed.replace(tzinfo=timezone.utc)
+                    if parsed is not None:
+                        incremental_config["initialIngestionDate"] = int(
+                            parsed.timestamp() * 1000
+                        )
+                    else:
+                        incremental_config["initialIngestionDate"] = (
+                            util.get_timestamp_from_date_string(initial_value)
+                        )
+
+        if all(value is None for value in incremental_config.values()):
+            incremental_config = None
+
         return {
             "loadingStrategy": self._loading_strategy.value,
-            "sourceCursorField": self._source_cursor_field,
-            "initialValue": (
-                self._initial_value
-                if (
-                    self._loading_strategy == LoadingStrategy.INCREMENTAL_ID
-                    or self._loading_strategy == LoadingStrategy.INCREMENTAL_TIMESTAMP
-                )
-                else None
-            ),
-            "initialValueDate": (
-                self._initial_value
-                if self._loading_strategy == LoadingStrategy.INCREMENTAL_DATE
-                else None
-            ),
+            "incrementalLoadingConfig": incremental_config,
         }
 
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
+        incremental_config = json_decamelized.pop("incremental_loading_config", None)
+        if incremental_config:
+            json_decamelized.setdefault(
+                "source_cursor_field", incremental_config.get("source_cursor_field")
+            )
+            if "initial_value" not in json_decamelized:
+                if "initial_value" in incremental_config:
+                    json_decamelized["initial_value"] = incremental_config.get(
+                        "initial_value"
+                    )
+                elif "initial_ingestion_date" in incremental_config:
+                    json_decamelized["initial_value"] = incremental_config.get(
+                        "initial_ingestion_date"
+                    )
         return cls(**json_decamelized)
 
     def to_json(self):
-        return json.dumps(self, cls=util.Encoder)
+        return humps.decamelize(self.to_dict())
 
 
 class SinkJobConfiguration:
@@ -159,7 +202,12 @@ class SinkJobConfiguration:
         self._featuregroup_id = None
         self._featurestore_id = None
         self._storage_connector_id = None
-        self._endpoint_config = endpoint_config
+        if isinstance(endpoint_config, dict):
+            self._endpoint_config = RestEndpointConfig.from_response_json(
+                endpoint_config
+            )
+        else:
+            self._endpoint_config = endpoint_config
         self._schedule_config = (
             JobSchedule.from_response_json(schedule_config)
             if isinstance(schedule_config, dict)
@@ -177,11 +225,7 @@ class SinkJobConfiguration:
                 else self._loading_config
             ),
             "columnMappings": [
-                (
-                    mapping.to_dict()
-                    if isinstance(mapping, FeatureColumnMapping)
-                    else mapping
-                )
+                self._normalize_column_mapping(mapping)
                 for mapping in self._column_mappings
             ],
             "featuregroupId": self._featuregroup_id,
@@ -199,6 +243,24 @@ class SinkJobConfiguration:
             ),
         }
 
+    @staticmethod
+    def _normalize_column_mapping(mapping):
+        if isinstance(mapping, FeatureColumnMapping):
+            return mapping.to_dict()
+        if isinstance(mapping, dict):
+            if "sourceColumn" in mapping and "featureName" in mapping:
+                return mapping
+            if "source_column" in mapping and "feature_name" in mapping:
+                return {
+                    "sourceColumn": mapping["source_column"],
+                    "featureName": mapping["feature_name"],
+                }
+        source_column = getattr(mapping, "source_column", None)
+        feature_name = getattr(mapping, "feature_name", None)
+        if source_column is not None and feature_name is not None:
+            return {"sourceColumn": source_column, "featureName": feature_name}
+        return mapping
+
     def json(self):
         return json.dumps(self.to_dict())
 
@@ -213,12 +275,15 @@ class SinkJobConfiguration:
             for mapping in json_decamelized.get("column_mappings", [])
         ]
         job_schedule = json_decamelized.get("job_schedule", None)
+        endpoint_config = json_dict.get("endpointConfig", None)
         return SinkJobConfiguration(
             batch_size=json_decamelized.get("batch_size", 100000),
             name=json_decamelized.get("name", None),
             loading_config=loading_config,
             column_mappings=column_mappings,
-            endpoint_config=json_decamelized.get("endpoint_config", None),
+            endpoint_config=RestEndpointConfig.from_response_json(endpoint_config)
+            if endpoint_config
+            else None,
             schedule_config=(
                 JobSchedule.from_response_json(job_schedule) if job_schedule else None
             ),
@@ -228,7 +293,13 @@ class SinkJobConfiguration:
         self._featuregroup_id = kwargs.get("featuregroup_id")
         self._featurestore_id = kwargs.get("featurestore_id")
         self._storage_connector_id = kwargs.get("storage_connector_id")
-        self._endpoint_config = kwargs.get("endpoint_config")
+        endpoint_config = kwargs.get("endpoint_config")
+        if isinstance(endpoint_config, dict):
+            self._endpoint_config = RestEndpointConfig.from_response_json(
+                endpoint_config
+            )
+        else:
+            self._endpoint_config = endpoint_config
         self._name = kwargs.get("name", self._name)
 
     @property

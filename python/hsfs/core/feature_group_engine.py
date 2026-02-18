@@ -619,6 +619,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 "REST endpoint configuration is missing in the data source."
             )
         is_new_feature_group = feature_group.id is None
+        requested_sink_job_conf = feature_group.sink_job_conf
         pre_save_rest_endpoint = (
             feature_group.data_source.rest_endpoint
             if feature_group.data_source
@@ -631,7 +632,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and not new_fg.data_source.rest_endpoint
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
-        self._create_sink_job_if_needed(new_fg, is_new_feature_group)
+        self._create_sink_job_if_needed(
+            new_fg, is_new_feature_group, sink_job_conf=requested_sink_job_conf
+        )
 
         if feature_schema_available:
             # create empty table to write feature schema to table path
@@ -680,11 +683,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             delta_engine_instance.save_empty_table(write_options=write_options)
 
     def _create_sink_job_if_needed(
-        self, feature_group: fg.FeatureGroup, is_new_feature_group: bool
+        self,
+        feature_group: fg.FeatureGroup,
+        is_new_feature_group: bool,
+        sink_job_conf: SinkJobConfiguration | None = None,
     ) -> None:
         if not is_new_feature_group or not feature_group.sink_enabled:
             return
-        sink_job_conf = feature_group.sink_job_conf or SinkJobConfiguration()
+        sink_job_conf = (
+            sink_job_conf
+            or feature_group.sink_job_conf
+            or SinkJobConfiguration()
+        )
         job_name = sink_job_conf.name
         job_name = job_name or self._get_default_ingestion_job_name(feature_group)
         kwargs: dict[str, Any] = {}
@@ -695,12 +705,14 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.storage_connector.type == StorageConnector.REST
             and feature_group.data_source.rest_endpoint
         ):
-            kwargs["endpoint_config"] = (
-                feature_group.data_source.rest_endpoint.to_dict()
-            )
+            kwargs["endpoint_config"] = feature_group.data_source.rest_endpoint
         sink_job_conf.set_extra_params(**kwargs)
-
+        print(
+            f"Creating sink job for feature group {feature_group.name} with job name {job_name} and configuration: {sink_job_conf.json()}"
+        )
         job = self._job_api.create(job_name, sink_job_conf)
+        feature_group._sink_job = job
+        feature_group._sink_job_conf = sink_job_conf
         print(f"Sink job created successfully, explore it at {job.get_url()}")
         if sink_job_conf.schedule_config:
             self._job_api.create_or_update_schedule_job(

@@ -341,7 +341,7 @@ class StorageConnector(ABC):
             self._featurestore_id, self._name, database
         )
 
-    def get_data(self, data_source: ds.DataSource) -> DataSourceData:
+    def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
         """Retrieve the data from the data source.
 
         !!! example
@@ -358,6 +358,7 @@ class StorageConnector(ABC):
 
         Args:
             data_source (DataSource): The data source to retrieve data from.
+            use_cached (bool): Whether to use cached data if available. Only supported for CRM and REST connectors. Defaults to `True`.
 
         Returns:
             DataSourceData: An object containing the data retrieved from the data source.
@@ -369,7 +370,7 @@ class StorageConnector(ABC):
                 )
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
-            return self._get_no_sql_data(data_source)
+            return self._get_no_sql_data(data_source, use_cached)
         return self._data_source_api.get_data(
             self._featurestore_id, self._name, data_source
         )
@@ -401,9 +402,9 @@ class StorageConnector(ABC):
             self._featurestore_id, self._name, data_source
         )
 
-    def _get_no_sql_data(self, data_source: ds.DataSource) -> DataSourceData:
+    def _get_no_sql_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
         data: DataSourceData = self._data_source_api.get_no_sql_data(
-            self._featurestore_id, self._name, self.type, data_source
+            self._featurestore_id, self._name, self.type, data_source, use_cached
         )
 
         while data.schema_fetch_in_progress:

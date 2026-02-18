@@ -54,8 +54,11 @@ class QueryParams:
             "value": self._value,
         }
 
+    def to_json(self) -> dict[str, Any]:
+        return humps.decamelize(self.to_dict())
+
     def json(self) -> str:
-        return json.dumps(self, cls=util.Encoder)
+        return json.dumps(self.to_json(), cls=util.Encoder)
 
     def __repr__(self) -> str:
         return f"QueryParams({self._name!r}, {self._value!r})"
@@ -94,7 +97,15 @@ class PaginationConfig:
         if pagination_type is None:
             return None
 
-        pagination_enum = PaginationType(pagination_type)
+        if isinstance(pagination_type, PaginationType):
+            pagination_enum = pagination_type
+        elif isinstance(pagination_type, str):
+            pagination_enum = PaginationType(pagination_type.lower())
+        else:
+            raise TypeError(
+                "pagination_type must be a PaginationType or str, "
+                f"got {type(pagination_type).__name__}."
+            )
         pagination_class = _PAGINATION_CLASS_MAP.get(pagination_enum)
         if pagination_class is None:
             raise ValueError(
@@ -119,11 +130,14 @@ class PaginationConfig:
         payload_camelized = humps.camelize(payload) if payload else {}
 
         if self.pagination_type is not None:
-            payload_camelized["type"] = self.pagination_type.value
+            payload_camelized["type"] = self.pagination_type.value.upper()
         return payload_camelized
 
+    def to_json(self) -> dict[str, Any]:
+        return humps.decamelize(self.to_dict())
+
     def json(self) -> str:
-        return json.dumps(self, cls=util.Encoder)
+        return json.dumps(self.to_json(), cls=util.Encoder)
 
     def __repr__(self) -> str:
         payload = self._merge_payload(self._payload())
@@ -354,8 +368,11 @@ class RestEndpointConfig:
             payload["paginationConfig"] = self._pagination_config.to_dict()
         return payload
 
+    def to_json(self) -> dict[str, Any]:
+        return humps.decamelize(self.to_dict())
+
     def json(self) -> str:
-        return json.dumps(self, cls=util.Encoder)
+        return json.dumps(self.to_json(), cls=util.Encoder)
 
     def __repr__(self) -> str:
         return (
