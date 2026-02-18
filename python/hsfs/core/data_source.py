@@ -72,8 +72,6 @@ class DataSource:
             rest_endpoint (Union[RestEndpointConfig, Dict, None]): REST endpoint configuration for the data source.
             **kwargs: Additional keyword arguments.
         """
-        self._data_source_api = data_source_api.DataSourceApi()
-
         self._query = query
         self._database = database
         self._group = group

@@ -313,7 +313,7 @@ class StorageConnector(ABC):
             return training_datasets_provenance.accessible
         return []
 
-    def get_databases(self):
+    def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
         !!! example
@@ -333,7 +333,7 @@ class StorageConnector(ABC):
             raise ValueError("This connector type does not support fetching databases.")
         return self._data_source_api.get_databases(self)
 
-    def get_tables(self, database: str):
+    def get_tables(self, database: str = None) -> list[ds.DataSource]:
         """Retrieve the list of tables from the specified database.
 
         !!! example

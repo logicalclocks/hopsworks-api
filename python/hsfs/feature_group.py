@@ -804,7 +804,7 @@ class FeatureGroupBase:
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        data_source_provenance = self.get_storage_connector_provenance()
+        data_source_provenance = self.get_data_source_provenance()
 
         if data_source_provenance and (
             data_source_provenance.inaccessible or data_source_provenance.deleted
