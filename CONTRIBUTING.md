@@ -201,7 +201,7 @@ Note that you can link entities defined in other libraries as well, like `pandas
 To link a page of documentation, use its main header (h1) ID in square brackets:
 
 ```markdown
-[MData Transformations][data-transformations]
+[Data Transformations][data-transformations]
 [Hopsworks On-Premise Installation][hopsworks-on-premise-installation]
 ```
 
