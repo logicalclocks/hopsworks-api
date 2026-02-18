@@ -44,6 +44,9 @@ class FeatureGroupTools:
         self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
             self.get_features
         )
+        self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
+            self.get_feature_group_row_count
+        )
 
     def _get_feature_group_versions(self, name: str | None = None):
         # Get the current project and its feature groups
@@ -165,6 +168,20 @@ class FeatureGroupTools:
         raise RuntimeError(
             f"Unable to convert preview to dictionary. Here's the raw preview:\n{preview}"
         )
+
+    async def get_feature_group_row_count(
+        self,
+        ctx: Context,
+        name: str,
+        version: int | None = None,
+    ) -> int:
+        """Get the row count of a feature group with the specified name and version (latest by default)."""
+        await ctx.info(
+            f"Retrieving row count of {name}{f' v{version}' if version else ''} feature group..."
+        )
+
+        fg = self._get_feature_group_version(name, version)
+        return fg.get_row_count()
 
     async def get_features(
         self,

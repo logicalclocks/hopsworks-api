@@ -807,6 +807,28 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_generated_feature_groups(self)
 
+    def get_row_count(self) -> int:
+        """Get the number of rows in this feature group.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            row_count = fg.get_row_count()
+            ```
+
+        Returns:
+            The number of rows in the feature group.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine.get_row_count(self)
+
     def get_feature(self, name: str) -> feature.Feature | None:
         """Retrieve a `Feature` object from the schema of the feature group.
 
