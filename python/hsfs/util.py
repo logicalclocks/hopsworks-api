@@ -56,12 +56,11 @@ from hopsworks_common.util import (
     verify_attribute_key_names,
 )
 from hsfs import feature, serving_key
-from hsfs.constructor import filter
 from hsfs.core import feature_group_api
 
 
 if TYPE_CHECKING:
-    from hsfs.constructor import serving_prepared_statement
+    from hsfs.constructor import filter, serving_prepared_statement
 
 
 FeatureStoreEncoder = Encoder
