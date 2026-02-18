@@ -54,11 +54,8 @@ class QueryParams:
             "value": self._value,
         }
 
-    def to_json(self) -> dict[str, Any]:
-        return humps.decamelize(self.to_dict())
-
     def json(self) -> str:
-        return json.dumps(self.to_json(), cls=util.Encoder)
+        return json.dumps(humps.decamelize(self.to_dict()), cls=util.Encoder)
 
     def __repr__(self) -> str:
         return f"QueryParams({self._name!r}, {self._value!r})"
@@ -133,11 +130,8 @@ class PaginationConfig:
             payload_camelized["type"] = self.pagination_type.value.upper()
         return payload_camelized
 
-    def to_json(self) -> dict[str, Any]:
-        return humps.decamelize(self.to_dict())
-
     def json(self) -> str:
-        return json.dumps(self.to_json(), cls=util.Encoder)
+        return json.dumps(humps.decamelize(self.to_dict()), cls=util.Encoder)
 
     def __repr__(self) -> str:
         payload = self._merge_payload(self._payload())
@@ -368,11 +362,8 @@ class RestEndpointConfig:
             payload["paginationConfig"] = self._pagination_config.to_dict()
         return payload
 
-    def to_json(self) -> dict[str, Any]:
-        return humps.decamelize(self.to_dict())
-
     def json(self) -> str:
-        return json.dumps(self.to_json(), cls=util.Encoder)
+        return json.dumps(humps.decamelize(self.to_dict()), cls=util.Encoder)
 
     def __repr__(self) -> str:
         return (

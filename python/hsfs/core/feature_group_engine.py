@@ -691,9 +691,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if not is_new_feature_group or not feature_group.sink_enabled:
             return
         sink_job_conf = (
-            sink_job_conf
-            or feature_group.sink_job_conf
-            or SinkJobConfiguration()
+            sink_job_conf or feature_group.sink_job_conf or SinkJobConfiguration()
         )
         job_name = sink_job_conf.name
         job_name = job_name or self._get_default_ingestion_job_name(feature_group)
@@ -707,9 +705,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         ):
             kwargs["endpoint_config"] = feature_group.data_source.rest_endpoint
         sink_job_conf.set_extra_params(**kwargs)
-        print(
-            f"Creating sink job for feature group {feature_group.name} with job name {job_name} and configuration: {sink_job_conf.json()}"
-        )
         job = self._job_api.create(job_name, sink_job_conf)
         feature_group._sink_job = job
         feature_group._sink_job_conf = sink_job_conf
