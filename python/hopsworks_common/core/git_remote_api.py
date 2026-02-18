@@ -14,12 +14,10 @@
 #   limitations under the License.
 #
 
-from hopsworks_apigen import also_available_as
 from hopsworks_common import client, git_op_execution, git_remote
 from hopsworks_common.engine import git_engine
 
 
-@also_available_as("hopsworks.core.git_remote_api.GitRemoteApi")
 class GitRemoteApi:
     def __init__(self):
         self._git_engine = git_engine.GitEngine()

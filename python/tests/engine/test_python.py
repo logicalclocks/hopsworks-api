@@ -466,10 +466,7 @@ class TestPython:
         python_engine = python.Engine()
 
         connector = storage_connector.HopsFSConnector(
-            id=1,
-            name="test_connector",
-            featurestore_id=1,
-            hopsfs_path="/path",
+            id=1, name="test_connector", featurestore_id=1, hopsfs_path="/path",
         )
 
         # Act

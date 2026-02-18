@@ -23,7 +23,6 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
@@ -46,7 +45,6 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
-@public
 class Model:
     NOT_FOUND_ERROR_CODE = 360000
     """Metadata object representing a model in the Model Registry."""
@@ -105,7 +103,6 @@ class Model:
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
 
-    @public
     @usage.method_logger
     def save(
         self,
@@ -174,7 +171,6 @@ class Model:
             upload_configuration=upload_configuration,
         )
 
-    @public
     @usage.method_logger
     def download(self, local_path=None) -> str:
         """Download the model files.
@@ -189,7 +185,6 @@ class Model:
         """
         return self._model_engine.download(model_instance=self, local_path=local_path)
 
-    @public
     @usage.method_logger
     def delete(self):
         """Delete the model.
@@ -203,7 +198,6 @@ class Model:
         """
         self._model_engine.delete(model_instance=self)
 
-    @public
     @usage.method_logger
     def deploy(
         self,
@@ -285,7 +279,6 @@ class Model:
 
         return predictor.deploy()
 
-    @public
     @usage.method_logger
     def add_tag(self, name: str, value: str | dict):
         """Attach a tag to a model.
@@ -302,7 +295,6 @@ class Model:
         """
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
-    @public
     @usage.method_logger
     def set_tag(self, name: str, value: str | dict):
         """Deprecated: Use add_tag instead."""
@@ -313,7 +305,6 @@ class Model:
         )
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
-    @public
     @usage.method_logger
     def delete_tag(self, name: str):
         """Delete a tag attached to a model.
@@ -326,7 +317,6 @@ class Model:
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
 
-    @public
     def get_tag(self, name: str) -> str | None:
         """Get the tags of a model.
 
@@ -341,7 +331,6 @@ class Model:
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
 
-    @public
     def get_tags(self) -> dict[str, tag.Tag]:
         """Retrieves all tags attached to a model.
 
@@ -353,7 +342,6 @@ class Model:
         """
         return self._model_engine.get_tags(model_instance=self)
 
-    @public
     def get_url(self):
         """Get url to the model in Hopsworks."""
         path = (
@@ -366,7 +354,6 @@ class Model:
         )
         return util.get_hostname_replaced_url(sub_path=path)
 
-    @public
     def get_feature_view(self, init: bool = True, online: bool = False):
         """Get the parent feature view of this model, based on explicit provenance.
 
@@ -402,7 +389,6 @@ class Model:
                 fv.init_batch_scoring(training_dataset_version=td.version)
         return fv
 
-    @public
     def get_feature_view_provenance(self) -> explicit_provenance.Links:
         """Get the parent feature view of this model, based on explicit provenance.
 
@@ -417,7 +403,6 @@ class Model:
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
 
-    @public
     def get_training_dataset_provenance(self) -> explicit_provenance.Links:
         """Get the parent training dataset of this model, based on explicit provenance.
 
@@ -471,7 +456,6 @@ class Model:
             "trainingDatasetVersion": self._training_dataset_version,
         }
 
-    @public
     @property
     def id(self):
         """Id of the model."""
@@ -481,7 +465,6 @@ class Model:
     def id(self, id):
         self._id = id
 
-    @public
     @property
     def name(self):
         """Name of the model."""
@@ -491,7 +474,6 @@ class Model:
     def name(self, name):
         self._name = name
 
-    @public
     @property
     def version(self):
         """Version of the model."""
@@ -501,7 +483,6 @@ class Model:
     def version(self, version):
         self._version = version
 
-    @public
     @property
     def description(self):
         """Description of the model."""
@@ -511,7 +492,6 @@ class Model:
     def description(self, description):
         self._description = description
 
-    @public
     @property
     def created(self):
         """Creation date of the model."""
@@ -521,7 +501,6 @@ class Model:
     def created(self, created):
         self._created = created
 
-    @public
     @property
     def creator(self):
         """Creator of the model."""
@@ -531,7 +510,6 @@ class Model:
     def creator(self, creator):
         self._creator = creator
 
-    @public
     @property
     def environment(self):
         """Input example of the model."""
@@ -545,7 +523,6 @@ class Model:
     def environment(self, environment):
         self._environment = environment
 
-    @public
     @property
     def training_metrics(self):
         """Training metrics of the model."""
@@ -555,7 +532,6 @@ class Model:
     def training_metrics(self, training_metrics):
         self._training_metrics = training_metrics
 
-    @public
     @property
     def program(self):
         """Executable used to export the model."""
@@ -569,7 +545,6 @@ class Model:
     def program(self, program):
         self._program = program
 
-    @public
     @property
     def user(self):
         """User of the model."""
@@ -579,7 +554,6 @@ class Model:
     def user(self, user_full_name):
         self._user_full_name = user_full_name
 
-    @public
     @property
     def input_example(self):
         """input_example of the model."""
@@ -591,7 +565,6 @@ class Model:
     def input_example(self, input_example):
         self._input_example = input_example
 
-    @public
     @property
     def framework(self):
         """Framework of the model."""
@@ -601,7 +574,6 @@ class Model:
     def framework(self, framework):
         self._framework = framework
 
-    @public
     @property
     def model_schema(self):
         """Model schema of the model."""
@@ -613,7 +585,6 @@ class Model:
     def model_schema(self, model_schema):
         self._model_schema = model_schema
 
-    @public
     @property
     def project_name(self):
         """project_name of the model."""
@@ -623,7 +594,6 @@ class Model:
     def project_name(self, project_name):
         self._project_name = project_name
 
-    @public
     @property
     def model_registry_id(self):
         """model_registry_id of the model."""
@@ -633,7 +603,6 @@ class Model:
     def model_registry_id(self, model_registry_id):
         self._model_registry_id = model_registry_id
 
-    @public
     @property
     def model_path(self):
         """Path of the model with version folder omitted.
@@ -642,7 +611,6 @@ class Model:
         """
         return f"/Projects/{self.project_name}/Models/{self.name}"
 
-    @public
     @property
     def version_path(self):
         """Path of the model including version folder.
@@ -651,7 +619,6 @@ class Model:
         """
         return f"{self.model_path}/{str(self.version)}"
 
-    @public
     @property
     def model_files_path(self):
         """Path of the model files including version and files folder.
@@ -660,7 +627,6 @@ class Model:
         """
         return f"{self.version_path}/{MODEL_REGISTRY.MODEL_FILES_DIR_NAME}"
 
-    @public
     @property
     def shared_registry_project_name(self):
         """shared_registry_project_name of the model."""
@@ -670,7 +636,6 @@ class Model:
     def shared_registry_project_name(self, shared_registry_project_name):
         self._shared_registry_project_name = shared_registry_project_name
 
-    @public
     @property
     def training_dataset_version(self) -> int:
         return self._training_dataset_version

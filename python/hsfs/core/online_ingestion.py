@@ -25,7 +25,6 @@ from typing import (
 )
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import client, util
 from hsfs.core import online_ingestion_result
 from hsfs.core.opensearch import OpenSearchClientSingleton
@@ -36,7 +35,6 @@ if TYPE_CHECKING:
     from hsfs import feature_group as fg_mod
 
 
-@public
 class OnlineIngestion:
     """Metadata object used to provide Online Ingestion information for a feature group.
 
@@ -109,7 +107,6 @@ class OnlineIngestion:
             ]
         return None
 
-    @public
     def refresh(self):
         """Refresh the state of this OnlineIngestion object from the backend."""
         online_ingestion = self.feature_group.get_online_ingestion(self._id)
@@ -131,7 +128,6 @@ class OnlineIngestion:
         """
         return json.dumps(self, cls=util.Encoder)
 
-    @public
     @property
     def id(self) -> int | None:
         """Get the unique identifier for the ingestion operation.
@@ -141,7 +137,6 @@ class OnlineIngestion:
         """
         return self._id
 
-    @public
     @property
     def num_entries(self) -> int | None:
         """Get the total number of entries to ingest.
@@ -160,7 +155,6 @@ class OnlineIngestion:
         """
         self._num_entries = num_entries
 
-    @public
     @property
     def results(
         self,
@@ -172,7 +166,6 @@ class OnlineIngestion:
         """
         return self._results
 
-    @public
     @property
     def feature_group(self) -> fg_mod.FeatureGroup:
         """Get the feature group associated with this ingestion.
@@ -182,7 +175,6 @@ class OnlineIngestion:
         """
         return self._feature_group
 
-    @public
     def wait_for_completion(self, options: dict[str, Any] = None):
         """Wait for the online ingestion operation to complete, displaying a progress bar.
 
@@ -234,7 +226,6 @@ class OnlineIngestion:
 
                 self.refresh()
 
-    @public
     def print_logs(self, priority: str = "error", size: int = 20):
         """Print logs related to the online ingestion operation from OpenSearch.
 

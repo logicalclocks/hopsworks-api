@@ -19,15 +19,12 @@
 from __future__ import annotations
 
 import six
-from hopsworks_apigen import also_available_as
 
 
-@also_available_as("hsml.client.istio.grpc.exceptions.OpenApiException")
 class OpenApiException(Exception):
     """The base exception class for all OpenAPIExceptions."""
 
 
-@also_available_as("hsml.client.istio.grpc.exceptions.ApiTypeError")
 class ApiTypeError(OpenApiException, TypeError):
     def __init__(self, msg, path_to_item=None, valid_classes=None, key_type=None):
         """Raises an exception for TypeErrors.
@@ -56,7 +53,6 @@ class ApiTypeError(OpenApiException, TypeError):
         super().__init__(full_msg)
 
 
-@also_available_as("hsml.client.istio.grpc.exceptions.ApiValueError")
 class ApiValueError(OpenApiException, ValueError):
     def __init__(self, msg: str, path_to_item: list | None = None):
         """An error related to API value.
@@ -72,7 +68,6 @@ class ApiValueError(OpenApiException, ValueError):
         super().__init__(full_msg)
 
 
-@also_available_as("hsml.client.istio.grpc.exceptions.ApiKeyError")
 class ApiKeyError(OpenApiException, KeyError):
     def __init__(self, msg: str, path_to_item: list | None = None):
         """An error related to the API key.
@@ -89,7 +84,6 @@ class ApiKeyError(OpenApiException, KeyError):
         super().__init__(full_msg)
 
 
-@also_available_as("hsml.client.istio.grpc.exceptions.ApiException")
 class ApiException(OpenApiException):
     def __init__(self, status=None, reason=None, http_resp=None):
         if http_resp:
@@ -115,7 +109,6 @@ class ApiException(OpenApiException):
         return error_message
 
 
-@also_available_as("hsml.client.istio.grpc.exceptions.render_path")
 def render_path(path_to_item):
     """Returns a string representation of a path."""
     result = ""

@@ -32,7 +32,6 @@ class FeatureGroup(BaseModel):
     notification_topic_name: str | None = None
     deprecated: bool | None = None
 
-
 class Feature(BaseModel):
     name: str
     type: str | None = None

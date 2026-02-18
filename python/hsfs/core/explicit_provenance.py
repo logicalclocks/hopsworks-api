@@ -19,11 +19,9 @@ import json
 from enum import Enum
 
 import humps
-from hopsworks_apigen import public
 from hsfs import feature_group, feature_view, storage_connector, training_dataset, util
 
 
-@public
 class Artifact:
     class MetaType(Enum):
         DELETED = 1
@@ -62,19 +60,16 @@ class Artifact:
         self._href = href
         self._exception_cause = exception_cause
 
-    @public
     @property
     def feature_store_name(self):
         """Name of the feature store in which the artifact is located."""
         return self._feature_store_name
 
-    @public
     @property
     def name(self):
         """Name of the artifact."""
         return self._name
 
-    @public
     @property
     def version(self):
         """Version of the artifact."""
@@ -131,7 +126,6 @@ class Artifact:
         )
 
 
-@public
 class Links:
     def __init__(self):
         self._accessible = []
@@ -139,7 +133,6 @@ class Links:
         self._inaccessible = []
         self._faulty = []
 
-    @public
     @property
     def deleted(self):
         """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
@@ -148,7 +141,6 @@ class Links:
         """
         return self._deleted
 
-    @public
     @property
     def inaccessible(self):
         """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
@@ -158,7 +150,6 @@ class Links:
         """
         return self._inaccessible
 
-    @public
     @property
     def accessible(self):
         """List of [StorageConnectors|FeatureGroups|FeatureViews|Models] objects which are part of the provenance graph requested.
@@ -168,7 +159,6 @@ class Links:
         """
         return self._accessible
 
-    @public
     @property
     def faulty(self):
         """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.

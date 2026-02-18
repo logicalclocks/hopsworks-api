@@ -41,6 +41,7 @@ class LoadingStrategy(Enum):
 
 
 class FeatureColumnMapping:
+
     def __init__(self, source_column: str, feature_name: str):
         self.source_column = source_column
         self.feature_name = feature_name

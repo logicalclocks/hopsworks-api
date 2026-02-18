@@ -17,13 +17,11 @@
 import time
 from typing import Literal
 
-from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.core import execution_api, flink_cluster_api
 from hopsworks_common.engine import execution_engine
 
 
-@public("hopsworks.flink_cluster.FlinkCluster")
 class FlinkCluster:
     NOT_FOUND_ERROR_CODE = 130009
 
@@ -69,7 +67,6 @@ class FlinkCluster:
                     ongoing_executions += 1
         return ongoing_executions
 
-    @public
     @usage.method_logger
     def start(self, await_time=1800):
         """Start the flink cluster and wait until it reaches RUNNING state.
@@ -120,7 +117,6 @@ class FlinkCluster:
         self._execution_id = execution.id
         return self
 
-    @public
     def get_jobs(self) -> list[dict]:
         """Get jobs from the flink cluster.
 
@@ -147,7 +143,6 @@ class FlinkCluster:
             self._get_execution(assert_running=True)
         )
 
-    @public
     def get_job(self, job_id) -> dict:
         """Get specific job from the flink cluster.
 
@@ -178,7 +173,6 @@ class FlinkCluster:
             self._get_execution(assert_running=True), job_id
         )
 
-    @public
     @usage.method_logger
     def stop_job(self, job_id):
         """Stop specific job in the flink cluster.
@@ -207,7 +201,6 @@ class FlinkCluster:
             self._get_execution(assert_running=True), job_id
         )
 
-    @public
     def get_jars(self) -> list[dict]:
         """Get already uploaded jars from the flink cluster.
 
@@ -234,7 +227,6 @@ class FlinkCluster:
             self._get_execution(assert_running=True)
         )
 
-    @public
     def upload_jar(self, jar_file):
         """Upload jar file to the flink cluster.
 
@@ -262,7 +254,6 @@ class FlinkCluster:
             self._get_execution(assert_running=True), jar_file
         )
 
-    @public
     @usage.method_logger
     def submit_job(self, jar_id, main_class, job_arguments=None) -> str:
         """Submit job using the specific jar file uploaded to the flink cluster.
@@ -303,7 +294,6 @@ class FlinkCluster:
             self._get_execution(assert_running=True), jar_id, main_class, job_arguments
         )
 
-    @public
     def job_state(
         self, job_id
     ) -> Literal[
@@ -348,7 +338,6 @@ class FlinkCluster:
             self._get_execution(assert_running=True), job_id
         )
 
-    @public
     @usage.method_logger
     def stop(self):
         """Stop this cluster.
@@ -376,37 +365,31 @@ class FlinkCluster:
             self._get_execution(assert_running=False)
         )
 
-    @public
     @property
     def id(self):
         """Id of the cluster."""
         return self._job._id
 
-    @public
     @property
     def name(self):
         """Name of the cluster."""
         return self._job._name
 
-    @public
     @property
     def creation_time(self):
         """Date of creation for the cluster."""
         return self._job._creation_time
 
-    @public
     @property
     def config(self):
         """Configuration for the cluster."""
         return self._job._config
 
-    @public
     @property
     def creator(self):
         """Creator of the cluster."""
         return self._job._creator
 
-    @public
     @property
     def state(self):
         """State of the cluster."""
@@ -415,7 +398,6 @@ class FlinkCluster:
             return current_exec.state
         return None
 
-    @public
     def get_url(self):
         """Get url to the flink cluster in Hopsworks."""
         _client = client.get_instance()
