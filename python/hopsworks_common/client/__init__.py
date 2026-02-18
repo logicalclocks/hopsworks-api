@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client import external, hopsworks, istio
 from hopsworks_common.constants import HOSTS
 
@@ -66,6 +67,7 @@ def get_instance() -> hopsworks.Client | external.Client:
     return _client
 
 
+@also_available_as("hopsworks.client.stop")
 def stop() -> None:
     global _client
     if _client:

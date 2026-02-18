@@ -30,6 +30,7 @@ from typing import (
 
 import humps
 import pandas as pd
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api
@@ -117,6 +118,7 @@ SplineDataFrameTypes = Union[
 _logger = logging.getLogger(__name__)
 
 
+@public
 @typechecked
 class FeatureView:
     """Metadata class for Hopsworks feature views.
@@ -248,6 +250,7 @@ class FeatureView:
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
 
+    @public
     def get_last_accessed_training_dataset(self):
         """Get the last accessed training dataset version used for this feature view.
 
@@ -258,6 +261,7 @@ class FeatureView:
         """
         return self._last_accessed_training_dataset
 
+    @public
     def delete(self, force: bool = False) -> None:
         """Delete current feature view, all associated metadata and training data.
 
@@ -291,6 +295,7 @@ class FeatureView:
         )
         self._feature_view_engine.delete(self.name, self.version, force)
 
+    @public
     @staticmethod
     def clean(
         feature_store_id: int,
@@ -333,6 +338,7 @@ class FeatureView:
             feature_view_name, feature_view_version, force
         )
 
+    @public
     def update(self) -> FeatureView:
         """Update the description of the feature view.
 
@@ -359,6 +365,7 @@ class FeatureView:
         """
         return self._feature_view_engine.update(self)
 
+    @public
     @usage.method_logger
     def init_serving(
         self,
@@ -392,7 +399,7 @@ class FeatureView:
                 Transformation statistics are fetched from training dataset and applied to the feature vector.
                 Defaults to 1 for online feature store.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             init_sql_client:
@@ -436,8 +443,8 @@ class FeatureView:
                   Defaults to True.
 
             feature_logger:
-                Custom feature logger which [`feature_view.log()`](#log) uses to log feature vectors.
-                If provided, feature vectors will not be inserted to logging feature group automatically when `feature_view.log()` is called.
+                Custom feature logger which [`FeatureView.log`][hsfs.feature_view.FeatureView.log] uses to log feature vectors.
+                If provided, feature vectors will not be inserted to logging feature group automatically when `FeatureView.log` is called.
         """
         # initiate batch scoring server
         # `training_dataset_version` should not be set if `None` otherwise backend will look up the td.
@@ -513,6 +520,7 @@ class FeatureView:
         """
         return sorted(transformation_functions, key=lambda x: x.output_column_names[0])
 
+    @public
     def init_batch_scoring(
         self,
         training_dataset_version: int | None = None,
@@ -542,6 +550,7 @@ class FeatureView:
             self, training_dataset_version=training_dataset_version
         )
 
+    @public
     def get_batch_query(
         self,
         start_time: str | int | datetime | date | None = None,
@@ -595,6 +604,7 @@ class FeatureView:
             ),
         )
 
+    @public
     def get_feature_vector(
         self,
         entry: dict[str, Any] | None = None,
@@ -618,7 +628,7 @@ class FeatureView:
     ):
         """Returns assembled feature vector from online feature store.
 
-        Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed:
+        Call [`FeatureView.init_serving`][hsfs.feature_view.FeatureView.init_serving] before this method if the following configurations are needed:
 
         1. The training dataset version of the transformation statistics.
         2. Additional configurations of online serving engine.
@@ -697,14 +707,14 @@ class FeatureView:
         Parameters:
             entry:
                 Dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
                 If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
             passed_features:
                 Dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
                 These values take priority over features retrieved from the online feature store but are overridden by `request_parameters` if the same key exists in both.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: In which format to return the feature vector.
@@ -757,6 +767,7 @@ class FeatureView:
             logging_data=logging_data,
         )
 
+    @public
     def get_feature_vectors(
         self,
         entry: list[dict[str, Any]] | None = None,
@@ -780,7 +791,7 @@ class FeatureView:
     ):
         """Returns assembled feature vectors in batches from online feature store.
 
-        Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
+        Call [`FeatureView.init_serving`][hsfs.feature_view.FeatureView.init_serving] before this method if the following configurations are needed.
 
         1. The training dataset version of the transformation statistics.
         2. Additional configurations of online serving engine.
@@ -858,14 +869,14 @@ class FeatureView:
         Parameters:
             entry:
                 A list of dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
                 If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
             passed_features:
                 A list of dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
                 These values take priority over features retrieved from the online feature store but are overridden by `request_parameters` if the same key exists in both.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the feature vectors.
@@ -918,6 +929,7 @@ class FeatureView:
             logging_data=logging_data,
         )
 
+    @public
     def get_inference_helper(
         self,
         entry: dict[str, Any],
@@ -945,9 +957,9 @@ class FeatureView:
         Parameters:
             entry:
                 Dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the dataframe.
@@ -964,6 +976,7 @@ class FeatureView:
             entry, return_type, force_rest_client, force_sql_client
         )
 
+    @public
     def get_inference_helpers(
         self,
         entry: list[dict[str, Any]],
@@ -999,9 +1012,9 @@ class FeatureView:
         Parameters:
             entry:
                 A list of dictionary of feature group primary key and values provided by serving application.
-                Set of required primary keys is [`feature_view.primary_keys`](#primary_keys).
+                Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the dataframes.
@@ -1045,6 +1058,7 @@ class FeatureView:
                 result_vectors.update(vector_db_features)
         return result_vectors
 
+    @public
     def find_neighbors(
         self,
         embedding: list[int | float],
@@ -1071,7 +1085,7 @@ class FeatureView:
             k: The number of nearest neighbors to retrieve.
             filter: A filter expression to restrict the search space.
             external:
-                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the neighbors.
@@ -1144,6 +1158,7 @@ class FeatureView:
     ) -> set[feature_group.FeatureGroup]:
         return {fg for fg in self.query.featuregroups if fg.embedding_index}
 
+    @public
     @usage.method_logger
     def get_batch_data(
         self,
@@ -1287,6 +1302,7 @@ class FeatureView:
             logging_data=logging_data,
         )
 
+    @public
     def add_tag(self, name: str, value: Any) -> None:
         """Attach a tag to a feature view.
 
@@ -1315,6 +1331,7 @@ class FeatureView:
         """
         return self._feature_view_engine.add_tag(self, name, value)
 
+    @public
     def get_tag(self, name: str) -> tag.Tag | None:
         """Get the tags of a feature view.
 
@@ -1341,6 +1358,7 @@ class FeatureView:
         """
         return self._feature_view_engine.get_tag(self, name)
 
+    @public
     def get_tags(self) -> dict[str, tag.Tag]:
         """Returns all tags attached to a feature view.
 
@@ -1364,6 +1382,7 @@ class FeatureView:
         """
         return self._feature_view_engine.get_tags(self)
 
+    @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
         """Get the parents of this feature view, based on explicit provenance.
 
@@ -1380,6 +1399,7 @@ class FeatureView:
         """
         return self._feature_view_engine.get_parent_feature_groups(self)
 
+    @public
     def get_newest_model(
         self, training_dataset_version: int | None = None
     ) -> Model | None:
@@ -1403,6 +1423,7 @@ class FeatureView:
             return models[0]
         return None
 
+    @public
     def get_models(self, training_dataset_version: int | None = None) -> list[Model]:
         """Get the generated models using this feature view, based on explicit provenance.
 
@@ -1425,6 +1446,7 @@ class FeatureView:
             return models.accessible
         return []
 
+    @public
     def get_models_provenance(
         self, training_dataset_version: int | None = None
     ) -> explicit_provenance.Links:
@@ -1447,6 +1469,7 @@ class FeatureView:
             self, training_dataset_version=training_dataset_version
         )
 
+    @public
     def delete_tag(self, name: str) -> None:
         """Delete a tag attached to a feature view.
 
@@ -1470,6 +1493,7 @@ class FeatureView:
         """
         return self._feature_view_engine.delete_tag(self, name)
 
+    @public
     def update_last_accessed_training_dataset(self, version):
         """Update the cached last accessed training dataset version."""
         if self._last_accessed_training_dataset is not None:
@@ -1478,6 +1502,7 @@ class FeatureView:
             )
         self._last_accessed_training_dataset = version
 
+    @public
     @usage.method_logger
     def create_training_data(
         self,
@@ -1709,6 +1734,7 @@ class FeatureView:
 
         return td.version, td_job
 
+    @public
     @usage.method_logger
     def create_train_test_split(
         self,
@@ -2000,6 +2026,7 @@ class FeatureView:
         self.update_last_accessed_training_dataset(td.version)
         return td.version, td_job
 
+    @public
     @usage.method_logger
     def create_train_validation_test_split(
         self,
@@ -2288,6 +2315,7 @@ class FeatureView:
 
         return td.version, td_job
 
+    @public
     @usage.method_logger
     def recreate_training_dataset(
         self,
@@ -2369,6 +2397,7 @@ class FeatureView:
 
         return td_job
 
+    @public
     @usage.method_logger
     def training_data(
         self,
@@ -2521,6 +2550,7 @@ class FeatureView:
         self.update_last_accessed_training_dataset(td.version)
         return df
 
+    @public
     @usage.method_logger
     def train_test_split(
         self,
@@ -2710,6 +2740,7 @@ class FeatureView:
                 " `test_size` should be between 0 and 1 if specified."
             )
 
+    @public
     @usage.method_logger
     def train_validation_test_split(
         self,
@@ -2937,6 +2968,7 @@ class FeatureView:
                 "`validation_size`, `test_size` and sum of `validationSize` and `testSize` should be between 0 and 1 if specified."
             )
 
+    @public
     @usage.method_logger
     def get_training_data(
         self,
@@ -3009,6 +3041,7 @@ class FeatureView:
         util.check_missing_mandatory_tags(td.missing_mandatory_tags)
         return df
 
+    @public
     @usage.method_logger
     def get_train_test_split(
         self,
@@ -3081,6 +3114,7 @@ class FeatureView:
         self.update_last_accessed_training_dataset(td.version)
         return df
 
+    @public
     @usage.method_logger
     def get_train_validation_test_split(
         self,
@@ -3159,6 +3193,7 @@ class FeatureView:
         self.update_last_accessed_training_dataset(td.version)
         return df
 
+    @public
     @usage.method_logger
     def get_training_datasets(self) -> list[training_dataset.TrainingDatasetBase]:
         """Returns the metadata of all training datasets created with this feature view.
@@ -3189,6 +3224,7 @@ class FeatureView:
             )
         return tds
 
+    @public
     @usage.method_logger
     def get_training_dataset_statistics(
         self,
@@ -3225,6 +3261,7 @@ class FeatureView:
             feature_names=feature_names,
         )
 
+    @public
     @usage.method_logger
     def add_training_dataset_tag(
         self,
@@ -3262,6 +3299,7 @@ class FeatureView:
             self, name, value, training_dataset_version=training_dataset_version
         )
 
+    @public
     @usage.method_logger
     def get_training_dataset_tag(
         self, training_dataset_version: int, name: str
@@ -3297,6 +3335,7 @@ class FeatureView:
             self, name, training_dataset_version=training_dataset_version
         )
 
+    @public
     @usage.method_logger
     def get_training_dataset_tags(
         self, training_dataset_version: int
@@ -3327,6 +3366,7 @@ class FeatureView:
             self, training_dataset_version=training_dataset_version
         )
 
+    @public
     @usage.method_logger
     def delete_training_dataset_tag(
         self, training_dataset_version: int, name: str
@@ -3359,6 +3399,7 @@ class FeatureView:
             self, name, training_dataset_version=training_dataset_version
         )
 
+    @public
     @usage.method_logger
     def purge_training_data(self, training_dataset_version: int) -> None:
         """Delete a training dataset (data only).
@@ -3387,6 +3428,7 @@ class FeatureView:
             self, training_data_version=training_dataset_version
         )
 
+    @public
     @usage.method_logger
     def purge_all_training_data(self) -> None:
         """Delete all training datasets (data only).
@@ -3410,6 +3452,7 @@ class FeatureView:
             self.update_last_accessed_training_dataset(None)
         self._feature_view_engine.delete_training_dataset_only(self)
 
+    @public
     @usage.method_logger
     def delete_training_dataset(self, training_dataset_version: int) -> None:
         """Delete a training dataset. This will delete both metadata and training data.
@@ -3440,6 +3483,7 @@ class FeatureView:
             self, training_data_version=training_dataset_version
         )
 
+    @public
     @usage.method_logger
     def delete_all_training_datasets(self) -> None:
         """Delete all training datasets. This will delete both metadata and training data.
@@ -3463,6 +3507,7 @@ class FeatureView:
             self.update_last_accessed_training_dataset(None)
         self._feature_view_engine.delete_training_data(self)
 
+    @public
     def get_feature_monitoring_configs(
         self,
         name: str | None = None,
@@ -3522,6 +3567,7 @@ class FeatureView:
             config_id=config_id,
         )
 
+    @public
     def get_feature_monitoring_history(
         self,
         config_name: str | None = None,
@@ -3587,6 +3633,7 @@ class FeatureView:
             with_statistics=with_statistics,
         )
 
+    @public
     def create_statistics_monitoring(
         self,
         name: str,
@@ -3652,6 +3699,7 @@ class FeatureView:
             end_date_time=end_date_time,
         )
 
+    @public
     def create_feature_monitoring(
         self,
         name: str,
@@ -3722,6 +3770,7 @@ class FeatureView:
             cron_expression=cron_expression,
         )
 
+    @public
     def get_alerts(self):
         """Get all alerts for this feature view.
 
@@ -3737,6 +3786,7 @@ class FeatureView:
             feature_view_version=self._version,
         )
 
+    @public
     def get_alert(self, alert_id: int):
         """Get an alert for this feature view by ID.
 
@@ -3756,6 +3806,7 @@ class FeatureView:
             alert_id=alert_id,
         )
 
+    @public
     def create_alert(
         self,
         receiver: str,
@@ -3896,6 +3947,7 @@ class FeatureView:
         self._init_feature_monitoring_engine()
         return self
 
+    @public
     def compute_on_demand_features(
         self,
         feature_vector: list[Any]
@@ -3927,6 +3979,7 @@ class FeatureView:
             return_type=return_type,
         )
 
+    @public
     def transform(
         self,
         feature_vector: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
@@ -3943,7 +3996,7 @@ class FeatureView:
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -3963,6 +4016,7 @@ class FeatureView:
             return_type=return_type,
         )
 
+    @public
     def enable_logging(
         self, extra_log_columns: Feature | dict[str, str] = None
     ) -> None:
@@ -4005,6 +4059,7 @@ class FeatureView:
         self._feature_logging = self._feature_view_engine.get_feature_logging(fv)
         return fv
 
+    @public
     def init_feature_logger(self, feature_logger: FeatureLogger) -> None:
         """Initialize the feature logger.
 
@@ -4020,6 +4075,7 @@ class FeatureView:
             # reset feature logger in case init_serving is called again without feature logger
             self._feature_logger = None
 
+    @public
     def log(
         self,
         logging_data: pd.DataFrame
@@ -4209,6 +4265,7 @@ class FeatureView:
             model_version=model_version,
         )
 
+    @public
     def get_log_timeline(
         self,
         wallclock_time: str | int | datetime | datetime.date | None = None,
@@ -4239,6 +4296,7 @@ class FeatureView:
             self, wallclock_time, limit, transformed
         )
 
+    @public
     def read_log(
         self,
         start_time: str | int | datetime | datetime.date | None = None,
@@ -4299,6 +4357,7 @@ class FeatureView:
             model_version,
         )
 
+    @public
     def pause_logging(self) -> None:
         """Pause scheduled materialization job for the current feature view.
 
@@ -4313,6 +4372,7 @@ class FeatureView:
         """
         self._feature_view_engine.pause_logging(self)
 
+    @public
     def resume_logging(self) -> None:
         """Resume scheduled materialization job for the current feature view.
 
@@ -4327,6 +4387,7 @@ class FeatureView:
         """
         self._feature_view_engine.resume_logging(self)
 
+    @public
     def materialize_log(
         self, wait: bool = False, transformed: bool | None = None
     ) -> list[Job]:
@@ -4353,6 +4414,7 @@ class FeatureView:
             self, wait, transformed
         )
 
+    @public
     def delete_log(self, transformed: bool | None = None) -> None:
         """Delete the logged feature data for the current feature view.
 
@@ -4373,6 +4435,7 @@ class FeatureView:
                 self, self.feature_logging, transformed
             )
 
+    @public
     def create_feature_logger(self):
         """Create an asynchronous feature logger for logging features in Hopsworks serving deployments.
 
@@ -4620,6 +4683,7 @@ class FeatureView:
             fv_dict["tags"] = tags_dict
         return fv_dict
 
+    @public
     def get_training_dataset_schema(
         self, training_dataset_version: int | None = None
     ) -> list[training_dataset_feature.TrainingDatasetFeature]:
@@ -4644,6 +4708,7 @@ class FeatureView:
             self, training_dataset_version
         )
 
+    @public
     @property
     def id(self) -> int:
         """Feature view id."""
@@ -4653,6 +4718,7 @@ class FeatureView:
     def id(self, id: int | None) -> None:
         self._id = id
 
+    @public
     @property
     def featurestore_id(self) -> int:
         """Feature store id."""
@@ -4662,11 +4728,13 @@ class FeatureView:
     def featurestore_id(self, id: int | None) -> None:
         self._featurestore_id = id
 
+    @public
     @property
     def feature_store_name(self) -> str | None:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
 
+    @public
     @property
     def name(self) -> str:
         """Name of the feature view."""
@@ -4676,6 +4744,7 @@ class FeatureView:
     def name(self, name: str) -> None:
         self._name = name
 
+    @public
     @property
     def version(self) -> int:
         """Version number of the feature view."""
@@ -4690,6 +4759,7 @@ class FeatureView:
         """List of missing mandatory tags for the feature view."""
         return self._missing_mandatory_tags
 
+    @public
     @property
     def labels(self) -> list[str]:
         """The labels/prediction feature of the feature view.
@@ -4702,6 +4772,7 @@ class FeatureView:
     def labels(self, labels: list[str]) -> None:
         self._labels = [util.autofix_feature_name(lb) for lb in labels]
 
+    @public
     @property
     def inference_helper_columns(self) -> list[str]:
         """The helper column sof the feature view.
@@ -4716,6 +4787,7 @@ class FeatureView:
             util.autofix_feature_name(exf) for exf in inference_helper_columns
         ]
 
+    @public
     @property
     def training_helper_columns(self) -> list[str]:
         """The helper column sof the feature view.
@@ -4730,6 +4802,7 @@ class FeatureView:
             util.autofix_feature_name(exf) for exf in training_helper_columns
         ]
 
+    @public
     @property
     def description(self) -> str | None:
         """Description of the feature view."""
@@ -4739,6 +4812,7 @@ class FeatureView:
     def description(self, description: str | None) -> None:
         self._description = description
 
+    @public
     @property
     def query(self) -> query.Query:
         """Query of the feature view."""
@@ -4748,6 +4822,7 @@ class FeatureView:
     def query(self, query_obj: query.Query) -> None:
         self._query = query_obj
 
+    @public
     @property
     def transformation_functions(
         self,
@@ -4762,6 +4837,7 @@ class FeatureView:
     ) -> None:
         self._transformation_functions = transformation_functions
 
+    @public
     @property
     def model_dependent_transformations(self) -> dict[str, Callable]:
         """Get Model-Dependent transformations as a dictionary mapping transformed feature names to transformation function."""
@@ -4772,6 +4848,7 @@ class FeatureView:
             for transformation_function in self.transformation_functions
         }
 
+    @public
     @property
     def on_demand_transformations(self) -> dict[str, Callable]:
         """Get On-Demand transformations as a dictionary mapping on-demand feature names to transformation function."""
@@ -4790,6 +4867,7 @@ class FeatureView:
             if feature.on_demand_transformation_function
         ]
 
+    @public
     @property
     def request_parameters(self) -> list[str]:
         """Get request parameters required for the for on-demand transformations atatched to the feature view."""
@@ -4806,11 +4884,13 @@ class FeatureView:
 
         return self._request_parameters
 
+    @public
     @property
     def schema(self) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Schema of untransformed features in the Feature view."""
         return self._features
 
+    @public
     @property
     def features(self) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Schema of untransformed features in the Feature view. (alias)."""
@@ -4822,9 +4902,10 @@ class FeatureView:
     ) -> None:
         self._features = features
 
+    @public
     @property
     def primary_keys(self) -> set[str]:
-        """Set of primary key names that is required as keys in input dict object for [`get_feature_vector(s)`](#get_feature_vector) method.
+        """Set of primary key names that is required as keys in input dict object for [`FeatureView.get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector] method.
 
         When there are duplicated primary key names and prefix is not defined in the query,
         prefix is generated and prepended to the primary key name in this format
@@ -4834,6 +4915,7 @@ class FeatureView:
             self._primary_keys = {key.required_serving_key for key in self.serving_keys}
         return self._primary_keys
 
+    @public
     @property
     def serving_keys(self) -> list[skm.ServingKey]:
         """All primary keys of the feature groups included in the query."""
@@ -4858,6 +4940,7 @@ class FeatureView:
     def serving_keys(self, serving_keys: list[skm.ServingKey]) -> None:
         self._serving_keys = serving_keys
 
+    @public
     @property
     def logging_enabled(self) -> bool:
         """Whether feature logging is enabled for the feature view."""
@@ -4867,6 +4950,7 @@ class FeatureView:
     def logging_enabled(self, logging_enabled) -> None:
         self._logging_enabled = logging_enabled
 
+    @public
     @property
     def feature_logging(self) -> FeatureLogging | None:
         """Feature logging feature groups of this feature view."""

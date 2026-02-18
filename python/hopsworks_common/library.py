@@ -15,9 +15,11 @@
 #
 
 import humps
+from hopsworks_apigen import also_available_as
 from hopsworks_common import command
 
 
+@also_available_as("hopsworks.library.Library")
 class Library:
     def __init__(
         self,

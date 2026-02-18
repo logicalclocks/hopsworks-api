@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import alert, client, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
@@ -29,6 +30,7 @@ from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
 
 
+@public("hopsworks.job.Job", "hsfs.core.job.Job")
 class Job:
     NOT_FOUND_ERROR_CODE = 130009
 
@@ -88,21 +90,25 @@ class Job:
         json_decamelized["config"] = config
         return cls(**json_decamelized)
 
+    @public
     @property
     def id(self):
         """Id of the job."""
         return self._id
 
+    @public
     @property
     def name(self):
         """Name of the job."""
         return self._name
 
+    @public
     @property
     def creation_time(self):
         """Date of creation for the job."""
         return self._creation_time
 
+    @public
     @property
     def config(self):
         """Configuration for the job."""
@@ -113,36 +119,43 @@ class Job:
         """Update configuration for the job."""
         self._config = config
 
+    @public
     @property
     def job_type(self):
         """Type of the job."""
         return self._job_type
 
+    @public
     @property
     def creator(self):
         """Creator of the job."""
         return self._creator
 
+    @public
     @property
     def job_schedule(self):
         """Return the Job schedule."""
         return self._job_schedule
 
+    @public
     @property
     def executions(self):
         """List of executions for the job."""
         return self._executions
 
+    @public
     @property
     def href(self):
         """The URL of the job in Hopsworks UI, use `get_url` instead."""
         return self._href
 
+    @public
     @property
     def config(self):
         """Configuration for the job."""
         return self._config
 
+    @public
     @usage.method_logger
     def run(self, args: str = None, await_termination: bool = True):
         """Run the job.
@@ -188,6 +201,7 @@ class Job:
             return self._execution_engine.wait_until_finished(self, execution)
         return execution
 
+    @public
     def get_state(
         self,
     ) -> Literal[
@@ -221,6 +235,7 @@ class Job:
 
         return last_execution[0].state
 
+    @public
     def get_final_state(
         self,
     ) -> Literal[
@@ -244,6 +259,7 @@ class Job:
 
         return last_execution[0].final_status
 
+    @public
     def get_executions(self):
         """Retrieves all executions for the job ordered by submission time.
 
@@ -255,6 +271,7 @@ class Job:
         """
         return self._execution_api._get_all(self)
 
+    @public
     @usage.method_logger
     def save(self) -> Job:
         """Save the job.
@@ -271,6 +288,7 @@ class Job:
         """
         return self._job_api._update_job(self.name, self.config)
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the job.
@@ -320,6 +338,7 @@ class Job:
                 job=self, execution=execution, timeout=timeout
             )
 
+    @public
     def schedule(
         self,
         cron_expression: str,
@@ -367,12 +386,14 @@ class Job:
         )
         return self._job_schedule
 
+    @public
     @usage.method_logger
     def unschedule(self):
         """Unschedule the exceution of a Job."""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
 
+    @public
     @usage.method_logger
     def resume_schedule(self):
         """Resumes the schedule of a Job execution."""
@@ -388,6 +409,7 @@ class Job:
         )
         return self._update_schedule(job_schedule)
 
+    @public
     @usage.method_logger
     def pause_schedule(self):
         """Pauses the schedule of a Job execution."""
@@ -403,6 +425,7 @@ class Job:
         )
         return self._update_schedule(job_schedule)
 
+    @public
     @usage.method_logger
     def get_alerts(self) -> list[alert.JobAlert]:
         """Get all alerts for the job.
@@ -415,6 +438,7 @@ class Job:
         """
         return self._alerts_api.get_job_alerts(self._name)
 
+    @public
     @usage.method_logger
     def get_alert(self, alert_id: int) -> alert.JobAlert:
         """Get an alert for the job by ID.
@@ -430,6 +454,7 @@ class Job:
         """
         return self._alerts_api.get_job_alert(self._name, alert_id)
 
+    @public
     @usage.method_logger
     def create_alert(
         self,
@@ -477,6 +502,7 @@ class Job:
     def __repr__(self) -> str:
         return f"Job({self._name!r}, {self._job_type!r})"
 
+    @public
     def get_url(self):
         """Get url to the job in Hopsworks."""
         _client = client.get_instance()
