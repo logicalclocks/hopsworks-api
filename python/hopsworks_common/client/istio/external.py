@@ -15,12 +15,10 @@
 #
 
 import requests
-from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth
 from hopsworks_common.client.istio import base as istio
 
 
-@also_available_as("hsml.client.istio.external.Client")
 class Client(istio.Client):
     def __init__(
         self,

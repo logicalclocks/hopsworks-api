@@ -35,9 +35,7 @@ class TestExternalClient:
 
         Uses hierarchical structure for CLIENT.CERT_FOLDER_DEFAULT, direct for custom.
         """
-        mocker.patch(
-            "hopsworks_common.client.external.Client._get_verify", return_value=False
-        )
+        mocker.patch("hopsworks_common.client.external.Client._get_verify", return_value=False)
         mocker.patch("requests.session")
 
         client = Client.__new__(Client)
@@ -89,27 +87,16 @@ class TestExternalClient:
             client = self._create_client(cert_folder, mocker)
 
             # Custom cert_folder: files directly in cert_folder
-            assert client._get_ca_chain_path() == os.path.join(
-                cert_folder, "ca_chain.pem"
-            )
-            assert client._get_client_cert_path() == os.path.join(
-                cert_folder, "client_cert.pem"
-            )
-            assert client._get_client_key_path() == os.path.join(
-                cert_folder, "client_key.pem"
-            )
-            assert client._get_material_passwd_path() == os.path.join(
-                cert_folder, "material_passwd"
-            )
+            assert client._get_ca_chain_path() == os.path.join(cert_folder, "ca_chain.pem")
+            assert client._get_client_cert_path() == os.path.join(cert_folder, "client_cert.pem")
+            assert client._get_client_key_path() == os.path.join(cert_folder, "client_key.pem")
+            assert client._get_material_passwd_path() == os.path.join(cert_folder, "material_passwd")
 
     def test_certificate_paths_structure_default(self, mocker):
         """Test that certificate paths follow hierarchical structure for default."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT to be our temp directory
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             # Set hierarchical cert_folder since we mocked the default
             client._cert_folder = os.path.join(
@@ -120,18 +107,10 @@ class TestExternalClient:
                 cert_folder, "test.hopsworks.ai", "test_project", "testuser"
             )
 
-            assert client._get_ca_chain_path() == os.path.join(
-                expected_base, "ca_chain.pem"
-            )
-            assert client._get_client_cert_path() == os.path.join(
-                expected_base, "client_cert.pem"
-            )
-            assert client._get_client_key_path() == os.path.join(
-                expected_base, "client_key.pem"
-            )
-            assert client._get_material_passwd_path() == os.path.join(
-                expected_base, "material_passwd"
-            )
+            assert client._get_ca_chain_path() == os.path.join(expected_base, "ca_chain.pem")
+            assert client._get_client_cert_path() == os.path.join(expected_base, "client_cert.pem")
+            assert client._get_client_key_path() == os.path.join(expected_base, "client_key.pem")
+            assert client._get_material_passwd_path() == os.path.join(expected_base, "material_passwd")
 
     def test_write_pem_file_creates_file_with_secure_permissions(self, mocker):
         """Test that _write_pem_file creates files with 0o600 permissions."""
@@ -172,10 +151,7 @@ class TestExternalClient:
         """Test that _makedirs_with_sticky_bit creates host, project, and user directories for default."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT to be our temp directory
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             # Manually set hierarchical cert_folder since we mocked the default
             client._cert_folder = os.path.join(
@@ -192,16 +168,11 @@ class TestExternalClient:
             assert os.path.isdir(project_dir)
             assert os.path.isdir(user_dir)
 
-    def test_makedirs_with_sticky_bit_sets_correct_permissions_for_default(
-        self, mocker
-    ):
+    def test_makedirs_with_sticky_bit_sets_correct_permissions_for_default(self, mocker):
         """Test that _makedirs_with_sticky_bit sets correct permissions for default /tmp."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT to be our temp directory
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             # Manually set hierarchical cert_folder since we mocked the default
             client._cert_folder = os.path.join(
@@ -222,9 +193,7 @@ class TestExternalClient:
 
                 # Shared directories have sticky bit (1777)
                 assert host_mode == 0o1777, f"Expected 0o1777, got {oct(host_mode)}"
-                assert project_mode == 0o1777, (
-                    f"Expected 0o1777, got {oct(project_mode)}"
-                )
+                assert project_mode == 0o1777, f"Expected 0o1777, got {oct(project_mode)}"
                 # User directory is private (700)
                 assert user_mode == 0o700, f"Expected 0o700, got {oct(user_mode)}"
 
@@ -239,18 +208,13 @@ class TestExternalClient:
             # Should create the directory directly, no subdirectories
             assert os.path.isdir(custom_cert_folder)
             # Should NOT create host/project/user subdirectories
-            assert not os.path.exists(
-                os.path.join(custom_cert_folder, "test.hopsworks.ai")
-            )
+            assert not os.path.exists(os.path.join(custom_cert_folder, "test.hopsworks.ai"))
 
     def test_makedirs_with_sticky_bit_skips_existing_directories(self, mocker):
         """Test that _makedirs_with_sticky_bit doesn't fail on existing directories."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT to be our temp directory
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             client._cert_folder = os.path.join(
                 cert_folder, "test.hopsworks.ai", "test_project", "testuser"
@@ -266,10 +230,7 @@ class TestExternalClient:
         """Test that _close deletes certificate files and user directory for default /tmp."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT for hierarchical structure
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             # Set hierarchical cert_folder since we mocked the default
             client._cert_folder = os.path.join(
@@ -278,9 +239,7 @@ class TestExternalClient:
 
             # Create directory structure
             client._makedirs_with_sticky_bit()
-            client._trust_store_path = os.path.join(
-                client._cert_folder, "trustStore.jks"
-            )
+            client._trust_store_path = os.path.join(client._cert_folder, "trustStore.jks")
             client._key_store_path = os.path.join(client._cert_folder, "keyStore.jks")
 
             # Create test certificate files
@@ -308,9 +267,7 @@ class TestExternalClient:
 
             # Verify files are deleted
             for test_file in test_files:
-                assert not os.path.exists(test_file), (
-                    f"File should be deleted: {test_file}"
-                )
+                assert not os.path.exists(test_file), f"File should be deleted: {test_file}"
 
             # Verify user directory is removed (was empty after file cleanup)
             assert not os.path.exists(user_dir), "User directory should be removed"
@@ -325,9 +282,7 @@ class TestExternalClient:
 
             # Create directory structure (custom = direct)
             client._makedirs_with_sticky_bit()
-            client._trust_store_path = os.path.join(
-                client._cert_folder, "trustStore.jks"
-            )
+            client._trust_store_path = os.path.join(client._cert_folder, "trustStore.jks")
             client._key_store_path = os.path.join(client._cert_folder, "keyStore.jks")
 
             # Create test certificate files
@@ -352,9 +307,7 @@ class TestExternalClient:
 
             # Verify files are deleted
             for test_file in test_files:
-                assert not os.path.exists(test_file), (
-                    f"File should be deleted: {test_file}"
-                )
+                assert not os.path.exists(test_file), f"File should be deleted: {test_file}"
 
     def test_close_without_cert_folder_does_not_fail(self, mocker):
         """Test that _close handles None cert_folder gracefully."""
@@ -371,10 +324,7 @@ class TestExternalClient:
         """Test that _materialize_certs creates hierarchical directory for default /tmp."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT for hierarchical structure
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             client._cert_folder = None  # Reset to test creation
 
@@ -387,9 +337,7 @@ class TestExternalClient:
                 "clientCert": "cert",
                 "clientKey": "key",
             }
-            mocker.patch.object(
-                client, "_get_credentials", return_value=mock_credentials
-            )
+            mocker.patch.object(client, "_get_credentials", return_value=mock_credentials)
 
             client._materialize_certs()
 
@@ -407,15 +355,9 @@ class TestExternalClient:
             assert os.path.isdir(client._cert_folder)
 
             # Verify files have fixed names in user directory
-            assert client._trust_store_path == os.path.join(
-                client._cert_folder, "trustStore.jks"
-            )
-            assert client._key_store_path == os.path.join(
-                client._cert_folder, "keyStore.jks"
-            )
-            assert client._cert_key_path == os.path.join(
-                client._cert_folder, "material_passwd"
-            )
+            assert client._trust_store_path == os.path.join(client._cert_folder, "trustStore.jks")
+            assert client._key_store_path == os.path.join(client._cert_folder, "keyStore.jks")
+            assert client._cert_key_path == os.path.join(client._cert_folder, "material_passwd")
 
             # Verify JKS files and material_passwd exist in the hierarchical user directory
             # Note: PEM files (ca_chain.pem, client_cert.pem, client_key.pem) are created
@@ -439,9 +381,7 @@ class TestExternalClient:
                 "clientCert": "cert",
                 "clientKey": "key",
             }
-            mocker.patch.object(
-                client, "_get_credentials", return_value=mock_credentials
-            )
+            mocker.patch.object(client, "_get_credentials", return_value=mock_credentials)
 
             client._materialize_certs()
 
@@ -453,9 +393,7 @@ class TestExternalClient:
             assert not os.path.exists(os.path.join(cert_folder, "test.hopsworks.ai"))
 
             # Verify files have fixed names directly in cert_folder
-            assert client._trust_store_path == os.path.join(
-                cert_folder, "trustStore.jks"
-            )
+            assert client._trust_store_path == os.path.join(cert_folder, "trustStore.jks")
             assert client._key_store_path == os.path.join(cert_folder, "keyStore.jks")
             assert client._cert_key_path == os.path.join(cert_folder, "material_passwd")
 
@@ -466,16 +404,11 @@ class TestExternalClient:
             assert os.path.exists(client._key_store_path)
             assert os.path.exists(client._cert_key_path)
 
-    def test_download_certs_creates_pem_files_in_hierarchical_directory_for_default(
-        self, mocker
-    ):
+    def test_download_certs_creates_pem_files_in_hierarchical_directory_for_default(self, mocker):
         """Test that download_certs creates PEM files in hierarchical directory for default /tmp."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT for hierarchical structure
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             client._cert_folder = None  # Reset to test creation
 
@@ -488,16 +421,12 @@ class TestExternalClient:
                 "clientCert": "-----BEGIN CERTIFICATE-----\ntest_client_cert\n-----END CERTIFICATE-----",
                 "clientKey": "-----BEGIN PRIVATE KEY-----\ntest_client_key\n-----END PRIVATE KEY-----",
             }
-            mocker.patch.object(
-                client, "_get_credentials", return_value=mock_credentials
-            )
+            mocker.patch.object(client, "_get_credentials", return_value=mock_credentials)
 
             client.download_certs()
 
             # Verify hierarchical directory structure
-            user_dir = os.path.join(
-                cert_folder, "test.hopsworks.ai", "test_project", "testuser"
-            )
+            user_dir = os.path.join(cert_folder, "test.hopsworks.ai", "test_project", "testuser")
             assert client._cert_folder == user_dir
 
             # Verify all PEM files exist in the hierarchical user directory
@@ -513,9 +442,7 @@ class TestExternalClient:
             with open(os.path.join(user_dir, "client_key.pem")) as f:
                 assert "test_client_key" in f.read()
 
-    def test_download_certs_creates_pem_files_directly_in_custom_cert_folder(
-        self, mocker
-    ):
+    def test_download_certs_creates_pem_files_directly_in_custom_cert_folder(self, mocker):
         """Test that download_certs creates PEM files directly in custom cert_folder."""
         with tempfile.TemporaryDirectory() as cert_folder:
             client = self._create_client(cert_folder, mocker)
@@ -530,9 +457,7 @@ class TestExternalClient:
                 "clientCert": "-----BEGIN CERTIFICATE-----\ntest_client_cert\n-----END CERTIFICATE-----",
                 "clientKey": "-----BEGIN PRIVATE KEY-----\ntest_client_key\n-----END PRIVATE KEY-----",
             }
-            mocker.patch.object(
-                client, "_get_credentials", return_value=mock_credentials
-            )
+            mocker.patch.object(client, "_get_credentials", return_value=mock_credentials)
 
             client.download_certs()
 
@@ -558,10 +483,7 @@ class TestExternalClient:
     def test_materialize_certs_reuses_existing_directory_for_default(self, mocker):
         """Test that _materialize_certs works when cert_folder already exists (re-login scenario)."""
         with tempfile.TemporaryDirectory() as cert_folder:
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             client._cert_folder = None
 
@@ -573,9 +495,7 @@ class TestExternalClient:
                 "clientCert": "cert",
                 "clientKey": "key",
             }
-            mocker.patch.object(
-                client, "_get_credentials", return_value=mock_credentials
-            )
+            mocker.patch.object(client, "_get_credentials", return_value=mock_credentials)
 
             # First call creates directories
             client._materialize_certs()
@@ -601,9 +521,7 @@ class TestExternalClient:
                 "clientCert": "cert",
                 "clientKey": "key",
             }
-            mocker.patch.object(
-                client, "_get_credentials", return_value=mock_credentials
-            )
+            mocker.patch.object(client, "_get_credentials", return_value=mock_credentials)
 
             # First call
             client._materialize_certs()
@@ -628,25 +546,16 @@ class TestExternalClient:
             with open(test_file) as f:
                 assert f.read() == "new content"
 
-    @pytest.mark.skipif(
-        IS_WINDOWS, reason="Windows does not support Unix file permissions"
-    )
-    def test_materialize_certs_raises_permission_error_for_existing_directory(
-        self, mocker
-    ):
+    @pytest.mark.skipif(IS_WINDOWS, reason="Windows does not support Unix file permissions")
+    def test_materialize_certs_raises_permission_error_for_existing_directory(self, mocker):
         """Test that _materialize_certs raises a helpful PermissionError when existing dir is inaccessible."""
         with tempfile.TemporaryDirectory() as cert_folder:
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             client._cert_folder = None
 
             # Create the hierarchical directory but make the user dir inaccessible
-            user_dir = os.path.join(
-                cert_folder, "test.hopsworks.ai", "test_project", "testuser"
-            )
+            user_dir = os.path.join(cert_folder, "test.hopsworks.ai", "test_project", "testuser")
             os.makedirs(user_dir)
             os.chmod(user_dir, 0o000)
 
@@ -657,16 +566,11 @@ class TestExternalClient:
                 # Restore permissions so tempdir cleanup succeeds
                 os.chmod(user_dir, 0o700)
 
-    @pytest.mark.skipif(
-        IS_WINDOWS, reason="Windows does not support Unix file permissions"
-    )
+    @pytest.mark.skipif(IS_WINDOWS, reason="Windows does not support Unix file permissions")
     def test_materialize_certs_raises_permission_error_for_mkdir(self, mocker):
         """Test that _materialize_certs raises a helpful PermissionError when mkdir fails."""
         with tempfile.TemporaryDirectory() as cert_folder:
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
             client = self._create_client(cert_folder, mocker)
             client._cert_folder = None
 
@@ -720,9 +624,7 @@ class TestExternalClient:
 
         Uses hierarchical structure for CLIENT.CERT_FOLDER_DEFAULT, direct for custom.
         """
-        mocker.patch(
-            "hopsworks_common.client.external.Client._get_verify", return_value=False
-        )
+        mocker.patch("hopsworks_common.client.external.Client._get_verify", return_value=False)
         mocker.patch("requests.session")
 
         client = Client.__new__(Client)
@@ -768,15 +670,10 @@ class TestExternalClient:
         """Test that _close only deletes the current user's certificates, not other users'."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT for multi-user hierarchical structure
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
 
             # Create two clients with different usernames (simulating two Hopsworks users)
-            user1_client = self._create_client_with_username(
-                cert_folder, "alice", mocker
-            )
+            user1_client = self._create_client_with_username(cert_folder, "alice", mocker)
             user2_client = self._create_client_with_username(cert_folder, "bob", mocker)
             # Set hierarchical paths since we mocked the default
             user1_client._cert_folder = os.path.join(
@@ -785,18 +682,10 @@ class TestExternalClient:
             user2_client._cert_folder = os.path.join(
                 cert_folder, "test.hopsworks.ai", "test_project", "bob"
             )
-            user1_client._trust_store_path = os.path.join(
-                user1_client._cert_folder, "trustStore.jks"
-            )
-            user1_client._key_store_path = os.path.join(
-                user1_client._cert_folder, "keyStore.jks"
-            )
-            user2_client._trust_store_path = os.path.join(
-                user2_client._cert_folder, "trustStore.jks"
-            )
-            user2_client._key_store_path = os.path.join(
-                user2_client._cert_folder, "keyStore.jks"
-            )
+            user1_client._trust_store_path = os.path.join(user1_client._cert_folder, "trustStore.jks")
+            user1_client._key_store_path = os.path.join(user1_client._cert_folder, "keyStore.jks")
+            user2_client._trust_store_path = os.path.join(user2_client._cert_folder, "trustStore.jks")
+            user2_client._key_store_path = os.path.join(user2_client._cert_folder, "keyStore.jks")
 
             # Create the directory structure for both users
             user1_client._makedirs_with_sticky_bit()
@@ -831,10 +720,7 @@ class TestExternalClient:
         """Test multi-user scenario where users share the same project directory."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT for multi-user hierarchical structure
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
 
             # Create three users in the same project
             alice = self._create_client_with_username(cert_folder, "alice", mocker)
@@ -845,12 +731,8 @@ class TestExternalClient:
                 client._cert_folder = os.path.join(
                     cert_folder, "test.hopsworks.ai", "test_project", client._username
                 )
-                client._trust_store_path = os.path.join(
-                    client._cert_folder, "trustStore.jks"
-                )
-                client._key_store_path = os.path.join(
-                    client._cert_folder, "keyStore.jks"
-                )
+                client._trust_store_path = os.path.join(client._cert_folder, "trustStore.jks")
+                client._key_store_path = os.path.join(client._cert_folder, "keyStore.jks")
 
             # Create directories for all users
             alice._makedirs_with_sticky_bit()
@@ -884,18 +766,13 @@ class TestExternalClient:
                 assert os.path.exists(f), f"Charlie's file should exist: {f}"
 
             # Shared project directory should still exist
-            assert os.path.isdir(project_dir), (
-                "Shared project directory should still exist"
-            )
+            assert os.path.isdir(project_dir), "Shared project directory should still exist"
 
     def test_multiple_users_have_separate_directories(self, mocker):
         """Test that multiple users have their own separate directories with default."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT for multi-user hierarchical structure
-            mocker.patch(
-                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
-                cert_folder,
-            )
+            mocker.patch("hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT", cert_folder)
 
             users = ["alice", "bob", "charlie", "diana"]
             clients = []
@@ -903,19 +780,13 @@ class TestExternalClient:
 
             # Create clients and certificates for all users
             for username in users:
-                client = self._create_client_with_username(
-                    cert_folder, username, mocker
-                )
+                client = self._create_client_with_username(cert_folder, username, mocker)
                 # Set hierarchical paths since we mocked the default
                 client._cert_folder = os.path.join(
                     cert_folder, "test.hopsworks.ai", "test_project", username
                 )
-                client._trust_store_path = os.path.join(
-                    client._cert_folder, "trustStore.jks"
-                )
-                client._key_store_path = os.path.join(
-                    client._cert_folder, "keyStore.jks"
-                )
+                client._trust_store_path = os.path.join(client._cert_folder, "trustStore.jks")
+                client._key_store_path = os.path.join(client._cert_folder, "keyStore.jks")
                 client._makedirs_with_sticky_bit()
                 clients.append(client)
                 all_files[username] = self._create_cert_files_for_client(client)
@@ -924,9 +795,7 @@ class TestExternalClient:
             user_dirs = set()
             for client in clients:
                 assert os.path.isdir(client._cert_folder)
-                assert client._cert_folder not in user_dirs, (
-                    "User directories should be unique"
-                )
+                assert client._cert_folder not in user_dirs, "User directories should be unique"
                 user_dirs.add(client._cert_folder)
 
             # Verify each user's directory contains their username

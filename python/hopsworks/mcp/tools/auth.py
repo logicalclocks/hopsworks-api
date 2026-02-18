@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 """Authentication tools for Hopsworks."""
-
 from __future__ import annotations
 
 from fastmcp import Context  # noqa: TC002

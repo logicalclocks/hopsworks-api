@@ -18,7 +18,6 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import PREDICTOR_STATE
@@ -37,7 +36,6 @@ if TYPE_CHECKING:
     from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
 
 
-@public
 class ModelServing:
     DEFAULT_VERSION = 1
 
@@ -52,7 +50,6 @@ class ModelServing:
 
         self._serving_api = serving_api.ServingApi()
 
-    @public
     @usage.method_logger
     def get_deployment_by_id(self, id: int) -> Deployment | None:
         """Get a deployment by id from Model Serving.
@@ -78,7 +75,6 @@ class ModelServing:
         """
         return self._serving_api.get_by_id(id)
 
-    @public
     @usage.method_logger
     def get_deployment(self, name: str = None) -> Deployment | None:
         """Get a deployment by name from Model Serving.
@@ -107,7 +103,6 @@ class ModelServing:
             name = os.environ["DEPLOYMENT_NAME"]
         return self._serving_api.get(name)
 
-    @public
     @usage.method_logger
     def get_deployments(
         self, model: Model = None, status: str = None
@@ -158,7 +153,6 @@ class ModelServing:
             )
         return status
 
-    @public
     def get_inference_endpoints(self) -> list[InferenceEndpoint]:
         """Get all inference endpoints available in the current project.
 
@@ -167,7 +161,6 @@ class ModelServing:
         """
         return self._serving_api.get_inference_endpoints()
 
-    @public
     @usage.method_logger
     def create_predictor(
         self,
@@ -249,7 +242,6 @@ class ModelServing:
             scaling_configuration=scaling_configuration,
         )
 
-    @public
     @usage.method_logger
     def create_transformer(
         self,
@@ -316,13 +308,8 @@ class ModelServing:
         Returns:
             `Transformer`. The transformer metadata object.
         """
-        return Transformer(
-            script_file=script_file,
-            resources=resources,
-            scaling_configuration=scaling_configuration,
-        )
+        return Transformer(script_file=script_file, resources=resources, scaling_configuration=scaling_configuration)
 
-    @public
     @usage.method_logger
     def create_endpoint(
         self,
@@ -380,7 +367,6 @@ class ModelServing:
             scaling_configuration=scaling_configuration,
         )
 
-    @public
     @usage.method_logger
     def create_deployment(
         self,
@@ -457,19 +443,16 @@ class ModelServing:
         """
         return Deployment(predictor=predictor, name=name)
 
-    @public
     @property
     def project_name(self):
         """Name of the project in which Model Serving is located."""
         return self._project_name
 
-    @public
     @property
     def project_path(self):
         """Path of the project the registry is connected to."""
         return f"/Projects/{self._project_name}"
 
-    @public
     @property
     def project_id(self):
         """Id of the project in which Model Serving is located."""

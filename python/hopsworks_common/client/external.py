@@ -23,7 +23,6 @@ import os
 
 import hopsworks_common.client
 import requests
-from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import CLIENT
@@ -36,11 +35,6 @@ with contextlib.suppress(ImportError):
 _logger = logging.getLogger(__name__)
 
 
-@also_available_as(
-    "hopsworks.client.external.Client",
-    "hsfs.client.external.Client",
-    "hsml.client.external.Client",
-)
 class Client(base.Client):
     def __init__(
         self,
@@ -187,9 +181,7 @@ class Client(base.Client):
         # Custom cert_folder: use directly
         # Default /tmp: use hierarchical structure for multi-user support
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
-            return os.path.join(
-                self._cert_folder_base, self._host, self._project_name, self._username
-            )
+            return os.path.join(self._cert_folder_base, self._host, self._project_name, self._username)
         return self._cert_folder_base
 
     def _materialize_certs(self):

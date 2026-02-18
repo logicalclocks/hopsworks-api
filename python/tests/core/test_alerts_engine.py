@@ -14,11 +14,10 @@
 #   limitations under the License.
 #
 
-from unittest.mock import Mock
-
 import pytest
 from hopsworks_common.core.alerts_api import _API_MATCH
 from hopsworks_common.engine import alerts_engine
+from mock import Mock
 
 
 class TestAlertsEngine:

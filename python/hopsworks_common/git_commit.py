@@ -17,11 +17,9 @@
 import json
 
 import humps
-from hopsworks_apigen import also_available_as
 from hopsworks_common import util
 
 
-@also_available_as("hopsworks.git_commit.GitCommit")
 class GitCommit:
     def __init__(
         self,

@@ -18,14 +18,11 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from hopsworks_apigen import public
-
 
 if TYPE_CHECKING:
     from hsml.schema import Schema
 
 
-@public
 class ModelSchema:
     """Create a schema for a model.
 
@@ -54,7 +51,6 @@ class ModelSchema:
             self, default=lambda o: getattr(o, "__dict__", o), sort_keys=True, indent=2
         )
 
-    @public
     def to_dict(self):
         """Get dict representation of the ModelSchema."""
         return json.loads(self.json())
