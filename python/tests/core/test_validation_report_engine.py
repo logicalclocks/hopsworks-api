@@ -44,9 +44,10 @@ class TestValidationReportEngine:
         # Assert
         assert mock_vr_api.return_value.create.call_count == 1
         assert mock_print.call_count == 1
-        assert (
-            mock_print.call_args[0][0]
-            == f"Validation Report saved successfully, explore a summary at {validation_report_url}"
+        assert mock_print.call_args[0][
+            0
+        ] == "Validation Report saved successfully, explore a summary at {}".format(
+            validation_report_url
         )
 
     def test_get_last(self, mocker):
@@ -78,7 +79,9 @@ class TestValidationReportEngine:
         assert (
             mock_print.call_args[0][0]
             == "Long reports can be truncated when fetching from Hopsworks.\n"
-            f"        \nYou can download the full report at {validation_report_url}"
+            "        \nYou can download the full report at {}".format(
+                validation_report_url
+            )
         )
 
     def test_get_all(self, mocker):
@@ -110,7 +113,9 @@ class TestValidationReportEngine:
         assert (
             mock_print.call_args[0][0]
             == "Long reports can be truncated when fetching from Hopsworks.\n"
-            f"        \nYou can download full reports at {validation_report_url}"
+            "        \nYou can download full reports at {}".format(
+                validation_report_url
+            )
         )
 
     def test_delete(self, mocker):

@@ -19,7 +19,6 @@ import warnings
 from typing import TYPE_CHECKING
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hsml.core import model_api
 from hsml.llm import signature as llm_signature  # noqa: F401
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from hsml import model
 
 
-@public
 class ModelRegistry:
     DEFAULT_VERSION = 1
 
@@ -70,7 +68,6 @@ class ModelRegistry:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
-    @public
     @usage.method_logger
     def get_model(self, name: str, version: int = None) -> model.Model | None:
         """Get a model entity from the model registry.
@@ -103,7 +100,6 @@ class ModelRegistry:
             shared_registry_project_name=self.shared_registry_project_name,
         )
 
-    @public
     @usage.method_logger
     def get_models(self, name: str) -> list[model.Model]:
         """Get all model entities from the model registry for a specified name.
@@ -125,7 +121,6 @@ class ModelRegistry:
             shared_registry_project_name=self.shared_registry_project_name,
         )
 
-    @public
     @usage.method_logger
     def get_best_model(
         self, name: str, metric: str, direction: str
@@ -157,61 +152,51 @@ class ModelRegistry:
             return model[0]
         return None
 
-    @public
     @property
     def project_name(self):
         """Name of the project the registry is connected to."""
         return self._project_name
 
-    @public
     @property
     def project_path(self):
         """Path of the project the registry is connected to."""
         return f"/Projects/{self._project_name}"
 
-    @public
     @property
     def project_id(self):
         """Id of the project the registry is connected to."""
         return self._project_id
 
-    @public
     @property
     def shared_registry_project_name(self):
         """Name of the project the shared model registry originates from."""
         return self._shared_registry_project_name
 
-    @public
     @property
     def model_registry_id(self):
         """Id of the model registry."""
         return self._model_registry_id
 
-    @public
     @property
     def tensorflow(self):
         """Module for exporting a TensorFlow model."""
         return tensorflow_signature
 
-    @public
     @property
     def sklearn(self):
         """Module for exporting a sklearn model."""
         return sklearn_signature
 
-    @public
     @property
     def torch(self):
         """Module for exporting a torch model."""
         return torch_signature
 
-    @public
     @property
     def python(self):
         """Module for exporting a generic Python model."""
         return python_signature
 
-    @public
     @property
     def llm(self):
         """Module for exporting a Large Language Model."""

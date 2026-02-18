@@ -18,14 +18,9 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@public(
-    "hopsworks.core.job_configuration.JobConfiguration",
-    "hsfs.core.job_configuration.JobConfiguration",
-)
 class JobConfiguration:
     """Configuration of a Hopsworks job.
 

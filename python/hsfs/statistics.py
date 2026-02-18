@@ -19,13 +19,11 @@ import json
 from typing import Any
 
 import humps
-from hopsworks_apigen import public
 from hsfs import util
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.split_statistics import SplitStatistics
 
 
-@public
 class Statistics:
     # TODO: Add docstring
     DEFAULT_ROW_PERCENTAGE = 1.0
@@ -157,13 +155,11 @@ class Statistics:
     def __repr__(self) -> str:
         return f"Statistics({self._computation_time!r})"
 
-    @public
     @property
     def computation_time(self) -> int:
         """Time at which the statistics were computed."""
         return self._computation_time
 
-    @public
     @property
     def row_percentage(self) -> float:
         """Percentage of data on which statistics were computed."""
@@ -181,7 +177,6 @@ class Statistics:
         else:
             raise TypeError("Row percentage must be a float between 0 and 1.")
 
-    @public
     @property
     def feature_descriptive_statistics(
         self,
@@ -189,49 +184,41 @@ class Statistics:
         """List of feature descriptive statistics."""
         return self._feature_descriptive_statistics
 
-    @public
     @property
     def feature_group_id(self) -> int | None:
         """Id of the feature group on whose data the statistics were computed."""
         return self._feature_group_id
 
-    @public
     @property
     def feature_view_name(self) -> str | None:
         """Name of the feature view whose query was used to retrieve the data on which the statistics were computed."""
         return self._feature_view_name
 
-    @public
     @property
     def feature_view_version(self) -> int | None:
         """Id of the feature view whose query was used to retrieve the data on which the statistics were computed."""
         return self._feature_view_version
 
-    @public
     @property
     def window_start_commit_time(self) -> int | None:
         """Start time of the window of data on which statistics were computed."""
         return self._window_start_commit_time
 
-    @public
     @property
     def window_end_commit_time(self) -> int | None:
         """End time of the window of data on which statistics were computed."""
         return self._window_end_commit_time
 
-    @public
     @property
     def training_dataset_version(self) -> int | None:
         """Version of the training dataset on which statistics were computed."""
         return self._training_dataset_version
 
-    @public
     @property
     def split_statistics(self) -> list[SplitStatistics] | None:
         """List of statistics computed on each split of a training dataset."""
         return self._split_statistics
 
-    @public
     @property
     def before_transformation(self) -> bool:
         """Whether or not the statistics were computed on feature values before applying model-dependent transformations."""

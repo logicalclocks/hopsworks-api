@@ -21,18 +21,10 @@ import json
 from typing import Any
 
 import humps
-from hopsworks_apigen import also_available_as
 from hopsworks_common import util
 
 
-@also_available_as("hopsworks.tag.Tag", "hsfs.tag.Tag", "hsml.tag.Tag")
 class Tag:
-    """Represents a tag in Hopsworks.
-
-    Each tag is a name-value pair, where the name is a string and the value is a JSON-serializable object of the tag's schema.
-    Tags are used to attach metadata to various entities in Hopsworks; namely feature groups, feature views, training datasets, and models.
-    """
-
     NOT_FOUND_ERROR_CODE = 370002
 
     def __init__(
@@ -74,11 +66,11 @@ class Tag:
     ) -> list[Tag]:
         """Normalize tags input to a list of Tag objects.
 
-        Parameters:
-            tags: Tags in various formats (single Tag, dict, or list of Tags/dicts), or None.
+        # Arguments
+            tags: Tags in various formats (single Tag, dict, or list of Tags/dicts), or None
 
-        Returns:
-            List of Tag objects.
+        # Returns
+            `List[Tag]`: List of Tag objects
         """
         normalized_tags = []
         if tags is not None:
@@ -98,11 +90,11 @@ class Tag:
     def tags_to_dict(tags: list[Tag] | None) -> dict[str, Any] | None:
         """Convert a list of tags to API format with count and items.
 
-        Parameters:
-            tags: List of Tag objects, or None.
+        # Arguments
+            tags: List of Tag objects, or None
 
-        Returns:
-            Dictionary with count and items, or None if no tags.
+        # Returns
+            `dict`: Dictionary with count and items, or None if no tags
         """
         if not tags:
             return None
@@ -129,23 +121,23 @@ class Tag:
         return tags
 
     @property
-    def name(self) -> str:
+    def name(self):
         """Name of the tag."""
         return self._name
 
     @name.setter
-    def name(self, name: str):
+    def name(self, name):
         if name is None:
             raise ValueError("Tag name cannot be None")
         self._name = name
 
     @property
-    def value(self) -> Any:
-        """Value of the tag."""
+    def value(self):
+        """Value of tag."""
         return self._value
 
     @value.setter
-    def value(self, value: Any):
+    def value(self, value):
         if value is None:
             raise ValueError("Tag value cannot be None")
         self._value = value

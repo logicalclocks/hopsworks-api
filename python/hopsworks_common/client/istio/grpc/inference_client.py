@@ -14,14 +14,12 @@
 #   limitations under the License.
 
 import grpc
-from hopsworks_apigen import also_available_as
 from hopsworks_common.client.istio.grpc.proto.grpc_predict_v2_pb2_grpc import (
     GRPCInferenceServiceStub,
 )
 from hopsworks_common.client.istio.utils.infer_type import InferRequest, InferResponse
 
 
-@also_available_as("hsml.client.istio.grpc.inference_client.GRPCInferenceServerClient")
 class GRPCInferenceServerClient:
     def __init__(
         self,
