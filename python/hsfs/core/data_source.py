@@ -16,14 +16,16 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_common import util
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import storage_connector as sc
-from hsfs.core import data_source_api
-from hsfs.core import data_source_data as dsd
+
+
+if TYPE_CHECKING:
+    from hsfs.core import data_source_data as dsd
 
 
 class DataSource:

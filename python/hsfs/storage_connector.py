@@ -435,15 +435,11 @@ class StorageConnector(ABC):
         return self._data_source_api.get_metadata(data_source)
 
     def _get_no_sql_data(self, data_source: ds.DataSource) -> DataSourceData:
-        data: DataSourceData = self._data_source_api.get_no_sql_data(
-            self, data_source
-        )
+        data: DataSourceData = self._data_source_api.get_no_sql_data(self, data_source)
 
         while data.schema_fetch_in_progress:
             time.sleep(3)
-            data = self._data_source_api.get_no_sql_data(
-                self, data_source
-            )
+            data = self._data_source_api.get_no_sql_data(self, data_source)
             _logger.info("Schema fetch in progress...")
 
         if data.schema_fetch_failed:

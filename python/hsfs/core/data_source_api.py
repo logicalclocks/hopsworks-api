@@ -43,7 +43,9 @@ class DataSourceApi:
 
         return _client._send_request("GET", path_params)
 
-    def get_crm_resources(self, storage_connector: sc.StorageConnector) -> dsd.DataSourceData:
+    def get_crm_resources(
+        self, storage_connector: sc.StorageConnector
+    ) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
             "project",
