@@ -23,8 +23,8 @@ from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import util
-from hopsworks_common.job_schedule import JobSchedule
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
+from hopsworks_common.job_schedule import JobSchedule
 
 
 if TYPE_CHECKING:
@@ -112,32 +112,32 @@ class LoadingConfig:
             LoadingStrategy.INCREMENTAL_TIMESTAMP,
         ]:
             incremental_config["initialValue"] = self._initial_value
-        elif self._loading_strategy == LoadingStrategy.INCREMENTAL_DATE:
-            if self._initial_value is not None:
-                if isinstance(self._initial_value, (int, float)):
+        elif (
+            self._loading_strategy == LoadingStrategy.INCREMENTAL_DATE
+            and self._initial_value is not None
+        ):
+            if isinstance(self._initial_value, (int, float)):
+                incremental_config["initialIngestionDate"] = int(self._initial_value)
+            else:
+                initial_value = str(self._initial_value)
+                parsed = None
+                if "T" in initial_value:
+                    if initial_value.endswith("Z"):
+                        parsed = datetime.fromisoformat(initial_value[:-1])
+                        if parsed.tzinfo is None:
+                            parsed = parsed.replace(tzinfo=timezone.utc)
+                    else:
+                        parsed = datetime.fromisoformat(initial_value)
+                        if parsed.tzinfo is None:
+                            parsed = parsed.replace(tzinfo=timezone.utc)
+                if parsed is not None:
                     incremental_config["initialIngestionDate"] = int(
-                        self._initial_value
+                        parsed.timestamp() * 1000
                     )
                 else:
-                    initial_value = str(self._initial_value)
-                    parsed = None
-                    if "T" in initial_value:
-                        if initial_value.endswith("Z"):
-                            parsed = datetime.fromisoformat(initial_value[:-1])
-                            if parsed.tzinfo is None:
-                                parsed = parsed.replace(tzinfo=timezone.utc)
-                        else:
-                            parsed = datetime.fromisoformat(initial_value)
-                            if parsed.tzinfo is None:
-                                parsed = parsed.replace(tzinfo=timezone.utc)
-                    if parsed is not None:
-                        incremental_config["initialIngestionDate"] = int(
-                            parsed.timestamp() * 1000
-                        )
-                    else:
-                        incremental_config["initialIngestionDate"] = (
-                            util.get_timestamp_from_date_string(initial_value)
-                        )
+                    incremental_config["initialIngestionDate"] = (
+                        util.get_timestamp_from_date_string(initial_value)
+                    )
 
         if all(value is None for value in incremental_config.values()):
             incremental_config = None
@@ -164,6 +164,18 @@ class LoadingConfig:
                     json_decamelized["initial_value"] = incremental_config.get(
                         "initial_ingestion_date"
                     )
+        loading_strategy = json_decamelized.get("loading_strategy")
+        if loading_strategy == LoadingStrategy.INCREMENTAL_DATE.value:
+            initial_value = json_decamelized.get("initial_value")
+            if isinstance(initial_value, (int, float)) or (
+                isinstance(initial_value, str) and initial_value.isdigit()
+            ):
+                timestamp_ms = int(initial_value)
+                json_decamelized["initial_value"] = (
+                    datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
         return cls(**json_decamelized)
 
     def to_json(self):
@@ -177,6 +189,7 @@ class SinkJobConfiguration:
         self,
         name: str | None = None,
         batch_size: int | None = 100000,
+        sql_source_fetch_chunk_size: int | None = 50000,
         loading_config: LoadingConfig | dict | None = None,
         column_mappings: list[FeatureColumnMapping] | list[dict] | None = None,
         endpoint_config: dict | RestEndpointConfig | None = None,
@@ -184,6 +197,7 @@ class SinkJobConfiguration:
     ):
         self._name = name
         self._batch_size = batch_size
+        self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
         if isinstance(loading_config, dict):
             self._loading_config = LoadingConfig.from_response_json(loading_config)
         else:
@@ -220,6 +234,7 @@ class SinkJobConfiguration:
             "type": self.DTO_TYPE,
             "name": self._name,
             "batchSize": self._batch_size,
+            "sqlSourceFetchChunkSize": self._sql_source_fetch_chunk_size,
             "loadingConfig": (
                 self._loading_config.to_dict()
                 if isinstance(self._loading_config, LoadingConfig)
@@ -279,12 +294,17 @@ class SinkJobConfiguration:
         endpoint_config = json_dict.get("endpointConfig", None)
         return SinkJobConfiguration(
             batch_size=json_decamelized.get("batch_size", 100000),
+            sql_source_fetch_chunk_size=json_decamelized.get(
+                "sql_source_fetch_chunk_size", 50000
+            ),
             name=json_decamelized.get("name", None),
             loading_config=loading_config,
             column_mappings=column_mappings,
-            endpoint_config=RestEndpointConfig.from_response_json(endpoint_config)
-            if endpoint_config
-            else None,
+            endpoint_config=(
+                RestEndpointConfig.from_response_json(endpoint_config)
+                if endpoint_config
+                else None
+            ),
             schedule_config=(
                 JobSchedule.from_response_json(job_schedule) if job_schedule else None
             ),
@@ -310,6 +330,16 @@ class SinkJobConfiguration:
     @batch_size.setter
     def batch_size(self, batch_size: int | None) -> None:
         self._batch_size = batch_size
+
+    @property
+    def sql_source_fetch_chunk_size(self) -> int | None:
+        return self._sql_source_fetch_chunk_size
+
+    @sql_source_fetch_chunk_size.setter
+    def sql_source_fetch_chunk_size(
+        self, sql_source_fetch_chunk_size: int | None
+    ) -> None:
+        self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
 
     @property
     def loading_config(self) -> LoadingConfig | dict | None:
