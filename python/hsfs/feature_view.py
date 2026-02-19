@@ -258,7 +258,7 @@ class FeatureView:
         """
         return self._last_accessed_training_dataset
 
-    def delete(self) -> None:
+    def delete(self, force: bool = False) -> None:
         """Delete current feature view, all associated metadata and training data.
 
         Example:
@@ -277,6 +277,10 @@ class FeatureView:
             This operation drops all metadata associated with **this version** of the
             feature view **and** related training dataset **and** materialized data in HopsFS.
 
+        Parameters:
+            force: If True, delete the feature view even if models or deployments are using it.
+                Defaults to False, which will raise an error if the feature view is in use.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
@@ -285,11 +289,14 @@ class FeatureView:
             util.JobWarning,
             stacklevel=2,
         )
-        self._feature_view_engine.delete(self.name, self.version)
+        self._feature_view_engine.delete(self.name, self.version, force)
 
     @staticmethod
     def clean(
-        feature_store_id: int, feature_view_name: str, feature_view_version: str
+        feature_store_id: int,
+        feature_view_name: str,
+        feature_view_version: str,
+        force: bool = False,
     ) -> None:
         """Delete the feature view and all associated metadata and training data.
 
@@ -314,6 +321,8 @@ class FeatureView:
             feature_store_id: ID of feature store.
             feature_view_name: Name of feature view.
             feature_view_version: Version of feature view.
+            force: If True, delete the feature view even if models or deployments are using it.
+                Defaults to False, which will raise an error if the feature view is in use.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -321,7 +330,7 @@ class FeatureView:
         if not isinstance(feature_store_id, int):
             raise ValueError("`feature_store_id` should be an integer.")
         FeatureViewApi(feature_store_id).delete_by_name_version(
-            feature_view_name, feature_view_version
+            feature_view_name, feature_view_version, force
         )
 
     def update(self) -> FeatureView:
