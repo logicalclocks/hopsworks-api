@@ -48,6 +48,7 @@ nav:
       - Statistics: statistics_api.md
       - Statistics Configuration: statistics_config_api.md
     - Storage Connector: storage_connector_api.md
+    - Data Source: data_source_api.md
     - TrainingDataset: training_dataset_api.md
     - Transformation Functions:
       - HopsworksUDF: hopsworks_udf.md

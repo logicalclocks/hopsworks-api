@@ -78,7 +78,7 @@ FIXTURES = [
 
 backend_fixtures_json = {}
 for fixture in FIXTURES:
-    with open(os.path.join(FIXTURES_DIR, f"{fixture}_fixtures.json"), "r") as json_file:
+    with open(os.path.join(FIXTURES_DIR, f"{fixture}_fixtures.json")) as json_file:
         backend_fixtures_json[fixture] = json.load(json_file)
 
 

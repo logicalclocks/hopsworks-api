@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.beam.engine;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.JobConfiguration;
@@ -121,5 +122,27 @@ public class FeatureGroupEngine extends FeatureGroupEngineBase {
         throw e;
       }
     }
+  }
+
+  public StreamFeatureGroup getOrCreateFeatureGroup(FeatureStore featureStore, @NonNull String name,
+                                                    Integer version,
+                                                    String description,
+                                                    Boolean onlineEnabled,
+                                                    TimeTravelFormat timeTravelFormat,
+                                                    List<String> primaryKeys,
+                                                    List<String> partitionKeys,
+                                                    String eventTime,
+                                                    String hudiPrecombineKey,
+                                                    List<Feature> features,
+                                                    StatisticsConfig statisticsConfig,
+                                                    DataSource dataSource,
+                                                    OnlineConfig onlineConfig)
+      throws IOException, FeatureStoreException {
+
+    return getOrCreateFeatureGroup(featureStore, name, version, description, onlineEnabled, timeTravelFormat,
+        primaryKeys, partitionKeys, eventTime, hudiPrecombineKey, features, statisticsConfig,
+        dataSource != null ? dataSource.getStorageConnector() : null,
+        dataSource != null ? dataSource.getPath() : null,
+        onlineConfig);
   }
 }

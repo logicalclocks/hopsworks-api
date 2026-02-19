@@ -115,7 +115,7 @@ public class TrainingDatasetBase {
 
   @Getter
   @Setter
-  protected StorageConnector storageConnector;
+  protected DataSource dataSource;
 
   @Getter
   @Setter
@@ -138,14 +138,19 @@ public class TrainingDatasetBase {
                          TrainingDatasetType trainingDatasetType, Float validationSize, Float testSize,
                          String trainStart, String trainEnd, String validationStart,
                          String validationEnd, String testStart, String testEnd, Integer timeSplitSize,
-                         FilterLogic extraFilterLogic, Filter extraFilter)
+                         FilterLogic extraFilterLogic, Filter extraFilter, DataSource dataSource)
       throws FeatureStoreException, ParseException {
     this.version = version;
     this.description = description;
     this.dataFormat = dataFormat != null ? dataFormat : DataFormat.PARQUET;
     this.coalesce = coalesce != null ? coalesce : false;
-    this.location = location;
-    this.storageConnector = storageConnector;
+    if (dataSource == null) {
+      this.dataSource = new DataSource();
+      this.dataSource.setStorageConnector(storageConnector);
+      this.dataSource.setPath(location);
+    } else {
+      this.dataSource = dataSource;
+    }
     this.trainSplit = trainSplit;
     this.splits = splits == null ? Lists.newArrayList() : splits;
     this.seed = seed;
@@ -155,7 +160,7 @@ public class TrainingDatasetBase {
     this.eventStartTime = eventStartTime != null ? FeatureGroupUtils.getDateFromDateString(eventStartTime) : null;
     this.eventEndTime = eventEndTime != null ? FeatureGroupUtils.getDateFromDateString(eventEndTime) : null;
     this.trainingDatasetType = trainingDatasetType != null ? trainingDatasetType :
-        getTrainingDatasetType(storageConnector);
+        getTrainingDatasetType(dataSource);
     setValTestSplit(validationSize, testSize);
     setTimeSeriesSplits(timeSplitSize, trainStart, trainEnd, validationStart, validationEnd, testStart, testEnd);
     if (extraFilter != null) {
@@ -225,10 +230,10 @@ public class TrainingDatasetBase {
     this.label = label.stream().map(String::toLowerCase).collect(Collectors.toList());
   }
 
-  public TrainingDatasetType getTrainingDatasetType(StorageConnector storageConnector) {
-    if (storageConnector == null) {
+  public TrainingDatasetType getTrainingDatasetType(DataSource dataSource) {
+    if (dataSource == null || dataSource.getStorageConnector() == null) {
       return TrainingDatasetType.HOPSFS_TRAINING_DATASET;
-    } else if (storageConnector.getStorageConnectorType() == StorageConnectorType.HOPSFS) {
+    } else if (dataSource.getStorageConnector().getStorageConnectorType() == StorageConnectorType.HOPSFS) {
       return TrainingDatasetType.HOPSFS_TRAINING_DATASET;
     } else {
       return TrainingDatasetType.EXTERNAL_TRAINING_DATASET;

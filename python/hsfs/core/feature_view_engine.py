@@ -190,10 +190,10 @@ class FeatureViewEngine:
             fv = self._feature_view_api.get_by_name(name)
         return fv
 
-    def delete(self, name, version=None):
+    def delete(self, name, version=None, force: bool = False):
         if version:
-            return self._feature_view_api.delete_by_name_version(name, version)
-        return self._feature_view_api.delete_by_name(name)
+            return self._feature_view_api.delete_by_name_version(name, version, force)
+        return self._feature_view_api.delete_by_name(name, force)
 
     def get_training_dataset_schema(
         self,
@@ -673,7 +673,7 @@ class FeatureViewEngine:
         dataframe_type,
     ):
         try:
-            df = training_data_obj.storage_connector.read(
+            df = training_data_obj.data_source.storage_connector.read(
                 # always read from materialized dataset, not query object
                 query=None,
                 data_format=training_data_obj.data_format,

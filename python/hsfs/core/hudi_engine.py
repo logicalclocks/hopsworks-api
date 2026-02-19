@@ -168,7 +168,7 @@ class HudiEngine:
         )
 
         # dont enable hive sync when using managed FG
-        hive_sync = self._feature_group.storage_connector is None
+        hive_sync = self._feature_group.data_source.storage_connector is None
 
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
