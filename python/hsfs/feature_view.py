@@ -45,6 +45,8 @@ from hsfs import (
 )
 from hsfs import serving_key as skm
 from hsfs.constructor import filter, query
+from hsfs.constructor.filter import Filter, Logic
+from hsfs.core import data_source as ds
 from hsfs.core import (
     explicit_provenance,
     feature_monitoring_config_engine,
@@ -1492,6 +1494,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
@@ -1575,13 +1578,13 @@ class FeatureView:
             feature_view = fs.get_feature_view(...)
 
             # get storage connector instance
-            external_storage_connector = fs.get_storage_connector("storage_connector_name")
+            data_source = fs.get_data_source("test_data_source")
 
             # create a train-test split dataset
             version, job = feature_view.create_training_data(
                 start_time=...,
                 end_time=...,
-                storage_connector = external_storage_connector,
+                data_source=data_source,
                 description=...,
                 # you can have different data formats such as csv, tsv, tfrecord, parquet and others
                 data_format=...
@@ -1614,10 +1617,10 @@ class FeatureView:
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
                 Int, i.e., Unix Epoch should be in seconds.
             storage_connector:
-                Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS.
+                Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             location:
                 Path to complement the sink storage connector with, e.g., if the storage connector points to an S3 bucket, this path can be used to define a sub-directory inside the bucket to place the training dataset.
-                Defaults to `""`, saving the training dataset at the root defined by the storage connector.
+                Defaults to `""`, saving the training dataset at the root defined by the storage connector. **[DEPRECATED: Use `data_source` instead.]**
             description:
                 A string describing the contents of the training dataset to improve discoverability for Data Scientists.
             extra_filter:
@@ -1658,6 +1661,7 @@ class FeatureView:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
         Returns:
             td_version: training dataset version
@@ -1666,6 +1670,10 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        if not data_source:
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         normalized_tags = tag.Tag.normalize(tags)
 
         td = training_dataset.TrainingDataset(
@@ -1675,8 +1683,7 @@ class FeatureView:
             event_end_time=end_time,
             description=description,
             data_format=data_format,
-            storage_connector=storage_connector,
-            location=location,
+            data_source=data_source,
             featurestore_id=self._featurestore_id,
             splits={},
             seed=seed,
@@ -1721,6 +1728,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
@@ -1811,7 +1819,7 @@ class FeatureView:
             feature_view = fs.get_feature_view(...)
 
             # get storage connector instance
-            external_storage_connector = fs.get_storage_connector("storage_connector_name")
+            data_source = fs.get_data_source("test_data_source")
 
             # create a train-test split dataset
             version, job = feature_view.create_train_test_split(
@@ -1819,7 +1827,7 @@ class FeatureView:
                 train_end=...,
                 test_start=...,
                 test_end=...,
-                storage_connector = external_storage_connector,
+                data_source=data_source,
                 description=...,
                 # you can have different data formats such as csv, tsv, tfrecord, parquet and others
                 data_format=...
@@ -1891,12 +1899,12 @@ class FeatureView:
                 or `%Y-%m-%d %H:%M:%S.%f`. Int, i.e Unix Epoch should be in seconds.
             storage_connector: Storage connector defining the sink location for the
                 training dataset, defaults to `None`, and materializes training dataset
-                on HopsFS.
+                on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             location: Path to complement the sink storage connector with, e.g if the
                 storage connector points to an S3 bucket, this path can be used to
                 define a sub-directory inside the bucket to place the training dataset.
                 Defaults to `""`, saving the training dataset at the root defined by the
-                storage connector.
+                storage connector. **[DEPRECATED: Use `data_source` instead.]**
             description: A string describing the contents of the training dataset to
                 improve discoverability for Data Scientists, defaults to empty string
                 `""`.
@@ -1937,6 +1945,7 @@ class FeatureView:
                 be available in the spine group.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
         Returns:
             (td_version, `Job`): Tuple of training dataset version and job.
@@ -1949,6 +1958,10 @@ class FeatureView:
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
         )
+        if not data_source:
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         normalized_tags = tag.Tag.normalize(tags)
 
         td = training_dataset.TrainingDataset(
@@ -1962,8 +1975,7 @@ class FeatureView:
             test_end=test_end,
             description=description,
             data_format=data_format,
-            storage_connector=storage_connector,
-            location=location,
+            data_source=data_source,
             featurestore_id=self._featurestore_id,
             splits={},
             seed=seed,
@@ -2010,6 +2022,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
@@ -2107,7 +2120,7 @@ class FeatureView:
             feature_view = fs.get_feature_view(...)
 
             # get storage connector instance
-            external_storage_connector = fs.get_storage_connector("storage_connector_name")
+            data_source = fs.get_data_source("test_data_source")
 
             # create a train-validation-test split dataset
             version, job = feature_view.create_train_validation_test_split(
@@ -2118,7 +2131,7 @@ class FeatureView:
                 test_start=...,
                 test_end=...,
                 description=...,
-                storage_connector = external_storage_connector,
+                data_source=data_source,
                 # you can have different data formats such as csv, tsv, tfrecord, parquet and others
                 data_format=...
             )
@@ -2165,12 +2178,12 @@ class FeatureView:
                 or `%Y-%m-%d %H:%M:%S.%f`. Int, i.e Unix Epoch should be in seconds.
             storage_connector: Storage connector defining the sink location for the
                 training dataset, defaults to `None`, and materializes training dataset
-                on HopsFS.
+                on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             location: Path to complement the sink storage connector with, e.g if the
                 storage connector points to an S3 bucket, this path can be used to
                 define a sub-directory inside the bucket to place the training dataset.
                 Defaults to `""`, saving the training dataset at the root defined by the
-                storage connector.
+                storage connector. **[DEPRECATED: Use `data_source` instead.]**
             description: A string describing the contents of the training dataset to
                 improve discoverability for Data Scientists, defaults to empty string
                 `""`.
@@ -2211,6 +2224,7 @@ class FeatureView:
                 be available in the spine group.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
         Returns:
             (td_version, `Job`): Tuple of training dataset version and job.
@@ -2228,6 +2242,10 @@ class FeatureView:
             validation_end=validation_end,
             test_start=test_start,
         )
+        if not data_source:
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         normalized_tags = tag.Tag.normalize(tags)
 
         td = training_dataset.TrainingDataset(
@@ -2244,8 +2262,7 @@ class FeatureView:
             test_end=test_end,
             description=description,
             data_format=data_format,
-            storage_connector=storage_connector,
-            location=location,
+            data_source=data_source,
             featurestore_id=self._featurestore_id,
             splits={},
             seed=seed,
@@ -2478,10 +2495,9 @@ class FeatureView:
             event_start_time=start_time,
             event_end_time=end_time,
             description=description,
-            storage_connector=None,
+            data_source=None,
             featurestore_id=self._featurestore_id,
             data_format="tsv",
-            location="",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
             extra_filter=extra_filter,
@@ -2654,10 +2670,9 @@ class FeatureView:
             test_end=test_end,
             time_split_size=2,
             description=description,
-            storage_connector=None,
+            data_source=None,
             featurestore_id=self._featurestore_id,
             data_format="tsv",
-            location="",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
             extra_filter=extra_filter,
@@ -2870,10 +2885,9 @@ class FeatureView:
             test_start=test_start,
             test_end=test_end,
             description=description,
-            storage_connector=None,
+            data_source=None,
             featurestore_id=self._featurestore_id,
             data_format="tsv",
-            location="",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
             extra_filter=extra_filter,

@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.beam;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
@@ -107,6 +108,38 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   }
 
   @Override
+  public StreamFeatureGroup createStreamFeatureGroup(@NonNull String name,
+                                                     Integer version,
+                                                     String description,
+                                                     Boolean onlineEnabled,
+                                                     TimeTravelFormat timeTravelFormat,
+                                                     List<String> primaryKeys,
+                                                     List<String> partitionKeys,
+                                                     String eventTime,
+                                                     String hudiPrecombineKey,
+                                                     List<Feature> features,
+                                                     StatisticsConfig statisticsConfig,
+                                                     DataSource dataSource) {
+
+    return new StreamFeatureGroup.StreamFeatureGroupBuilder()
+        .featureStore(this)
+        .name(name)
+        .version(version)
+        .description(description)
+        .onlineEnabled(onlineEnabled)
+        .timeTravelFormat(timeTravelFormat)
+        .primaryKeys(primaryKeys)
+        .partitionKeys(partitionKeys)
+        .eventTime(eventTime)
+        .hudiPrecombineKey(hudiPrecombineKey)
+        .features(features)
+        .statisticsConfig(statisticsConfig)
+        .storageConnector(dataSource != null ? dataSource.getStorageConnector() : null)
+        .path(dataSource != null ? dataSource.getPath() : null)
+        .build();
+  }
+
+  @Override
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(@NonNull String name,
                                                      Integer version,
                                                      String description,
@@ -126,6 +159,29 @@ public class FeatureStore extends FeatureStoreBase<Query> {
     return featureGroupEngine.getOrCreateFeatureGroup(this, name, version, description, onlineEnabled,
         timeTravelFormat, primaryKeys, partitionKeys, eventTime, hudiPrecombineKey, features, statisticsConfig,
         storageConnector, path, onlineConfig);
+  }
+
+  @Override
+  public StreamFeatureGroup getOrCreateStreamFeatureGroup(@NonNull String name,
+                                                     Integer version,
+                                                     String description,
+                                                     Boolean onlineEnabled,
+                                                     TimeTravelFormat timeTravelFormat,
+                                                     List<String> primaryKeys,
+                                                     List<String> partitionKeys,
+                                                     String eventTime,
+                                                     String hudiPrecombineKey,
+                                                     List<Feature> features,
+                                                     StatisticsConfig statisticsConfig,
+                                                     DataSource dataSource,
+                                                     OnlineConfig onlineConfig)
+          throws IOException, FeatureStoreException {
+
+    return featureGroupEngine.getOrCreateFeatureGroup(this, name, version, description, onlineEnabled,
+        timeTravelFormat, primaryKeys, partitionKeys, eventTime, hudiPrecombineKey, features, statisticsConfig,
+        dataSource != null ? dataSource.getStorageConnector() : null,
+        dataSource != null ? dataSource.getPath() : null,
+        onlineConfig);
   }
 
   /**

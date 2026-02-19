@@ -141,7 +141,6 @@ class FeatureGroupBase:
         deprecated: bool = False,
         online_config: OnlineConfig | dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
-        storage_connector: sc.StorageConnector | dict[str, Any] = None,
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
@@ -167,7 +166,6 @@ class FeatureGroupBase:
             deprecated: Whether this feature group is deprecated.
             online_config: Configuration for online serving.
             data_source: Data source configuration.
-            storage_connector: Storage connector configuration.
             ttl: Time-to-live (TTL) configuration for this feature group.
             ttl_enabled:
                 Whether to enable time-to-live (TTL) for this feature group.
@@ -199,12 +197,6 @@ class FeatureGroupBase:
         self._sink_enabled = sink_enabled
         self._missing_mandatory_tags = missing_mandatory_tags or []
 
-        if storage_connector is not None and isinstance(storage_connector, dict):
-            self._storage_connector = sc.StorageConnector.from_response_json(
-                storage_connector
-            )
-        else:
-            self._storage_connector: sc.StorageConnector = storage_connector
         self._online_config = (
             OnlineConfig.from_response_json(online_config)
             if isinstance(online_config, dict)
@@ -744,6 +736,9 @@ class FeatureGroupBase:
         These storage connector can be accessible, deleted or inaccessible.
         For deleted and inaccessible storage connector, only minimal information is returned.
 
+        !!! warning "Deprecated"
+            `get_storage_connector_provenance` method is deprecated. Use `get_data_source_provenance` instead.
+
         Returns:
             The storage connector used to generate this feature group or `None` if it does not exist.
 
@@ -752,11 +747,30 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
+    def get_data_source_provenance(self) -> explicit_provenance.Links | None:
+        """Get the parents of this feature group, based on explicit provenance.
+
+        Parents are storage connectors. These storage connector can be accessible,
+        deleted or inaccessible.
+        For deleted and inaccessible storage connector, only minimal information is
+        returned.
+
+        # Returns
+            `Links`: the data source used to generate this feature group or `None` if it does not exist.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._feature_group_engine.get_storage_connector_provenance(self)
+
     def get_storage_connector(self) -> sc.StorageConnector | None:
         """Get the storage connector using this feature group, based on explicit provenance.
 
         Only the accessible storage connector is returned.
         For more items use the base method, see [`get_storage_connector_provenance`][hsfs.feature_group.FeatureGroup.get_storage_connector_provenance].
+
+        !!! warning "Deprecated"
+            `get_storage_connector_provenance` method is deprecated. Use `get_data_source_provenance` instead.
 
         Returns:
             Storage connector or `None` if it does not exist.
@@ -776,6 +790,32 @@ class FeatureGroupBase:
 
         if storage_connector_provenance and storage_connector_provenance.accessible:
             return storage_connector_provenance.accessible[0]
+        return None
+
+    def get_data_source(self) -> ds.DataSource | None:
+        """Get the data source using this feature group, based on explicit provenance.
+
+        Only the accessible data source is returned.
+        For more items use the base method - get_data_source_provenance.
+
+        # Returns
+            `DataSource`: Data source or `None` if it does not exist.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        data_source_provenance = self.get_data_source_provenance()
+
+        if data_source_provenance and (
+            data_source_provenance.inaccessible or data_source_provenance.deleted
+        ):
+            _logger.info(
+                "The parent data source is deleted or inaccessible. For more details access `get_data_source_provenance`"
+            )
+
+        if data_source_provenance and data_source_provenance.accessible:
+            return data_source_provenance.accessible[0]
+
         return None
 
     def get_generated_feature_views(self) -> explicit_provenance.Links | None:
@@ -902,6 +942,61 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.update_description(self, description)
+        return self
+
+    def update_topic_name(
+        self, topic_name: str
+    ) -> FeatureGroupBase | ExternalFeatureGroup | SpineGroup | FeatureGroup:
+        """Update the kafka topic name of the feature group.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.update_topic_name(topic_name="topic_name")
+            ```
+
+        !!! warning "Pending data will not be migrated automatically"
+            Any data already inserted into the current topic will not be materialized to the new topic.
+            Ensure all in-flight processing has completed before switching.
+
+        !!! warning "Offline materialization will restart from the beginning"
+            After switching, offline materialization will start consuming from the earliest offset of the new topic,
+            which may result in duplicate or reprocessed data.
+
+        Info: Safe update
+            This method updates the feature group kafka topic name safely.
+            In case of failure your local metadata object will keep the old topic name.
+
+        Parameters:
+            topic_name:
+                Name of the Kafka topic for streaming.
+
+        Returns:
+            The updated feature group object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        warnings.warn(
+            "Pending data will not be migrated automatically: "
+            "Any data already inserted into the current topic will not be materialized to the new topic. "
+            "Ensure all in-flight processing has completed before switching.",
+            util.FeatureGroupWarning,
+            stacklevel=1,
+        )
+        warnings.warn(
+            "Offline materialization will restart from the beginning: "
+            "After switching, offline materialization will start consuming from the earliest offset of the new topic, "
+            "which may result in duplicate or reprocessed data.",
+            util.FeatureGroupWarning,
+            stacklevel=1,
+        )
+        self._feature_group_engine.update_topic_name(self, topic_name)
         return self
 
     def update_notification_topic_name(
@@ -2275,14 +2370,35 @@ class FeatureGroupBase:
 
     @property
     def storage_connector(self) -> sc.StorageConnector:
-        """The storage connector which was used to create the feature group, if any."""
-        return self._storage_connector
+        """Get the storage connector.
+
+        !!! warning "Deprecated"
+            `storage_connector` method is deprecated. Use
+            `data_source` instead.
+        """
+        return self._data_source.storage_connector
+
+    @storage_connector.setter
+    def storage_connector(self, storage_connector: sc.StorageConnector) -> None:
+        if self._data_source is None:
+            self._data_source = ds.DataSource()
+        self._data_source.storage_connector = storage_connector
+
+    @property
+    def data_source(self) -> ds.DataSource:
+        return self._data_source
+
+    @data_source.setter
+    def data_source(self, data_source: ds.DataSource) -> None:
+        self._data_source = data_source
+        if self._data_source is not None:
+            self._data_source._update_storage_connector(self.storage_connector)
 
     def prepare_spark_location(self) -> str:
         # TODO: Add docstring
         location = self.location
-        if self.storage_connector is not None:
-            location = self.storage_connector.prepare_spark(location)
+        if self.data_source is not None and self.data_source.storage_connector:
+            location = self.data_source.storage_connector.prepare_spark(location)
         return location
 
     @property
@@ -2311,17 +2427,6 @@ class FeatureGroupBase:
     @deprecated.setter
     def deprecated(self, deprecated: bool) -> None:
         self._deprecated = deprecated
-
-    @property
-    def data_source(self) -> ds.DataSource | None:
-        """The data source which was used to create the feature group, if any."""
-        return self._data_source
-
-    @data_source.setter
-    def data_source(self, data_source: ds.DataSource) -> None:
-        self._data_source = data_source
-        if self._data_source is not None:
-            self._data_source._update_storage_connector(self.storage_connector)
 
     @property
     def subject(self) -> dict[str, Any]:
@@ -2605,7 +2710,6 @@ class FeatureGroup(FeatureGroupBase):
         ) = None,
         online_config: OnlineConfig | dict[str, Any] | None = None,
         offline_backfill_every_hr: str | int | None = None,
-        storage_connector: sc.StorageConnector | dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
@@ -2632,7 +2736,6 @@ class FeatureGroup(FeatureGroupBase):
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
             online_config=online_config,
-            storage_connector=storage_connector,
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
@@ -2791,16 +2894,16 @@ class FeatureGroup(FeatureGroupBase):
 
     def _is_hopsfs_storage(self) -> bool:
         """Return True if storage is HopsFS."""
-        return self._storage_connector is None or (
-            self._storage_connector is not None
-            and self._storage_connector.type == sc.StorageConnector.HOPSFS
+        return self.storage_connector is None or (
+            self.storage_connector is not None
+            and self.storage_connector.type == sc.StorageConnector.HOPSFS
         )
 
     def _resolve_sink_enabled(self):
         """Check if sink enabled must enabled based on storage connector."""
         self._sink_enabled = (
-            self._storage_connector is not None
-            and self._storage_connector.type
+            self.storage_connector is not None
+            and self.storage_connector.type
             in [sc.StorageConnector.CRM, sc.StorageConnector.REST]
         )
 
@@ -3168,7 +3271,7 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._resolve_sink_enabled()
-        if self._sink_enabled and self._storage_connector is None:
+        if self._sink_enabled and self.storage_connector is None:
             raise FeatureStoreException(
                 "Sink cannot be enabled for the feature group without a storage connector."
             )
@@ -4139,8 +4242,6 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
-        if self._storage_connector:
-            fg_meta_dict["storageConnector"] = self._storage_connector.to_dict()
         tags_dict = tag.Tag.tags_to_dict(self._tags)
         if tags_dict:
             fg_meta_dict["tags"] = tags_dict
@@ -4418,7 +4519,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     def __init__(
         self,
-        storage_connector: sc.StorageConnector | dict[str, Any],
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         name: str | None = None,
@@ -4472,7 +4572,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
             online_config=online_config,
-            storage_connector=storage_connector,
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
@@ -4535,8 +4634,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         fg = feature_store.create_external_feature_group(name="sales",
             version=1,
             description="Physical shop sales features",
-            query=query,
-            storage_connector=connector,
+            data_source=ds,
             primary_key=['ss_store_sk'],
             event_time='sale_date'
         )
@@ -4881,7 +4979,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 if self._options
                 else None
             ),
-            "storageConnector": self._storage_connector.to_dict(),
             "type": "onDemandFeaturegroupDTO",
             "statisticsConfig": self._statistics_config,
             "eventTime": self._event_time,
@@ -4950,7 +5047,6 @@ class SpineGroup(FeatureGroupBase):
 
     def __init__(
         self,
-        storage_connector: sc.StorageConnector | dict[str, Any] | None = None,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] = None,

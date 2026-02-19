@@ -76,7 +76,10 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
    * @param path the path on the storage where to store the feature data.
    *
    * @return The feature group metadata object.
+   * @deprecated Use {@link #createStreamFeatureGroup(String, Integer, String, Boolean, TimeTravelFormat, List, List,
+   *             String, String, List, StatisticsConfig, DataSource)} instead.
    */
+  @Deprecated
   public abstract FeatureGroupBase createStreamFeatureGroup(@NonNull String name,
                                                             Integer version,
                                                             String description,
@@ -92,32 +95,38 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
                                                             String path);
 
   /**
+   * Create a stream feature group object.
+   *
+   * @param name the name of the feature group
+   * @param version the version of the feature group
+   * @param description descrption of the feature group
+   * @param onlineEnabled whether the feature group should be online enabled
+   * @param timeTravelFormat the data format to use to store the offline data
+   * @param primaryKeys list of primary keys
+   * @param partitionKeys list of partition keys
+   * @param eventTime the feature/column to use as event time
+   * @param hudiPrecombineKey if the timeTravelFormat is set to hudi, the feature/column to use as precombine key
+   * @param features the list of feature objects if defined explicitly
+   * @param statisticsConfig the statistics configuration for the feature group
+   * @param dataSource the data source specifying the location of the data.
+   *
+   * @return The feature group metadata object.
+   */
+  public abstract FeatureGroupBase createStreamFeatureGroup(@NonNull String name,
+                                                            Integer version,
+                                                            String description,
+                                                            Boolean onlineEnabled,
+                                                            TimeTravelFormat timeTravelFormat,
+                                                            List<String> primaryKeys,
+                                                            List<String> partitionKeys,
+                                                            String eventTime,
+                                                            String hudiPrecombineKey,
+                                                            List<Feature> features,
+                                                            StatisticsConfig statisticsConfig,
+                                                            DataSource dataSource);
+
+  /**
    * Get a feature group metadata object or create a new one if it doesn't exists.
-   *
-   * <pre>
-   * {@code
-   *        // get feature store handle
-   *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
-   *        StreamFeatureGroup streamFeatureGroup = featureStore.getOrCreateStreamFeatureGroup(
-   *                 "doc_example",
-   *                 1,
-   *                 "Feature group for example in documentation",
-   *                 true,
-   *                 TimeTravelFormat.HUDI,
-   *                 Collections.singletonList("primary_key"),
-   *                 Collections.singletonList("partition_key"),
-   *                 "event_time",
-   *                 null,
-   *                 features,
-   *                 null,
-   *                 new StatisticsConfig(true, true, true, true),
-   *                 null
-   *         );
-   *
-   *         streamFeatureGroup.save()
-   * }
-   * </pre>
-   *
    *
    * @param name the name of the feature group
    * @param version the version of the feature group
@@ -135,7 +144,10 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
    * @param path the path on the storage where to store the feature data.
    *
    * @return The feature group metadata object.
+   * @deprecated Use {@link #getOrCreateStreamFeatureGroup(String, Integer, String, Boolean, TimeTravelFormat, List,
+   *             List, String, String, List, StatisticsConfig, DataSource, OnlineConfig)} instead.
    */
+  @Deprecated
   public abstract FeatureGroupBase getOrCreateStreamFeatureGroup(@NonNull String name,
                                                             Integer version,
                                                             String description,
@@ -149,6 +161,40 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
                                                             StatisticsConfig statisticsConfig,
                                                             StorageConnector storageConnector,
                                                             String path,
+                                                            OnlineConfig onlineConfig)
+          throws IOException, FeatureStoreException;
+
+  /**
+   * Get a stream feature group metadata object or create a new one if it doesn't exist.
+   *
+   * @param name the name of the feature group
+   * @param version the version of the feature group
+   * @param description descrption of the feature group
+   * @param onlineEnabled whether the feature group should be online enabled
+   * @param timeTravelFormat the data format to use to store the offline data
+   * @param primaryKeys list of primary keys
+   * @param partitionKeys list of partition keys
+   * @param eventTime the feature/column to use as event time
+   * @param hudiPrecombineKey if the timeTravelFormat is set to hudi, the feature/column to use as precombine key
+   * @param features the list of feature objects if defined explicitly
+   * @param statisticsConfig the statistics configuration for the feature group
+   * @param dataSource the data source specifying the location of the data.
+   * @param onlineConfig the online configuration for the feature group.
+   *
+   * @return The feature group metadata object.
+   */
+  public abstract FeatureGroupBase getOrCreateStreamFeatureGroup(@NonNull String name,
+                                                            Integer version,
+                                                            String description,
+                                                            Boolean onlineEnabled,
+                                                            TimeTravelFormat timeTravelFormat,
+                                                            List<String> primaryKeys,
+                                                            List<String> partitionKeys,
+                                                            String eventTime,
+                                                            String hudiPrecombineKey,
+                                                            List<Feature> features,
+                                                            StatisticsConfig statisticsConfig,
+                                                            DataSource dataSource,
                                                             OnlineConfig onlineConfig)
           throws IOException, FeatureStoreException;
 
@@ -203,6 +249,34 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
    */
   public StorageConnector getStorageConnector(String name) throws FeatureStoreException, IOException {
     return storageConnectorApi.getByName(this, name, StorageConnector.class);
+  }
+
+  /**
+   * Get a previously created data source from the feature store.
+   *
+   * <p>data sources encapsulate all information needed for the execution engine to read and write to a specific
+   * storage.
+   *
+   * <p>If you want to connect to the online feature store, see the getOnlineDataSource` method to get the
+   * JDBC connector for the Online Feature Store.
+   *
+   * <pre>
+   * {@code
+   *        // get feature store handle
+   *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
+   *        DataSource ds = fs.getDataSource("ds_name");
+   * }
+   * </pre>
+   *
+   * @param name Name of the data source to retrieve.
+   * @return DataSource Data source object.
+   * @throws FeatureStoreException If unable to retrieve DataSource from the feature store.
+   * @throws IOException Generic IO exception.
+   */
+  public DataSource getDataSource(String name) throws FeatureStoreException, IOException {
+    DataSource dataSource = new DataSource();
+    dataSource.setStorageConnector(getStorageConnector(name));
+    return dataSource;
   }
 
   /**
