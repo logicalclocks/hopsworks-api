@@ -437,15 +437,12 @@ class StorageConnector(ABC):
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api.get_metadata(data_source)
 
-<<<<<<< HEAD
-    def _get_no_sql_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
+    def _get_no_sql_data(
+        self, data_source: ds.DataSource, use_cached=True
+    ) -> DataSourceData:
         data: DataSourceData = self._data_source_api.get_no_sql_data(
-            self._featurestore_id, self._name, self.type, data_source, use_cached
+            self, data_source, use_cached
         )
-=======
-    def _get_no_sql_data(self, data_source: ds.DataSource) -> DataSourceData:
-        data: DataSourceData = self._data_source_api.get_no_sql_data(self, data_source)
->>>>>>> lc-enterprise/main
 
         while data.schema_fetch_in_progress:
             time.sleep(3)

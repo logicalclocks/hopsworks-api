@@ -89,14 +89,10 @@ class DataSourceApi:
         data_source: ds.DataSource,
         use_cached=True,
     ) -> dsd.DataSourceData:
-        if connector_type == "REST":
-            return self._get_rest_data(
-                feature_store_id, name, data_source, use_cached
-            )
-        if connector_type == "CRM":
-            return self._get_crm_data(
-                feature_store_id, name, data_source, use_cached
-            )
+        if storage_connector.type == "REST":
+            return self._get_rest_data(storage_connector, data_source, use_cached)
+        if storage_connector.type == "CRM":
+            return self._get_crm_data(storage_connector, data_source, use_cached)
         raise ValueError("This connector type does not support fetching NoSQL data.")
 
     def _get_rest_data(
@@ -117,7 +113,7 @@ class DataSourceApi:
             "resources",
             data_source.table,
         ]
-        
+
         query_params = {"forceRefetch": not use_cached}
         return dsd.DataSourceData.from_response_json(
             _client._send_request(
