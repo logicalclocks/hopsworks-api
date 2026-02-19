@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.spark.engine;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
 import com.logicalclocks.hsfs.Feature;
@@ -400,6 +401,23 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
     }
 
     return featureGroup;
+  }
+
+  public StreamFeatureGroup getOrCreateStreamFeatureGroup(FeatureStore featureStore, String name, Integer version,
+                                                          String description, List<String> primaryKeys,
+                                                          List<String> partitionKeys, String hudiPrecombineKey,
+                                                          boolean onlineEnabled,
+                                                          StatisticsConfig statisticsConfig,
+                                                          String eventTime, TimeTravelFormat timeTravelFormat,
+                                                          List<Feature> features, DataSource dataSource,
+                                                          OnlineConfig onlineConfig)
+      throws IOException, FeatureStoreException {
+
+    return getOrCreateStreamFeatureGroup(featureStore, name, version, description, primaryKeys, partitionKeys,
+        hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat, features,
+        dataSource != null ? dataSource.getStorageConnector() : null,
+        dataSource != null ? dataSource.getPath() : null,
+        onlineConfig);
   }
 
   public StreamFeatureGroup getStreamFeatureGroup(FeatureStore featureStore, String fgName, Integer fgVersion)

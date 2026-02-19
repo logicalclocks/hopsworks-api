@@ -16,37 +16,44 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_data as dsd
 
 
+if TYPE_CHECKING:
+    from hsfs import storage_connector as sc
+
+
 class DataSourceApi:
-    def get_databases(self, feature_store_id: int, name: str) -> list[str]:
+    def get_databases(self, storage_connector: sc.StorageConnector) -> list[str]:
         _client = client.get_instance()
         path_params = [
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            storage_connector._name,
             "data_source",
             "databases",
         ]
 
         return _client._send_request("GET", path_params)
 
-    def get_crm_resources(self, feature_store_id: int, name: str) -> dsd.DataSourceData:
+    def get_crm_resources(
+        self, storage_connector: sc.StorageConnector
+    ) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            storage_connector._name,
             "data_source",
             "resources",
         ]
@@ -55,16 +62,16 @@ class DataSourceApi:
         )
 
     def get_tables(
-        self, feature_store_id: int, name: str, database: str
+        self, storage_connector: sc.StorageConnector, database: str
     ) -> list[ds.DataSource]:
         _client = client.get_instance()
         path_params = [
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            storage_connector._name,
             "data_source",
             "tables",
         ]
@@ -72,26 +79,24 @@ class DataSourceApi:
         query_params = {"database": database}
 
         return ds.DataSource.from_response_json(
-            _client._send_request("GET", path_params, query_params)
+            _client._send_request("GET", path_params, query_params),
+            storage_connector=storage_connector,
         )
 
     def get_no_sql_data(
         self,
-        feature_store_id: int,
-        name: str,
-        connector_type: str,
+        storage_connector: sc.StorageConnector,
         data_source: ds.DataSource,
     ) -> dsd.DataSourceData:
-        if connector_type == "REST":
-            return self._get_rest_data(feature_store_id, name, data_source)
-        if connector_type == "CRM":
-            return self._get_crm_data(feature_store_id, name, data_source)
+        if storage_connector.type == "REST":
+            return self._get_rest_data(storage_connector, data_source)
+        if storage_connector.type == "CRM":
+            return self._get_crm_data(storage_connector, data_source)
         raise ValueError("This connector type does not support fetching NoSQL data.")
 
     def _get_rest_data(
         self,
-        feature_store_id: int,
-        name: str,
+        storage_connector: sc.StorageConnector,
         data_source: ds.DataSource,
     ) -> dsd.DataSourceData:
         _client = client.get_instance()
@@ -99,9 +104,9 @@ class DataSourceApi:
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            storage_connector._name,
             "data_source",
             "resources",
             data_source.table,
@@ -118,8 +123,7 @@ class DataSourceApi:
 
     def _get_crm_data(
         self,
-        feature_store_id: int,
-        name: str,
+        storage_connector: sc.StorageConnector,
         data_source: ds.DataSource,
     ) -> dsd.DataSourceData:
         _client = client.get_instance()
@@ -127,9 +131,9 @@ class DataSourceApi:
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            storage_connector._name,
             "data_source",
             "resources",
             data_source.table,
@@ -141,17 +145,15 @@ class DataSourceApi:
             )
         )
 
-    def get_data(
-        self, feature_store_id: int, name: str, data_source: ds.DataSource
-    ) -> dsd.DataSourceData:
+    def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            data_source._storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            data_source._storage_connector._name,
             "data_source",
             "data",
         ]
@@ -162,17 +164,15 @@ class DataSourceApi:
             _client._send_request("GET", path_params, query_params)
         )
 
-    def get_metadata(
-        self, feature_store_id: int, name: str, data_source: ds.DataSource
-    ) -> dict:
+    def get_metadata(self, data_source: ds.DataSource) -> dict:
         _client = client.get_instance()
         path_params = [
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            data_source._storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            data_source._storage_connector._name,
             "data_source",
             "metadata",
         ]

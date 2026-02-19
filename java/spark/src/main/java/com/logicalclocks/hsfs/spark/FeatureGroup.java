@@ -88,7 +88,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.notificationTopicName = notificationTopicName;
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
-    this.storageConnector = storageConnector;
+    this.dataSource.setStorageConnector(storageConnector);
     this.dataSource.setPath(path);
   }
 

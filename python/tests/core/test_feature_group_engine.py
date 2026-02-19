@@ -19,6 +19,7 @@ from hopsworks_common.core import sink_job_configuration
 from hsfs import feature, feature_group, feature_group_commit, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
+from hsfs.core.data_source import DataSource
 from hsfs.hopsworks_udf import udf
 from hsfs.storage_connector import CRMAndAnalyticsConnector, CRMSource
 
@@ -1458,7 +1459,7 @@ class TestFeatureGroupEngine:
             partition_key=[],
             sink_enabled=True,
             sink_job_conf={"name": "custom_sink_job"},
-            storage_connector=storage_connector,
+            data_source=DataSource(storage_connector=storage_connector),
         )
 
         dataframe_feature = feature.Feature(name="f", type="str")

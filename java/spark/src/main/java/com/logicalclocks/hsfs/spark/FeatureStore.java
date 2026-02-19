@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.spark;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
@@ -384,6 +385,30 @@ public class FeatureStore extends FeatureStoreBase<Query> {
         .build();
   }
 
+  @Override
+  public StreamFeatureGroup createStreamFeatureGroup(@NonNull String name, Integer version, String description,
+                                                   Boolean onlineEnabled, TimeTravelFormat timeTravelFormat,
+                                                   List<String> primaryKey, List<String> partitionKey, String eventTime,
+                                                   String hudiPrecombineKey, List<Feature> features,
+                                                   StatisticsConfig statisticsConfig, DataSource dataSource) {
+    return StreamFeatureGroup.builder()
+        .featureStore(this)
+        .name(name)
+        .version(version)
+        .description(description)
+        .onlineEnabled(onlineEnabled)
+        .timeTravelFormat(timeTravelFormat)
+        .primaryKeys(primaryKey)
+        .partitionKeys(partitionKey)
+        .eventTime(eventTime)
+        .hudiPrecombineKey(hudiPrecombineKey)
+        .features(features)
+        .statisticsConfig(statisticsConfig)
+        .storageConnector(dataSource != null ? dataSource.getStorageConnector() : null)
+        .path(dataSource != null ? dataSource.getPath() : null)
+        .build();
+  }
+
   /**
    * Get stream feature group metadata object or create a new one if it doesn't exist.
    * This method doesn't update existing feature group metadata.
@@ -590,6 +615,29 @@ public class FeatureStore extends FeatureStoreBase<Query> {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
             primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat,
             features, storageConnector, path, onlineConfig);
+  }
+
+  @Override
+  public StreamFeatureGroup getOrCreateStreamFeatureGroup(@NonNull String name,
+                                                          Integer version,
+                                                          String description,
+                                                          Boolean onlineEnabled,
+                                                          TimeTravelFormat timeTravelFormat,
+                                                          List<String> primaryKeys,
+                                                          List<String> partitionKeys,
+                                                          String eventTime,
+                                                          String hudiPrecombineKey,
+                                                          List<Feature> features,
+                                                          StatisticsConfig statisticsConfig,
+                                                          DataSource dataSource,
+                                                          OnlineConfig onlineConfig)
+          throws IOException, FeatureStoreException {
+    return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
+            primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat,
+            features,
+            dataSource != null ? dataSource.getStorageConnector() : null,
+            dataSource != null ? dataSource.getPath() : null,
+            onlineConfig);
   }
 
   /**
