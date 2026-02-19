@@ -60,8 +60,8 @@ public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
     this.onlineTopicName = onlineTopicName;
     this.eventTime = eventTime;
     this.timeTravelFormat = timeTravelFormat;
-    this.storageConnector = storageConnector;
     this.onlineConfig = onlineConfig;
+    this.dataSource.setStorageConnector(storageConnector);
     this.dataSource.setPath(path);
   }
 
