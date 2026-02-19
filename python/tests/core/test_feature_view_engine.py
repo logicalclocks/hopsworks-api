@@ -32,6 +32,7 @@ from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import fs_query
 from hsfs.constructor.query import Query
 from hsfs.core import arrow_flight_client, feature_view_engine
+from hsfs.core import data_source as ds
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.hopsworks_udf import udf
@@ -1613,6 +1614,9 @@ class TestFeatureViewEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_drop_helper_columns = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._drop_helper_columns"
+        )
         mock_sc_read = mocker.patch("hsfs.storage_connector.StorageConnector.read")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
@@ -1647,6 +1651,7 @@ class TestFeatureViewEngine:
 
         # Assert
         assert mock_sc_read.call_count == 1
+        assert mock_drop_helper_columns.call_count == 3
 
     def test_read_dir_from_storage_connector_file_not_found(self, mocker):
         # Arrange
@@ -2624,7 +2629,7 @@ class TestFeatureViewEngine:
         mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")
         connector = BigQueryConnector(0, "BigQueryConnector", 99)
         mock_external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=""
+            primary_key="", data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
         mock_constructor_query.featuregroups = [
@@ -2673,7 +2678,7 @@ class TestFeatureViewEngine:
 
         connector = FakeConnector()
         mock_external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=""
+            primary_key="", data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
         mock_constructor_query.featuregroups = [

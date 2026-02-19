@@ -202,11 +202,11 @@ class Engine:
 
     def register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
-            external_dataset = external_fg.storage_connector.read(
+            external_dataset = external_fg.data_source.storage_connector.read(
                 external_fg.data_source.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.storage_connector._get_path(
+                external_fg.data_source.storage_connector._get_path(
                     external_fg.data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
@@ -967,7 +967,7 @@ class Engine:
             return self._write_training_dataset_single(
                 feature_view_obj.transformation_functions,
                 dataset,
-                training_dataset.storage_connector,
+                training_dataset.data_source.storage_connector,
                 training_dataset.data_format,
                 write_options,
                 save_mode,
@@ -1180,7 +1180,7 @@ class Engine:
             feature_dataframes[split_name] = self._write_training_dataset_single(
                 transformation_functions,
                 feature_dataframe,
-                training_dataset.storage_connector,
+                training_dataset.data_source.storage_connector,
                 training_dataset.data_format,
                 write_options,
                 save_mode,

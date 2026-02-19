@@ -14,13 +14,13 @@
 #   limitations under the License.
 #
 from datetime import datetime, timedelta
+from unittest.mock import call
 
 import pytest
 from hsfs import feature_group, feature_view, util
 from hsfs.constructor import query
 from hsfs.core import monitoring_window_config as mwc
 from hsfs.core import monitoring_window_config_engine as mwce
-from mock import call
 
 
 DEFAULT_FEATURE_NAME = "amount"

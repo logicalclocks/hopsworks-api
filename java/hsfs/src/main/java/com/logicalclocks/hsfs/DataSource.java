@@ -58,6 +58,10 @@ public class DataSource extends RestDto<DataSource> {
   @Setter
   private String path = "";
 
+  @Getter
+  @Setter
+  private StorageConnector storageConnector = null;
+
   public void updateStorageConnector(StorageConnector storageConnector) {
     if (storageConnector == null) {
       return;

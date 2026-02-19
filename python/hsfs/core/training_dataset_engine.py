@@ -89,7 +89,7 @@ class TrainingDatasetEngine:
         else:
             path = training_dataset.location + "/" + training_dataset.name
 
-        return training_dataset.storage_connector.read(
+        return training_dataset.data_source.storage_connector.read(
             # always read from materialized dataset, not query object
             query=None,
             data_format=training_dataset.data_format,
