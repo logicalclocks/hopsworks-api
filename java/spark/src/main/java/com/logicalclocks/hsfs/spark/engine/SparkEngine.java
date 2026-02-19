@@ -534,15 +534,18 @@ public class SparkEngine extends EngineBase {
    * @throws FeatureStoreException
    * @throws IOException
    */
-  public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset, String onlineTopicName,
+  public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
+    Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
+    Long numEntries = Boolean.parseBoolean(writeOptions.getOrDefault("disable_online_ingestion_count", "false"))
+        ? null : dataset.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", getHeader(featureGroupBase, dataset.count()))
+        .withColumn("headers", getHeader(featureGroupBase, numEntries))
         .write()
         .format(Constants.KAFKA_FORMAT)
-        .options(writeOptions)
-        .option("topic", onlineTopicName)
+        .options(kafkaConfig)
+        .option("topic", featureGroupBase.getOnlineTopicName())
         .save();
   }
 
