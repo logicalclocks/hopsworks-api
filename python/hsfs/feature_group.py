@@ -944,6 +944,61 @@ class FeatureGroupBase:
         self._feature_group_engine.update_description(self, description)
         return self
 
+    def update_topic_name(
+        self, topic_name: str
+    ) -> FeatureGroupBase | ExternalFeatureGroup | SpineGroup | FeatureGroup:
+        """Update the kafka topic name of the feature group.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.update_topic_name(topic_name="topic_name")
+            ```
+
+        !!! warning "Pending data will not be migrated automatically"
+            Any data already inserted into the current topic will not be materialized to the new topic.
+            Ensure all in-flight processing has completed before switching.
+
+        !!! warning "Offline materialization will restart from the beginning"
+            After switching, offline materialization will start consuming from the earliest offset of the new topic,
+            which may result in duplicate or reprocessed data.
+
+        Info: Safe update
+            This method updates the feature group kafka topic name safely.
+            In case of failure your local metadata object will keep the old topic name.
+
+        Parameters:
+            topic_name:
+                Name of the Kafka topic for streaming.
+
+        Returns:
+            The updated feature group object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        warnings.warn(
+            "Pending data will not be migrated automatically: "
+            "Any data already inserted into the current topic will not be materialized to the new topic. "
+            "Ensure all in-flight processing has completed before switching.",
+            util.FeatureGroupWarning,
+            stacklevel=1,
+        )
+        warnings.warn(
+            "Offline materialization will restart from the beginning: "
+            "After switching, offline materialization will start consuming from the earliest offset of the new topic, "
+            "which may result in duplicate or reprocessed data.",
+            util.FeatureGroupWarning,
+            stacklevel=1,
+        )
+        self._feature_group_engine.update_topic_name(self, topic_name)
+        return self
+
     def update_notification_topic_name(
         self, notification_topic_name: str
     ) -> FeatureGroupBase | ExternalFeatureGroup | SpineGroup | FeatureGroup:
