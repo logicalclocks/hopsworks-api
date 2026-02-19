@@ -24,9 +24,7 @@ class TestLoadingConfig:
 
         assert config.to_dict() == {
             "loadingStrategy": sink_job_configuration.LoadingStrategy.FULL_LOAD.value,
-            "sourceCursorField": None,
-            "initialValue": None,
-            "initialValueDate": None,
+            "incrementalLoadingConfig": None,
         }
 
     def test_to_dict_incremental_id(self):
@@ -38,9 +36,10 @@ class TestLoadingConfig:
 
         assert config.to_dict() == {
             "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_ID.value,
-            "sourceCursorField": "id",
-            "initialValue": "42",
-            "initialValueDate": None,
+            "incrementalLoadingConfig": {
+                "sourceCursorField": "id",
+                "initialValue": "42",
+            },
         }
 
     def test_to_dict_incremental_date(self):
@@ -52,10 +51,41 @@ class TestLoadingConfig:
 
         assert config.to_dict() == {
             "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE.value,
-            "sourceCursorField": "event_date",
-            "initialValue": None,
-            "initialValueDate": "2023-01-01",
+            "incrementalLoadingConfig": {
+                "sourceCursorField": "event_date",
+                "initialIngestionDate": 1672531200000,
+            },
         }
+
+    def test_to_dict_incremental_date_iso_timestamp(self):
+        config = sink_job_configuration.LoadingConfig(
+            loading_strategy=sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE,
+            source_cursor_field="event_date",
+            initial_value="2024-01-01T00:00:00Z",
+        )
+
+        assert config.to_dict() == {
+            "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE.value,
+            "incrementalLoadingConfig": {
+                "sourceCursorField": "event_date",
+                "initialIngestionDate": 1704067200000,
+            },
+        }
+
+    def test_from_response_json_incremental_date_timestamp(self):
+        config = sink_job_configuration.LoadingConfig.from_response_json(
+            {
+                "loadingStrategy": "INCREMENTAL_DATE",
+                "incrementalLoadingConfig": {
+                    "sourceCursorField": "event_date",
+                    "initialIngestionDate": 1704067200000,
+                },
+            }
+        )
+
+        assert (
+            config._initial_value == "2024-01-01T00:00:00Z"
+        ), "Expected timestamp to be normalized to ISO UTC string"
 
     def test_invalid_loading_strategy(self):
         with pytest.raises(ValueError, match="Invalid loading_strategy"):
