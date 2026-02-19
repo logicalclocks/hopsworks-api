@@ -451,6 +451,29 @@ class TestFeatureView:
         # Assert
         assert root_feature_group_event_time == "event_time"
 
+    def test_delete_feature_view_force(self, mocker, backend_fixtures):
+        # Arrange
+        mock_engine = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.delete"
+        )
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        json = backend_fixtures["feature_view"]["get"]["response"]
+        fv = feature_view.FeatureView.from_response_json(json)
+
+        # Act: delete without force (default)
+        fv.delete()
+        # Act: delete with force=True
+        fv.delete(force=True)
+
+        # Assert
+        # First call: force should be False (default)
+        # Second call: force should be True
+        assert mock_engine.call_count == 2
+        call_args_list = mock_engine.call_args_list
+        assert call_args_list[0][0][2] is False  # (name, version, force)
+        assert call_args_list[1][0][2] is True
+
 
 class TestFeatureViewExecuteOdts:
     def test_execute_odts_with_transformations(self, mocker):
