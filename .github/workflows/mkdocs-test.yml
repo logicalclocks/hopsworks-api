@@ -61,7 +61,7 @@ jobs:
         working-directory: logicalclocks.github.io
         run: |
           # run the server
-          mkdocs serve > /dev/null 2>&1 &
+          mkdocs serve 2>&1 &
           SERVER_PID=$!
           echo "mk server in PID $SERVER_PID"
           # Give enough time for deployment (2min max)
