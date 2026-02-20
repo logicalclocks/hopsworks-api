@@ -366,21 +366,18 @@ class ServingApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def _get_hopsworks_inference_path(
-        self, project_id: int, deployment_instance, base_only: bool = False
-    ):
+    def _get_hopsworks_inference_path(self, project_id: int, deployment_instance):
         """Get the Hopsworks inference path for a deployment.
 
-        Args:
-            project_id: The project ID
-            deployment_instance: The deployment to get the path for
-            base_only: If True, return None (Hopsworks doesn't support base-only endpoints)
+        Inference requests sent to this path will be forwarded by Hopsworks to the Istio ingress endpoint.
 
-        Returns:
-            List of path segments, or None if base_only is True
+        :param project_id: id of the project.
+        :type project_id: int
+        :param deployment_instance: metadata object of the deployment to get the inference path for.
+        :type deployment_instance: Deployment
+        :return: list of path segments.
+        :rtype: List[str]
         """
-        if base_only:
-            return None
         return [
             "project",
             project_id,
@@ -392,12 +389,12 @@ class ServingApi:
     def _get_istio_inference_path(self, deployment_instance, base_only: bool = False):
         """Get the Istio inference path for a deployment.
 
-        Args:
-            deployment_instance: The deployment to get the path for
-            base_only: If True, return only the base path (for vLLM/no-model deployments)
-
-        Returns:
-            List of path segments
+        :param deployment_instance: metadata object of the deployment to get the inference path for.
+        :type deployment_instance: Deployment
+        :param base_only: if `True`, return only the base path. Used for vLLM and Python deployments without a model.
+        :type base_only: bool
+        :return: list of path segments.
+        :rtype: List[str]
         """
         base_path = ["v1", deployment_instance.project_name, deployment_instance.name]
         if base_only:

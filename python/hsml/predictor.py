@@ -609,15 +609,15 @@ class Predictor(DeployableComponent):
         This is the path-based routing base endpoint without any protocol-specific
         suffixes like `:predict` or `/v1`.
 
-        If Istio client is not available, returns None (Hopsworks REST API
+        If Istio client is not available, returns `None` (Hopsworks REST API
         doesn't support base-only endpoints).
 
         Returns:
-            str | None: Base endpoint URL, or None if unavailable
+            Base endpoint URL, or `None` if unavailable
 
         Example:
             ```python
-            url = deployment.get_endpoint_url()
+            url = predictor.get_endpoint_url()
             # url = "https://host:port/v1/project/name"
             ```
         """
@@ -638,14 +638,14 @@ class Predictor(DeployableComponent):
         """Get the OpenAI-compatible API URL for vLLM deployments.
 
         Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
-        This method only returns a URL for vLLM (LLM) deployments.
+        This method only returns a URL for LLM (vLLM) deployments.
 
         Returns:
-            str | None: OpenAI-compatible URL (base URL + "/v1"), or None if not a vLLM deployment
+            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment
 
         Example:
             ```python
-            url = deployment.get_openai_compatible_url()
+            url = predictor.get_openai_compatible_url()
             # url = "https://host:port/v1/project/name/v1"
             # Then use: url + "/chat/completions"
             ```
@@ -670,11 +670,11 @@ class Predictor(DeployableComponent):
         If Istio client is not available, falls back to Hopsworks REST API path.
 
         Returns:
-            str | None: Inference URL with :predict suffix, or None if not a standard model deployment
+            Inference URL with `:predict` suffix, or `None` if not a standard model deployment
 
         Example:
             ```python
-            url = deployment.get_inference_url()
+            url = predictor.get_inference_url()
             # url = "https://host:port/v1/project/name/v1/models/name:predict"
             ```
         """

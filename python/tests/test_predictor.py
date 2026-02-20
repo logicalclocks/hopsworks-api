@@ -840,7 +840,7 @@ class TestPredictor:
         # Assert
         assert url is None
 
-    def test_get_openai_url_no_model_returns_none(self, mocker):
+    def test_get_openai_url_non_vllm_without_model_returns_none(self, mocker):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mock_istio_client = mocker.MagicMock()

@@ -315,10 +315,10 @@ class Deployment:
         This is the path-based routing base endpoint without any protocol-specific
         suffixes like `:predict` or `/v1`.
 
-        If Istio client is not available, returns None.
+        If Istio client is not available, returns `None`.
 
         Returns:
-            str | None: Base endpoint URL, or None if unavailable
+            Base endpoint URL, or `None` if unavailable.
 
         Example:
             ```python
@@ -334,10 +334,10 @@ class Deployment:
         """Get the OpenAI-compatible API URL for vLLM deployments.
 
         Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
-        This method only returns a URL for vLLM (LLM) deployments.
+        This method only returns a URL for LLM (vLLM) deployments.
 
         Returns:
-            str | None: OpenAI-compatible URL (base URL + "/v1"), or None if not a vLLM deployment
+            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment
 
         Example:
             ```python
@@ -360,7 +360,7 @@ class Deployment:
         If Istio client is not available, falls back to Hopsworks REST API path.
 
         Returns:
-            str | None: Inference URL with :predict suffix, or None if not a standard model deployment
+            Inference URL with `:predict` suffix, or `None` if not a standard model deployment
 
         Example:
             ```python
