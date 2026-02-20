@@ -125,11 +125,9 @@ class TestMonitoringWindowConfig:
         window_config_type_list = mwc.WindowConfigType.list_str()
 
         # Assert
-        assert set(window_config_type_list) == set(
-            [
-                "ALL_TIME",
-                "ROLLING_TIME",
-                "TRAINING_DATASET",
-                "SPECIFIC_VALUE",
-            ]
-        )
+        assert set(window_config_type_list) == {
+            "ALL_TIME",
+            "ROLLING_TIME",
+            "TRAINING_DATASET",
+            "SPECIFIC_VALUE",
+        }

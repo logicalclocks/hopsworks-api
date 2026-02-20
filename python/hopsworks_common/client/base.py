@@ -27,6 +27,7 @@ from pathlib import Path
 import furl
 import requests
 import urllib3
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
 from hopsworks_common.decorators import connected
 
@@ -41,6 +42,9 @@ urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+@also_available_as(
+    "hopsworks.client.base.Client", "hsfs.client.base.Client", "hsml.client.base.Client"
+)
 class Client:
     TOKEN_FILE = "token.jwt"
     TOKEN_EXPIRED_RETRY_INTERVAL = 0.6

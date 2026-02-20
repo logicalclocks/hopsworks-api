@@ -31,6 +31,7 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
@@ -235,9 +236,9 @@ class FeatureGroupBase:
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
         )
-        self._great_expectation_engine: (
-            great_expectation_engine.GreatExpectationEngine
-        ) = great_expectation_engine.GreatExpectationEngine(featurestore_id)
+        self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
+            featurestore_id
+        )
         if self._id is not None:
             if expectation_suite:
                 self._expectation_suite._init_expectation_engine(
@@ -264,9 +265,7 @@ class FeatureGroupBase:
                 feature_store_id=featurestore_id,
                 feature_group_id=self._id,
             )
-            self._feature_monitoring_result_engine: (
-                feature_monitoring_result_engine.FeatureMonitoringResultEngine
-            ) = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            self._feature_monitoring_result_engine: feature_monitoring_result_engine.FeatureMonitoringResultEngine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._id,
             )
@@ -944,6 +943,7 @@ class FeatureGroupBase:
         self._feature_group_engine.update_description(self, description)
         return self
 
+    @public
     def update_topic_name(
         self, topic_name: str
     ) -> FeatureGroupBase | ExternalFeatureGroup | SpineGroup | FeatureGroup:
@@ -960,13 +960,12 @@ class FeatureGroupBase:
             fg.update_topic_name(topic_name="topic_name")
             ```
 
-        !!! warning "Pending data will not be migrated automatically"
+        Warning: Pending data will not be migrated automatically
             Any data already inserted into the current topic will not be materialized to the new topic.
             Ensure all in-flight processing has completed before switching.
 
-        !!! warning "Offline materialization will restart from the beginning"
-            After switching, offline materialization will start consuming from the earliest offset of the new topic,
-            which may result in duplicate or reprocessed data.
+        Warning: Offline materialization will restart from the beginning
+            After switching, offline materialization will start consuming from the earliest offset of the new topic, which may result in duplicate or reprocessed data.
 
         Info: Safe update
             This method updates the feature group kafka topic name safely.
@@ -2661,6 +2660,7 @@ class FeatureGroupBase:
         return self
 
 
+@public
 @typechecked
 class FeatureGroup(FeatureGroupBase):
     # TODO: Add docstring
@@ -2956,6 +2956,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         return sorted(transformation_functions, key=lambda x: x.output_column_names[0])
 
+    @public
     def read(
         self,
         wallclock_time: str | int | datetime | date | None = None,
@@ -3058,6 +3059,7 @@ class FeatureGroup(FeatureGroupBase):
             read_options or {},
         )
 
+    @public
     def read_changes(
         self,
         start_wallclock_time: str | int | datetime | date,
@@ -3107,6 +3109,7 @@ class FeatureGroup(FeatureGroupBase):
             .read(False, "default", read_options or {})
         )
 
+    @public
     def find_neighbors(
         self,
         embedding: list[int | float],
@@ -3174,6 +3177,7 @@ class FeatureGroup(FeatureGroupBase):
             for result in results
         ]
 
+    @public
     def show(self, n: int, online: bool = False) -> list[list[Any]]:
         """Show the first `n` rows of the feature group.
 
@@ -3199,6 +3203,7 @@ class FeatureGroup(FeatureGroupBase):
         )
         return self.select_all().show(n, online)
 
+    @public
     def save(
         self,
         features: (
@@ -3315,7 +3320,9 @@ class FeatureGroup(FeatureGroupBase):
             self._features = (
                 self._features
                 if len(self._features) > 0
-                else features if features else []
+                else features
+                if features
+                else []
             )
 
             self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
@@ -3372,6 +3379,7 @@ class FeatureGroup(FeatureGroupBase):
             ge_report.to_ge_type() if ge_report is not None else None,
         )
 
+    @public
     def insert(
         self,
         features: (
@@ -3569,6 +3577,7 @@ class FeatureGroup(FeatureGroupBase):
             ge_report.to_ge_type() if ge_report is not None else None,
         )
 
+    @public
     def multi_part_insert(
         self,
         features: (
@@ -3701,6 +3710,7 @@ class FeatureGroup(FeatureGroupBase):
             transform=transform,
         )
 
+    @public
     def finalize_multi_part_insert(self) -> None:
         """Finalizes and exits the multi part insert context opened by `multi_part_insert` in a blocking fashion once all rows have been transmitted.
 
@@ -3730,6 +3740,7 @@ class FeatureGroup(FeatureGroupBase):
         self._kafka_headers = None
         self._multi_part_insert = False
 
+    @public
     def insert_stream(
         self,
         features: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
@@ -3828,6 +3839,7 @@ class FeatureGroup(FeatureGroupBase):
             transform=transform,
         )
 
+    @public
     def commit_details(
         self,
         wallclock_time: str | int | datetime | date | None = None,
@@ -3863,6 +3875,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         return self._feature_group_engine.commit_details(self, wallclock_time, limit)
 
+    @public
     def commit_delete_record(
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
@@ -3887,6 +3900,7 @@ class FeatureGroup(FeatureGroupBase):
             )
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
+    @public
     def delta_vacuum(
         self,
         retention_hours: int = None,
@@ -3916,6 +3930,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._feature_group_engine.delta_vacuum(self, retention_hours)
 
+    @public
     def as_of(
         self,
         wallclock_time: str | int | datetime | date | None = None,
@@ -4010,6 +4025,7 @@ class FeatureGroup(FeatureGroupBase):
             wallclock_time=wallclock_time, exclude_until=exclude_until
         )
 
+    @public
     def get_statistics_by_commit_window(
         self,
         from_commit_time: str | int | datetime | date | None = None,
@@ -4056,6 +4072,7 @@ class FeatureGroup(FeatureGroupBase):
             feature_names=feature_names,
         )
 
+    @public
     def compute_statistics(
         self, wallclock_time: str | int | datetime | date | None = None
     ) -> None:
@@ -4320,51 +4337,61 @@ class FeatureGroup(FeatureGroupBase):
             )
         return data
 
+    @public
     @property
     def id(self) -> int | None:
         """Feature group id."""
         return self._id
 
+    @public
     @property
     def description(self) -> str | None:
         """Description of the feature group contents."""
         return self._description
 
+    @public
     @property
     def time_travel_format(self) -> str | None:
         """Setting of the feature group time travel format."""
         return self._time_travel_format
 
+    @public
     @property
     def partition_key(self) -> list[str]:
         """List of features building the partition key."""
         return self._partition_key
 
+    @public
     @property
     def hudi_precombine_key(self) -> str | None:
         """Feature name that is the hudi precombine key."""
         return self._hudi_precombine_key
 
+    @public
     @property
     def feature_store_name(self) -> str | None:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
 
+    @public
     @property
     def creator(self) -> user.User | None:
         """Username of the creator."""
         return self._creator
 
+    @public
     @property
     def created(self) -> str | None:
         """Timestamp when the feature group was created."""
         return self._created
 
+    @public
     @property
     def stream(self) -> bool:
         """Whether to enable real time stream writing capabilities."""
         return self._stream
 
+    @public
     @property
     def parents(self) -> list[explicit_provenance.Links]:
         """Parent feature groups as origin of the data in the current feature group.
@@ -4373,6 +4400,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         return self._parents
 
+    @public
     @property
     def materialization_job(self) -> Job | None:
         """Get the Job object reference for the materialization job for this Feature Group."""
@@ -4395,6 +4423,7 @@ class FeatureGroup(FeatureGroupBase):
                     raise e
         raise FeatureStoreException("No materialization job was found")
 
+    @public
     @property
     def statistics(self) -> Statistics:
         """Get the latest computed statistics for the whole feature group."""
@@ -4408,6 +4437,7 @@ class FeatureGroup(FeatureGroupBase):
             )
         return super().statistics
 
+    @public
     @property
     def transformation_functions(
         self,
@@ -4450,6 +4480,7 @@ class FeatureGroup(FeatureGroupBase):
     ) -> None:
         self._transformation_functions = transformation_functions
 
+    @public
     @property
     def offline_backfill_every_hr(self) -> int | str | None:
         """On Feature Group creation, used to set scheduled run of the materialisation job."""
@@ -4510,6 +4541,7 @@ class FeatureGroup(FeatureGroupBase):
             )
 
 
+@public
 @typechecked
 class ExternalFeatureGroup(FeatureGroupBase):
     """A feature group that references data stored outside Hopsworks."""
@@ -4590,9 +4622,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
             for feat in (features or [])
         ]
 
-        self._feature_group_engine: (
-            external_feature_group_engine.ExternalFeatureGroupEngine
-        ) = external_feature_group_engine.ExternalFeatureGroupEngine(featurestore_id)
+        self._feature_group_engine: external_feature_group_engine.ExternalFeatureGroupEngine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            featurestore_id
+        )
 
         if self._id:
             # Got from Hopsworks, deserialize features and storage connector
@@ -4622,6 +4654,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._vector_db_client: VectorDbClient | None = None
         self._href: str | None = href
 
+    @public
     def save(self) -> None:
         """Persist the metadata for this external feature group.
 
@@ -4647,6 +4680,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         if self.statistics_config.enabled:
             self._statistics_engine.compute_and_save_statistics(self)
 
+    @public
     def insert(
         self,
         features: (
@@ -4760,6 +4794,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             ge_report.to_ge_type() if ge_report is not None else None,
         )
 
+    @public
     def read(
         self,
         dataframe_type: Literal[
@@ -4837,6 +4872,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             read_options=read_options or {},
         )
 
+    @public
     def show(self, n: int, online: bool = False) -> list[list[Any]]:
         """Show the first `n` rows of the feature group.
 
@@ -4862,6 +4898,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         )
         return self.select_all().show(n, online)
 
+    @public
     def find_neighbors(
         self,
         embedding: list[int | float],
@@ -4999,31 +5036,37 @@ class ExternalFeatureGroup(FeatureGroupBase):
             fg_meta_dict["embeddingIndex"] = self.embedding_index
         return fg_meta_dict
 
+    @public
     @property
     def id(self) -> int | None:
         """ID of the feature group, set by backend."""
         return self._id
 
+    @public
     @property
     def description(self) -> str | None:
         """Description of the feature group, as it appears in the UI."""
         return self._description
 
+    @public
     @property
     def data_format(self) -> str | None:
         # TODO: Add docstring
         return self._data_format
 
+    @public
     @property
     def options(self) -> dict[str, Any] | None:
         # TODO: Add docstring
         return self._options
 
+    @public
     @property
     def creator(self) -> user.User | None:
         """User who created the feature group."""
         return self._creator
 
+    @public
     @property
     def created(self) -> str | None:
         # TODO: Add docstring
@@ -5033,12 +5076,14 @@ class ExternalFeatureGroup(FeatureGroupBase):
     def description(self, new_description: str | None) -> None:
         self._description = new_description
 
+    @public
     @property
     def feature_store_name(self) -> str | None:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
 
 
+@public
 @typechecked
 class SpineGroup(FeatureGroupBase):
     # TODO: Add docstring
@@ -5167,6 +5212,7 @@ class SpineGroup(FeatureGroupBase):
         self._feature_group_engine.save(self)
         return self
 
+    @public
     @property
     def dataframe(
         self,
