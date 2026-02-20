@@ -15,10 +15,12 @@
 from __future__ import annotations
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hsml.predictor_state_condition import PredictorStateCondition
 
 
+@public
 class PredictorState:
     """State of a predictor."""
 
@@ -45,6 +47,7 @@ class PredictorState:
         self._condition = condition
         self._status = status
 
+    @public
     def describe(self):
         """Print a JSON description of the deployment state."""
         util.pretty_print(self)
@@ -97,46 +100,55 @@ class PredictorState:
 
         return json
 
+    @public
     @property
     def available_predictor_instances(self):
         """Available predicotr instances."""
         return self._available_predictor_instances
 
+    @public
     @property
     def available_transformer_instances(self):
         """Available transformer instances."""
         return self._available_transformer_instances
 
+    @public
     @property
     def hopsworks_inference_path(self):
         """Inference path in the Hopsworks REST API."""
         return self._hopsworks_inference_path
 
+    @public
     @property
     def model_server_inference_path(self):
         """Inference path in the model server."""
         return self._model_server_inference_path
 
+    @public
     @property
     def internal_port(self):
         """Internal port for the predictor."""
         return self._internal_port
 
+    @public
     @property
     def revision(self):
         """Last revision of the predictor."""
         return self._revision
 
+    @public
     @property
     def deployed(self):
         """Whether the predictor is deployed or not."""
         return self._deployed
 
+    @public
     @property
     def condition(self):
         """Condition of the current state of predictor."""
         return self._condition
 
+    @public
     @property
     def status(self):
         """Status of the predictor."""

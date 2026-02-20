@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import logging
 
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client
 
 
+@also_available_as("hopsworks.core.search_api.Project")
 class Project:
     """Represents a project associated with a search result."""
 
@@ -46,6 +48,7 @@ class Project:
         return f"Project(id={self._id}, name='{self._name}')"
 
 
+@also_available_as("hopsworks.core.search_api.Highlights")
 class Highlights:
     """Container for search result highlights showing where matches occurred."""
 
@@ -136,6 +139,7 @@ class Highlights:
         return "Highlights(none)"
 
 
+@also_available_as("hopsworks.core.search_api.SearchResultItem")
 class SearchResultItem:
     """Base class for search result items."""
 
@@ -214,6 +218,7 @@ class SearchResultItem:
         return f"{self.__class__.__name__}(name='{self._name}'{version_str}{description_str}, project='{self._project}', highlights='{self._highlights}')"
 
 
+@public("hopsworks.core.search_api.FeatureGroupSearchResult")
 class FeatureGroupSearchResult(SearchResultItem):
     """Search result for a Feature Group."""
 
@@ -235,6 +240,7 @@ class FeatureGroupSearchResult(SearchResultItem):
         return fs.get_feature_group(self.name, version=self.version)
 
 
+@public("hopsworks.core.search_api.FeatureViewSearchResult")
 class FeatureViewSearchResult(SearchResultItem):
     """Search result for a Feature View."""
 
@@ -256,6 +262,7 @@ class FeatureViewSearchResult(SearchResultItem):
         return fs.get_feature_view(self.name, version=self.version)
 
 
+@public("hopsworks.core.search_api.TrainingDatasetSearchResult")
 class TrainingDatasetSearchResult(SearchResultItem):
     """Search result for a Training Dataset."""
 
@@ -277,10 +284,12 @@ class TrainingDatasetSearchResult(SearchResultItem):
         return fs.get_training_dataset(self.name, version=self.version)
 
 
+@public("hopsworks.core.search_api.FeatureSearchResult")
 class FeatureSearchResult(SearchResultItem):
     """Search result for a Feature."""
 
 
+@public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
     """Container for all featurestore search results."""
 
