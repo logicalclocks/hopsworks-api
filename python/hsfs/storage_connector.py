@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from hsfs.core.data_source_data import DataSourceData
     from hsfs.core.explicit_provenance import Links
     from hsfs.feature_group import FeatureGroup
+    from hsfs.training_dataset import TrainingDataset
 
 
 _logger = logging.getLogger(__name__)
@@ -272,7 +273,7 @@ class StorageConnector(ABC):
             return feature_groups_provenance.accessible
         return []
 
-    def get_training_datasets_provenance(self):
+    def get_training_datasets_provenance(self) -> Links | None:
         """Get the generated training datasets using this storage connector, based on explicit provenance.
 
         These training datasets can be accessible or inaccessible. Explicit
@@ -280,25 +281,25 @@ class StorageConnector(ABC):
         will always be empty.
         For inaccessible training datasets, only a minimal information is returned.
 
-        # Returns
-            `Links`: the training datasets generated using this storage connector or `None` if none were created
+        Returns:
+            The training datasets generated using this storage connector or `None` if none were created.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         links = self._storage_connector_api.get_training_datasets_provenance(self)
         if not links.is_empty():
             return links
         return None
 
-    def get_training_datasets(self):
+    def get_training_datasets(self) -> list[TrainingDataset]:
         """Get the training datasets using this storage connector, based on explicit provenance.
 
         Only the accessible training datasets are returned.
-        For more items use the base method - get_training_datasets_provenance.
+        For more items use the base method, [`get_training_datasets_provenance`][hsfs.core.data_source.DataSource.get_training_datasets_provenance].
 
-        # Returns
-            `List[TrainingDataset]`: List of training datasets.
+        Returns:
+            List of training datasets.
         """
         training_datasets_provenance = self.get_training_datasets_provenance()
 
@@ -317,7 +318,7 @@ class StorageConnector(ABC):
     def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -328,16 +329,16 @@ class StorageConnector(ABC):
             ```
 
         Returns:
-            list[str]: A list of database names available in the storage connector.
+            A list of database names available in the storage connector.
         """
         if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching databases.")
         return self._data_source_api.get_databases(self)
 
-    def get_tables(self, database: str = None) -> list[ds.DataSource]:
+    def get_tables(self, database: str | None = None) -> list[ds.DataSource]:
         """Retrieve the list of tables from the specified database.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -348,11 +349,12 @@ class StorageConnector(ABC):
             ```
 
         Args:
-            database (str, optional): The name of the database to list tables from.
+            database:
+                The name of the database to list tables from.
                 If not provided, the default database is used.
 
         Returns:
-            list[DataSource]: A list of DataSource objects representing the tables.
+            A list of DataSource objects representing the tables.
         """
         if self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching tables.")
@@ -382,7 +384,7 @@ class StorageConnector(ABC):
     def get_data(self, data_source: ds.DataSource) -> DataSourceData:
         """Retrieve the data from the data source.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -395,10 +397,10 @@ class StorageConnector(ABC):
             ```
 
         Args:
-            data_source (DataSource): The data source to retrieve data from.
+            data_source: The data source to retrieve data from.
 
         Returns:
-            DataSourceData: An object containing the data retrieved from the data source.
+            An object containing the data retrieved from the data source.
         """
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             if not data_source.table:
@@ -413,7 +415,7 @@ class StorageConnector(ABC):
     def get_metadata(self, data_source: ds.DataSource) -> dict:
         """Retrieve metadata information about the data source.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -426,10 +428,10 @@ class StorageConnector(ABC):
             ```
 
         Args:
-            data_source (DataSource): The data source to retrieve metadata from.
+            data_source: The data source to retrieve metadata from.
 
         Returns:
-            dict: A dictionary containing metadata about the data source.
+            A dictionary containing metadata about the data source.
         """
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             raise ValueError("This connector type does not support fetching metadata.")
