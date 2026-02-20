@@ -943,6 +943,7 @@ class FeatureGroupBase:
         self._feature_group_engine.update_description(self, description)
         return self
 
+    @public
     def update_topic_name(
         self, topic_name: str
     ) -> FeatureGroupBase | ExternalFeatureGroup | SpineGroup | FeatureGroup:
@@ -959,13 +960,12 @@ class FeatureGroupBase:
             fg.update_topic_name(topic_name="topic_name")
             ```
 
-        !!! warning "Pending data will not be migrated automatically"
+        Warning: Pending data will not be migrated automatically
             Any data already inserted into the current topic will not be materialized to the new topic.
             Ensure all in-flight processing has completed before switching.
 
-        !!! warning "Offline materialization will restart from the beginning"
-            After switching, offline materialization will start consuming from the earliest offset of the new topic,
-            which may result in duplicate or reprocessed data.
+        Warning: Offline materialization will restart from the beginning
+            After switching, offline materialization will start consuming from the earliest offset of the new topic, which may result in duplicate or reprocessed data.
 
         Info: Safe update
             This method updates the feature group kafka topic name safely.
