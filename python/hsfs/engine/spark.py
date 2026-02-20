@@ -678,7 +678,13 @@ class Engine:
 
         (
             serialized_df.withColumn(
-                "headers", self._get_headers(feature_group, dataframe.count())
+                "headers",
+                self._get_headers(
+                    feature_group,
+                    None
+                    if write_options.get("disable_online_ingestion_count", False)
+                    else dataframe.count(),
+                ),
             )
             .write.format(self.KAFKA_FORMAT)
             .options(**write_options)

@@ -3246,6 +3246,8 @@ class FeatureGroup(FeatureGroupBase):
                   By default it does not wait.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
                   By default it does not wait.
+                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
+                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage. `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
                 - key `start_offline_materialization` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
@@ -3475,6 +3477,8 @@ class FeatureGroup(FeatureGroupBase):
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration] to configure the Hopsworks Job used to write data into the feature group.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished. By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished. By default it does not wait.
+                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
+                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
                 - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
                   Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
                   Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
@@ -4733,6 +4737,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
                   By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
                   By default it does not wait.
+                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
+                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
                 - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
                   Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
                   Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
