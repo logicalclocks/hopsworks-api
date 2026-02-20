@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import hsfs
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hsfs import util
 from hsfs.constructor import filter
 from hsfs.decorators import typechecked
@@ -308,13 +308,10 @@ class Feature:
     def __gt__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
 
+    @deprecated("hsfs.feature.Feature.isin")
     @public
     def contains(self, other: str | list[Any]) -> filter.Filter:
         """Construct a filter similar to SQL's `IN` operator.
-
-        Warning: Deprecated
-            `contains` method is deprecated.
-            Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
 
         Parameters:
             other: A single feature value or a list of feature values.

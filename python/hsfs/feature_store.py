@@ -20,7 +20,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hsfs import (
     expectation_suite,
     feature,
@@ -431,6 +431,7 @@ class FeatureStore:
         """
         return self._training_dataset_api.get(name, None)
 
+    @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
     @public
     @usage.method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
@@ -440,9 +441,6 @@ class FeatureStore:
         This storage can be S3, a JDBC compliant database or the distributed filesystem HOPSFS.
 
         If you want to connect to the online feature store, see the `get_online_storage_connector` method to get the JDBC connector for the Online Feature Store.
-
-        !!! warning "Deprecated"
-            `get_storage_connector` method is deprecated. Use `get_data_source` instead.
 
         Example:
             ```python
