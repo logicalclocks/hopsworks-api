@@ -152,7 +152,6 @@ class DataSource:
             ds_meta_dict["storageConnector"] = self._storage_connector.to_dict()
         return ds_meta_dict
 
-    @public
     def json(self) -> str:
         """Serialize the DataSource object to a JSON string.
 

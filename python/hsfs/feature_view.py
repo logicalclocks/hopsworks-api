@@ -254,7 +254,7 @@ class FeatureView:
     def get_last_accessed_training_dataset(self):
         """Get the last accessed training dataset version used for this feature view.
 
-        !!! note
+        Note:
             The value does not take into account other connections to Hopsworks.
             If multiple clients do training datasets operations, each will have its own view of the last accessed dataset.
             Also, the last accessed training dataset is not necessarily the newest one with the highest version.
@@ -4478,6 +4478,7 @@ class FeatureView:
             },
         )
 
+    @public
     def execute_odts(
         self,
         data: pd.DataFrame | pl.DataFrame | dict[str, Any],
@@ -4490,7 +4491,7 @@ class FeatureView:
         This method allows you to test on-demand transformation functions locally.
         It executes all on-demand transformations (ODTs) attached to the feature view on the input data.
 
-        !!! example "Testing on-demand transformations"
+        Example: Testing on-demand transformations
             ```python
             @udf(return_type=float)
             def compute_ratio(amount, quantity):
@@ -4514,12 +4515,20 @@ class FeatureView:
             ```
 
         Parameters:
-            data: Input data to apply transformations to. This can a dataframe or a dictionary.
-            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized). Defaults to offline mode
-            transformation_context: A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
-                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
-            request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
-                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            data:
+                Input data to apply transformations to.
+                This can a dataframe or a dictionary.
+            online:
+                Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized).
+                Defaults to offline mode
+            transformation_context:
+                A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
+                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution.
+                For batch processing with different contexts per row, provide a list of dictionaries.
+            request_parameters:
+                Request parameters passed to the transformation functions.
+                For batch processing with different parameters per row, provide a list of dictionaries.
+                These parameters take **highest priority** when resolving feature values -- if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4540,6 +4549,7 @@ class FeatureView:
             )
         return data
 
+    @public
     def execute_mdts(
         self,
         data: pd.DataFrame | pl.DataFrame | dict[str, Any],
@@ -4552,7 +4562,7 @@ class FeatureView:
         This method allows you to test model-dependent transformation functions locally.
         It executes all model-dependent transformations (MDTs) attached to the feature view, using the statistics computed from training data.
 
-        !!! example "Testing model-dependent transformations with statistics"
+        Example: Testing model-dependent transformations with statistics
             ```python
             from hsfs.transformation_statistics import TransformationStatistics
 
@@ -4579,12 +4589,20 @@ class FeatureView:
             ```
 
         Parameters:
-            data: Input data to apply transformations to. This can a dataframe or a dictionary.
-            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized). Defaults to offline mode
-            transformation_context: A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
-                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
-            request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
-                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            data:
+                Input data to apply transformations to.
+                This can a dataframe or a dictionary.
+            online:
+                Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized).
+                Defaults to offline mode.
+            transformation_context:
+                A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
+                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution.
+                For batch processing with different contexts per row, provide a list of dictionaries.
+            request_parameters:
+                Request parameters passed to the transformation functions.
+                For batch processing with different parameters per row, provide a list of dictionaries.
+                These parameters take **highest priority** when resolving feature values -- if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
 
         Returns:
             The transformed data in the same format as the input:
