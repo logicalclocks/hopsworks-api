@@ -282,7 +282,8 @@ class FeatureView:
             feature view **and** related training dataset **and** materialized data in HopsFS.
 
         Parameters:
-            force: If True, delete the feature view even if models or deployments are using it.
+            force:
+                If True, delete the feature view even if models or deployments are using it.
                 Defaults to False, which will raise an error if the feature view is in use.
 
         Raises:
@@ -326,7 +327,8 @@ class FeatureView:
             feature_store_id: ID of feature store.
             feature_view_name: Name of feature view.
             feature_view_version: Version of feature view.
-            force: If True, delete the feature view even if models or deployments are using it.
+            force:
+                If True, delete the feature view even if models or deployments are using it.
                 Defaults to False, which will raise an error if the feature view is in use.
 
         Raises:
