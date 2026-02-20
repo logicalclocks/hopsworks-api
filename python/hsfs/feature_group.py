@@ -2276,6 +2276,44 @@ class FeatureGroupBase:
             self.online_enabled = True
         self._embedding_index = embedding_index
 
+    def get_vector_index(self, framework: str = "langgraph"):
+        """
+        Get a vector store reference for the feature group's embedding index.
+
+        Returns a framework-compatible vector database client that can be used
+        for similarity search and vector operations.
+
+        !!! example
+            ```python
+            # Get a vector store reference
+            vectorstore = fg.get_vector_index(framework="langgraph")
+
+            # Use for similarity search
+            results = vectorstore.find_neighbors(embedding_vector, k=5)
+            ```
+
+        # Arguments
+            framework: The target framework compatibility. Supported: "langgraph", "langchain".
+                Defaults to "langgraph".
+
+        # Returns
+            VectorDbClient: A vector database client for the feature group's embedding index.
+
+        # Raises
+            `FeatureStoreException`: If the feature group doesn't have an embedding index.
+        """
+        if self._embedding_index is None:
+            raise FeatureStoreException(
+                "Feature group does not have an embedding index. "
+                "Create a feature group with an embedding index to use vector operations."
+            )
+
+        # Initialize vector database client if it is not already initialized
+        if self._vector_db_client is None and self._embedding_index:
+            self._vector_db_client = VectorDbClient(self.select_all())
+
+        return self._vector_db_client
+
     @property
     def event_time(self) -> str | None:
         """Event time feature in the feature group."""
