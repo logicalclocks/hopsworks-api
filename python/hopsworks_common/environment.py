@@ -19,7 +19,6 @@ import os
 from typing import TYPE_CHECKING
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import client, command, usage, util
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
@@ -29,7 +28,6 @@ if TYPE_CHECKING:
     from hopsworks_common.library import Library
 
 
-@public("hopsworks.environment.Environment")
 class Environment:
     NOT_FOUND_ERROR_CODE = 300000
 
@@ -85,7 +83,6 @@ class Environment:
         """Description of the environment."""
         return self._description
 
-    @public
     @usage.method_logger
     def install_wheel(
         self, path: str, await_installation: bool | None = True
@@ -141,7 +138,6 @@ class Environment:
 
         return library_rest
 
-    @public
     @usage.method_logger
     def install_requirements(
         self, path: str, await_installation: bool | None = True
@@ -197,7 +193,6 @@ class Environment:
 
         return library_rest
 
-    @public
     @usage.method_logger
     def delete(self):
         """Delete the environment.

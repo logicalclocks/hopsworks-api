@@ -28,7 +28,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import humps
-from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
@@ -120,7 +119,6 @@ def udf(
     return wrapper
 
 
-@public
 @dataclass
 class TransformationFeature:
     """Mapping of feature names to their corresponding statistics argument names in the code.
@@ -142,7 +140,6 @@ class TransformationFeature:
         }
 
 
-@public
 @typechecked
 class HopsworksUdf:
     """Meta data for user defined functions.
@@ -737,7 +734,6 @@ def renaming_wrapper(*args):
         udf.dropped_features = updated_dropped_features
         return udf
 
-    @public
     def alias(self, *args: str):
         """Set the names of the transformed features output by the UDF."""
         if len(args) == 1 and isinstance(args[0], list):
@@ -991,7 +987,6 @@ def renaming_wrapper(*args):
 
         return executable
 
-    @public
     def execute(self, *args) -> Any:
         """Execute the UDF directly with the provided arguments.
 
@@ -1055,7 +1050,6 @@ def renaming_wrapper(*args):
             ),  # This check is added for backward compatibility with older versions of Hopsworks. The "outputColumnNames" field was added in Hopsworks 4.1.6 and versions below do not support unknown fields in the backend.
         }
 
-    @public
     def json(self) -> str:
         """Convert class into its json serialized form.
 
@@ -1064,7 +1058,6 @@ def renaming_wrapper(*args):
         """
         return json.dumps(self, cls=util.Encoder)
 
-    @public
     @classmethod
     def from_response_json(
         cls: HopsworksUdf, json_dict: dict[str, Any]
@@ -1171,7 +1164,6 @@ def renaming_wrapper(*args):
         # Set transformation features if already set.
         return hopsworks_udf
 
-    @public
     @property
     def return_types(self) -> list[str]:
         """Get the output types of the UDF."""
@@ -1180,19 +1172,16 @@ def renaming_wrapper(*args):
             self.update_return_type_one_hot()
         return self._return_types
 
-    @public
     @property
     def function_name(self) -> str:
         """Get the function name of the UDF."""
         return self._function_name
 
-    @public
     @property
     def statistics_required(self) -> bool:
         """Get if statistics for any feature is required by the UDF."""
         return bool(self.statistics_features)
 
-    @public
     @property
     def transformation_statistics(
         self,
@@ -1200,7 +1189,6 @@ def renaming_wrapper(*args):
         """Feature statistics required for the defined UDF."""
         return self._statistics
 
-    @public
     @property
     def output_column_names(self) -> list[str]:
         """Output columns names of the transformation function."""
@@ -1211,7 +1199,6 @@ def renaming_wrapper(*args):
             ]
         return self._output_column_names
 
-    @public
     @property
     def transformation_features(self) -> list[str]:
         """List of feature names to be used in the User Defined Function."""
@@ -1226,7 +1213,6 @@ def renaming_wrapper(*args):
             for transformation_feature in self._transformation_features
         ]
 
-    @public
     @property
     def unprefixed_transformation_features(self) -> list[str]:
         """List of feature name used in the transformation function without the feature name prefix."""
@@ -1235,13 +1221,11 @@ def renaming_wrapper(*args):
             for transformation_feature in self._transformation_features
         ]
 
-    @public
     @property
     def feature_name_prefix(self) -> str | None:
         """The feature name prefix that needs to be added to the feature names."""
         return self._feature_name_prefix
 
-    @public
     @property
     def statistics_features(self) -> list[str]:
         """List of feature names that require statistics."""
@@ -1268,7 +1252,6 @@ def renaming_wrapper(*args):
             if transformation_feature.statistic_argument_name is not None
         ]
 
-    @public
     @property
     def dropped_features(self) -> list[str]:
         """List of features that will be dropped after the UDF is applied."""
@@ -1279,12 +1262,10 @@ def renaming_wrapper(*args):
             ]
         return self._dropped_features
 
-    @public
     @property
     def execution_mode(self) -> UDFExecutionMode:
         return self._execution_mode
 
-    @public
     @property
     def transformation_context(self) -> dict[str, Any]:
         """Dictionary that contains the context variables required for the UDF.

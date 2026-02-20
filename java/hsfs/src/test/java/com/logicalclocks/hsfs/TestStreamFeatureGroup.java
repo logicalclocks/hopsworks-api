@@ -81,11 +81,12 @@ class TestStreamFeatureGroup {
   void testDataSourceUpdateStorageConnector() throws JsonProcessingException {
     // Arrange
     RdsConnector sc = new RdsConnector();
+    sc.setStorageConnectorType(StorageConnectorType.RDS);
 
-    DataSource ds = Mockito.mock(DataSource.class);
+    DataSource ds = Mockito.spy(DataSource.class);
+    ds.setStorageConnector(sc);
 
     StreamFeatureGroup fg = new StreamFeatureGroup();
-    fg.setStorageConnector(sc);
 
     // Act
     fg.setDataSource(ds);

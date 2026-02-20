@@ -59,7 +59,55 @@ class TestTrainingDataset:
         assert td.feature_store_id == 22
         assert td.train_split == "test_train_split"
         assert td.training_dataset_type == "HOPSFS_TRAINING_DATASET"
-        assert isinstance(td.storage_connector, storage_connector.JdbcConnector)
+        assert isinstance(
+            td.data_source.storage_connector, storage_connector.HopsFSConnector
+        )
+        assert len(td._features) == 1
+        assert isinstance(
+            td._features[0], training_dataset_feature.TrainingDatasetFeature
+        )
+        assert len(td.splits) == 1
+        assert isinstance(td.splits[0], training_dataset_split.TrainingDatasetSplit)
+        assert isinstance(td.statistics_config, statistics_config.StatisticsConfig)
+        assert td.label == ["test_name"]
+
+    def test_from_response_json_external(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["training_dataset"]["get_external"]["response"]
+
+        # Act
+        td_list = training_dataset.TrainingDataset.from_response_json(json)
+
+        # Assert
+        assert len(td_list) == 1
+        td = td_list[0]
+        assert td.id == 11
+        assert td.name == "test_name"
+        assert td.version == 1
+        assert td.description == "test_description"
+        assert td.data_format == "hudi"
+        assert td._start_time == 1646438400000
+        assert td._end_time == 1646697600000
+        assert td.validation_size == 0.0
+        assert td.test_size == 0.5
+        assert td.train_start == 4
+        assert td.train_end == 5
+        assert td.validation_start == 6
+        assert td.validation_end == 7
+        assert td.test_start == 8
+        assert td.test_end == 9
+        assert td.coalesce is True
+        assert td.seed == 123
+        assert td.location == "test_location"
+        assert td._from_query == "test_from_query"
+        assert td._querydto == "test_querydto"
+        assert td.feature_store_id == 22
+        assert td.train_split == "test_train_split"
+        assert td.training_dataset_type == "EXTERNAL_TRAINING_DATASET"
+        assert isinstance(
+            td.data_source.storage_connector, storage_connector.S3Connector
+        )
         assert len(td._features) == 1
         assert isinstance(
             td._features[0], training_dataset_feature.TrainingDatasetFeature
@@ -102,8 +150,10 @@ class TestTrainingDataset:
         assert td._querydto is None
         assert td.feature_store_id == 22
         assert td.train_split is None
-        assert td.training_dataset_type is None
-        assert isinstance(td.storage_connector, storage_connector.JdbcConnector)
+        assert td.training_dataset_type == "HOPSFS_TRAINING_DATASET"
+        assert isinstance(
+            td.data_source.storage_connector, storage_connector.HopsFSConnector
+        )
         assert len(td._features) == 0
         assert len(td.splits) == 0
         assert isinstance(td.statistics_config, statistics_config.StatisticsConfig)

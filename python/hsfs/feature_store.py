@@ -20,7 +20,6 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
-from hopsworks_apigen import public
 from hsfs import (
     expectation_suite,
     feature,
@@ -72,7 +71,6 @@ if TYPE_CHECKING:
     from hsfs.statistics_config import StatisticsConfig
 
 
-@public
 @typechecked
 class FeatureStore:
     """Feature Store class used to manage feature store entities, like feature groups and feature views."""
@@ -124,9 +122,9 @@ class FeatureStore:
             feature_group_engine.FeatureGroupEngine(self._id)
         )
 
-        self._transformation_function_engine: transformation_function_engine.TransformationFunctionEngine = transformation_function_engine.TransformationFunctionEngine(
-            self._id
-        )
+        self._transformation_function_engine: (
+            transformation_function_engine.TransformationFunctionEngine
+        ) = transformation_function_engine.TransformationFunctionEngine(self._id)
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
         )
@@ -141,7 +139,6 @@ class FeatureStore:
         json_decamelized.pop("inode_id", None)
         return cls(**json_decamelized)
 
-    @public
     def get_feature_group(
         self, name: str, version: int = None
     ) -> (
@@ -189,7 +186,6 @@ class FeatureStore:
             )
         return feature_group_object
 
-    @public
     def get_feature_groups(
         self, name: str | None = None
     ) -> list[
@@ -238,7 +234,6 @@ class FeatureStore:
             fg_object.feature_store = self
         return feature_group_object
 
-    @public
     @usage.method_logger
     def get_on_demand_feature_group(
         self, name: str, version: int = None
@@ -263,7 +258,6 @@ class FeatureStore:
         """
         return self.get_external_feature_group(name, version)
 
-    @public
     @usage.method_logger
     def get_external_feature_group(
         self, name: str, version: int = None
@@ -309,7 +303,6 @@ class FeatureStore:
             )
         return feature_group_object
 
-    @public
     @usage.method_logger
     def get_on_demand_feature_groups(
         self, name: str
@@ -333,7 +326,6 @@ class FeatureStore:
         """
         return self.get_external_feature_groups(name)
 
-    @public
     @usage.method_logger
     def get_external_feature_groups(
         self, name: str | None = None
@@ -371,7 +363,6 @@ class FeatureStore:
         fgs = self.get_feature_groups(name)
         return [fg for fg in fgs if isinstance(fg, feature_group.ExternalFeatureGroup)]
 
-    @public
     def get_training_dataset(
         self, name: str, version: int = None
     ) -> training_dataset.TrainingDataset:
@@ -409,7 +400,6 @@ class FeatureStore:
             )
         return training_dataset_object
 
-    @public
     def get_training_datasets(
         self, name: str
     ) -> list[training_dataset.TrainingDataset]:
@@ -431,7 +421,6 @@ class FeatureStore:
         """
         return self._training_dataset_api.get(name, None)
 
-    @public
     @usage.method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
         """Get a previously created storage connector from the feature store.
@@ -440,6 +429,9 @@ class FeatureStore:
         This storage can be S3, a JDBC compliant database or the distributed filesystem HOPSFS.
 
         If you want to connect to the online feature store, see the `get_online_storage_connector` method to get the JDBC connector for the Online Feature Store.
+
+        !!! warning "Deprecated"
+            `get_storage_connector` method is deprecated. Use `get_data_source` instead.
 
         Example:
             ```python
@@ -455,9 +447,37 @@ class FeatureStore:
         Returns:
             Storage connector object.
         """
-        return self._storage_connector_api.get(self._id, name)
+        return self.get_data_source(name).storage_connector
 
-    @public
+    @usage.method_logger
+    def get_data_source(self, name: str) -> ds.DataSource:
+        """Get a data source from the feature store.
+
+        Data sources encapsulate all information needed for the execution engine
+        to read and write to specific storage.
+
+        If you want to connect to the online feature store, see the
+        `get_online_data_source` method to get the JDBC connector for the Online
+        Feature Store.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            data_source = fs.get_data_source("test_data_source")
+            ```
+
+        Arguments:
+            name: Name of the data source to retrieve.
+
+        Returns:
+            `DataSource`. Data source object.
+        """
+        return ds.DataSource(
+            storage_connector=self._storage_connector_api.get(self._id, name)
+        )
+
     def sql(
         self,
         query: str,
@@ -500,12 +520,14 @@ class FeatureStore:
             query, self._name, dataframe_type, online, read_options or {}
         )
 
-    @public
     @usage.method_logger
     def get_online_storage_connector(self) -> storage_connector.StorageConnector:
         """Get the storage connector for the Online Feature Store of the respective project's feature store.
 
         The returned storage connector depends on the project that you are connected to.
+
+        !!! warning "Deprecated"
+            `get_online_storage_connector` method is deprecated. Use `get_online_data_source` instead.
 
         Example:
             ```python
@@ -518,7 +540,28 @@ class FeatureStore:
         Returns:
             JDBC storage connector to the Online Feature Store.
         """
-        return self._storage_connector_api.get_online_connector(self._id)
+        return self.get_online_data_source().storage_connector
+
+    @usage.method_logger
+    def get_online_data_source(self) -> ds.DataSource:
+        """Get the data source for the Online Feature Store of the respective project's feature store.
+
+        The returned data source depends on the project that you are connected to.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            online_data_source = fs.get_online_data_source()
+            ```
+
+        Returns:
+            `DataSource`. JDBC data source to the Online Feature Store.
+        """
+        return ds.DataSource(
+            storage_connector=self._storage_connector_api.get_online_connector(self._id)
+        )
 
     def _normalize_tags(
         self,
@@ -534,7 +577,6 @@ class FeatureStore:
         """
         return tag.Tag.normalize(tags)
 
-    @public
     @usage.method_logger
     def create_feature_group(
         self,
@@ -677,8 +719,8 @@ class FeatureStore:
                 The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
                 Set the value to None to avoid scheduling the materialization job.
                 By default, no scheduling is done.
-            storage_connector: The storage connector used to establish connectivity with the data source.
-            path: The location within the scope of the storage connector, from where to read the data for the external feature group.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             data_source:
                 The data source specifying the location of the data.
                 Overrides the path and query arguments when specified.
@@ -720,7 +762,14 @@ class FeatureStore:
         normalized_tags = self._normalize_tags(tags)
 
         if not data_source:
-            data_source = ds.DataSource(path=path)
+            data_source = ds.DataSource(storage_connector=storage_connector, path=path)
+        elif storage_connector is not None or path is not None:
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector` and `path` "
+                "parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -745,7 +794,6 @@ class FeatureStore:
             transformation_functions=transformation_functions,
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
-            storage_connector=storage_connector,
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
@@ -757,7 +805,6 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
-    @public
     @usage.method_logger
     def get_or_create_feature_group(
         self,
@@ -893,8 +940,8 @@ class FeatureStore:
                 The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
                 Set the value to None to avoid scheduling the materialization job.
                 By default, no scheduling is done.
-            storage_connector: The storage connector used to establish connectivity with the data source.
-            path: The location within the scope of the storage connector, from where to read the data for the external feature group.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             data_source:
                 The data source specifying the location of the data.
                 Overrides the path and query arguments when specified.
@@ -928,7 +975,16 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if not feature_group_object:
             if not data_source:
-                data_source = ds.DataSource(path=path)
+                data_source = ds.DataSource(
+                    storage_connector=storage_connector, path=path
+                )
+            elif storage_connector is not None or path is not None:
+                warnings.warn(
+                    "When `data_source` is provided, `storage_connector` and `path` "
+                    "parameters are ignored. Use `data_source` only.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -953,7 +1009,6 @@ class FeatureStore:
                 transformation_functions=transformation_functions,
                 online_config=online_config,
                 offline_backfill_every_hr=offline_backfill_every_hr,
-                storage_connector=storage_connector,
                 data_source=data_source,
                 ttl=ttl,
                 ttl_enabled=ttl_enabled,
@@ -964,12 +1019,11 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
-    @public
     @usage.method_logger
     def create_on_demand_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: storage_connector.StorageConnector | None = None,
         query: str | None = None,
         data_format: str | None = None,
         path: str | None = "",
@@ -1006,12 +1060,12 @@ class FeatureStore:
 
         Parameters:
             name: Name of the external feature group to create.
-            storage_connector: The storage connector used to establish connectivity with the data source.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query:
                 A string containing a SQL query valid for the target data source.
-                The query will be used to pull data from the data sources when the feature group is used.
+                The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format: If the external feature groups refers to a directory with data, the data format to use when reading it.
-            path: The location within the scope of the storage connector, from where to read the data for the external feature group.
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
                 Additional options to be used by the engine when reading data from the specified storage connector.
                 For example, `{"header": True}` when reading CSV files with column names in the first row.
@@ -1057,7 +1111,7 @@ class FeatureStore:
                 Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             data_source:
                 The data source specifying the location of the data.
-                Overrides the path and query arguments when specified.
+                Overrides the storage_connector, path and query arguments when specified.
             online_enabled:
                 Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             ttl:
@@ -1079,12 +1133,24 @@ class FeatureStore:
             The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            if not storage_connector:
+                raise ValueError(
+                    "Data source must be provided to create an external feature group."
+                )
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, query=query, path=path
+            )
+        elif storage_connector is not None or query is not None or path not in (None, ""):
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector`, `query` and "
+                "`path` parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
@@ -1105,12 +1171,11 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
-    @public
     @usage.method_logger
     def create_external_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: storage_connector.StorageConnector | None = None,
         query: str | None = None,
         data_format: str | None = None,
         path: str | None = "",
@@ -1148,8 +1213,7 @@ class FeatureStore:
                 name="sales",
                 version=1,
                 description="Physical shop sales features",
-                query=query,
-                storage_connector=connector,
+                data_source=data_source,
                 primary_key=['ss_store_sk'],
                 event_time='sale_date',
                 ttl=timedelta(days=30),
@@ -1168,8 +1232,7 @@ class FeatureStore:
             name="sales",
             version=1,
             description="Physical shop sales features",
-            query=query,
-            storage_connector=connector,
+            data_source=data_source,
             primary_key=['ss_store_sk'],
             event_time='sale_date',
             online_enabled=True,
@@ -1188,14 +1251,14 @@ class FeatureStore:
 
         Parameters:
             name: Name of the external feature group to create.
-            storage_connector: The storage connector used to establish connectivity with the data source.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query:
                 A string containing a SQL query valid for the target data source.
-                The query will be used to pull data from the data sources when the feature group is used.
+                The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format:
                 If the external feature groups refers to a directory with data, the data format to use when reading it.
             path:
-                The location within the scope of the storage connector, from where to read the data for the external feature group.
+                The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
                 Additional options to be used by the engine when reading data from the specified storage connector.
                 For example, `{"header": True}` when reading CSV files with column names in the first row.
@@ -1246,7 +1309,7 @@ class FeatureStore:
                 Optionally, define configuration which is used to configure online table.
             data_source:
                 The data source specifying the location of the data.
-                Overrides the path and query arguments when specified.
+                Overrides the storage_connector, path and query arguments when specified.
             ttl:
                 Optional time-to-live duration for features in this group.
 
@@ -1271,12 +1334,24 @@ class FeatureStore:
             The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            if not storage_connector:
+                raise ValueError(
+                    "Data source must be provided to create an external feature group."
+                )
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, query=query, path=path
+            )
+        elif storage_connector is not None or query is not None or path not in (None, ""):
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector`, `query` and "
+                "`path` parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
@@ -1300,7 +1375,6 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
-    @public
     @usage.method_logger
     def get_or_create_spine_group(
         self,
@@ -1430,7 +1504,6 @@ class FeatureStore:
         spine.feature_store = self
         return spine._save()
 
-    @public
     def create_training_dataset(
         self,
         name: str,
@@ -1446,6 +1519,7 @@ class FeatureStore:
         label: list[str] | None = None,
         transformation_functions: dict[str, TransformationFunction] | None = None,
         train_split: str = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> training_dataset.TrainingDataset:
         """Create a training dataset metadata object.
@@ -1480,7 +1554,7 @@ class FeatureStore:
                 If true the training dataset data will be coalesced into a single partition before writing.
                 The resulting training dataset will be a single file per split.
             storage_connector:
-                Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS.
+                Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             splits:
                 A dictionary defining training dataset splits to be created.
                 Keys in the dictionary define the name of the split as `str`, values represent percentage of samples in the split as `float`.
@@ -1488,7 +1562,7 @@ class FeatureStore:
                 Defaults to empty dict`{}`, creating only a single training dataset without splits.
             location:
                 Path to complement the sink storage connector with, e.g., if the storage connector points to an S3 bucket, this path can be used to define a sub-directory inside the bucket to place the training dataset.
-                Defaults to `""`, saving the training dataset at the root defined by the storage connector.
+                Defaults to `""`, saving the training dataset at the root defined by the storage connector. **[DEPRECATED: Use `data_source` instead.]**
             seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
             statistics_config:
                 A configuration object, or a dictionary with keys:
@@ -1509,6 +1583,7 @@ class FeatureStore:
             train_split:
                 If `splits` is set, provide the name of the split that is going to be used for training.
                 The statistics of this split will be used for transformation functions if necessary.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
             tags:
                 Optionally, define tags for the training dataset. Tags can be provided as:
                 - A single Tag object
@@ -1520,6 +1595,10 @@ class FeatureStore:
         Returns:
             The training dataset metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
         normalized_tags = self._normalize_tags(tags)
 
         return training_dataset.TrainingDataset(
@@ -1527,8 +1606,7 @@ class FeatureStore:
             version=version,
             description=description,
             data_format=data_format,
-            storage_connector=storage_connector,
-            location=location,
+            data_source=data_source,
             featurestore_id=self._id,
             splits=splits or {},
             seed=seed,
@@ -1540,7 +1618,6 @@ class FeatureStore:
             tags=normalized_tags,
         )
 
-    @public
     @usage.method_logger
     def create_transformation_function(
         self,
@@ -1582,7 +1659,6 @@ class FeatureStore:
             version=version,
         )
 
-    @public
     @usage.method_logger
     def get_transformation_function(
         self,
@@ -1686,7 +1762,6 @@ class FeatureStore:
         """
         return self._transformation_function_engine.get_transformation_fn(name, version)
 
-    @public
     @usage.method_logger
     def get_transformation_functions(self) -> list[TransformationFunction]:
         """Get  all transformation functions metadata objects.
@@ -1705,7 +1780,6 @@ class FeatureStore:
         """
         return self._transformation_function_engine.get_transformation_fns()
 
-    @public
     @usage.method_logger
     def create_feature_view(
         self,
@@ -1839,7 +1913,6 @@ class FeatureStore:
         )
         return self._feature_view_engine.save(feat_view)
 
-    @public
     @usage.method_logger
     def get_or_create_feature_view(
         self,
@@ -1925,7 +1998,6 @@ class FeatureStore:
             )
         return fv_object
 
-    @public
     @usage.method_logger
     def get_feature_view(
         self, name: str, version: int = None
@@ -1970,7 +2042,6 @@ class FeatureStore:
             )
         return feature_view_object
 
-    @public
     @usage.method_logger
     def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
         """Get a list of all versions of a feature view entity from the feature store.
@@ -2179,43 +2250,36 @@ class FeatureStore:
         """
         return DashboardApi().get_dashboard(dashboard_id)
 
-    @public
     @property
     def id(self) -> int:
         """Id of the feature store."""
         return self._id
 
-    @public
     @property
     def name(self) -> str:
         """Name of the feature store."""
         return self._name
 
-    @public
     @property
     def project_name(self) -> str:
         """Name of the project in which the feature store is located."""
         return self._project_name
 
-    @public
     @property
     def project_id(self) -> int:
         """Id of the project in which the feature store is located."""
         return self._project_id
 
-    @public
     @property
     def online_featurestore_name(self) -> str | None:
         """Name of the online feature store database."""
         return self._online_feature_store_name
 
-    @public
     @property
     def online_enabled(self) -> bool:
         """Indicator whether online feature store is enabled."""
         return self._online_enabled
 
-    @public
     @property
     def offline_featurestore_name(self) -> str:
         """Name of the offline feature store database."""
