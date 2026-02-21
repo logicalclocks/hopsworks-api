@@ -2965,6 +2965,8 @@ class FeatureGroup(FeatureGroupBase):
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
         read_options: dict | None = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
     ) -> (
         pd.DataFrame
         | np.ndarray
@@ -2995,6 +2997,19 @@ class FeatureGroup(FeatureGroupBase):
             fg.read("2020-10-20 07:34:11")
             ```
 
+        Example: Reading feature group with time-based filtering on event_time:
+            ```python
+            fg = fs.get_or_create_feature_group(...)
+            # Using strings
+            fg.read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
+            ```
+
         Parameters:
             wallclock_time:
                 If specified, retrieves feature group as of specific point in time.
@@ -3013,6 +3028,14 @@ class FeatureGroup(FeatureGroupBase):
                 - key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`.
                 - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
+            start_time:
+                Filter data to only include records where the event_time column is greater than start_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time:
+                Filter data to only include records where the event_time column is less than end_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             One of the following:
@@ -3026,6 +3049,8 @@ class FeatureGroup(FeatureGroupBase):
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: No data is available for feature group with this commit date, if time travel enabled.
+            hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
+            hopsworks.client.exceptions.FeatureStoreException: If wallclock_time is used together with start_time or end_time.
         """
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(
@@ -3038,26 +3063,38 @@ class FeatureGroup(FeatureGroupBase):
                 "environment with Spark Engine."
             )
 
+        if start_time is not None or end_time is not None:
+            if self.event_time is None:
+                raise FeatureStoreException(
+                    "Cannot filter by start_time/end_time: no event_time column is defined "
+                    "for this feature group. Set event_time when creating the feature group "
+                    "to enable time-based filtering."
+                )
+            if wallclock_time is not None:
+                raise FeatureStoreException(
+                    "Cannot use wallclock_time together with start_time/end_time. "
+                    "wallclock_time is for time travel (reading historical snapshots), while "
+                    "start_time/end_time filter on the event_time column values."
+                )
+
         engine.get_instance().set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
 
+        query = self.select_all()
+
         if wallclock_time:
-            return (
-                self.select_all()
-                .as_of(wallclock_time)
-                .read(
-                    online,
-                    dataframe_type,
-                    read_options or {},
-                )
+            query = query.as_of(wallclock_time)
+
+        if start_time is not None or end_time is not None:
+            event_time_feature = self.get_feature(self.event_time)
+            time_filter = util.build_time_filter(
+                event_time_feature, start_time, end_time
             )
-        return self.select_all().read(
-            online,
-            dataframe_type,
-            read_options or {},
-        )
+            query = query.filter(time_filter)
+
+        return query.read(online, dataframe_type, read_options or {})
 
     @public
     def read_changes(
@@ -4802,6 +4839,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ] = "default",
         online: bool = False,
         read_options: dict[str, Any] | None = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -4822,6 +4861,19 @@ class ExternalFeatureGroup(FeatureGroupBase):
             df = fg.read()
             ```
 
+        Example: Reading with time-based filtering on event_time:
+            ```python
+            fg = fs.get_or_create_feature_group(...)
+            # Using strings
+            fg.read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
+            ```
+
         Warning: Engine Support
             **Spark only**
 
@@ -4833,6 +4885,14 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 By default, maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             online: If `True` read from online feature store.
             read_options: Additional options as key/value pairs to pass to the spark engine.
+            start_time:
+                Filter data to only include records where the event_time column is greater than start_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time:
+                Filter data to only include records where the event_time column is less than end_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             One of:
@@ -4846,6 +4906,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             hopsworks.client.exceptions.FeatureStoreException: If trying to read an external feature group directly in.
+            hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
         """
         if (
             engine.get_type() == "python"
@@ -4862,11 +4923,29 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 "Query API to create Feature Views/Training Data containing External "
                 "Feature Groups."
             )
+
+        if (start_time is not None or end_time is not None) and self.event_time is None:
+            raise FeatureStoreException(
+                "Cannot filter by start_time/end_time: no event_time column is defined "
+                "for this feature group. Set event_time when creating the feature group "
+                "to enable time-based filtering."
+            )
+
         engine.get_instance().set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
-        return self.select_all().read(
+
+        query = self.select_all()
+
+        if start_time is not None or end_time is not None:
+            event_time_feature = self.get_feature(self.event_time)
+            time_filter = util.build_time_filter(
+                event_time_feature, start_time, end_time
+            )
+            query = query.filter(time_filter)
+
+        return query.read(
             dataframe_type=dataframe_type,
             online=online,
             read_options=read_options or {},
