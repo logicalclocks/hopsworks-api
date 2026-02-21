@@ -137,7 +137,7 @@ class TestHopsworksUdf:
 
     def test_get_module_imports(self):
         assert HopsworksUdf._get_module_imports(
-            "python/tests/test_helpers/transformation_test_helper.py"
+            "tests/test_helpers/transformation_test_helper.py"
         ) == [
             "import pandas as pd",
             "from hsfs.transformation_statistics import TransformationStatistics",
