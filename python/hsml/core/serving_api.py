@@ -252,12 +252,6 @@ class ServingApi:
             if _client is not None:
                 # use istio client
                 path_params = self._get_istio_inference_path(deployment_instance)
-                # - add host header
-                headers["host"] = self._get_inference_request_host_header(
-                    deployment_instance.project_namespace,
-                    deployment_instance.name,
-                    client.get_knative_domain(),
-                )
                 with_base_path_params = False
             else:
                 # fallback to Hopsworks client
@@ -304,12 +298,10 @@ class ServingApi:
 
     def _create_grpc_channel(self, deployment_instance):
         _client = client.istio.get_instance()
-        service_hostname = self._get_inference_request_host_header(
-            deployment_instance.project_namespace,
-            deployment_instance.name,
-            client.get_knative_domain(),
+        path_prefix = (
+            f"/v1/{deployment_instance.project_name}/{deployment_instance.name}"
         )
-        return _client._create_grpc_channel(service_hostname)
+        return _client._create_grpc_channel(path_prefix)
 
     def is_kserve_installed(self):
         """Check if kserve is installed.
@@ -374,12 +366,18 @@ class ServingApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def _get_inference_request_host_header(
-        self, project_namespace: str, deployment_name: str, domain: str
-    ):
-        return f"{deployment_name}.{project_namespace}.{domain}".lower()
-
     def _get_hopsworks_inference_path(self, project_id: int, deployment_instance):
+        """Get the Hopsworks inference path for a deployment.
+
+        Inference requests sent to this path will be forwarded by Hopsworks to the Istio ingress endpoint.
+
+        :param project_id: id of the project.
+        :type project_id: int
+        :param deployment_instance: metadata object of the deployment to get the inference path for.
+        :type deployment_instance: Deployment
+        :return: list of path segments.
+        :rtype: List[str]
+        """
         return [
             "project",
             project_id,
@@ -388,5 +386,17 @@ class ServingApi:
             deployment_instance.name + ":predict",
         ]
 
-    def _get_istio_inference_path(self, deployment_instance):
-        return ["v1", "models", deployment_instance.name + ":predict"]
+    def _get_istio_inference_path(self, deployment_instance, base_only: bool = False):
+        """Get the Istio inference path for a deployment.
+
+        :param deployment_instance: metadata object of the deployment to get the inference path for.
+        :type deployment_instance: Deployment
+        :param base_only: if `True`, return only the base path. Used for vLLM and Python deployments without a model.
+        :type base_only: bool
+        :return: list of path segments.
+        :rtype: List[str]
+        """
+        base_path = ["v1", deployment_instance.project_name, deployment_instance.name]
+        if base_only:
+            return base_path
+        return base_path + ["v1", "models", deployment_instance.name + ":predict"]

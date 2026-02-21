@@ -1940,6 +1940,34 @@ class FeatureViewEngine:
                 job._wait_for_job(wait)
         return jobs
 
-    def delete_feature_logs(self, fv, feature_logging, transformed):
+    def delete_feature_logs(self, fv, feature_logging, transformed, wait=False):
         self._feature_view_api.delete_feature_logs(fv.name, fv.version, transformed)
         feature_logging.update(self.get_feature_logging(fv))
+
+        if wait:
+            self._wait_for_log_deletion(fv, transformed)
+
+    def _wait_for_log_deletion(self, fv, transformed, max_retries=30, interval_sec=2):
+        """Wait until the logging feature group has no data."""
+        import time
+
+        transforms = [True, False] if transformed is None else [transformed]
+
+        for t in transforms:
+            for _ in range(max_retries):
+                try:
+                    fg = self._get_logging_fg(fv, t)
+                    if fg is None:
+                        break
+                    data = fg.read()
+                    count = len(data) if hasattr(data, "__len__") else data.count()
+                    if count == 0:
+                        break
+                except Exception:
+                    # FG might be being recreated or unavailable
+                    break
+                time.sleep(interval_sec)
+            else:
+                raise TimeoutError(
+                    f"Feature logging deletion for transformed={t} did not complete within {max_retries * interval_sec} seconds"
+                )

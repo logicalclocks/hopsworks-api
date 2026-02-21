@@ -4417,16 +4417,20 @@ class FeatureView:
         )
 
     @public
-    def delete_log(self, transformed: bool | None = None) -> None:
+    def delete_log(self, transformed: bool | None = None, wait: bool = False) -> None:
         """Delete the logged feature data for the current feature view.
 
         Parameters:
             transformed: Whether to delete transformed logs. Defaults to None. Delete both transformed and untransformed logs.
+            wait: Whether to wait for the deletion to complete. Defaults to False. If True, the method will poll the logging feature group until it verifies the data has been deleted.
 
         Example:
             ```python
             # delete log
             feature_view.delete_log()
+
+            # delete log and wait for completion
+            feature_view.delete_log(wait=True)
             ```
 
         Raises:
@@ -4434,7 +4438,7 @@ class FeatureView:
         """
         if self.feature_logging is not None:
             self._feature_view_engine.delete_feature_logs(
-                self, self.feature_logging, transformed
+                self, self.feature_logging, transformed, wait
             )
 
     @public
