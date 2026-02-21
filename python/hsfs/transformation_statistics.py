@@ -81,6 +81,11 @@ class FeatureTransformationStatistics:
             self._histogram = extended_statistics.get("histogram", None)
             self._kll = extended_statistics.get("kll", None)
             self._unique_values = extended_statistics.get("unique_values", None)
+        else:
+            self._correlations = None
+            self._histogram = None
+            self._kll = None
+            self._unique_values = None
 
     @public
     @property
