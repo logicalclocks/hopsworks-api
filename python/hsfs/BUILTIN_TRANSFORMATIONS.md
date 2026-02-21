@@ -43,7 +43,35 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
   tf = top_k_categorical_binner("country")
   tf.transformation_context = {"top_n": 20, "other_label": "Rare"}
   ```
-<!-- 
+### Imputation
+
+Replace missing values (NaN) using statistics computed on training data. Imputation should always run **before** encoding when transformations are chained.
+
+**Numeric features:**
+
+- **`impute_mean(feature)`**: Replace NaN with the training mean.
+- **`impute_median(feature)`**: Replace NaN with the training median (50th percentile).
+- **`impute_constant(feature)`**: Replace NaN with a fixed numeric value (default: `0.0`). Override via transformation context:
+  ```python
+  from hsfs.builtin_transformations import impute_constant
+
+  tf = impute_constant("age")
+  tf.transformation_context = {"value": -1.0}
+  ```
+
+**Categorical features:**
+
+- **`impute_mode(feature)`**: Replace NaN with the most frequent category from the training histogram. Because the mode was seen during training, this chains safely into `label_encoder` and `one_hot_encoder`.
+- **`impute_category(feature)`**: Replace NaN with a sentinel category string (default: `"__MISSING__"`). Override via transformation context:
+  ```python
+  from hsfs.builtin_transformations import impute_category
+
+  tf = impute_category("country")
+  tf.transformation_context = {"value": "Unknown"}
+  ```
+  > **Chaining warning:** downstream encoders trained before imputation will treat the sentinel as an unseen category (encoded as `-1` / all-False). To get a dedicated encoding for the missing category, compute encoder statistics on already-imputed training data.
+
+<!--
 - **`target_mean_encoder(feature, label)`**: Replace categories with the mean of the target variable.
   - **Training**: Computes per-category target means from `feature` and `label` Series.
   - **Serving**: Use a precomputed mapping via transformation context:

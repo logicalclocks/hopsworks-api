@@ -52,6 +52,11 @@ class TransformationFunctionEngine:
         "quantile_binner",
         "top_k_categorical_binner",
         # "target_mean_encoder",
+        "impute_mean",
+        "impute_median",
+        "impute_constant",
+        "impute_mode",
+        "impute_category",
     ]
     AMBIGUOUS_FEATURE_ERROR = (
         "Provided feature '{}' in transformation functions is ambiguous and exists in more than one feature groups."
