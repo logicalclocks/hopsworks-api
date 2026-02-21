@@ -4924,13 +4924,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 "Feature Groups."
             )
 
-        if start_time is not None or end_time is not None:
-            if self.event_time is None:
-                raise FeatureStoreException(
-                    "Cannot filter by start_time/end_time: no event_time column is defined "
-                    "for this feature group. Set event_time when creating the feature group "
-                    "to enable time-based filtering."
-                )
+        if (start_time is not None or end_time is not None) and self.event_time is None:
+            raise FeatureStoreException(
+                "Cannot filter by start_time/end_time: no event_time column is defined "
+                "for this feature group. Set event_time when creating the feature group "
+                "to enable time-based filtering."
+            )
 
         engine.get_instance().set_job_group(
             "Fetching Feature group",
