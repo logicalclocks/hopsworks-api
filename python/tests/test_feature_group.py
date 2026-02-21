@@ -385,6 +385,18 @@ class TestFeatureGroup:
         assert len(features) == 2
         assert {f.name for f in features} == {"f1", "f2"}
 
+    def test_get_row_count(self, mocker):
+        mock_engine = mocker.patch(
+            "hsfs.core.feature_group_base_engine.FeatureGroupBaseEngine.get_row_count",
+            return_value=123,
+        )
+
+        fg = get_test_feature_group()
+        result = fg.get_row_count()
+
+        assert result == 123
+        mock_engine.assert_called_once_with(fg)
+
     def test_materialization_job(self, mocker):
         mock_job = mocker.Mock()
         mock_job_api = mocker.patch(

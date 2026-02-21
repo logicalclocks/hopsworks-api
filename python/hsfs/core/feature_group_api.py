@@ -646,6 +646,33 @@ class FeatureGroupApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
+    def get_row_count(
+        self,
+        feature_group_instance: fg_mod.FeatureGroup
+        | fg_mod.ExternalFeatureGroup
+        | fg_mod.SpineGroup,
+    ) -> int:
+        """Get the row count of a feature group.
+
+        Parameters:
+            feature_group_instance:
+                metadata object of feature group.
+
+        Returns:
+            The number of rows in the feature group.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_group_instance.feature_store_id,
+            "featuregroups",
+            feature_group_instance.id,
+            "rowcount",
+        ]
+        return _client._send_request("GET", path_params)
+
     def _check_features(self, feature_group_instance) -> None:
         if not feature_group_instance._features:
             warnings.warn(
