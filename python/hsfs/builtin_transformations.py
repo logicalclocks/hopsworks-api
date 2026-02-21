@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import math
 
 import numpy as np
@@ -501,3 +502,100 @@ def top_k_categorical_binner(
 
 #     encoded = f.map(_map_val)
 #     return pd.Series(encoded, index=f.index)
+
+
+# ── Imputation ────────────────────────────────────────────────────────────────
+
+
+@udf(float, drop=["feature"], mode="pandas")
+def impute_mean(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+    """Replace NaN values with the training mean. For numeric features.
+
+    If the training mean is itself NaN (no non-null training data), NaN values
+    are left unchanged.
+    """
+    fill = statistics.feature.mean
+    s = feature.astype("float64")
+    return s if pd.isna(fill) else s.fillna(fill)
+
+
+@udf(float, drop=["feature"], mode="pandas")
+def impute_median(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+    """Replace NaN values with the training median (50th percentile). For numeric features.
+
+    If the training median is NaN (no non-null training data), NaN values are
+    left unchanged.
+    """
+    percentiles = statistics.feature.percentiles
+    median = percentiles[49] if percentiles else None
+    s = feature.astype("float64")
+    return s if median is None or pd.isna(median) else s.fillna(median)
+
+
+@udf(float, drop=["feature"], mode="pandas")
+def impute_constant(
+    feature: pd.Series,
+    statistics=feature_statistics,
+    context: dict | None = None,
+) -> pd.Series:
+    """Replace NaN values with a constant numeric fill value. For numeric features.
+
+    The fill value is taken from context["value"] (default: 0.0).
+
+    Example:
+        tf = impute_constant("age")
+        tf.transformation_context = {"value": -1.0}
+    """
+    fill = 0.0
+    if isinstance(context, dict):
+        with contextlib.suppress(ValueError, TypeError):
+            fill = float(context.get("value", 0.0))
+    return feature.astype("float64").fillna(fill)
+
+
+@udf(str, drop=["feature"], mode="pandas")
+def impute_mode(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+    """Replace NaN values with the most frequent category from the training histogram.
+
+    For categorical features.
+
+    The mode is derived from the training-time histogram (the category with the
+    highest count). Because the mode was seen during training, this chains safely
+    into label_encoder and one_hot_encoder without producing unseen-category
+    fallback values.
+
+    If no histogram is available (statistics not computed), NaN values are left
+    unchanged.
+    """
+    histogram = statistics.feature.histogram
+    if not histogram:
+        return feature.astype(str).where(feature.notna(), other=pd.NA)
+    sorted_hist = sorted(histogram, key=lambda x: x["count"], reverse=True)
+    mode_value = str(sorted_hist[0]["value"])
+    return feature.where(feature.notna(), other=mode_value)
+
+
+@udf(str, drop=["feature"], mode="pandas")
+def impute_category(
+    feature: pd.Series,
+    statistics=feature_statistics,
+    context: dict | None = None,
+) -> pd.Series:
+    """Replace NaN values with a sentinel category string. For categorical features.
+
+    The sentinel defaults to "__MISSING__" and can be overridden via
+    context["value"].
+
+    **Chaining warning:** downstream encoders (label_encoder, one_hot_encoder)
+    trained before imputation will treat this sentinel as an unseen category and
+    encode it as -1 / all-False. To get a dedicated encoding for the missing
+    category, compute encoder statistics on already-imputed training data.
+
+    Example:
+        tf = impute_category("country")
+        tf.transformation_context = {"value": "Unknown"}
+    """
+    sentinel = "__MISSING__"
+    if isinstance(context, dict):
+        sentinel = str(context.get("value", "__MISSING__"))
+    return feature.where(feature.notna(), other=sentinel)
