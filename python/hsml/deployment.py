@@ -78,13 +78,13 @@ class Deployment:
     def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
-        Parameters:
+        Args:
             await_update: If the deployment is running, awaiting time (seconds) for the running instances to be updated.
                           If the running instances are not updated within this timespan, the call to this method returns while
                           the update in the background.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.save(self, await_update)
 
@@ -93,13 +93,13 @@ class Deployment:
     def start(self, await_running: int | None = 600):
         """Start the deployment.
 
-        Parameters:
+        Args:
             await_running: Awaiting time (seconds) for the deployment to start.
                            If the deployment has not started within this timespan, the call to this method returns while
                            it deploys in the background.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.start(self, await_status=await_running)
 
@@ -108,13 +108,13 @@ class Deployment:
     def stop(self, await_stopped: int | None = 600):
         """Stop the deployment.
 
-        Parameters:
+        Args:
             await_stopped: Awaiting time (seconds) for the deployment to stop.
                            If the deployment has not stopped within this timespan, the call to this method returns while
                            it stopping in the background.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.stop(self, await_status=await_stopped)
 
@@ -123,16 +123,15 @@ class Deployment:
     def delete(self, force=False):
         """Delete the deployment.
 
-        Parameters:
-            force:
-                Force the deletion of the deployment.
+        Args:
+            force: Force the deletion of the deployment.
                 If the deployment is running, it will be stopped and deleted automatically.
 
         Warning:
-                    A call to this method does not ask for a second confirmation.
+            A call to this method does not ask for a second confirmation.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.delete(self, force)
 
@@ -141,10 +140,10 @@ class Deployment:
         """Get the current state of the deployment.
 
         Returns:
-            `PredictorState`. The state of the deployment.
+            The state of the deployment.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return self._serving_engine.get_state(self)
 
@@ -153,10 +152,10 @@ class Deployment:
         """Check whether the deployment is created.
 
         Returns:
-            `bool`. Whether the deployment is created or not.
+            Whether the deployment is created or not.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return (
             self._serving_engine.get_state(self).status
@@ -167,15 +166,15 @@ class Deployment:
     def is_running(self, or_idle=True, or_updating=True) -> bool:
         """Check whether the deployment is ready to handle inference requests.
 
-        Parameters:
-            or_idle: Whether the idle state is considered as running (default is True)
-            or_updating: Whether the updating state is considered as running (default is True)
+        Args:
+            or_idle: Whether the idle state is considered as running (default is True).
+            or_updating: Whether the updating state is considered as running (default is True).
 
         Returns:
-            `bool`. Whether the deployment is ready or not.
+            Whether the deployment is ready or not.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         status = self._serving_engine.get_state(self).status
         return (
@@ -188,14 +187,14 @@ class Deployment:
     def is_stopped(self, or_created=True) -> bool:
         """Check whether the deployment is stopped.
 
-        Parameters:
-            or_created: Whether the creating and created state is considered as stopped (default is True)
+        Args:
+            or_created: Whether the creating and created state is considered as stopped (default is True).
 
         Returns:
-            `bool`. Whether the deployment is stopped or not.
+            Whether the deployment is stopped or not.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         status = self._serving_engine.get_state(self).status
         return status == PREDICTOR_STATE.STATUS_STOPPED or (
@@ -217,7 +216,17 @@ class Deployment:
         One of data or inputs parameters must be set.
         If both are set, inputs will be ignored.
 
-        Example:
+        Args:
+            data: Payload dictionary for the inference request including the model input(s).
+            inputs: Model inputs used in the inference requests.
+
+        Returns:
+            Inference response.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Examples:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -238,16 +247,6 @@ class Deployment:
             data = { "instances": [ my_model.input_example ], "key2": "value2" }
             predictions = my_deployment.predict(data)
             ```
-
-        Parameters:
-            data: Payload dictionary for the inference request including the model input(s)
-            inputs: Model inputs used in the inference requests
-
-        Returns:
-            `dict`. Inference response.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._serving_engine.predict(self, data, inputs)
 
@@ -263,11 +262,11 @@ class Deployment:
     def download_artifact_files(self, local_path=None):
         """Download the artifact files served by the deployment.
 
-        Parameters:
-            local_path: path where to download the artifact files in the local filesystem
+        Args:
+            local_path: Path where to download the artifact files in the local filesystem.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
@@ -275,12 +274,12 @@ class Deployment:
     def get_logs(self, component="predictor", tail=10):
         """Prints the deployment logs of the predictor or transformer.
 
-        Parameters:
-            component: Deployment component to get the logs from (e.g., predictor or transformer)
+        Args:
+            component: Deployment component to get the logs from (e.g., predictor or transformer).
             tail: Number of most recent lines to retrieve from the logs.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         # validate component
         components = list(util.get_members(DEPLOYABLE_COMPONENT))
@@ -320,7 +319,7 @@ class Deployment:
         Returns:
             Base endpoint URL, or `None` if unavailable.
 
-        Example:
+        Examples:
             ```python
             deployment = ms.get_deployment("my_deployment")
             url = deployment.get_endpoint_url()
@@ -337,9 +336,9 @@ class Deployment:
         This method only returns a URL for LLM (vLLM) deployments.
 
         Returns:
-            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment
+            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment.
 
-        Example:
+        Examples:
             ```python
             deployment = ms.get_deployment("my_llm_deployment")
             url = deployment.get_openai_url()
@@ -360,9 +359,9 @@ class Deployment:
         If Istio client is not available, falls back to Hopsworks REST API path.
 
         Returns:
-            Inference URL with `:predict` suffix, or `None` if not a standard model deployment
+            Inference URL with `:predict` suffix, or `None` if not a standard model deployment.
 
-        Example:
+        Examples:
             ```python
             deployment = ms.get_deployment("my_deployment")
             url = deployment.get_inference_url()
