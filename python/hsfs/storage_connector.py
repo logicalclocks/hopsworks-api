@@ -67,7 +67,7 @@ class StorageConnector(ABC):
     KAFKA = "KAFKA"
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
-    RDS = "RDS"
+    SQL = "SQL"
     OPENSEARCH = "OPENSEARCH"
     CRM = "CRM"
     REST = "REST"
@@ -101,7 +101,7 @@ class StorageConnector(ABC):
         | AdlsConnector
         | SnowflakeConnector
         | BigQueryConnector
-        | RdsConnector
+        | SqlConnector
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
@@ -124,7 +124,7 @@ class StorageConnector(ABC):
         | AdlsConnector
         | SnowflakeConnector
         | BigQueryConnector
-        | RdsConnector
+        | SqlConnector
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
@@ -365,7 +365,7 @@ class StorageConnector(ABC):
                 database = self.database
             elif self.type == StorageConnector.BIGQUERY:
                 database = self.query_project
-            elif self.type == StorageConnector.RDS:
+            elif self.type == StorageConnector.SQL:
                 database = self.database
             else:
                 raise ValueError(
@@ -2211,9 +2211,21 @@ class BigQueryConnector(StorageConnector):
         )
 
 
-class RdsConnector(StorageConnector):
-    type = StorageConnector.RDS
+class SqlConnector(StorageConnector):
+    type = StorageConnector.SQL
     JDBC_FORMAT = "jdbc"
+
+    MYSQL = "MYSQL"
+    POSTGRESQL = "POSTGRESQL"
+
+    _DRIVERS = {
+        MYSQL: "com.mysql.cj.jdbc.Driver",
+        POSTGRESQL: "org.postgresql.Driver",
+    }
+    _JDBC_SCHEMES = {
+        MYSQL: "mysql",
+        POSTGRESQL: "postgresql",
+    }
 
     def __init__(
         self,
@@ -2222,6 +2234,7 @@ class RdsConnector(StorageConnector):
         featurestore_id: int,
         description: str | None = None,
         # members specific to type of connector
+        database_type: str | None = None,
         host: str | None = None,
         port: int | None = None,
         database: str | None = None,
@@ -2231,6 +2244,7 @@ class RdsConnector(StorageConnector):
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
+        self._database_type = database_type
         self._host = host
         self._port = port
         self._database = database
@@ -2239,6 +2253,11 @@ class RdsConnector(StorageConnector):
         self._arguments = (
             {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
         )
+
+    @property
+    def database_type(self) -> str | None:
+        """The database type, e.g. MYSQL or POSTGRESQL."""
+        return self._database_type
 
     @property
     def host(self) -> str | None:
@@ -2270,15 +2289,16 @@ class RdsConnector(StorageConnector):
         return {
             "user": self.user,
             "password": self.password,
-            "driver": "org.postgresql.Driver",
+            "driver": self._DRIVERS.get(self._database_type, self._DRIVERS[self.POSTGRESQL]),
         }
 
     def connector_options(self) -> dict[str, Any]:
-        """Return options to be passed to an external RDS connector library."""
+        """Return options to be passed to an external SQL connector library."""
         props = {
             "host": self.host,
             "port": self.port,
             "database": self.database,
+            "database_type": self.database_type,
         }
         if self.user:
             props["user"] = self.user
@@ -2304,9 +2324,9 @@ class RdsConnector(StorageConnector):
 
         Parameters:
             query: A SQL query to be read.
-            data_format: Not relevant for RDS based connectors.
-            options: Any additional key/value options to be passed to the RDS connector.
-            path: Not relevant for RDS based connectors.
+            data_format: Not relevant for SQL based connectors.
+            options: Any additional key/value options to be passed to the SQL connector.
+            path: Not relevant for SQL based connectors.
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
@@ -2323,7 +2343,8 @@ class RdsConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        options["url"] = f"jdbc:postgresql://{self.host}:{self.port}/{self.database}"
+        scheme = self._JDBC_SCHEMES.get(self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL])
+        options["url"] = f"jdbc:{scheme}://{self.host}:{self.port}/{self.database}"
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
