@@ -16,12 +16,14 @@
 
 from abc import abstractmethod
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client import base
 from hopsworks_common.client.istio.grpc.inference_client import (
     GRPCInferenceServerClient,
 )
 
 
+@also_available_as("hsml.client.istio.base.Client")
 class Client(base.Client):
     SERVING_API_KEY = "SERVING_API_KEY"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"

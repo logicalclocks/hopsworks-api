@@ -19,6 +19,7 @@ import json
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import git_commit, usage, user, util
 from hopsworks_common.core import dataset_api, git_api, git_remote_api
 
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from hopsworks_common.git_remote import GitRemote
 
 
+@public("hopsworks.git_repo.GitRepo")
 class GitRepo:
     def __init__(
         self,
@@ -74,46 +76,55 @@ class GitRepo:
             return [cls(**repo) for repo in json_decamelized["items"]]
         return cls(**json_decamelized)
 
+    @public
     @property
     def id(self):
         """Id of the git repo."""
         return self._id
 
+    @public
     @property
     def name(self):
         """Name of the git repo."""
         return self._name
 
+    @public
     @property
     def path(self):
         """Path to the git repo in the Hopsworks Filesystem."""
         return self._path
 
+    @public
     @property
     def creator(self):
         """Creator of the git repo."""
         return self._creator
 
+    @public
     @property
     def provider(self):
         """Git provider for the repo, can be GitHub, GitLab or BitBucket."""
         return self._provider
 
+    @public
     @property
     def current_branch(self):
         """The current branch for the git repo."""
         return self._current_branch
 
+    @public
     @property
     def current_commit(self):
         """The current commit for the git repo."""
         return self._current_commit
 
+    @public
     @property
     def read_only(self):
         """If True then the repository functions `GitRepo.commit`, `GitRepo.push` and `GitRepo.checkout_files` are forbidden."""
         return self._read_only
 
+    @public
     def status(self):
         """Get the status of the repo.
 
@@ -125,6 +136,7 @@ class GitRepo:
         """
         return self._git_api._status(self.id)
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the git repo from the filesystem.
@@ -137,6 +149,7 @@ class GitRepo:
         """
         self._git_api._delete_repo(self.id)
 
+    @public
     @usage.method_logger
     def checkout_branch(self, branch: str, create: bool = False):
         """Checkout a branch.
@@ -153,6 +166,7 @@ class GitRepo:
         else:
             self._git_api._checkout(self.id, branch=branch)
 
+    @public
     def checkout_commit(self, commit: str):
         """Checkout a commit.
 
@@ -164,6 +178,7 @@ class GitRepo:
         """
         self._git_api._checkout(self.id, commit=commit)
 
+    @public
     @usage.method_logger
     def checkout_files(self, files: list[str] | list[GitFileStatus]):
         """Checkout a list of files.
@@ -176,6 +191,7 @@ class GitRepo:
         """
         self._git_api._checkout_files(self.id, files)
 
+    @public
     @usage.method_logger
     def delete_branch(self, branch: str):
         """Delete a branch from local repository.
@@ -188,6 +204,7 @@ class GitRepo:
         """
         self._git_api._delete(self.id, branch)
 
+    @public
     @usage.method_logger
     def commit(self, message: str, all: bool = True, files: list[str] = None):
         """Add changes and new files, and then commit them.
@@ -202,6 +219,7 @@ class GitRepo:
         """
         self._git_api._commit(self.id, message, all=all, files=files)
 
+    @public
     @usage.method_logger
     def push(self, branch: str, remote: str = "origin"):
         """Push changes to the remote branch.
@@ -215,6 +233,7 @@ class GitRepo:
         """
         self._git_api._push(self.id, branch, force=False, remote=remote)
 
+    @public
     @usage.method_logger
     def pull(self, branch: str, remote: str = "origin"):
         """Pull changes from remote branch.
@@ -228,6 +247,7 @@ class GitRepo:
         """
         self._git_api._pull(self.id, branch, force=False, remote=remote)
 
+    @public
     @usage.method_logger
     def fetch(self, remote: str = None, branch: str = None):
         """Fetch changes from remote.
@@ -241,6 +261,7 @@ class GitRepo:
         """
         self._git_api._fetch(self.id, remote, branch)
 
+    @public
     @usage.method_logger
     def reset(self, remote: str = None, branch: str = None, commit: str = None):
         """Reset the branch to a specific commit or to a local branch or to a remote branch.
@@ -255,6 +276,7 @@ class GitRepo:
         """
         self._git_api._reset(self.id, remote, branch, commit)
 
+    @public
     def get_commits(self, branch: str) -> list[git_commit.GitCommit]:
         """Get the commits for the repo and branch.
 
@@ -269,6 +291,7 @@ class GitRepo:
         """
         return self._git_api._get_commits(self.id, branch)
 
+    @public
     @usage.method_logger
     def add_remote(self, name: str, url: str) -> GitRemote:
         """Add a remote for the repo.
@@ -297,6 +320,7 @@ class GitRepo:
         """
         return self._git_remote_api._add(self.id, name, url)
 
+    @public
     def get_remote(self, name: str) -> GitRemote:
         """Get a remote by name for the repo.
 
@@ -311,6 +335,7 @@ class GitRepo:
         """
         return self._git_remote_api._get(self.id, name)
 
+    @public
     def get_remotes(self) -> list[GitRemote]:
         """Get the configured remotes for the repo.
 
