@@ -166,18 +166,24 @@ public class FlinkEngine extends EngineBase {
     // here we are extracting the key/certificates from the JKS keyStore/trustStore and
     // pass them in the configuration as PEM content
     try {
-      KeyStore keyStore = KeyStore.getInstance("JKS");
-      keyStore.load(new FileInputStream(storageConnector.getSslKeystoreLocation()),
-              storageConnector.getSslKeystorePassword().toCharArray());
-      config.put(SslConfigs.SSL_KEYSTORE_KEY_CONFIG, getKey(keyStore, storageConnector.getSslKeystorePassword()));
-      config.put(SslConfigs.SSL_KEYSTORE_CERTIFICATE_CHAIN_CONFIG, getCertificateChain(keyStore));
-      config.put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "PEM");
+      if (storageConnector.getSslKeystoreLocation() != null
+              && storageConnector.getSslKeystorePassword() != null) {
+        KeyStore keyStore = KeyStore.getInstance("JKS");
+        keyStore.load(new FileInputStream(storageConnector.getSslKeystoreLocation()),
+                storageConnector.getSslKeystorePassword().toCharArray());
+        config.put(SslConfigs.SSL_KEYSTORE_KEY_CONFIG, getKey(keyStore, storageConnector.getSslKeystorePassword()));
+        config.put(SslConfigs.SSL_KEYSTORE_CERTIFICATE_CHAIN_CONFIG, getCertificateChain(keyStore));
+        config.put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "PEM");
+      }
 
-      KeyStore trustStore = KeyStore.getInstance("JKS");
-      trustStore.load(new FileInputStream(storageConnector.getSslTruststoreLocation()),
-              storageConnector.getSslTruststorePassword().toCharArray());
-      config.put(SslConfigs.SSL_TRUSTSTORE_CERTIFICATES_CONFIG, getRootCA(trustStore));
-      config.put(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, "PEM");
+      if (storageConnector.getSslTruststoreLocation() != null
+              && storageConnector.getSslTruststorePassword() != null) {
+        KeyStore trustStore = KeyStore.getInstance("JKS");
+        trustStore.load(new FileInputStream(storageConnector.getSslTruststoreLocation()),
+                storageConnector.getSslTruststorePassword().toCharArray());
+        config.put(SslConfigs.SSL_TRUSTSTORE_CERTIFICATES_CONFIG, getRootCA(trustStore));
+        config.put(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, "PEM");
+      }
     } catch (Exception ex) {
       throw new IOException(ex);
     }
