@@ -181,13 +181,13 @@ public class TestStorageConnector {
   }
 
   @Nested
-  class Rds {
+  class Sql {
     @Test
     public void test_read() throws Exception {
       // Arrange
-      StorageConnector.RdsConnector connector = new StorageConnector.RdsConnector();
+      StorageConnector.SqlConnector connector = new StorageConnector.SqlConnector();
 
-      StorageConnector.RdsConnector spyConnector = spy(connector);
+      StorageConnector.SqlConnector spyConnector = spy(connector);
       doNothing().when(spyConnector).update();
 
       SparkEngine sparkEngine = Mockito.mock(SparkEngine.class);

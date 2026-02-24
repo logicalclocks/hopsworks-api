@@ -329,7 +329,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
 
   @Override
-  public StorageConnector.RdsConnector getRdsConnector(String name) throws FeatureStoreException, IOException {
-    return storageConnectorApi.getByName(this, name, StorageConnector.RdsConnector.class);
+  public StorageConnector.SqlConnector getSqlConnector(String name) throws FeatureStoreException, IOException {
+    return storageConnectorApi.getByName(this, name, StorageConnector.SqlConnector.class);
   }
 }

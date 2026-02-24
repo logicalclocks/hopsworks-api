@@ -70,7 +70,7 @@ class TestDataSource:
         assert sc._dataset == ds.group
         assert sc._query_table == ds.table
 
-    def test_update_storage_connector_rds(self):
+    def test_update_storage_connector_sql(self):
         # Arrange
         ds = data_source.DataSource()
         ds.database = "test_database"
