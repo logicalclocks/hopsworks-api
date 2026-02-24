@@ -120,3 +120,99 @@ class TestPythonWriter:
         }
 
         assert reference_record == record
+
+    def _setup_kafka_mocks(self, mocker):
+        """Common mock setup for _write_dataframe_kafka tests."""
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
+        mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine.kafka_produce")
+        mocker.patch("hsfs.core.kafka_engine.encode_row", return_value=b"encoded")
+        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch(
+            "hsfs.core.kafka_engine.kafka_get_offsets",
+            return_value="test_offsets",
+        )
+        mocker.patch(
+            "hsfs.core.job_api.JobApi.last_execution",
+            return_value=["", ""],
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
+
+    def _make_feature_group(self, mocker):
+        import pandas as pd
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+        fg._online_topic_name = "test_topic"
+        job_mock = mocker.MagicMock()
+        job_mock.config = {"defaultArgs": "defaults"}
+        fg._materialization_job = job_mock
+        df = pd.DataFrame(data={"col1": [1, 2, 3]})
+        return fg, df
+
+    def test_write_dataframe_kafka_sends_num_entries_by_default(self, mocker):
+        # Arrange
+        self._setup_kafka_mocks(mocker)
+        mock_init_kafka_resources = mocker.patch(
+            "hsfs.core.kafka_engine.init_kafka_resources",
+            return_value=(mocker.MagicMock(), {}, {}, mocker.MagicMock()),
+        )
+        python_engine = python.Engine()
+        fg, df = self._make_feature_group(mocker)
+
+        # Act
+        python_engine._write_dataframe_kafka(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+        )
+
+        # Assert - num_entries should be len(dataframe) = 3 when flag is not set
+        mock_init_kafka_resources.assert_called_once_with(
+            fg, {"start_offline_materialization": True}, num_entries=3
+        )
+
+    def test_write_dataframe_kafka_disable_online_ingestion_count(self, mocker):
+        # Arrange
+        self._setup_kafka_mocks(mocker)
+        mock_init_kafka_resources = mocker.patch(
+            "hsfs.core.kafka_engine.init_kafka_resources",
+            return_value=(mocker.MagicMock(), {}, {}, mocker.MagicMock()),
+        )
+        python_engine = python.Engine()
+        fg, df = self._make_feature_group(mocker)
+
+        # Act
+        python_engine._write_dataframe_kafka(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={
+                "disable_online_ingestion_count": True,
+                "start_offline_materialization": True,
+            },
+        )
+
+        # Assert - num_entries should be None when disable_online_ingestion_count is True
+        mock_init_kafka_resources.assert_called_once_with(
+            fg,
+            {
+                "disable_online_ingestion_count": True,
+                "start_offline_materialization": True,
+            },
+            num_entries=None,
+        )
