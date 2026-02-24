@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar
 import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import DataSourceException
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
     from hsfs.core.data_source_data import DataSourceData
     from hsfs.core.explicit_provenance import Links
     from hsfs.feature_group import FeatureGroup
+    from hsfs.training_dataset import TrainingDataset
 
 
 _logger = logging.getLogger(__name__)
@@ -271,7 +273,7 @@ class StorageConnector(ABC):
             return feature_groups_provenance.accessible
         return []
 
-    def get_training_datasets_provenance(self):
+    def get_training_datasets_provenance(self) -> Links | None:
         """Get the generated training datasets using this storage connector, based on explicit provenance.
 
         These training datasets can be accessible or inaccessible. Explicit
@@ -279,25 +281,25 @@ class StorageConnector(ABC):
         will always be empty.
         For inaccessible training datasets, only a minimal information is returned.
 
-        # Returns
-            `Links`: the training datasets generated using this storage connector or `None` if none were created
+        Returns:
+            The training datasets generated using this storage connector or `None` if none were created.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         links = self._storage_connector_api.get_training_datasets_provenance(self)
         if not links.is_empty():
             return links
         return None
 
-    def get_training_datasets(self):
+    def get_training_datasets(self) -> list[TrainingDataset]:
         """Get the training datasets using this storage connector, based on explicit provenance.
 
         Only the accessible training datasets are returned.
-        For more items use the base method - get_training_datasets_provenance.
+        For more items use the base method, [`get_training_datasets_provenance`][hsfs.core.data_source.DataSource.get_training_datasets_provenance].
 
-        # Returns
-            `List[TrainingDataset]`: List of training datasets.
+        Returns:
+            List of training datasets.
         """
         training_datasets_provenance = self.get_training_datasets_provenance()
 
@@ -316,7 +318,7 @@ class StorageConnector(ABC):
     def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -327,16 +329,16 @@ class StorageConnector(ABC):
             ```
 
         Returns:
-            list[str]: A list of database names available in the storage connector.
+            A list of database names available in the storage connector.
         """
         if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching databases.")
         return self._data_source_api.get_databases(self)
 
-    def get_tables(self, database: str = None) -> list[ds.DataSource]:
+    def get_tables(self, database: str | None = None) -> list[ds.DataSource]:
         """Retrieve the list of tables from the specified database.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -347,11 +349,12 @@ class StorageConnector(ABC):
             ```
 
         Args:
-            database (str, optional): The name of the database to list tables from.
+            database:
+                The name of the database to list tables from.
                 If not provided, the default database is used.
 
         Returns:
-            list[DataSource]: A list of DataSource objects representing the tables.
+            A list of DataSource objects representing the tables.
         """
         if self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching tables.")
@@ -381,7 +384,7 @@ class StorageConnector(ABC):
     def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
         """Retrieve the data from the data source.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -394,11 +397,15 @@ class StorageConnector(ABC):
             ```
 
         Args:
+<<<<<<< HEAD
             data_source (DataSource): The data source to retrieve data from.
             use_cached (bool): Whether to use cached data if available. Only supported for CRM and REST connectors. Defaults to `True`.
+=======
+            data_source: The data source to retrieve data from.
+>>>>>>> lc-enterprise/main
 
         Returns:
-            DataSourceData: An object containing the data retrieved from the data source.
+            An object containing the data retrieved from the data source.
         """
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             if not data_source.table:
@@ -415,7 +422,7 @@ class StorageConnector(ABC):
     def get_metadata(self, data_source: ds.DataSource) -> dict:
         """Retrieve metadata information about the data source.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -428,10 +435,10 @@ class StorageConnector(ABC):
             ```
 
         Args:
-            data_source (DataSource): The data source to retrieve metadata from.
+            data_source: The data source to retrieve metadata from.
 
         Returns:
-            dict: A dictionary containing metadata about the data source.
+            A dictionary containing metadata about the data source.
         """
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             raise ValueError("This connector type does not support fetching metadata.")
@@ -456,6 +463,7 @@ class StorageConnector(ABC):
         return data
 
 
+@public
 class HopsFSConnector(StorageConnector):
     type = StorageConnector.HOPSFS
 
@@ -476,6 +484,7 @@ class HopsFSConnector(StorageConnector):
         self._hopsfs_path = hopsfs_path
         self._dataset_name = dataset_name
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
@@ -487,7 +496,47 @@ class HopsFSConnector(StorageConnector):
             return sub_path
         return self._hopsfs_path
 
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str = "",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Reads a path into a dataframe using the HopsFS storage connector.
 
+        Parameters:
+            query:
+                Not used for HopsFS. Kept for interface consistency.
+            data_format: The file format to be read, e.g., `csv`, `parquet`.
+            options: Any additional key/value options to be passed to the connector.
+            path:
+                Path to be read within HopsFS. If the connector has a base path configured,
+                relative paths will be resolved against it. Absolute `hopsfs://` paths are used as-is.
+            dataframe_type:
+                The type of the returned dataframe.
+                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        Returns:
+            The read dataframe.
+        """
+        if not path.startswith("hopsfs://"):
+            path = self._get_path(path)
+        return engine.get_instance().read(
+            self, data_format, options or {}, path, dataframe_type
+        )
+
+
+@public
 class S3Connector(StorageConnector):
     type = StorageConnector.S3
 
@@ -526,46 +575,55 @@ class S3Connector(StorageConnector):
             {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
         )
 
+    @public
     @property
     def access_key(self) -> str | None:
         """Access key."""
         return self._access_key
 
+    @public
     @property
     def secret_key(self) -> str | None:
         """Secret key."""
         return self._secret_key
 
+    @public
     @property
     def server_encryption_algorithm(self) -> str | None:
         """Encryption algorithm if server-side S3 bucket encryption is enabled."""
         return self._server_encryption_algorithm
 
+    @public
     @property
     def server_encryption_key(self) -> str | None:
         """Encryption key if server-side S3 bucket encryption is enabled."""
         return self._server_encryption_key
 
+    @public
     @property
     def bucket(self) -> str | None:
         """Return the bucket for S3 connectors."""
         return self._bucket
 
+    @public
     @property
     def region(self) -> str | None:
         """Return the region for S3 connectors."""
         return self._region
 
+    @public
     @property
     def session_token(self) -> str | None:
         """Session token."""
         return self._session_token
 
+    @public
     @property
     def iam_role(self) -> str | None:
         """IAM role."""
         return self._iam_role
 
+    @public
     @property
     def path(self) -> str | None:
         """If the connector refers to a path (e.g. S3) - return the path of the connector."""
@@ -573,6 +631,7 @@ class S3Connector(StorageConnector):
             "s3://" + self._bucket, *os.path.split(self._path if self._path else "")
         )
 
+    @public
     @property
     def arguments(self) -> dict[str, Any] | None:
         """Additional spark options for the S3 connector, passed as a dictionary.
@@ -582,10 +641,12 @@ class S3Connector(StorageConnector):
         """
         return self._arguments
 
+    @public
     def spark_options(self) -> dict[str, str]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._arguments
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -604,6 +665,7 @@ class S3Connector(StorageConnector):
         self.refetch()
         return engine.get_instance().setup_storage_connector(self, path)
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external S3 connector library."""
         self.refetch()
@@ -633,6 +695,7 @@ class S3Connector(StorageConnector):
             )
         return options
 
+    @public
     def read(
         self,
         query: str | None = None,
@@ -685,6 +748,7 @@ class S3Connector(StorageConnector):
         return posixpath.join(self.path, *os.path.split(sub_path))
 
 
+@public
 class RedshiftConnector(StorageConnector):
     type = StorageConnector.REDSHIFT
     JDBC_FORMAT = "jdbc"
@@ -732,66 +796,79 @@ class RedshiftConnector(StorageConnector):
         )
         self._expiration = expiration
 
+    @public
     @property
     def cluster_identifier(self) -> str | None:
         """Cluster identifier for redshift cluster."""
         return self._cluster_identifier
 
+    @public
     @property
     def database_driver(self) -> str | None:
         """Database endpoint for redshift cluster."""
         return self._database_driver
 
+    @public
     @property
     def database_endpoint(self) -> str | None:
         """Database endpoint for redshift cluster."""
         return self._database_endpoint
 
+    @public
     @property
     def database_name(self) -> str | None:
         """Database name for redshift cluster."""
         return self._database_name
 
+    @public
     @property
     def database_port(self) -> int | str | None:
         """Database port for redshift cluster."""
         return self._database_port
 
+    @public
     @property
     def table_name(self) -> str | None:
         """Table name for redshift cluster."""
         return self._table_name
 
+    @public
     @property
     def database_user_name(self) -> str | None:
         """Database username for redshift cluster."""
         return self._database_user_name
 
+    @public
     @property
     def auto_create(self) -> bool | None:
         """Database username for redshift cluster."""
         return self._auto_create
 
+    @public
     @property
     def database_group(self) -> str | None:
         """Database username for redshift cluster."""
         return self._database_group
 
+    @public
     @property
     def database_password(self) -> str | None:
         """Database password for redshift cluster."""
         return self._database_password
 
+    @public
     @property
     def iam_role(self) -> Any | None:
         """IAM role."""
         return self._iam_role
 
+    @public
     @property
     def expiration(self) -> int | str | None:
         """Cluster temporary credential expiration time."""
         return self._expiration
 
+    @public
     @property
     def arguments(self) -> str | None:
         """Additional JDBC, REDSHIFT, or Snowflake arguments."""
@@ -801,6 +878,7 @@ class RedshiftConnector(StorageConnector):
             )
         return self._arguments
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external Redshift connector library."""
         props = {
@@ -817,6 +895,7 @@ class RedshiftConnector(StorageConnector):
             props["iam"] = "True"
         return props
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         connstr = (
@@ -842,6 +921,7 @@ class RedshiftConnector(StorageConnector):
 
         return props
 
+    @public
     def read(
         self,
         query: str | None = None,
@@ -888,11 +968,13 @@ class RedshiftConnector(StorageConnector):
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
+    @public
     def refetch(self) -> None:
         """Refetch storage connector in order to retrieve updated temporary credentials."""
         self._storage_connector_api.refetch(self)
 
 
+@public
 class AdlsConnector(StorageConnector):
     type = StorageConnector.ADLS
 
@@ -928,36 +1010,43 @@ class AdlsConnector(StorageConnector):
             else {}
         )
 
+    @public
     @property
     def generation(self) -> str | None:
         """Generation of the ADLS storage connector."""
         return self._generation
 
+    @public
     @property
     def directory_id(self) -> str | None:
         """Directory ID of the ADLS storage connector."""
         return self._directory_id
 
+    @public
     @property
     def application_id(self) -> str | None:
         """Application ID of the ADLS storage connector."""
         return self._application_id
 
+    @public
     @property
     def account_name(self) -> str | None:
         """Account name of the ADLS storage connector."""
         return self._account_name
 
+    @public
     @property
     def container_name(self) -> str | None:
         """Container name of the ADLS storage connector."""
         return self._container_name
 
+    @public
     @property
     def service_credential(self) -> str | None:
         """Service credential of the ADLS storage connector."""
         return self._service_credential
 
+    @public
     @property
     def path(self) -> str | None:
         """If the connector refers to a path (e.g. ADLS) - return the path of the connector."""
@@ -965,10 +1054,12 @@ class AdlsConnector(StorageConnector):
             return f"abfss://{self.container_name}@{self.account_name}.dfs.core.windows.net"
         return f"adl://{self.account_name}.azuredatalakestore.net"
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._spark_options
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -989,6 +1080,7 @@ class AdlsConnector(StorageConnector):
     def _get_path(self, sub_path: str) -> str:
         return os.path.join(self.path, sub_path)
 
+    @public
     def read(
         self,
         query: str | None = None,
@@ -1028,6 +1120,7 @@ class AdlsConnector(StorageConnector):
         )
 
 
+@public
 class SnowflakeConnector(StorageConnector):
     type = StorageConnector.SNOWFLAKE
     SNOWFLAKE_FORMAT = "net.snowflake.spark.snowflake"
@@ -1074,80 +1167,96 @@ class SnowflakeConnector(StorageConnector):
             {opt["name"]: opt["value"] for opt in sf_options} if sf_options else {}
         )
 
+    @public
     @property
     def url(self) -> str | None:
         """URL of the Snowflake storage connector."""
         return self._url
 
+    @public
     @property
     def warehouse(self) -> str | None:
         """Warehouse of the Snowflake storage connector."""
         return self._warehouse
 
+    @public
     @property
     def database(self) -> str | None:
         """Database of the Snowflake storage connector."""
         return self._database
 
+    @public
     @property
     def user(self) -> Any | None:
         """User of the Snowflake storage connector."""
         return self._user
 
+    @public
     @property
     def password(self) -> str | None:
         """Password of the Snowflake storage connector."""
         return self._password
 
+    @public
     @property
     def token(self) -> str | None:
         """OAuth token of the Snowflake storage connector."""
         return self._token
 
+    @public
     @property
     def schema(self) -> str | None:
         """Schema of the Snowflake storage connector."""
         return self._schema
 
+    @public
     @property
     def table(self) -> str | None:
         """Table of the Snowflake storage connector."""
         return self._table
 
+    @public
     @property
     def role(self) -> Any | None:
         """Role of the Snowflake storage connector."""
         return self._role
 
+    @public
     @property
     def account(self) -> str | None:
         """Account of the Snowflake storage connector."""
         return self._url.replace("https://", "").replace(".snowflakecomputing.com", "")
 
+    @public
     @property
     def application(self) -> Any:
         """Application of the Snowflake storage connector."""
         return self._application
 
+    @public
     @property
     def options(self) -> dict[str, Any] | None:
         """Additional options for the Snowflake storage connector."""
         return self._options
 
+    @public
     @property
     def private_key(self) -> str | None:
         """Path to the private key file for key pair authentication."""
         return self._private_key
 
+    @public
     @property
     def passphrase(self) -> str | None:
         """Passphrase for the private key file."""
         return self._passphrase
 
+    @public
     def snowflake_connector_options(self) -> dict[str, Any] | None:
         """Alias for `connector_options`."""
         return self.connector_options()
 
+    @public
     def connector_options(self) -> dict[str, Any] | None:
         """Prepare a Python dictionary with the needed arguments for you to connect to a Snowflake database.
 
@@ -1176,6 +1285,7 @@ class SnowflakeConnector(StorageConnector):
             props["application"] = self._application
         return props
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         props = self._options
@@ -1226,6 +1336,7 @@ class SnowflakeConnector(StorageConnector):
             private_key_content,
         ).replace("\n", "")
 
+    @public
     def read(
         self,
         query: str | None = None,
@@ -1276,10 +1387,12 @@ class SnowflakeConnector(StorageConnector):
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
         )
 
+    @public
     def prepare_spark(self, path=None):
         return engine.get_instance().setup_storage_connector(self, path)
 
 
+@public
 class JdbcConnector(StorageConnector):
     type = StorageConnector.JDBC
     JDBC_FORMAT = "jdbc"
@@ -1301,11 +1414,13 @@ class JdbcConnector(StorageConnector):
         self._connection_string = connection_string
         self._arguments = arguments
 
+    @public
     @property
     def connection_string(self) -> str | None:
         """JDBC connection string."""
         return self._connection_string
 
+    @public
     @property
     def arguments(self) -> dict[str, Any] | None:
         """Additional JDBC arguments.
@@ -1314,6 +1429,7 @@ class JdbcConnector(StorageConnector):
         """
         return self._arguments
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         options = (
@@ -1326,6 +1442,7 @@ class JdbcConnector(StorageConnector):
 
         return options
 
+    @public
     def read(
         self,
         query: str,
@@ -1368,6 +1485,7 @@ class JdbcConnector(StorageConnector):
         )
 
 
+@public
 class KafkaConnector(StorageConnector):
     type = StorageConnector.KAFKA
     SPARK_FORMAT = "kafka"
@@ -1412,36 +1530,43 @@ class KafkaConnector(StorageConnector):
         self._external_kafka = external_kafka
         self._pem_files_created = False
 
+    @public
     @property
     def bootstrap_servers(self) -> list[str] | None:
         """Bootstrap servers string."""
         return self._bootstrap_servers
 
+    @public
     @property
     def security_protocol(self) -> str | None:
         """Bootstrap servers string."""
         return self._security_protocol
 
+    @public
     @property
     def ssl_truststore_location(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_truststore_location
 
+    @public
     @property
     def ssl_keystore_location(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_keystore_location
 
+    @public
     @property
     def ssl_endpoint_identification_algorithm(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_endpoint_identification_algorithm
 
+    @public
     @property
     def options(self) -> dict[str, Any]:
         """Bootstrap servers string."""
         return self._options
 
+    @public
     def create_pem_files(self, kafka_options: dict[str, Any]) -> None:
         """Create PEM (Privacy Enhanced Mail) files for Kafka SSL authentication.
 
@@ -1470,6 +1595,7 @@ class KafkaConnector(StorageConnector):
             )
             self._pem_files_created = True
 
+    @public
     def kafka_options(self, distribute=True) -> dict[str, Any]:
         """Return prepared options to be passed to kafka, based on the additional arguments.
 
@@ -1533,6 +1659,7 @@ class KafkaConnector(StorageConnector):
 
         return config
 
+    @public
     def confluent_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to confluent_kafka, based on the provided apache spark configuration.
 
@@ -1626,6 +1753,7 @@ class KafkaConnector(StorageConnector):
         with open(file_name) as file:
             return file.read()
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments.
 
@@ -1676,6 +1804,7 @@ class KafkaConnector(StorageConnector):
 
         return spark_config
 
+    @public
     def read(
         self,
         query: str | None = None,
@@ -1689,6 +1818,7 @@ class KafkaConnector(StorageConnector):
             "Reading a Kafka Stream into a static Spark Dataframe is not supported."
         )
 
+    @public
     def read_stream(
         self,
         topic: str,
@@ -1747,6 +1877,7 @@ class KafkaConnector(StorageConnector):
         )
 
 
+@public
 class GcsConnector(StorageConnector):
     """This storage connector provides integration to Google Cloud Storage (GCS).
 
@@ -1790,31 +1921,37 @@ class GcsConnector(StorageConnector):
         self._encryption_key = encryption_key
         self._encryption_key_hash = encryption_key_hash
 
+    @public
     @property
     def key_path(self) -> str | None:
         """JSON keyfile for service account."""
         return self._key_path
 
+    @public
     @property
     def algorithm(self) -> str | None:
         """Encryption Algorithm."""
         return self._algorithm
 
+    @public
     @property
     def encryption_key(self) -> str | None:
         """Encryption Key."""
         return self._encryption_key
 
+    @public
     @property
     def encryption_key_hash(self) -> str | None:
         """Encryption Key Hash."""
         return self._encryption_key_hash
 
+    @public
     @property
     def path(self) -> str | None:
         """The path of the connector along with gs file system prefixed."""
         return self.GS_FS_PREFIX + self._bucket
 
+    @public
     @property
     def bucket(self) -> str | None:
         """GCS Bucket."""
@@ -1825,10 +1962,12 @@ class GcsConnector(StorageConnector):
             return os.path.join(self.path, sub_path)
         return self.path
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
 
+    @public
     def read(
         self,
         query: str | None = None,
@@ -1890,6 +2029,7 @@ class GcsConnector(StorageConnector):
             self, data_format, options or {}, path, dataframe_type
         )
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -1906,6 +2046,7 @@ class GcsConnector(StorageConnector):
         return engine.get_instance().setup_storage_connector(self, path)
 
 
+@public
 class BigQueryConnector(StorageConnector):
     """The BigQuery storage connector provides integration to Google Cloud BigQuery.
 
@@ -1956,41 +2097,49 @@ class BigQueryConnector(StorageConnector):
             {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
         )
 
+    @public
     @property
     def key_path(self) -> str | None:
         """JSON keyfile for service account."""
         return self._key_path
 
+    @public
     @property
     def parent_project(self) -> str | None:
         """BigQuery parent project (Google Cloud Project ID of the table to bill for the export)."""
         return self._parent_project
 
+    @public
     @property
     def dataset(self) -> str | None:
         """BigQuery dataset (The dataset containing the table)."""
         return self._dataset
 
+    @public
     @property
     def query_table(self) -> str | None:
         """BigQuery table name."""
         return self._query_table
 
+    @public
     @property
     def query_project(self) -> str | None:
         """BigQuery project (The Google Cloud Project ID of the table)."""
         return self._query_project
 
+    @public
     @property
     def materialization_dataset(self) -> str | None:
         """BigQuery materialization dataset (The dataset where the materialized view is going to be created, used in case of query)."""
         return self._materialization_dataset
 
+    @public
     @property
     def arguments(self) -> dict[str, Any]:
         """Additional spark options."""
         return self._arguments
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external BigQuery connector library."""
         return {
@@ -1999,6 +2148,7 @@ class BigQueryConnector(StorageConnector):
             "dataset_id": self._dataset,
         }
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return spark options to be set for BigQuery spark connector."""
         properties = self._arguments
@@ -2022,6 +2172,7 @@ class BigQueryConnector(StorageConnector):
 
         return properties
 
+    @public
     def read(
         self,
         query: str | None = None,
