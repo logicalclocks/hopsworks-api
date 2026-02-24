@@ -673,7 +673,7 @@ class TestPython:
         python_engine = python.Engine()
 
         mock_obj = mocker.Mock()
-        mock_obj.read.return_value = bytes()
+        mock_obj.read.return_value = b""
 
         # Act
         python_engine._read_pandas(data_format="parquet", obj=mock_obj)
@@ -749,7 +749,7 @@ class TestPython:
         python_engine = python.Engine()
 
         mock_obj = mocker.Mock()
-        mock_obj.read.return_value = bytes()
+        mock_obj.read.return_value = b""
 
         # Act
         python_engine._read_polars(data_format="parquet", obj=mock_obj)
@@ -807,7 +807,7 @@ class TestPython:
         i = inode.Inode(attributes={"path": "test_path"})
 
         mock_dataset_api.return_value._list_dataset_path.return_value = (0, [i, i, i])
-        mock_dataset_api.return_value.read_content.return_value.content = bytes()
+        mock_dataset_api.return_value.read_content.return_value.content = b""
 
         # Act
         python_engine._read_hopsfs_remote(location=None, data_format=None)
@@ -1085,8 +1085,8 @@ class TestPython:
         # Assert
         assert str(e_info.value) == (
             "Incremental queries are not supported in the python client."
-            + " Read feature group without timestamp to retrieve latest snapshot or switch to "
-            + "environment with Spark Engine."
+             " Read feature group without timestamp to retrieve latest snapshot or switch to "
+             "environment with Spark Engine."
         )
 
     def test_register_hudi_temporary_table_time_travel_sub_query(self):
@@ -1119,8 +1119,8 @@ class TestPython:
         # Assert
         assert str(e_info.value) == (
             "Incremental queries are not supported in the python client."
-            + " Read feature group without timestamp to retrieve latest snapshot or switch to "
-            + "environment with Spark Engine."
+             " Read feature group without timestamp to retrieve latest snapshot or switch to "
+             "environment with Spark Engine."
         )
 
     def test_profile_pandas(self, mocker):
@@ -2281,9 +2281,7 @@ class TestPython:
         )
 
         # Assert
-        assert isinstance(result_df, pl.DataFrame) or isinstance(
-            result_df, pl.dataframe.frame.DataFrame
-        )
+        assert isinstance(result_df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         assert result_df_split is None
 
     def test_split_labels_dataframe_type_python(self):
@@ -2381,9 +2379,7 @@ class TestPython:
         )
 
         # Assert
-        assert isinstance(result_df, pl.DataFrame) or isinstance(
-            result_df, pl.dataframe.frame.DataFrame
-        )
+        assert isinstance(result_df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         assert isinstance(result_df_split, pl.Series)
 
     def test_split_labels_labels_dataframe_type_python(self):
@@ -3137,9 +3133,7 @@ class TestPython:
         )
 
         # Assert
-        assert isinstance(result, pl.DataFrame) or isinstance(
-            result, pl.dataframe.frame.DataFrame
-        )
+        assert isinstance(result, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         assert df.equals(result)
 
     def test_return_dataframe_type_numpy(self):
@@ -8559,7 +8553,7 @@ class TestPython:
         )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        meta_data_logging_columnn_names = [col for col in meta_data_logging_columns]
+        meta_data_logging_columnn_names = list(meta_data_logging_columns)
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         transformed_features_df = logging_test_dataframe[
@@ -9057,7 +9051,7 @@ class TestPython:
         )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        meta_data_logging_columns_names = [col for col in meta_data_logging_columns]
+        meta_data_logging_columns_names = list(meta_data_logging_columns)
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
@@ -9141,7 +9135,7 @@ class TestPython:
         )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        meta_data_logging_columns_names = [col for col in meta_data_logging_columns]
+        meta_data_logging_columns_names = list(meta_data_logging_columns)
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 

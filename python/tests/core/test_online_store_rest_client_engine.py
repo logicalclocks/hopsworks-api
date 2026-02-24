@@ -165,8 +165,8 @@ class TestOnlineRestClientEngine:
                     == value
                 )
 
-        assert ("metadataOptions" in payload.keys()) is False
-        assert ("options" in payload.keys()) is True
+        assert ("metadataOptions" in payload) is False
+        assert ("options" in payload) is True
         assert payload["options"] == {
             "validatePassedFeatures": False,
             "includeDetailedStatus": False,

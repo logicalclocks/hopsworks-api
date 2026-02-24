@@ -19,11 +19,13 @@ import logging
 from enum import Enum
 
 import humps
+from hopsworks_apigen import public
 
 
 _logger = logging.getLogger(__name__)
 
 
+@public
 class Artifact:
     class MetaType(Enum):
         DELETED = 1
@@ -50,16 +52,19 @@ class Artifact:
         self._href = href
         self._exception_cause = exception_cause
 
+    @public
     @property
     def model_registry_id(self):
         """Id of the model registry in which the artifact is located."""
         return self._model_registry_id
 
+    @public
     @property
     def name(self):
         """Name of the artifact."""
         return self._name
 
+    @public
     @property
     def version(self):
         """Version of the artifact."""
@@ -106,6 +111,7 @@ class Artifact:
         )
 
 
+@public
 class Links:
     def __init__(self, accessible=None, deleted=None, inaccessible=None, faulty=None):
         if accessible is None:
@@ -125,6 +131,7 @@ class Links:
         else:
             self._faulty = faulty
 
+    @public
     @property
     def deleted(self):
         """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
@@ -133,6 +140,7 @@ class Links:
         """
         return self._deleted
 
+    @public
     @property
     def inaccessible(self):
         """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
@@ -141,6 +149,7 @@ class Links:
         """
         return self._inaccessible
 
+    @public
     @property
     def accessible(self):
         """List of [FeatureView|TrainingDataset objects] objects which are part of the provenance graph requested.
@@ -149,6 +158,7 @@ class Links:
         """
         return self._accessible
 
+    @public
     @property
     def faulty(self):
         """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.

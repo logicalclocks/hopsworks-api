@@ -17,10 +17,12 @@
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.core import git_provider_api
 
 
+@public("hopsworks.git_provider.GitProvider")
 class GitProvider:
     def __init__(
         self,
@@ -50,21 +52,25 @@ class GitProvider:
             return []
         return [cls(**provider) for provider in json_decamelized["items"]]
 
+    @public
     @property
     def username(self):
         """Username set for the provider."""
         return self._username
 
+    @public
     @property
     def git_provider(self):
         """Name of the provider, can be GitHub, GitLab or BitBucket."""
         return self._git_provider
 
+    @public
     @property
     def host(self):
         """Host of the provider, can be for example github.com for GitHub, gitlab.com for GitLab or bitbucket.org for BitBucket."""
         return self._host
 
+    @public
     @usage.method_logger
     def delete(self):
         """Remove the git provider configuration.

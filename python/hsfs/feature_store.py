@@ -20,6 +20,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
+from hopsworks_apigen import public
 from hsfs import (
     expectation_suite,
     feature,
@@ -71,6 +72,7 @@ if TYPE_CHECKING:
     from hsfs.statistics_config import StatisticsConfig
 
 
+@public
 @typechecked
 class FeatureStore:
     """Feature Store class used to manage feature store entities, like feature groups and feature views."""
@@ -139,6 +141,7 @@ class FeatureStore:
         json_decamelized.pop("inode_id", None)
         return cls(**json_decamelized)
 
+    @public
     def get_feature_group(
         self, name: str, version: int = None
     ) -> (
@@ -186,6 +189,7 @@ class FeatureStore:
             )
         return feature_group_object
 
+    @public
     def get_feature_groups(
         self, name: str | None = None
     ) -> list[
@@ -234,6 +238,7 @@ class FeatureStore:
             fg_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_on_demand_feature_group(
         self, name: str, version: int = None
@@ -258,6 +263,7 @@ class FeatureStore:
         """
         return self.get_external_feature_group(name, version)
 
+    @public
     @usage.method_logger
     def get_external_feature_group(
         self, name: str, version: int = None
@@ -303,6 +309,7 @@ class FeatureStore:
             )
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_on_demand_feature_groups(
         self, name: str
@@ -326,6 +333,7 @@ class FeatureStore:
         """
         return self.get_external_feature_groups(name)
 
+    @public
     @usage.method_logger
     def get_external_feature_groups(
         self, name: str | None = None
@@ -363,6 +371,7 @@ class FeatureStore:
         fgs = self.get_feature_groups(name)
         return [fg for fg in fgs if isinstance(fg, feature_group.ExternalFeatureGroup)]
 
+    @public
     def get_training_dataset(
         self, name: str, version: int = None
     ) -> training_dataset.TrainingDataset:
@@ -400,6 +409,7 @@ class FeatureStore:
             )
         return training_dataset_object
 
+    @public
     def get_training_datasets(
         self, name: str
     ) -> list[training_dataset.TrainingDataset]:
@@ -421,6 +431,7 @@ class FeatureStore:
         """
         return self._training_dataset_api.get(name, None)
 
+    @public
     @usage.method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
         """Get a previously created storage connector from the feature store.
@@ -446,6 +457,7 @@ class FeatureStore:
         """
         return self._storage_connector_api.get(self._id, name)
 
+    @public
     def sql(
         self,
         query: str,
@@ -488,6 +500,7 @@ class FeatureStore:
             query, self._name, dataframe_type, online, read_options or {}
         )
 
+    @public
     @usage.method_logger
     def get_online_storage_connector(self) -> storage_connector.StorageConnector:
         """Get the storage connector for the Online Feature Store of the respective project's feature store.
@@ -521,6 +534,7 @@ class FeatureStore:
         """
         return tag.Tag.normalize(tags)
 
+    @public
     @usage.method_logger
     def create_feature_group(
         self,
@@ -731,6 +745,7 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_or_create_feature_group(
         self,
@@ -926,6 +941,7 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def create_on_demand_feature_group(
         self,
@@ -1064,6 +1080,7 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def create_external_feature_group(
         self,
@@ -1256,6 +1273,7 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_or_create_spine_group(
         self,
@@ -1383,6 +1401,7 @@ class FeatureStore:
         spine.feature_store = self
         return spine._save()
 
+    @public
     def create_training_dataset(
         self,
         name: str,
@@ -1492,6 +1511,7 @@ class FeatureStore:
             tags=normalized_tags,
         )
 
+    @public
     @usage.method_logger
     def create_transformation_function(
         self,
@@ -1533,6 +1553,7 @@ class FeatureStore:
             version=version,
         )
 
+    @public
     @usage.method_logger
     def get_transformation_function(
         self,
@@ -1636,6 +1657,7 @@ class FeatureStore:
         """
         return self._transformation_function_engine.get_transformation_fn(name, version)
 
+    @public
     @usage.method_logger
     def get_transformation_functions(self) -> list[TransformationFunction]:
         """Get  all transformation functions metadata objects.
@@ -1654,6 +1676,7 @@ class FeatureStore:
         """
         return self._transformation_function_engine.get_transformation_fns()
 
+    @public
     @usage.method_logger
     def create_feature_view(
         self,
@@ -1786,6 +1809,7 @@ class FeatureStore:
         )
         return self._feature_view_engine.save(feat_view)
 
+    @public
     @usage.method_logger
     def get_or_create_feature_view(
         self,
@@ -1871,6 +1895,7 @@ class FeatureStore:
             )
         return fv_object
 
+    @public
     @usage.method_logger
     def get_feature_view(
         self, name: str, version: int = None
@@ -1915,6 +1940,7 @@ class FeatureStore:
             )
         return feature_view_object
 
+    @public
     @usage.method_logger
     def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
         """Get a list of all versions of a feature view entity from the feature store.
@@ -2123,36 +2149,43 @@ class FeatureStore:
         """
         return DashboardApi().get_dashboard(dashboard_id)
 
+    @public
     @property
     def id(self) -> int:
         """Id of the feature store."""
         return self._id
 
+    @public
     @property
     def name(self) -> str:
         """Name of the feature store."""
         return self._name
 
+    @public
     @property
     def project_name(self) -> str:
         """Name of the project in which the feature store is located."""
         return self._project_name
 
+    @public
     @property
     def project_id(self) -> int:
         """Id of the project in which the feature store is located."""
         return self._project_id
 
+    @public
     @property
     def online_featurestore_name(self) -> str | None:
         """Name of the online feature store database."""
         return self._online_feature_store_name
 
+    @public
     @property
     def online_enabled(self) -> bool:
         """Indicator whether online feature store is enabled."""
         return self._online_enabled
 
+    @public
     @property
     def offline_featurestore_name(self) -> str:
         """Name of the offline feature store database."""

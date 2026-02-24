@@ -19,6 +19,7 @@ import json
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hsfs import util
 
 
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+@public
 class FeatureDescriptiveStatistics:
     # TODO: Add docstring
     _SINGLE_VALUE_STATISTICS = [
@@ -214,76 +216,91 @@ class FeatureDescriptiveStatistics:
     def __repr__(self) -> str:
         return json.dumps(humps.decamelize(self.to_dict()), indent=2)
 
+    @public
     @property
     def id(self) -> int | None:
         """ID of the feature descriptive statistics object."""
         return self._id
 
+    @public
     @property
     def feature_type(self) -> str:
         """Data type of the feature. It can be one of Boolean, Fractional, Integral, or String."""
         return self._feature_type
 
+    @public
     @property
     def feature_name(self) -> str:
         """Name of the feature."""
         return self._feature_name
 
+    @public
     @property
     def count(self) -> int:
         """Number of values."""
         return self._count
 
+    @public
     @property
     def completeness(self) -> float | None:
         """Fraction of non-null values in a column."""
         return self._completeness
 
+    @public
     @property
     def num_non_null_values(self) -> int | None:
         """Number of non-null values."""
         return self._num_non_null_values
 
+    @public
     @property
     def num_null_values(self) -> int | None:
         """Number of null values."""
         return self._num_null_values
 
+    @public
     @property
     def approx_num_distinct_values(self) -> int | None:
         """Approximate number of distinct values."""
         return self._approx_num_distinct_values
 
+    @public
     @property
     def min(self) -> float | None:
         """Minimum value."""
         return self._min
 
+    @public
     @property
     def max(self) -> float | None:
         """Maximum value."""
         return self._max
 
+    @public
     @property
     def sum(self) -> float | None:
         """Sum of all feature values."""
         return self._sum
 
+    @public
     @property
     def mean(self) -> float | None:
         """Mean value."""
         return self._mean
 
+    @public
     @property
     def stddev(self) -> float | None:
         """Standard deviation of the feature values."""
         return self._stddev
 
+    @public
     @property
     def percentiles(self) -> Mapping[str, float] | None:
         """Percentiles."""
         return self._percentiles
 
+    @public
     @property
     def distinctness(self) -> float | None:
         """Fraction of distinct values of a feature over the number of all its values. Distinct values occur at least once.
@@ -293,6 +310,7 @@ class FeatureDescriptiveStatistics:
         """
         return self._distinctness
 
+    @public
     @property
     def entropy(self) -> float | None:
         """Entropy is a measure of the level of information contained in an event (feature value) when considering all possible events (all feature values).
@@ -306,6 +324,7 @@ class FeatureDescriptiveStatistics:
         """
         return self._entropy
 
+    @public
     @property
     def uniqueness(self) -> float | None:
         """Fraction of unique values over the number of all values of a column. Unique values occur exactly once.
@@ -315,11 +334,13 @@ class FeatureDescriptiveStatistics:
         """
         return self._uniqueness
 
+    @public
     @property
     def exact_num_distinct_values(self) -> int | None:
         """Exact number of distinct values."""
         return self._exact_num_distinct_values
 
+    @public
     @property
     def extended_statistics(self) -> dict | None:
         """Additional statistics computed on the feature values such as histograms and correlations."""

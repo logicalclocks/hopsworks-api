@@ -15,8 +15,10 @@
 #
 
 import humps
+from hopsworks_apigen import also_available_as
 
 
+@also_available_as("hopsworks.command.Command")
 class Command:
     def __init__(
         self,
