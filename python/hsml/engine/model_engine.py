@@ -13,12 +13,14 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 import os
 import tempfile
 import time
 import uuid
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client, constants, util
 from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIError
@@ -26,6 +28,10 @@ from hopsworks_common.core import dataset_api, inode
 from hsml.core import model_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
+
+
+if TYPE_CHECKING:
+    from hsml.core import explicit_provenance
 
 
 class ModelEngine:
@@ -579,7 +585,7 @@ class ModelEngine:
         """Get all tags for a model."""
         return self._model_api.get_tags(model_instance)
 
-    def get_feature_view_provenance(self, model_instance):
+    def get_feature_view_provenance(self, model_instance) -> explicit_provenance.Links | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
         These feature views can be accessible, deleted or inaccessible.
@@ -590,11 +596,11 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         Returns:
-            `Links`:  the feature view used to generate this model
+            The feature view used to generate this model.
         """
         return self._model_api.get_feature_view_provenance(model_instance)
 
-    def get_training_dataset_provenance(self, model_instance):
+    def get_training_dataset_provenance(self, model_instance) -> explicit_provenance.Links | None:
         """Get the parent training dataset of this model, based on explicit provenance.
 
         These training datasets can be accessible, deleted or inaccessible.
@@ -605,6 +611,6 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         Returns:
-            `Links`:  the training dataset used to generate this model
+            The training dataset used to generate this model.
         """
         return self._model_api.get_training_dataset_provenance(model_instance)

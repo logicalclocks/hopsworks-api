@@ -170,11 +170,11 @@ class Query:
         The function will return a dictionary that maps the feature names to the set of feature group names and version they are selected from.
 
         Parameters:
-            `joins` : List of joins in the query.
-            `ambiguous_feature_feature_group_mapping` : Dictionary with feature name to feature group names and version.
+            joins: List of joins in the query.
+            ambiguous_feature_feature_group_mapping: Dictionary with feature name to feature group names and version.
 
         Returns:
-            `Dict[str, List[str]]`: Dictionary with feature name as key and set of feature groups name and version they are selected from as value.
+            Dictionary with feature name as key and set of feature groups name and version they are selected from as value.
         """
         for query_join in joins:
             query = query_join._query
@@ -211,7 +211,7 @@ class Query:
         """Function to check ambiguous features in the query. The function will return a dictionary with feature name of the ambiguous features as key and list feature groups they are in as value.
 
         Returns:
-            `Dict[str, List[str]]`: Dictionary with ambiguous feature name as key and corresponding set of feature group names and version as value.
+            Dictionary with ambiguous feature name as key and corresponding set of feature group names and version as value.
         """
         query_feature_feature_group_mapping: dict[str, set[str]] = {}
 
@@ -264,16 +264,17 @@ class Query:
             Data containing External Feature Groups.
 
         Parameters:
-            online: Read from online storage. Defaults to `False`.
-            dataframe_type: DataFrame type to return. Defaults to `"default"`.
-            read_options: Dictionary of read options for Spark in spark engine.
+            online: Read from online storage.
+            dataframe_type: DataFrame type to return.
+            read_options:
+                Dictionary of read options for Spark in spark engine.
                 Only for python engine:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
-                Defaults to `{}`.
+                `None` is converted to `{}`.
 
         Returns:
-            `DataFrame`: DataFrame depending on the chosen type.
+            DataFrame depending on the chosen type.
         """
         if not isinstance(online, bool):
             warnings.warn(
@@ -386,15 +387,16 @@ class Query:
                 join. Defaults to `[]`.
             right_on: List of feature names to join on from the right feature group of
                 the join. Defaults to `[]`.
-            join_type: Type of join to perform, can be `"inner"`, `"outer"`, `"left"` or
-                `"right"`. Defaults to "left".
+            join_type:
+                Type of join to perform, can be `"inner"`, `"outer"`, `"left"` or `"right"`.
+                Defaults to "left".
             prefix: User provided prefix to avoid feature name clash. If no prefix was provided and there is feature
                 name clash then prefixes will be automatically generated and applied. Generated prefix is feature group
                 alias in the query (e.g. fg1, fg2). Prefix is applied to the right feature group of the query.
                 Defaults to `None`.
 
         Returns:
-            `Query`: A new Query object representing the join.
+            A new Query object representing the join.
         """
         self._joins.append(
             join.Join(
@@ -492,7 +494,7 @@ class Query:
                 following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
 
         Returns:
-            `Query`. The query object with the applied time travel condition.
+            The query object with the applied time travel condition.
         """
         wallclock_timestamp = util.convert_event_time_to_timestamp(wallclock_time)
 
@@ -581,7 +583,7 @@ class Query:
             f: Filter object.
 
         Returns:
-            `Query`. The query object with the applied filter.
+            The query object with the applied filter.
         """
         if self._filter is None:
             if isinstance(f, Filter):
@@ -766,7 +768,7 @@ class Query:
         """Append a feature to the query.
 
         Parameters:
-            feature: `[str, Feature]`. Name of the feature to append to the query.
+            feature: Name of the feature to append to the query.
         """
         feature = util.validate_feature(feature)
 
@@ -927,10 +929,10 @@ class Query:
         """Get a feature by name.
 
         Parameters:
-            feature_name: `str`. Name of the feature to get.
+            feature_name: Name of the feature to get.
 
         Returns:
-            `Feature`. Feature object.
+            Feature object.
         """
         return self._get_feature_by_name(feature_name)[0]
 

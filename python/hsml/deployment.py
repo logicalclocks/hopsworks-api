@@ -141,7 +141,7 @@ class Deployment:
         """Get the current state of the deployment.
 
         Returns:
-            `PredictorState`. The state of the deployment.
+            The state of the deployment.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -153,7 +153,7 @@ class Deployment:
         """Check whether the deployment is created.
 
         Returns:
-            `bool`. Whether the deployment is created or not.
+            Whether the deployment is created or not.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -172,7 +172,7 @@ class Deployment:
             or_updating: Whether the updating state is considered as running (default is True)
 
         Returns:
-            `bool`. Whether the deployment is ready or not.
+            Whether the deployment is ready or not.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -192,7 +192,7 @@ class Deployment:
             or_created: Whether the creating and created state is considered as stopped (default is True)
 
         Returns:
-            `bool`. Whether the deployment is stopped or not.
+            Whether the deployment is stopped or not.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -211,7 +211,7 @@ class Deployment:
         self,
         data: dict | InferInput = None,
         inputs: list | dict = None,
-    ):
+    ) -> dict:
         """Send inference requests to the deployment.
 
         One of data or inputs parameters must be set.
@@ -244,7 +244,7 @@ class Deployment:
             inputs: Model inputs used in the inference requests
 
         Returns:
-            `dict`. Inference response.
+            Inference response.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue

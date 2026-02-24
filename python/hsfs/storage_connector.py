@@ -1807,7 +1807,7 @@ class KafkaConnector(StorageConnector):
             ValueError: Malformed arguments.
 
         Returns:
-            `StreamingDataframe`: A Spark streaming dataframe.
+            A Spark streaming dataframe.
         """
         if message_format.lower() not in ["avro", "json", None]:
             raise ValueError("Can only read JSON and AVRO encoded records from Kafka.")
@@ -1960,7 +1960,7 @@ class GcsConnector(StorageConnector):
             ValueError: Malformed arguments.
 
         Returns:
-            `Dataframe`: A Spark dataframe.
+            A Spark dataframe.
         """
         # validate engine supports connector type
         if not engine.get_instance().is_connector_type_supported(self.type):
@@ -2172,7 +2172,7 @@ class BigQueryConnector(StorageConnector):
             ValueError: Malformed arguments.
 
         Returns:
-            `Dataframe`: A Spark dataframe.
+            A Spark dataframe.
         """
         # validate engine supports connector type
         if not engine.get_instance().is_connector_type_supported(self.type):

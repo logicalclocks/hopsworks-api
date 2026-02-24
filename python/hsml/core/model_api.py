@@ -258,7 +258,7 @@ class ModelApi:
             name
         ]
 
-    def get_feature_view_provenance(self, model_instance):
+    def get_feature_view_provenance(self, model_instance) -> explicit_provenance.Links | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
         These feature views can be accessible, deleted or inaccessible.
@@ -268,7 +268,7 @@ class ModelApi:
             model_instance: Metadata object of model.
 
         Returns:
-            `Links`: the feature view used to generate this model or `None` if it does not exist.
+            The feature view used to generate this model or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
@@ -299,7 +299,7 @@ class ModelApi:
             return links
         return None
 
-    def get_training_dataset_provenance(self, model_instance):
+    def get_training_dataset_provenance(self, model_instance) -> explicit_provenance.Links | None:
         """Get the parent training dataset of this model, based on explicit provenance.
 
         These training datasets can be accessible, deleted or inaccessible.
@@ -309,7 +309,7 @@ class ModelApi:
             model_instance: Metadata object of model.
 
         Returns:
-            `Links`: the training dataset used to generate this model or `None` if it does not exist.
+            The training dataset used to generate this model or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.

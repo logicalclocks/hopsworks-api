@@ -174,11 +174,11 @@ class Execution:
 
     @public
     @property
-    def success(self):
+    def success(self) -> bool:
         """Boolean to indicate if execution ran successfully or failed.
 
         Returns:
-            `bool`. True if execution ran successfully. False if execution failed or was killed.
+            `True` if execution ran successfully. `False` if execution failed or was killed.
         """
         is_yarn_job = (
             self.job_type.lower() == "spark"

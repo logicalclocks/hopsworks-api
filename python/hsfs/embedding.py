@@ -222,11 +222,11 @@ class EmbeddingFeature:
         """Serialize the EmbeddingFeature object to a JSON string."""
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """Convert the EmbeddingFeature object to a dictionary.
 
         Returns:
-            `dict`: A dictionary representation of the EmbeddingFeature object.
+            A dictionary representation of the EmbeddingFeature object.
         """
         d = {
             "name": self._name,

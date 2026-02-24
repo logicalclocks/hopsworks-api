@@ -91,17 +91,17 @@ else:
 
 if HAS_PYARROW:
 
-    def convert_offline_type_to_pyarrow_type(offline_type: str):
+    def convert_offline_type_to_pyarrow_type(offline_type: str) -> pa.DataType:
         """Convert an offline type string to a PyArrow type.
 
         Supports simple types (int, bigint, string, etc.), array types (array<type>),
         and struct types (struct<field1:type1,field2:type2>).
 
-        # Arguments
-            offline_type: `str`. The offline type string to convert.
+        Arguments:
+            offline_type: The offline type string to convert.
 
-        # Returns
-            `pa.DataType`. The corresponding PyArrow type.
+        Returns:
+            The corresponding PyArrow type.
         """
         offline_type = offline_type.strip().lower()
 

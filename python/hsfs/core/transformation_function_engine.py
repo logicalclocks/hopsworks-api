@@ -57,11 +57,11 @@ class TransformationFunctionEngine:
 
     def save(
         self, transformation_fn_instance: transformation_function.TransformationFunction
-    ) -> transformation_function.TransformationFunction:
+    ):
         """Save a transformation function into the feature store.
 
-        # Argument
-            transformation_fn_instance `transformation_function.TransformationFunction`: The transformation function to be saved into the feature store.
+        Parameters:
+            transformation_fn_instance: The transformation function to be saved into the feature store.
         """
         self._transformation_function_api.register_transformation_fn(
             transformation_fn_instance
@@ -78,12 +78,13 @@ class TransformationFunctionEngine:
         If only the name of the transformation function is provided then all the versions of the transformation functions are returned as a list.
         If both name and version are not provided then all transformation functions saved in the feature view is returned.
 
-        # Argument
-            name ` Optional[str]`: The name of the transformation function to be retrieved.
-            version `Optional[int]`: The version of the transformation function to be retrieved.
+        Parameters:
+            name: The name of the transformation function to be retrieved.
+            version: The version of the transformation function to be retrieved.
 
         Returns:
-            `Union[transformation_function.TransformationFunction, list[transformation_function.TransformationFunction]]` : A transformation function if name and version is provided. A list of transformation functions if only name is provided.
+            A transformation function if name and version is provided.
+            A list of transformation functions if only name is provided.
         """
         return self._transformation_function_api.get_transformation_fn(name, version)
 
@@ -111,7 +112,7 @@ class TransformationFunctionEngine:
     def _validate_transformation_function_arguments(
         transformation_functions: list[transformation_function.TransformationFunction],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
-        request_parameters: dict[str, Any] = None,
+        request_parameters: dict[str, Any] | None = None,
     ) -> None:
         """Function to validate if all arguments required to execute the transformation functions are present are present in the passed data or request parameters.
 
@@ -366,7 +367,7 @@ class TransformationFunctionEngine:
         """Delete a transformation function from the feature store.
 
         Parameters:
-            transformation_function_instance `transformation_function.TransformationFunction`: The transformation function to be removed from the feature store.
+            transformation_function_instance: The transformation function to be removed from the feature store.
         """
         self._transformation_function_api.delete(transformation_function_instance)
 
@@ -408,11 +409,11 @@ class TransformationFunctionEngine:
         """Function that updates statistics required for all transformation functions in the feature view based on training dataset version.
 
         Parameters:
-            feature_view `FeatureView`: The feature view in which the training data is being created.
-            training_dataset_version `TrainingDataset`: The training version used to update the statistics used in the transformation functions.
+            feature_view: The feature view in which the training data is being created.
+            training_dataset_version: The training version used to update the statistics used in the transformation functions.
 
         Returns:
-            `list[transformation_function.TransformationFunction]` : List of transformation functions.
+            List of transformation functions.
         """
         # check if transformation functions require statistics
         is_stat_required = any(
@@ -519,13 +520,13 @@ class TransformationFunctionEngine:
 
         The function assigns the statistics computed to hopsworks UDF object so that the statistics can be used when UDF is executed.
 
-        # Argument
-            training_dataset_obj `TrainingDataset`: The training dataset for which the statistics is to be computed.
-            feature_view `FeatureView`: The feature view in which the training data is being created.
-            training_dataset_version `int`: The version of the training dataset for which the statistics is to be retrieved.
+        Parameters:
+            training_dataset_obj: The training dataset for which the statistics is to be computed.
+            feature_view: The feature view in which the training data is being created.
+            training_dataset_version: The version of the training dataset for which the statistics is to be retrieved.
 
         Raises:
-            ValueError : If the statistics are not present in the backend.
+            ValueError: If the statistics are not present in the backend.
         """
         is_stat_required = any(
             tf.hopsworks_udf.statistics_required

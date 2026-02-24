@@ -38,6 +38,8 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 
 if TYPE_CHECKING:
     from hopsworks_common.core.constants import HAS_NUMPY
+    from hopsworks_common.job import Job
+    from hsfs.statistics import Statistics
 
     if HAS_NUMPY:
         import numpy as np
@@ -649,7 +651,7 @@ class TrainingDataset(TrainingDatasetBase):
         | np.ndarray
         | list[list],
         write_options: dict[Any, Any] | None = None,
-    ):
+    ) -> Job:
         """Materialize the training dataset to storage.
 
         This method materializes the training dataset either from a Feature Store
@@ -673,8 +675,7 @@ class TrainingDataset(TrainingDatasetBase):
                   after the Hopsworks Job has finished. By default it waits.
 
         Returns:
-            `Job`: When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            When using the `python` engine, it returns the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: Unable to create training dataset metadata.
@@ -710,7 +711,7 @@ class TrainingDataset(TrainingDatasetBase):
         | list[list],
         overwrite: bool,
         write_options: dict[Any, Any] | None = None,
-    ):
+    ) -> Job:
         """Insert additional feature data into the training dataset.
 
         Warning: Deprecated
@@ -736,8 +737,7 @@ class TrainingDataset(TrainingDatasetBase):
                   after the Hopsworks Job has finished. By default it waits.
 
         Returns:
-            `Job`: When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            When using the `python` engine, it returns the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: Unable to create training dataset metadata.
@@ -752,7 +752,7 @@ class TrainingDataset(TrainingDatasetBase):
         return td_job
 
     @public
-    def read(self, split=None, read_options=None):
+    def read(self, split=None, read_options=None) -> TypeVar("pyspark.sql.DataFrame"):
         """Read the training dataset into a dataframe.
 
         It is also possible to read only a specific split.
@@ -764,8 +764,7 @@ class TrainingDataset(TrainingDatasetBase):
             read_options: Additional read options as key/value pairs, defaults to `{}`.
 
         Returns:
-            `DataFrame`: The spark dataframe containing the feature data of the
-                training dataset.
+            The spark dataframe containing the feature data of the training dataset.
         """
         if self.splits and split is None:
             raise ValueError(
@@ -869,14 +868,14 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.get_tags(self)
 
     @public
-    def update_statistics_config(self):
+    def update_statistics_config(self) -> TrainingDataset:
         """Update the statistics configuration of the training dataset.
 
         Change the `statistics_config` object and persist the changes by calling
         this method.
 
         Returns:
-            `TrainingDataset`. The updated metadata object of the training dataset.
+            The updated metadata object of the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend encounters an issue
@@ -1029,11 +1028,11 @@ class TrainingDataset(TrainingDatasetBase):
 
     @public
     @property
-    def statistics(self):
+    def statistics(self) -> Statistics:
         """Get computed statistics for the training dataset.
 
         Returns:
-            `Statistics`. Object with statistics information.
+            Object with statistics information.
         """
         return self._statistics_engine.get(self, before_transformation=False)
 
@@ -1055,8 +1054,7 @@ class TrainingDataset(TrainingDatasetBase):
                 created, defaults to `False`.
 
         Returns:
-            `str`. Query string for the chosen storage used to generate this training
-                dataset.
+            Query string for the chosen storage used to generate this training dataset.
         """
         return self._training_dataset_engine.query(
             self, online, with_label, engine.get_type() == "python"

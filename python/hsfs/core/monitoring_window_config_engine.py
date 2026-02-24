@@ -239,12 +239,12 @@ class MonitoringWindowConfigEngine:
         """Fetch the entity data based on monitoring window configuration and compute statistics.
 
         Args:
-            entity: FeatureStore: Feature store to fetch the entity to monitor.
-            monitoring_window_config: MonitoringWindowConfig: Monitoring window config.
-            feature_name: str: Name of the feature to monitor.
+            entity: The entity to monitor.
+            monitoring_window_config: Monitoring window config.
+            feature_name: Name of the feature to monitor.
 
         Returns:
-            [FeatureDescriptiveStatistics, List[FeatureDescriptiveStatitics]]: List of Descriptive statistics.
+            List of Descriptive statistics.
         """
         self._init_statistics_engine(entity._feature_store_id, entity.ENTITY_TYPE)
         (
@@ -330,14 +330,14 @@ class MonitoringWindowConfigEngine:
         """Fetch the entity data based on time window and row percentage.
 
         Args:
-            entity: Union[FeatureGroup, FeatureView]: Entity to monitor.
-            feature_name: str: Name of the feature to monitor.
-            start_time: int: Window start commit or event time
-            end_time: int: Window end commit or event time
+            entity: Entity to monitor.
+            feature_name: Name of the feature to monitor.
+            start_time: Window start commit or event time
+            end_time: Window end commit or event time
             row_percentage: fraction of rows to include [0, 1.0]
 
         Returns:
-            `pyspark.sql.DataFrame`. A Spark DataFrame with the entity data
+            A Spark DataFrame with the entity data
         """
         try:
             if isinstance(entity, feature_group.FeatureGroup):
@@ -383,13 +383,13 @@ class MonitoringWindowConfigEngine:
         """Fetch the feature view data based on time window and row percentage.
 
         Args:
-            entity: FeatureView: Feature view to monitor.
-            feature_name: str: Name of the feature to monitor.
-            start_time: int: Window start commit or event time.
-            end_time: int: Window end commit or event time.
+            entity: Feature view to monitor.
+            feature_name: Name of the feature to monitor.
+            start_time: Window start commit or event time.
+            end_time: Window end commit or event time.
 
         Returns:
-            `pyspark.sql.DataFrame`. A Spark DataFrame with the entity data
+            A Spark DataFrame with the entity data
         """
         # TODO: This fails for FV on non-time-travel FGs.
         entity_df = entity.query.as_of(
@@ -411,10 +411,10 @@ class MonitoringWindowConfigEngine:
         """Fetch the feature group data based on time window.
 
         Args:
-            entity: FeatureGroup: Feature group to monitor.
-            feature_name: str: Name of the feature to monitor.
-            start_time: int: Window start commit time.
-            end_time: int: Window end commit time.
+            entity: Feature group to monitor.
+            feature_name: Name of the feature to monitor.
+            start_time: Window start commit time.
+            end_time: Window end commit time.
         """
         pre_df = entity.select(features=[feature_name]) if feature_name else entity
 

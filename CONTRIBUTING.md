@@ -134,6 +134,7 @@ Returns:
 
 Raises:
     SomeError: If something goes wrong.
+"""
 ```
 
 You should use `Yields` instead of `Returns` for generator functions.

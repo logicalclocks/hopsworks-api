@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     import polars as pl
     from hsfs.constructor.join import Join
     from hsfs.constructor.query import Query
+    from hsfs.core import explicit_provenance
     from hsfs.core.feature_logging import LoggingMetaData
     from hsfs.feature_logger import FeatureLogger
     from hsfs.transformation_function import TransformationFunction
@@ -167,21 +168,22 @@ class FeatureViewEngine:
         return feature_view_obj
 
     def get(
-        self, name: str, version: int = None
+        self, name: str, version: int | None = None
     ) -> feature_view.FeatureView | list[feature_view.FeatureView]:
         """Get a feature view from the backend using name or using name and version.
 
         If version is not provided then a List of feature views containing all of its versions is returned.
 
         Parameters:
-            name `str`: Name of feature view.
-            version `version`: Version of the feature view.
+            name: Name of feature view.
+            version: Version of the feature view.
 
         Returns:
-            `Union[FeatureView, List[FeatureView]]`
+            If version is provided, the feature view with the specified name and version is returned.
+            Otherwise, a list that contains all version of the feature view is returned.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             ValueError: If the feature group associated with the feature view cannot be found.
         """
         if version:
@@ -190,7 +192,7 @@ class FeatureViewEngine:
             fv = self._feature_view_api.get_by_name(name)
         return fv
 
-    def delete(self, name, version=None, force: bool = False):
+    def delete(self, name: str, version: int | None = None, force: bool = False):
         if version:
             return self._feature_view_api.delete_by_name_version(name, version, force)
         return self._feature_view_api.delete_by_name(name, force)
@@ -199,17 +201,19 @@ class FeatureViewEngine:
         self,
         feature_view: feature_view.FeatureView,
         training_dataset_version: int | None = None,
-    ):
+    ) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Function that returns the schema of the training dataset generated using the feature view.
 
         Parameters:
-            feature_view: `FeatureView`. The feature view for which the schema is to be generated.
-            training_dataset_version: `int`. Specifies the version of the training dataset for which the schema should be generated.
-                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+            feature_view: The feature view for which the schema is to be generated.
+            training_dataset_version:
+                Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to `None`.
+                However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
                 This is because the schema will then depend on the statistics of the training data used.
 
         Returns:
-            `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
+            List of training dataset features objects.
         """
         # This is used to verify that the training dataset version actually exists, otherwise it raises an exception
         if training_dataset_version:
@@ -1038,7 +1042,7 @@ class FeatureViewEngine:
             feature_view_obj, training_dataset_version=training_dataset_version
         )
 
-    def get_parent_feature_groups(self, feature_view_obj):
+    def get_parent_feature_groups(self, feature_view_obj) -> explicit_provenance.Links | None:
         """Get the parents of this feature view, based on explicit provenance.
 
         Parents are feature groups or external feature groups. These feature
@@ -1050,7 +1054,7 @@ class FeatureViewEngine:
             feature_view_obj: Metadata object of feature view.
 
         Returns:
-            `Links`:  the feature groups used to generate this feature view or None
+            The feature groups used to generate this feature view or `None`.
         """
         links = self._feature_view_api.get_parent_feature_groups(
             feature_view_obj.name, feature_view_obj.version
@@ -1061,7 +1065,7 @@ class FeatureViewEngine:
 
     def get_models_provenance(
         self, feature_view_obj, training_dataset_version: int | None = None
-    ):
+    ) -> explicit_provenance.Links | None:
         """Get the generated models using this feature view, based on explicit provenance.
 
         These models can be accessible or inaccessible. Explicit
@@ -1074,7 +1078,7 @@ class FeatureViewEngine:
             training_dataset_version: Filter generated models based on the used training dataset version.
 
         Returns:
-            `Links`: the models generated using this feature group or None
+            The models generated using this feature view or `None`.
         """
         links = self._feature_view_api.get_models_provenance(
             feature_view_obj.name,
@@ -1283,7 +1287,7 @@ class FeatureViewEngine:
         feature_view_obj: feature_view.FeatureView,
         dataframes: list[
             pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame")
-        ] = None,
+        ] | None = None,
     ) -> list[feature.Feature]:
         """Function to extract features from a logging dataframe.
 
@@ -1292,7 +1296,7 @@ class FeatureViewEngine:
             dataframes: The dataframes from which logging features are to be extracted.
 
         Returns:
-            `List[feature.Feature]`. List of features extracted from the logging feature view provided.
+            List of features extracted from the logging feature view provided.
         """
         logging_features = []
         logging_feature_names = []
@@ -1317,8 +1321,8 @@ class FeatureViewEngine:
         return logging_features
 
     def enable_feature_logging(
-        self, fv, extra_log_columns: feature.Feature | dict[str, Any] = None
-    ):
+        self, fv, extra_log_columns: feature.Feature | dict[str, Any] | None = None
+    ) -> feature_view.FeatureView:
         """Function to enable feature logging for a feature view. This function creates logging feature groups for the feature view.
 
         Parameters:
@@ -1326,7 +1330,7 @@ class FeatureViewEngine:
             extra_log_columns: List of features to be logged.
 
         Returns:
-            `FeatureView`. Feature view object with feature logging enabled.
+            Feature view object with feature logging enabled.
         """
         logging_features = (
             [

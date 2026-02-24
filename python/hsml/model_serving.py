@@ -71,7 +71,7 @@ class ModelServing:
             id: Id of the deployment to get.
 
         Returns:
-            `Deployment`: The deployment metadata object or `None` if it does not exist.
+            The deployment metadata object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
@@ -98,7 +98,7 @@ class ModelServing:
             name: Name of the deployment to get.
 
         Returns:
-            `Deployment`: The deployment metadata object or `None` if it does not exist.
+            The deployment metadata object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
@@ -132,11 +132,13 @@ class ModelServing:
             for deployment in list_deployments:
                 print(deployment.get_state())
             ```
+
         Parameters:
             model: Filter by model served in the deployments
             status: Filter by status of the deployments
+
         Returns:
-            `List[Deployment]`: A list of deployments.
+            A list of deployments.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployments from model serving.
@@ -163,7 +165,7 @@ class ModelServing:
         """Get all inference endpoints available in the current project.
 
         Returns:
-            `List[InferenceEndpoint]`: Inference endpoints for model inference
+            Inference endpoints for model inference
         """
         return self._serving_api.get_inference_endpoints()
 
@@ -229,7 +231,7 @@ class ModelServing:
             scaling_configuration: Scaling configuration for the predictor.
 
         Returns:
-            `Predictor`. The predictor metadata object.
+            The predictor metadata object.
         """
         if name is None:
             name = model._get_default_serving_name()
@@ -314,7 +316,7 @@ class ModelServing:
             resources: Resources to be allocated for the transformer.
 
         Returns:
-            `Transformer`. The transformer metadata object.
+            The transformer metadata object.
         """
         return Transformer(
             script_file=script_file,
@@ -366,7 +368,7 @@ class ModelServing:
             scaling_configuration: Scaling configuration for the predictor.
 
         Returns:
-            `Predictor`. The predictor metadata object.
+            The predictor metadata object.
         """
         return Predictor.for_server(
             name=name,
@@ -453,7 +455,7 @@ class ModelServing:
             environment: (**Deprecated**) The project Python environment to use. This argument will be ignored, use the argument `environment` in the `create_predictor()` or `create_endpoint()` methods instead.
 
         Returns:
-            `Deployment`. The deployment metadata object.
+            The deployment metadata object.
         """
         return Deployment(predictor=predictor, name=name)
 

@@ -114,7 +114,7 @@ class AsyncWorkerThread(threading.Thread):
         """Function to run the worker function in the event loop, until a None has been submitted to the queue.
 
         Parameters:
-            worker_function: `Callable`. Function to be run by the workers.
+            worker_function: Function to be run by the workers.
         """
         while True:
             task = await self._tasks_queue.get()

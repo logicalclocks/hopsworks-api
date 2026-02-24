@@ -15,9 +15,15 @@
 #
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
 from hsfs.core import feature_group_api, kafka_api, storage_connector_api, tags_api
+
+
+if TYPE_CHECKING:
+    from hsfs.core import explicit_provenance
 
 
 class FeatureGroupBaseEngine:
@@ -55,76 +61,72 @@ class FeatureGroupBaseEngine:
             return tags
         return {}
 
-    def get_parent_feature_groups(self, feature_group):
+    def get_parent_feature_groups(self, feature_group) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
-        Parents are feature groups or external feature groups. These feature
-        groups can be accessible, deleted or inaccessible.
-        For deleted and inaccessible feature groups, only a minimal information is
-        returned.
+        Parents are feature groups or external feature groups.
+        These feature groups can be accessible, deleted or inaccessible.
+        For deleted and inaccessible feature groups, only a minimal information is returned.
 
         Parameters:
             feature_group: Metadata object of feature group.
 
         Returns:
-            `Links`:  the feature groups used to generate this feature group
+            The feature groups used to generate this feature group.
         """
         links = self._feature_group_api.get_parent_feature_groups(feature_group)
         if not links.is_empty():
             return links
         return None
 
-    def get_storage_connector_provenance(self, feature_group):
+    def get_storage_connector_provenance(self, feature_group) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
-        Parents are storage connectors. These storage connector can be accessible,
-        deleted or inaccessible.
-        For deleted and inaccessible storage connector, only a minimal information is
-        returned.
+        Parents are storage connectors.
+        These storage connector can be accessible, deleted or inaccessible.
+        For deleted and inaccessible storage connector, only a minimal information is returned.
 
         Parameters:
             feature_group: Metadata object of feature group.
 
         Returns:
-            `Links`: the storage connector used to generated this feature group
+            The storage connector used to generated this feature group.
         """
         links = self._feature_group_api.get_storage_connector_provenance(feature_group)
         if not links.is_empty():
             return links
         return None
 
-    def get_generated_feature_views(self, feature_group):
+    def get_generated_feature_views(self, feature_group) -> explicit_provenance.Links | None:
         """Get the generated feature view using this feature group, based on explicit provenance.
 
-        These feature views can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature view links, so deleted
-        will always be empty.
+        These feature views can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature view links, so deleted will always be empty.
         For inaccessible feature views, only a minimal information is returned.
 
         Parameters:
             feature_group: Metadata object of feature group.
 
         Returns:
-            `Links`:  the feature views generated using this feature group
+            The feature views generated using this feature group.
         """
         links = self._feature_group_api.get_generated_feature_views(feature_group)
         if not links.is_empty():
             return links
         return None
 
-    def get_generated_feature_groups(self, feature_group):
+    def get_generated_feature_groups(self, feature_group) -> explicit_provenance.Links | None:
         """Get the generated feature groups using this feature group, based on explicit provenance.
 
-        These feature groups can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature group links, so deleted
-        will always be empty.
+        These feature groups can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature group links, so deleted will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
         Parameters:
             feature_group: Metadata object of feature group.
 
         Returns:
-            `Links`:  the feature groups generated using this feature group
+            The feature groups generated using this feature group.
         """
         links = self._feature_group_api.get_generated_feature_groups(feature_group)
         if not links.is_empty():

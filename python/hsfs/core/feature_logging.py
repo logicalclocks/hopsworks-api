@@ -40,18 +40,18 @@ class FeatureLogging:
 
     def __init__(
         self,
-        id: int = None,
-        transformed_features: feature_group.FeatureGroup = None,
-        untransformed_features: feature_group.FeatureGroup = None,
+        id: int | None = None,
+        transformed_features: feature_group.FeatureGroup | None = None,
+        untransformed_features: feature_group.FeatureGroup | None = None,
         extra_logging_columns: list[Feature] | None = None,
     ):
         """DTO class for feature logging.
 
         Parameters:
-            id : `int`. Id of the feature logging object.
-            transformed_features : `FeatureGroup`. The feature group containing the transformed features. As of Hopsworks 4.6, transformed and untransformed features are logged in the same feature group. This feature group is maintained for backward compatibility.
-            untransformed_features : `FeatureGroup`. The feature group containing the untransformed features.
-            extra_logging_columns : `List[Feature]`. List of extra logging columns.
+            id: Id of the feature logging object.
+            transformed_features: The feature group containing the transformed features. As of Hopsworks 4.6, transformed and untransformed features are logged in the same feature group. This feature group is maintained for backward compatibility.
+            untransformed_features: The feature group containing the untransformed features.
+            extra_logging_columns: List of extra logging columns.
         """
         self._id = id
         self._transformed_features = transformed_features

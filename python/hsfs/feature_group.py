@@ -754,11 +754,11 @@ class FeatureGroupBase:
         For deleted and inaccessible storage connector, only minimal information is
         returned.
 
-        # Returns
-            `Links`: the data source used to generate this feature group or `None` if it does not exist.
+        Returns:
+            the data source used to generate this feature group or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
@@ -795,13 +795,13 @@ class FeatureGroupBase:
         """Get the data source using this feature group, based on explicit provenance.
 
         Only the accessible data source is returned.
-        For more items use the base method - get_data_source_provenance.
+        For more items use the base method [`get_data_source_provenance`][hsfs.feature_group.FeatureGroup.get_data_source_provenance].
 
-        # Returns
-            `DataSource`: Data source or `None` if it does not exist.
+        Returns:
+            Data source or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         data_source_provenance = self.get_data_source_provenance()
 
@@ -2089,7 +2089,7 @@ class FeatureGroupBase:
             feature_names: List of feature names of which statistics are retrieved.
 
         Returns:
-            `Statistics`. Statistics object or `None` if it does not exist.
+            Statistics object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.

@@ -32,9 +32,6 @@ class Resources:
         cores: Number of CPUs.
         memory: Memory (MB) resources.
         gpus: Number of GPUs.
-
-    Returns:
-        `Resources`. Resource configuration for a predictor or transformer.
     """
 
     def __init__(
@@ -117,8 +114,6 @@ class ComponentResources(ABC):
         num_instances: Deprecated. Use scaling configuration instead.
         requests: Minimum resources to allocate for a deployment
         limits: Maximum resources to allocate for a deployment
-    Returns:
-        `ComponentResource`. Resource configuration for a predictor or transformer.
     """
 
     def __init__(

@@ -496,8 +496,7 @@ class FeatureGroupApi:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`:  the feature groups used to generate this
-            feature group
+            The feature groups used to generate this feature group.
         """
         _client = client.get_instance()
         path_params = [
@@ -522,20 +521,18 @@ class FeatureGroupApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
-    def get_storage_connector_provenance(self, feature_group_instance):
+    def get_storage_connector_provenance(self, feature_group_instance) -> explicit_provenance.Links:
         """Get the parents of this feature group, based on explicit provenance.
 
-        Parents are storage connectors. These storage connector can be accessible,
-        deleted or inaccessible.
-        For deleted and inaccessible storage connector, only a minimal information is
-        returned.
+        Parents are storage connectors.
+        These storage connector can be accessible, deleted or inaccessible.
+        For deleted and inaccessible storage connector, only a minimal information is returned.
 
         Parameters:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`: the storage connector used to generated this
-            feature group
+            The storage connector used to generated this feature group.
         """
         _client = client.get_instance()
         path_params = [
@@ -568,17 +565,15 @@ class FeatureGroupApi:
     ) -> explicit_provenance.Links:
         """Get the generated feature view using this feature group, based on explicit provenance.
 
-        These feature views can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature view links, so deleted
-        will always be empty.
+        These feature views can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature view links, so deleted will always be empty.
         For inaccessible feature views, only a minimal information is returned.
 
         Parameters:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`: the feature views generated using this feature
-            group
+            The feature views generated using this feature group.
         """
         _client = client.get_instance()
         path_params = [
@@ -611,17 +606,15 @@ class FeatureGroupApi:
     ) -> explicit_provenance.Links:
         """Get the generated feature groups using this feature group, based on explicit provenance.
 
-        These feature groups can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature group links, so deleted
-        will always be empty.
+        These feature groups can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature group links, so deleted will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
         Parameters:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`: the feature groups generated using this
-            feature group
+            The feature groups generated using this feature group.
         """
         _client = client.get_instance()
         path_params = [

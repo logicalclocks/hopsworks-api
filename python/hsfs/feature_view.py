@@ -970,7 +970,7 @@ class FeatureView:
             The dataframe.
 
         Raises:
-            `Exception`: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            Exception: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
         """
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
@@ -1394,7 +1394,7 @@ class FeatureView:
         returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -2381,8 +2381,7 @@ class FeatureView:
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
-            `Job`: When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            When using the `python` engine, it returns the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -3540,22 +3539,18 @@ class FeatureView:
 
         Parameters:
             name: If provided fetch only the feature monitoring config with the given name.
-                Defaults to None.
             feature_name: If provided, fetch only configs attached to a particular feature.
-                Defaults to None.
             config_id: If provided, fetch only the feature monitoring config with the given id.
-                Defaults to None.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
             ValueError: if both name and feature_name are provided.
-            `TypeError`: if name or feature_name are not string or None.
+            TypeError: if name or feature_name are not string or None.
 
         Returns:
-            Union[`FeatureMonitoringConfig`, List[`FeatureMonitoringConfig`], None]
-                A list of feature monitoring configs. If name provided,
-                returns either a single config or None if not found.
+            A list of feature monitoring configs.
+            If name provided, returns either a single config or None if not found.
         """
         # TODO: Should this filter out scheduled statistics only configs?
         if not self._id:
@@ -3612,15 +3607,12 @@ class FeatureView:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
             ValueError: if both config_name and config_id are provided.
-            `TypeError`: if config_name or config_id are not respectively string, int or None.
+            TypeError: if config_name or config_id are not respectively string, int or None.
 
         Returns:
-            List[`FeatureMonitoringResult`]
-                A list of feature monitoring results containing the monitoring metadata
-                as well as the computed statistics for the detection and reference window
-                if requested.
+            A list of feature monitoring results containing the monitoring metadata as well as the computed statistics for the detection and reference window if requested.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -3680,11 +3672,11 @@ class FeatureView:
                 every day at 12pm UTC.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
 
         Returns:
-            `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
-                Additional information are required before feature monitoring is enabled.
+            Configuration with minimal information about the feature monitoring.
+            Additional information are required before feature monitoring is enabled.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -3751,11 +3743,11 @@ class FeatureView:
                 every day at 12pm UTC.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
 
         Returns:
-            `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
-                Additional information are required before feature monitoring is enabled.
+            Configuration with minimal information about the feature monitoring.
+            Additional information are required before feature monitoring is enabled.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -3858,10 +3850,10 @@ class FeatureView:
         """Function that constructs the class object from its json serialization.
 
         Parameters:
-            json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+            json_dict: JSON serialized dictionary for the class.
 
         Returns:
-            `TransformationFunction`: Json deserialized class object.
+            JSON deserialized class object.
         """
         json_decamelized = humps.decamelize(json_dict)
 
@@ -3924,10 +3916,10 @@ class FeatureView:
         """Function that updates the class object from its json serialization.
 
         Parameters:
-            json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+            json_dict: JSON serialized dictionary for the class.
 
         Returns:
-            `TransformationFunction`: Json deserialized class object.
+            JSON deserialized class object.
         """
         other = self.from_response_json(json_dict)
         for key in [
@@ -3958,21 +3950,21 @@ class FeatureView:
         | pl.DataFrame
         | None = None,
         request_parameters: list[dict[str, Any]] | dict[str, Any] | None = None,
-        transformation_context: dict[str, Any] = None,
-        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
-    ):
+        transformation_context: dict[str, Any] | None = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
+    ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Function computes on-demand features present in the feature view.
 
         Parameters:
-            feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
+            feature_vector: The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
                 These parameters take **higheshighestt priority** when resolving feature values - if a key exists in both `request_parameters` and the feature vector, the value from `request_parameters` is used.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
+            The feature vector that contains all on-demand features in the feature view.
         """
         return self._vector_server.compute_on_demand_features(
             feature_vectors=feature_vector,
@@ -3986,28 +3978,28 @@ class FeatureView:
         self,
         feature_vector: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
         external: bool | None = None,
-        transformation_context: dict[str, Any] = None,
-        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
-    ):
+        transformation_context: dict[str, Any] | None = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
+    ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
 
         Warning: List input must match the schema of the feature view
                     If features are provided as a List to the transform function. Make sure that the input are ordered to match the schema
                     in the feature view.
         Parameters:
-            feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
+            feature_vector: The feature vector to be transformed.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
                 for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector obtained by applying Model-Dependent Transformations.
+            The transformed feature vector obtained by applying Model-Dependent Transformations.
         """
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
@@ -4027,7 +4019,7 @@ class FeatureView:
         This method activates logging of features.
 
         Parameters:
-            extra_log_columns: `Union[Feature, List[Dict[str, str]]]` Additional columns to be logged. Any duplicate columns will be ignored.
+            extra_log_columns: Additional columns to be logged. Any duplicate columns will be ignored.
 
         Example: Enable feature logging
             ```python
@@ -4085,7 +4077,8 @@ class FeatureView:
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         untransformed_features: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
@@ -4104,41 +4097,47 @@ class FeatureView:
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         inference_helper_columns: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         request_parameters: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         event_time: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         serving_keys: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         extra_logging_features: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
-        request_id: str | list[str] = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
+        request_id: str | list[str] | None = None,
         write_options: dict[str, Any] | None = None,
         training_dataset_version: int | None = None,
-        model: Model = None,
+        model: Model | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
     ) -> list[Job] | None:
@@ -4162,14 +4161,14 @@ class FeatureView:
             training_dataset_version: Version of the training dataset. If training dataset version is definied in
                 `init_serving` or `init_batch_scoring`, or model has training dataset version,
                 or training dataset version was cached, then the version will be used, otherwise defaults to None.
-            model: `Union[str, hsml.model.Model]` Hopsworks model associated with the log. Defaults to None.
-            model_name: `Optional[str]`. Name of the model to be associated with the log.
+            model: Hopsworks model associated with the log. Defaults to None.
+            model_name: Name of the model to be associated with the log.
                 If `model` is provided, this parameter will be ignored.
-            model_version: `Optional[int]`. Version of the model to be associated with the log.
+            model_version: Version of the model to be associated with the log.
                 If `model` is provided, this parameter will be ignored.
 
         Returns:
-            `list[Job]` job information for feature insertion if python engine is used
+            Job information for feature insertion if python engine is used.
 
         Example: Implicitly Logging Batch Data and Predictions with all Logging metadata
             ```python
@@ -4288,8 +4287,7 @@ class FeatureView:
             ```
 
         Returns:
-            `Dict[str, Dict[str, str]]`. Dictionary object of commit metadata timeline, where Key is commit id and value
-            is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
+            Dictionary object of commit metadata timeline, where Key is commit id and value is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the log timeline.
@@ -4306,7 +4304,7 @@ class FeatureView:
         filter: Filter | Logic | None = None,
         transformed: bool | None = False,
         training_dataset_version: int | None = None,
-        model: Model = None,
+        model: Model | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
     ) -> TypeVar("pyspark.sql.DataFrame") | pd.DataFrame | pl.DataFrame:
@@ -4321,8 +4319,8 @@ class FeatureView:
             transformed: Whether to include transformed logs. Defaults to False.
             training_dataset_version: Version of the training dataset. Defaults to None.
             model: HSML model associated with the log. Defaults to None.
-            model_name: `Optional[str]`. Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
-            model_version: `Optional[int]`. Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
+            model_name: Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
+            model_version: Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
 
         Example:
             ```python
@@ -4339,10 +4337,7 @@ class FeatureView:
             ```
 
         Returns:
-            `DataFrame`: The spark dataframe containing the feature data.
-            `pyspark.DataFrame`. A Spark DataFrame.
-            `pandas.DataFrame`. A Pandas DataFrame.
-            `polars.DataFrame`. A Polars DataFrame.
+            The dataframe containing the feature data.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to read the log entries.
@@ -4673,10 +4668,10 @@ class FeatureView:
         )
 
     def json(self) -> str:
-        """Convert class into its json serialized form.
+        """Convert class into its JSON serialized form.
 
         Returns:
-            `str`: Json serialized object.
+            JSON serialized object.
         """
         return json.dumps(self, cls=util.Encoder)
 
@@ -4684,7 +4679,7 @@ class FeatureView:
         """Convert class into a dictionary.
 
         Returns:
-            `Dict`: Dictionary that contains all data required to json serialize the object.
+            Dictionary that contains all data required to JSON serialize the object.
         """
         fv_dict = {
             "featurestoreId": self._featurestore_id,
@@ -4722,7 +4717,7 @@ class FeatureView:
             ```
 
         Returns:
-            `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
+            List of training dataset features objects.
         """
         return self._feature_view_engine.get_training_dataset_schema(
             self, training_dataset_version

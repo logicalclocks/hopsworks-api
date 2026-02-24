@@ -451,16 +451,14 @@ class FeatureMonitoringResultEngine:
         """Compute the difference between the reference and detection statistics.
 
         Args:
-            detection_statistics: `FeatureDescriptiveStatistics`. Computed statistics from detection data.
-            reference_statistics: `Optional[FeatureDescriptiveStatistics]`.
-                Computed statistics from reference data, or a specific value to use as reference
-            metric: `str`. The metric to compute the difference for.
-            relative: `bool`. Whether to compute the relative difference or not.
-            specific_value: `Optional[Union[int, float]]`. A specific value to use as reference.
+            detection_statistics: Computed statistics from detection data.
+            metric: The metric to compute the difference for.
+            relative: Whether to compute the relative difference or not.
+            reference_statistics: Computed statistics from reference data, or a specific value to use as reference.
+            specific_value: A specific value to use as reference.
 
         Returns:
-            `Optional[float]`. The difference between the reference and detection statistics, or None if there
-                               are no values to compare
+            The difference between the reference and detection statistics, or `None` if there are no values to compare.
         """
         if (detection_statistics.count == 0) or (
             specific_value is None and reference_statistics.count == 0
@@ -488,12 +486,12 @@ class FeatureMonitoringResultEngine:
         """Compute the difference between a reference and detection value.
 
         Args:
-            detection_value: Union[int, float]. The detection value.
-            reference_value: Union[int, float]. The reference value
-            relative: `bool`. Whether to compute the relative difference or not.
+            detection_value: The detection value.
+            reference_value: The reference value
+            relative: Whether to compute the relative difference or not.
 
         Returns:
-            `float`. The difference between the reference and detection values.
+            The difference between the reference and detection values.
         """
         diff = abs(detection_value - reference_value)
         if relative:
@@ -512,11 +510,11 @@ class FeatureMonitoringResultEngine:
         The id defaults to 0 if no execution is found.
 
         Args:
-            job_name: str. Name of the monitoring job.
+            job_name: Name of the monitoring job.
 
         Returns:
-            int. Id of the last execution of the monitoring job.
-                It is assumed to be the current execution.
+            Id of the last execution of the monitoring job.
+            It is assumed to be the current execution.
         """
         execution = self._job_api.last_execution(self._job_api.get(name=job_name))
         return (
@@ -532,10 +530,10 @@ class FeatureMonitoringResultEngine:
         """Check if the monitoring window is empty.
 
         Args:
-            monitoring_window_statistics: FeatureDescriptiveStatistics. Statistics computed for the monitoring window.
+            monitoring_window_statistics: Statistics computed for the monitoring window.
 
         Returns:
-            bool. Whether the monitoring window is empty or not.
+            Whether the monitoring window is empty or not.
         """
         return bool(
             monitoring_window_statistics is None
@@ -556,7 +554,7 @@ class FeatureMonitoringResultEngine:
             feature_name: Name of the feature being monitored.
 
         Returns:
-            FeatureMonitoringResult. Saved Feature monitoring result.
+            Saved Feature monitoring result.
         """
         return self.save_feature_monitoring_result(
             result=self.build_feature_monitoring_result(

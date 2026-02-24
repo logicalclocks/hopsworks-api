@@ -118,11 +118,12 @@ class OpenSearchApi:
             OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(),
         }
 
-    def _get_authorization_token(self, feature_store_id: int = None) -> str:
-        """Get opensearch jwt token.
+    def _get_authorization_token(self, feature_store_id: int | None = None) -> str:
+        """Get OpenSearch JWT token.
 
         Returns:
-            `str`: OpenSearch jwt token
+            OpenSearch JWT token.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """

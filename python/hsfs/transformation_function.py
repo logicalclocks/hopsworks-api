@@ -52,15 +52,14 @@ class TransformationType(Enum):
 @typechecked
 class TransformationFunction:
     NOT_FOUND_ERROR_CODE = 270160
-    """
-    DTO class for transformation functions.
+    """DTO class for transformation functions.
 
     Parameters:
-        featurestore_id : `int`. Id of the feature store in which the transformation function is saved.
-        hopsworks_udf : `HopsworksUDF`. The meta data object for UDF in Hopsworks, which can be created using the `@udf` decorator.
-        version : `int`. The version of the transformation function.
-        id : `int`. The id of the transformation function in the feature store.
-        transformation_type : `UDFType`. The type of the transformation function. Can be "on-demand" or "model-dependent"
+        featurestore_id: Id of the feature store in which the transformation function is saved.
+        hopsworks_udf: The meta data object for UDF in Hopsworks, which can be created using the `@udf` decorator.
+        version: The version of the transformation function.
+        id: The id of the transformation function in the feature store.
+        transformation_type: The type of the transformation function. Can be "on-demand" or "model-dependent"
     """
 
     def __init__(
@@ -167,13 +166,13 @@ class TransformationFunction:
         """Update the feature to be using in the transformation function.
 
         Parameters:
-            features: `List[str]`. Name of features to be passed to the User Defined function.
+            features: Name of features to be passed to the User Defined function.
 
         Returns:
-            `HopsworksUdf`: Meta data class for the user defined function.
+            Meta data class for the user defined function.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
+            hopsworks.client.exceptions.FeatureStoreException: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
         """
         # Deep copy so that the same transformation function can be used to create multiple new transformation function with different features.
         transformation = copy.deepcopy(self)
@@ -188,10 +187,10 @@ class TransformationFunction:
         """Function that constructs the class object from its json serialization.
 
         Parameters:
-            json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+            json_dict: Json serialized dictionary for the class.
 
         Returns:
-            `TransformationFunction`: Json deserialized class object.
+            Json deserialized class object.
         """
         json_decamelized = humps.decamelize(json_dict)
 
@@ -218,10 +217,10 @@ class TransformationFunction:
         """Function that updates the class object from its json serialization.
 
         Parameters:
-            json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+            json_dict: Json serialized dictionary for the class.
 
         Returns:
-            `TransformationFunction`: Json deserialized class object.
+            Json deserialized class object.
         """
         json_decamelized = humps.decamelize(json_dict)
         self.__init__(**json_decamelized)
@@ -231,7 +230,7 @@ class TransformationFunction:
         """Convert class into its json serialized form.
 
         Returns:
-            `str`: Json serialized object.
+            Json serialized object.
         """
         return json.dumps(self, cls=util.Encoder)
 
@@ -239,7 +238,7 @@ class TransformationFunction:
         """Convert class into a dictionary.
 
         Returns:
-            `Dict`: Dictionary that contains all data required to json serialize the object.
+            Dictionary that contains all data required to json serialize the object.
         """
         backend_version = client.get_connection().backend_version
 

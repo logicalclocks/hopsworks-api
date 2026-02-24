@@ -35,6 +35,7 @@ from hsml.schema import Schema
 
 
 if TYPE_CHECKING:
+    from hsfs import feature_view
     from hsml import deployment, tag
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -113,7 +114,7 @@ class Model:
         await_registration=480,
         keep_original_files=False,
         upload_configuration: dict[str, Any] | None = None,
-    ):
+    ) -> Model:
         """Persist this model including model files and metadata to the model registry.
 
         Parameters:
@@ -128,7 +129,7 @@ class Model:
                 * key `max_chunk_retries`: number of times to retry the upload of a chunk in case of failure. Default 1.
 
         Returns:
-            `Model`: The model metadata object.
+            The model metadata object.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -181,8 +182,9 @@ class Model:
 
         Parameters:
             local_path: path where to download the model files in the local filesystem
+
         Returns:
-            `str`: Absolute path to local folder containing the model files.
+            Absolute path to local folder containing the model files.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -259,7 +261,7 @@ class Model:
             environment: The inference environment to use.
 
         Returns:
-            `Deployment`: The deployment metadata object of a new or existing deployment.
+            The deployment metadata object of a new or existing deployment.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -367,7 +369,7 @@ class Model:
         return util.get_hostname_replaced_url(sub_path=path)
 
     @public
-    def get_feature_view(self, init: bool = True, online: bool = False):
+    def get_feature_view(self, init: bool = True, online: bool = False) -> feature_view.FeatureView | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
@@ -378,7 +380,7 @@ class Model:
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
 
         Returns:
-            `FeatureView`: Feature View Object or `None` if it does not exist.
+            Feature View Object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view.
@@ -410,7 +412,7 @@ class Model:
         For deleted and inaccessible feature views, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view provenance.
@@ -425,7 +427,7 @@ class Model:
         For deleted and inaccessible training datasets, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the training dataset provenance.
