@@ -25,13 +25,14 @@ class ModelApi:
     def __init__(self):
         pass
 
-    def put(self, model_instance, query_params):
+    def put(self, model_instance: model.Model, query_params: dict) -> model.Model:
         """Save model metadata to the model registry.
 
-        :param model_instance: metadata object of model to be saved
-        :type model_instance: Model
-        :return: updated metadata object of the model
-        :rtype: Model
+        Parameters:
+            model_instance: metadata object of model to be saved
+
+        Returns:
+            updated metadata object of the model
         """
         _client = client.get_instance()
         path_params = [
@@ -54,15 +55,21 @@ class ModelApi:
         )
 
     @decorators.catch_not_found("hsml.model.Model", fallback_return=None)
-    def get(self, name, version, model_registry_id, shared_registry_project_name=None):
+    def get(
+        self,
+        name: str,
+        version: int,
+        model_registry_id: int,
+        shared_registry_project_name: str | None = None,
+    ) -> model.Model | None:
         """Get the metadata of a model with a certain name and version.
 
-        :param name: name of the model
-        :type name: str
-        :param version: version of the model
-        :type version: int
-        :return: model metadata object
-        :rtype: Model
+        Parameters:
+            name: name of the model
+            version: version of the model
+
+        Returns:
+            model metadata object
         """
         _client = client.get_instance()
         path_params = [
@@ -84,22 +91,21 @@ class ModelApi:
 
     def get_models(
         self,
-        name,
-        model_registry_id,
-        shared_registry_project_name=None,
-        metric=None,
-        direction=None,
-    ):
+        name: str,
+        model_registry_id: int,
+        shared_registry_project_name: str | None = None,
+        metric: str | None = None,
+        direction: str | None = None,
+    ) -> list[model.Model]:
         """Get the metadata of models based on the name or optionally the best model given a metric and direction.
 
-        :param name: name of the model
-        :type name: str
-        :param metric: Name of the metric to maximize or minimize
-        :type metric: str
-        :param direction: Whether to maximize or minimize the metric, allowed values are 'max' or 'min'
-        :type direction: str
-        :return: model metadata object
-        :rtype: Model
+        Parameters:
+            name: name of the model
+            metric: Name of the metric to maximize or minimize
+            direction: Whether to maximize or minimize the metric, allowed values are 'max' or 'min'
+
+        Returns:
+            model metadata object
         """
         _client = client.get_instance()
         path_params = [
@@ -131,11 +137,11 @@ class ModelApi:
 
         return models_meta
 
-    def delete(self, model_instance):
+    def delete(self, model_instance: model.Model) -> None:
         """Delete the model and metadata.
 
-        :param model_instance: metadata object of model to delete
-        :type model_instance: Model
+        Parameters:
+            model_instance: metadata object of model to delete
         """
         _client = client.get_instance()
         path_params = [
@@ -148,18 +154,18 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def set_tag(self, model_instance, name, value: str | dict):
+    def set_tag(
+        self, model_instance: model.Model, name: str, value: str | dict
+    ) -> None:
         """Attach a name/value tag to a model.
 
         A tag consists of a name/value pair. Tag names are unique identifiers.
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
-        :param model_instance: model instance to attach tag
-        :type model_instance: Model
-        :param name: name of the tag to be added
-        :type name: str
-        :param value: value of the tag to be added
-        :type value: str or dict
+        Parameters:
+            model_instance: model instance to attach tag
+            name: name of the tag to be added
+            value: value of the tag to be added
         """
         _client = client.get_instance()
         path_params = [
@@ -176,15 +182,14 @@ class ModelApi:
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
-    def delete_tag(self, model_instance, name):
+    def delete_tag(self, model_instance: model.Model, name: str) -> None:
         """Delete a tag.
 
         Tag names are unique identifiers.
 
-        :param model_instance: model instance to delete tag from
-        :type model_instance: Model
-        :param name: name of the tag to be removed
-        :type name: str
+        Parameters:
+            model_instance: model instance to delete tag from
+            name: name of the tag to be removed
         """
         _client = client.get_instance()
         path_params = [
@@ -200,17 +205,17 @@ class ModelApi:
         _client._send_request("DELETE", path_params)
 
     @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def get_tags(self, model_instance):
+    def get_tags(self, model_instance: model.Model) -> dict:
         """Get the tags.
 
         Gets all tags if no tag name is specified.
 
-        :param model_instance: model instance to get the tags from
-        :type model_instance: Model
-        :param name: tag name
-        :type name: str
-        :return: dict of tag name/values
-        :rtype: dict
+        Parameters:
+            model_instance: model instance to get the tags from
+            name: tag name
+
+        Returns:
+            dict of tag name/values
         """
         _client = client.get_instance()
         path_params = [
@@ -230,17 +235,17 @@ class ModelApi:
         }
 
     @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
-    def get_tag(self, model_instance, name: str):
+    def get_tag(self, model_instance: model.Model, name: str) -> dict | None:
         """Get the tag.
 
         Gets the tag for a specific name
 
-        :param model_instance: model instance to get the tags from
-        :type model_instance: Model
-        :param name: tag name
-        :type name: str
-        :return: dict of tag name/value
-        :rtype: dict
+        Parameters:
+            model_instance: model instance to get the tags from
+            name: tag name
+
+        Returns:
+            dict of tag name/value
         """
         _client = client.get_instance()
         path_params = [
@@ -258,7 +263,9 @@ class ModelApi:
             name
         ]
 
-    def get_feature_view_provenance(self, model_instance) -> explicit_provenance.Links | None:
+    def get_feature_view_provenance(
+        self, model_instance
+    ) -> explicit_provenance.Links | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
         These feature views can be accessible, deleted or inaccessible.
@@ -299,7 +306,9 @@ class ModelApi:
             return links
         return None
 
-    def get_training_dataset_provenance(self, model_instance) -> explicit_provenance.Links | None:
+    def get_training_dataset_provenance(
+        self, model_instance
+    ) -> explicit_provenance.Links | None:
         """Get the parent training dataset of this model, based on explicit provenance.
 
         These training datasets can be accessible, deleted or inaccessible.

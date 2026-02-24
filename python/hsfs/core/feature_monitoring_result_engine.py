@@ -83,7 +83,7 @@ class FeatureMonitoringResultEngine:
     ) -> FeatureMonitoringResult:
         """Build feature monitoring result.
 
-        Args:
+        Parameters:
             config_id: ID of the feature monitoring configuration.
             feature_name: Name of the feature being monitored.
             detection_statistics: Statistics computed from the detection data.
@@ -147,7 +147,7 @@ class FeatureMonitoringResultEngine:
     ) -> FeatureMonitoringResult:
         """Save feature monitoring result.
 
-        Args:
+        Parameters:
             result: Feature monitoring result to be saved.
 
         Returns:
@@ -166,7 +166,7 @@ class FeatureMonitoringResultEngine:
     ) -> list[FeatureMonitoringResult]:
         """Fetch all feature monitoring results by config id.
 
-        Args:
+        Parameters:
             config_id: int. Id of the feature monitoring configuration.
             start_time: Union[str, int, datetime, date, None].
                 Query results with monitoring time greater than or equal to start_time.
@@ -199,7 +199,7 @@ class FeatureMonitoringResultEngine:
     ) -> list[FeatureMonitoringResult]:
         """Convenience method to fetch feature monitoring results from an entity.
 
-        Args:
+        Parameters:
             config_id: Optional[int]. Id of the feature monitoring configuration.
                 Defaults to None if config_name is provided.
             config_name: Optional[str]. Name of the feature monitoring configuration.
@@ -249,7 +249,7 @@ class FeatureMonitoringResultEngine:
     ) -> dict[str, str | list[str]]:
         """Build query parameters for feature monitoring result API calls.
 
-        Args:
+        Parameters:
             start_time: Union[str, int, datetime, date, None].
                 Query results with monitoring time greater than or equal to start_time.
             end_time: Union[str, int, datetime, date, None].
@@ -286,7 +286,7 @@ class FeatureMonitoringResultEngine:
     ) -> list[FeatureMonitoringResult]:
         """Run and upload statistics comparison between detection and reference stats.
 
-        Args:
+        Parameters:
             fm_config: FeatureMonitoringConfig. Feature monitoring configuration.
             detection_statistics: List[FeatureDescriptiveStatistics]. Computed statistics from detection data.
             reference_statistics: Optional[List[FeatureDescriptiveStatistics]]]. Computed statistics from reference data.
@@ -411,7 +411,7 @@ class FeatureMonitoringResultEngine:
     ) -> tuple[float | None, bool]:
         """Compute the difference and detect shift between the reference and detection statistics.
 
-        Args:
+        Parameters:
             fm_config: Feature monitoring configuration.
             detection_statistics: Computed statistics from detection data.
             reference_statistics: Computed statistics from reference data, or a specific value to use as reference.
@@ -450,7 +450,7 @@ class FeatureMonitoringResultEngine:
     ) -> float | None:
         """Compute the difference between the reference and detection statistics.
 
-        Args:
+        Parameters:
             detection_statistics: Computed statistics from detection data.
             metric: The metric to compute the difference for.
             relative: Whether to compute the relative difference or not.
@@ -485,7 +485,7 @@ class FeatureMonitoringResultEngine:
     ) -> float:
         """Compute the difference between a reference and detection value.
 
-        Args:
+        Parameters:
             detection_value: The detection value.
             reference_value: The reference value
             relative: Whether to compute the relative difference or not.
@@ -509,7 +509,7 @@ class FeatureMonitoringResultEngine:
         The last execution is assumed to be the current execution.
         The id defaults to 0 if no execution is found.
 
-        Args:
+        Parameters:
             job_name: Name of the monitoring job.
 
         Returns:
@@ -529,7 +529,7 @@ class FeatureMonitoringResultEngine:
     ) -> bool:
         """Check if the monitoring window is empty.
 
-        Args:
+        Parameters:
             monitoring_window_statistics: Statistics computed for the monitoring window.
 
         Returns:
@@ -548,7 +548,7 @@ class FeatureMonitoringResultEngine:
     ) -> FeatureMonitoringResult:
         """Save feature monitoring result with raised_exception flag.
 
-        Args:
+        Parameters:
             config_id: Id of the feature monitoring configuration.
             job_name: Name of the monitoring job.
             feature_name: Name of the feature being monitored.

@@ -257,7 +257,7 @@ class Model:
             inference_batcher: Inference batcher configuration.
             scaling_configuration: Scaling configuration for the predictor.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The inference environment to use.
 
         Returns:
@@ -369,7 +369,9 @@ class Model:
         return util.get_hostname_replaced_url(sub_path=path)
 
     @public
-    def get_feature_view(self, init: bool = True, online: bool = False) -> feature_view.FeatureView | None:
+    def get_feature_view(
+        self, init: bool = True, online: bool = False
+    ) -> feature_view.FeatureView | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.

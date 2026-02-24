@@ -68,7 +68,7 @@ class DataSource:
     ):
         """Initialize a DataSource object.
 
-        Args:
+        Parameters:
             query: SQL query string for the data source, if applicable.
             database: Name of the database containing the data source.
             group: Group or schema name for the data source.
@@ -107,7 +107,7 @@ class DataSource:
     ) -> DataSource | list[DataSource] | None:
         """Create a DataSource object (or list of objects) from a JSON response.
 
-        Args:
+        Parameters:
             json_dict: The JSON dictionary from the API response.
             storage_connector: The storage connector object.
 
@@ -277,7 +277,7 @@ class DataSource:
             tables = data_source.get_tables()
             ```
 
-        Args:
+        Parameters:
             database:
                 The name of the database to list tables from.
                 If not provided, the default database is used.

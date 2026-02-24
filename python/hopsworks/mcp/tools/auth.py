@@ -29,7 +29,7 @@ class AuthTools:
     def __init__(self, mcp):
         """Initialize auth tools.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
@@ -51,16 +51,16 @@ class AuthTools:
     ) -> Project:
         """Connect to a Hopsworks instance.
 
-        Args:
-            host (str): Hopsworks host URL.
-            port (int): Hopsworks port (default 443).
-            project (str): Project name to access.
-            api_key_value (str): API key value for Hopsworks authentication.
-            api_key_file (str): Path to a file containing the API key for Hopsworks authentication.
-            hostname_verification (bool): Enable hostname verification for Hopsworks authentication.
-            trust_store_path (str): Path to the trust store for Hopsworks authentication.
-            engine (str): Engine to use (default: python).
-            ctx (Context): The MCP context, provided automatically.
+        Parameters:
+            host: Hopsworks host URL.
+            port: Hopsworks port (default 443).
+            project: Project name to access.
+            api_key_value: API key value for Hopsworks authentication.
+            api_key_file: Path to a file containing the API key for Hopsworks authentication.
+            hostname_verification: Enable hostname verification for Hopsworks authentication.
+            trust_store_path: Path to the trust store for Hopsworks authentication.
+            engine: Engine to use (default: python).
+            ctx: The MCP context, provided automatically.
 
         Returns:
             Project: The project details or an error message.

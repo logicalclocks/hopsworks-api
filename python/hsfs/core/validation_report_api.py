@@ -24,10 +24,9 @@ class ValidationReportApi:
     def __init__(self, feature_store_id: int, feature_group_id: int):
         """Validation Report endpoints for the featuregroup resource.
 
-        :param feature_store_id: id of the respective featurestore
-        :type feature_store_id: int
-        :param feature_group_id: id of the respective featuregroup
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: id of the respective featurestore
+            feature_group_id: id of the respective featuregroup
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
@@ -36,11 +35,11 @@ class ValidationReportApi:
     def create(self, validation_report: ValidationReport) -> ValidationReport:
         """Create an validation report attached to a featuregroup.
 
-        :param validation_report: validation report object to be created for a featuregroup
-        :type validation_report: `ValidationReport`
+        Parameters:
+            validation_report: validation report object to be created for a featuregroup
 
-        :return: persisted validation report
-        :rtype: `ValidationReport`
+        Returns:
+            persisted validation report
         """
         _client = client.get_instance()
         path_params = [
@@ -86,8 +85,8 @@ class ValidationReportApi:
     def get_last(self) -> ValidationReport:
         """Gets the latest Validation Report of a featuregroup.
 
-        :return: latest validation report
-        :rtype: `ValidationReport`
+        Returns:
+            latest validation report
         """
         _client = client.get_instance()
         path_params = [
@@ -114,8 +113,8 @@ class ValidationReportApi:
     def get_all(self) -> list[ValidationReport] | ValidationReport:
         """Get the validation report attached to a featuregroup.
 
-        :return: validation report
-        :rtype: Union[List[ValidationReport], ValidationReport]
+        Returns:
+            validation report
         """
         _client = client.get_instance()
         path_params = [

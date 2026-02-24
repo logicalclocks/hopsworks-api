@@ -49,12 +49,12 @@ class StorageConnectorApi:
     ) -> storage_connector.StorageConnector:
         """Get storage connector with name.
 
-        :param feature_store_id: feature store id
-        :type feature_store_id: int
-        :param name: name of the storage connector
-        :type name: str
-        :return: the storage connector
-        :rtype: StorageConnector
+        Parameters:
+            feature_store_id: feature store id
+            name: name of the storage connector
+
+        Returns:
+            the storage connector
         """
         storage_connector_json = self._get(feature_store_id, name)
         if storage_connector_json:

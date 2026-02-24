@@ -332,7 +332,7 @@ class Query:
 
         Parameters:
             n: Number of rows to show.
-            online: Show from online storage. Defaults to `False`.
+            online: Show from online storage.
         """
         self._check_read_supported(online)
         read_options = {}
@@ -382,18 +382,19 @@ class Query:
         Parameters:
             sub_query: Right-hand side query to join.
             on: List of feature names to join on if they are available in both
-                feature groups. Defaults to `[]`.
+                feature groups.
+                Defaults to `[]`.
             left_on: List of feature names to join on from the left feature group of the
-                join. Defaults to `[]`.
+                join.
+                Defaults to `[]`.
             right_on: List of feature names to join on from the right feature group of
-                the join. Defaults to `[]`.
+                the join.
+                Defaults to `[]`.
             join_type:
                 Type of join to perform, can be `"inner"`, `"outer"`, `"left"` or `"right"`.
-                Defaults to "left".
             prefix: User provided prefix to avoid feature name clash. If no prefix was provided and there is feature
                 name clash then prefixes will be automatically generated and applied. Generated prefix is feature group
                 alias in the query (e.g. fg1, fg2). Prefix is applied to the right feature group of the query.
-                Defaults to `None`.
 
         Returns:
             A new Query object representing the join.
@@ -685,7 +686,7 @@ class Query:
         send it straight back to Hopsworks to read the content of the query.
 
         Parameters:
-            json_dict (str): a json string containing a query object
+            json_dict: a json string containing a query object
 
         Returns:
             A partially deserialize query object

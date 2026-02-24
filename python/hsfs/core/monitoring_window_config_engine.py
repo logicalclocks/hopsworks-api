@@ -98,7 +98,7 @@ class MonitoringWindowConfigEngine:
     ) -> mwc.MonitoringWindowConfig:
         """Builds a monitoring window config.
 
-        Args:
+        Parameters:
             window_config_type: str, required
                 Type of the window config, can be either
                 `ROLLING_TIME`,`SPECIFIC_VALUE`,`TRAINING_DATASET`.
@@ -238,7 +238,7 @@ class MonitoringWindowConfigEngine:
     ) -> list[FeatureDescriptiveStatistics]:
         """Fetch the entity data based on monitoring window configuration and compute statistics.
 
-        Args:
+        Parameters:
             entity: The entity to monitor.
             monitoring_window_config: Monitoring window config.
             feature_name: Name of the feature to monitor.
@@ -329,7 +329,7 @@ class MonitoringWindowConfigEngine:
     ) -> TypeVar("pyspark.sql.DataFrame"):
         """Fetch the entity data based on time window and row percentage.
 
-        Args:
+        Parameters:
             entity: Entity to monitor.
             feature_name: Name of the feature to monitor.
             start_time: Window start commit or event time
@@ -382,7 +382,7 @@ class MonitoringWindowConfigEngine:
     ) -> TypeVar("pyspark.sql.DataFrame"):
         """Fetch the feature view data based on time window and row percentage.
 
-        Args:
+        Parameters:
             entity: Feature view to monitor.
             feature_name: Name of the feature to monitor.
             start_time: Window start commit or event time.
@@ -410,7 +410,7 @@ class MonitoringWindowConfigEngine:
     ) -> TypeVar("pyspark.sql.Dataframe"):
         """Fetch the feature group data based on time window.
 
-        Args:
+        Parameters:
             entity: Feature group to monitor.
             feature_name: Name of the feature to monitor.
             start_time: Window start commit time.
@@ -423,7 +423,7 @@ class MonitoringWindowConfigEngine:
     def round_and_convert_event_time(self, event_time: datetime) -> int | None:
         """Round event time to the latest hour and convert to timestamp.
 
-        Args:
+        Parameters:
             event_time: datetime: Event time to round and convert.
 
         Returns:

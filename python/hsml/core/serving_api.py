@@ -38,13 +38,14 @@ class ServingApi:
         pass
 
     @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
-    def get_by_id(self, id: int):
+    def get_by_id(self, id: int) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain id.
 
-        :param id: id of the deployment
-        :type id: int
-        :return: deployment metadata object
-        :rtype: Deployment
+        Parameters:
+            id: id of the deployment
+
+        Returns:
+            deployment metadata object
         """
         _client = client.get_instance()
         path_params = [
@@ -61,13 +62,14 @@ class ServingApi:
         return deployment_instance
 
     @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
-    def get(self, name: str):
+    def get(self, name: str) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain name.
 
-        :param name: name of the deployment
-        :type name: str
-        :return: deployment metadata object
-        :rtype: Deployment
+        Parameters:
+            name: name of the deployment
+
+        Returns:
+            deployment metadata object
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -81,11 +83,13 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
-    def get_all(self, model_name: str = None, status: str = None):
+    def get_all(
+        self, model_name: str = None, status: str = None
+    ) -> list[deployment.Deployment]:
         """Get the metadata of all deployments.
 
-        :return: model metadata objects
-        :rtype: List[Deployment]
+        Returns:
+            model metadata objects
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -104,24 +108,25 @@ class ServingApi:
             deployment_instance.project_name = _client._project_name
         return deployment_instances
 
-    def get_inference_endpoints(self):
+    def get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
         """Get inference endpoints.
 
-        :return: inference endpoints for the current project.
-        :rtype: List[InferenceEndpoint]
+        Returns:
+            inference endpoints for the current project.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "inference", "endpoints"]
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
-    def put(self, deployment_instance):
+    def put(self, deployment_instance: deployment.Deployment) -> deployment.Deployment:
         """Save deployment metadata to model serving.
 
-        :param deployment_instance: metadata object of deployment to be saved
-        :type deployment_instance: Deployment
-        :return: updated metadata object of the deployment
-        :rtype: Deployment
+        Parameters:
+            deployment_instance: metadata object of deployment to be saved
+
+        Returns:
+            updated metadata object of the deployment
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -139,11 +144,11 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
-    def post(self, deployment_instance, action: str):
+    def post(self, deployment_instance: deployment.Deployment, action: str):
         """Perform an action on the deployment.
 
-        :param action: action to perform on the deployment (i.e., START or STOP)
-        :type action: str
+        Parameters:
+            action: action to perform on the deployment (i.e., START or STOP)
         """
         _client = client.get_instance()
         path_params = [
@@ -155,11 +160,11 @@ class ServingApi:
         query_params = {"action": action}
         return _client._send_request("POST", path_params, query_params=query_params)
 
-    def delete(self, deployment_instance):
+    def delete(self, deployment_instance: deployment.Deployment):
         """Delete the deployment and metadata.
 
-        :param deployment_instance: metadata object of the deployment to delete
-        :type deployment_instance: Deployment
+        Parameters:
+            deployment_instance: metadata object of the deployment to delete
         """
         _client = client.get_instance()
         path_params = [
@@ -170,13 +175,16 @@ class ServingApi:
         ]
         return _client._send_request("DELETE", path_params)
 
-    def get_state(self, deployment_instance):
+    def get_state(
+        self, deployment_instance: deployment.Deployment
+    ) -> predictor_state.PredictorState:
         """Get the state of a given deployment.
 
-        :param deployment_instance: metadata object of the deployment to get state of
-        :type deployment_instance: Deployment
-        :return: predictor state
-        :rtype: PredictorState
+        Parameters:
+            deployment_instance: metadata object of the deployment to get state of
+
+        Returns:
+            predictor state
         """
         _client = client.get_instance()
         path_params = [
@@ -188,13 +196,16 @@ class ServingApi:
         deployment_json = _client._send_request("GET", path_params)
         return predictor_state.PredictorState.from_response_json(deployment_json)
 
-    def reset_changes(self, deployment_instance):
+    def reset_changes(
+        self, deployment_instance: deployment.Deployment
+    ) -> deployment.Deployment:
         """Reset a given deployment to the original values in the Hopsworks instance.
 
-        :param deployment_instance: metadata object of the deployment to reset
-        :type deployment_instance: Deployment
-        :return: deployment with reset values
-        :rtype: Deployment
+        Parameters:
+            deployment_instance: metadata object of the deployment to reset
+
+        Returns:
+            deployment with reset values
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -210,20 +221,19 @@ class ServingApi:
 
     def send_inference_request(
         self,
-        deployment_instance,
+        deployment_instance: deployment.Deployment,
         data: dict | list[InferInput],
         through_hopsworks: bool = False,
     ) -> dict | list[InferOutput]:
         """Send inference requests to a deployment with a certain id.
 
-        :param deployment_instance: metadata object of the deployment to be used for the prediction
-        :type deployment_instance: Deployment
-        :param data: payload of the inference request
-        :type data: Union[Dict, List[InferInput]]
-        :param through_hopsworks: whether to send the inference request through the Hopsworks REST API or not
-        :type through_hopsworks: bool
-        :return: inference response
-        :rtype: Union[Dict, List[InferOutput]]
+        Parameters:
+            deployment_instance: metadata object of the deployment to be used for the prediction
+            data: payload of the inference request
+            through_hopsworks: whether to send the inference request through the Hopsworks REST API or not
+
+        Returns:
+            inference response
         """
         if deployment_instance.api_protocol == IE.API_PROTOCOL_REST:
             # REST protocol, use hopsworks or istio client
@@ -311,11 +321,11 @@ class ServingApi:
         )
         return _client._create_grpc_channel(service_hostname)
 
-    def is_kserve_installed(self):
+    def is_kserve_installed(self) -> bool:
         """Check if kserve is installed.
 
-        :return: whether kserve is installed
-        :rtype: bool
+        Returns:
+            whether kserve is installed
         """
         _client = client.get_instance()
         path_params = ["variables", "kube_kserve_installed"]
@@ -349,17 +359,18 @@ class ServingApi:
 
         return domain["successMessage"]
 
-    def get_logs(self, deployment_instance, component, tail):
+    def get_logs(
+        self, deployment_instance: deployment.Deployment, component: str, tail: int
+    ) -> deployable_component_logs.DeployableComponentLogs:
         """Get the logs of a deployment.
 
-        :param deployment_instance: metadata object of the deployment to get logs from
-        :type deployment_instance: Deployment
-        :param component: deployment component (e.g., predictor or transformer)
-        :type component: str
-        :param tail: number of tailing lines to retrieve
-        :type tail: int
-        :return: deployment logs
-        :rtype: DeployableComponentLogs
+        Parameters:
+            deployment_instance: metadata object of the deployment to get logs from
+            component: deployment component (e.g., predictor or transformer)
+            tail: number of tailing lines to retrieve
+
+        Returns:
+            deployment logs
         """
         _client = client.get_instance()
         path_params = [

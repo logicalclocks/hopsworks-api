@@ -33,10 +33,13 @@ class GreatExpectationEngine:
     def __init__(self, feature_store_id: int):
         """Engine to run validation using Great Expectations.
 
-        :param feature_store_id: id of the respective Feature Store
         :type `int`
-        :return: The engine for Great Expectation objects
-        :rtype: `GreatExpectationEngine`
+
+        Parameters:
+            feature_store_id: id of the respective Feature Store
+
+        Returns:
+            The engine for Great Expectation objects
         """
         self._feature_store_id = feature_store_id
 

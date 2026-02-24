@@ -55,20 +55,17 @@ class Client:
     DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV = "DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"
 
-    def _get_verify(self, verify, trust_store_path):
+    def _get_verify(self, verify: bool, trust_store_path: str | None) -> str | bool:
         """Get verification method for sending HTTP requests to Hopsworks.
 
         Credit to https://gist.github.com/gdamjan/55a8b9eec6cf7b771f92021d93b87b2c
 
-        :param verify: perform hostname verification
-        :type verify: bool
-        :param trust_store_path: path of the truststore locally if it was uploaded manually to
-            the external environment such as AWS Sagemaker
-        :type trust_store_path: str
-        :return: if verify is true and the truststore is provided, then return the trust store location
-                 if verify is true but the truststore wasn't provided, then return true
-                 if verify is false, then return false
-        :rtype: str or boolean
+        Parameters:
+            verify: perform hostname verification
+            trust_store_path: path of the truststore locally if it was uploaded manually to the external environment such as AWS Sagemaker
+
+        Returns:
+            if verify is true and the truststore is provided, then return the trust store location if verify is true but the truststore wasn't provided, then return true if verify is false, then return false
         """
         if verify:
             if trust_store_path is not None:
@@ -103,13 +100,14 @@ class Client:
         with open(os.path.join(self._secrets_dir, secret_file)) as secret:
             return secret.read()
 
-    def _get_credentials(self, project_id):
+    def _get_credentials(self, project_id: int) -> dict:
         """Makes a REST call to hopsworks for getting the project user certificates needed to connect to services such as Hive.
 
-        :param project_id: id of the project
-        :type project_id: int
-        :return: JSON response with credentials
-        :rtype: dict
+        Parameters:
+            project_id: id of the project
+
+        Returns:
+            JSON response with credentials
         """
         return self._send_request("GET", ["project", project_id, "credentials"])
 
@@ -120,38 +118,33 @@ class Client:
     @connected
     def _send_request(
         self,
-        method,
-        path_params,
-        query_params=None,
-        headers=None,
-        data=None,
-        stream=False,
-        files=None,
-        with_base_path_params=True,
-    ):
+        method: str,
+        path_params: list,
+        query_params: dict | None = None,
+        headers: dict | None = None,
+        data: str | None = None,
+        stream: bool = False,
+        files: dict | None = None,
+        with_base_path_params: bool = True,
+    ) -> dict:
         """Send REST request to Hopsworks.
 
         Uses the client it is executed from. Path parameters are url encoded automatically.
 
-        :param method: 'GET', 'PUT' or 'POST'
-        :type method: str
-        :param path_params: a list of path params to build the query url from starting after
-            the api resource, for example `["project", 119, "featurestores", 67]`.
-        :type path_params: list
-        :param query_params: A dictionary of key/value pairs to be added as query parameters,
-            defaults to None
-        :type query_params: dict, optional
-        :param headers: Additional header information, defaults to None
-        :type headers: dict, optional
-        :param data: The payload as a python dictionary to be sent as json, defaults to None
-        :type data: dict, optional
-        :param stream: Set if response should be a stream, defaults to False
-        :type stream: boolean, optional
-        :param files: dictionary for multipart encoding upload
-        :type files: dict, optional
-        :raises RestAPIError: Raised when request wasn't correctly received, understood or accepted
-        :return: Response json
-        :rtype: dict
+        Parameters:
+            method: 'GET', 'PUT' or 'POST'
+            path_params: a list of path params to build the query url from starting after the api resource, for example `["project", 119, "featurestores", 67]`.
+            query_params: A dictionary of key/value pairs to be added as query parameters, defaults to None
+            headers: Additional header information, defaults to None
+            data: The payload as a python dictionary to be sent as json, defaults to None
+            stream: Set if response should be a stream, defaults to False
+            files: dictionary for multipart encoding upload
+
+        Returns:
+            Response json
+
+        Raises:
+            RestAPIError: Raised when request wasn't correctly received, understood or accepted
         """
         f_url = furl.furl(self._base_url)
         if with_base_path_params:
@@ -270,7 +263,7 @@ class Client:
     def _bytes_to_pem_str(self, der_bytes, pem_type):
         """Utility function for creating PEM files.
 
-        Args:
+        Parameters:
             der_bytes: DER encoded bytes
             pem_type: type of PEM, e.g Certificate, Private key, or RSA private key
 

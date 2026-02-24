@@ -929,7 +929,7 @@ class Engine:
     def _to_arrow_table(self, dataframe: pd.DataFrame | pl.DataFrame):
         """Convert a pandas or polars DataFrame to a pyarrow.Table.
 
-        Args:
+        Parameters:
             dataframe: Union[pd.DataFrame, pl.DataFrame]
 
         Returns:

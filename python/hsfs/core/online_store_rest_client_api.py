@@ -166,7 +166,7 @@ class OnlineStoreRestClientApi:
     def handle_rdrs_feature_store_response(self, response: Response) -> dict[str, Any]:
         """Raise RestAPIError or serialize the response from the RonDB Rest Server to json.
 
-        Args:
+        Parameters:
             response: The response from the RonDB Rest Server.
 
         Returns:

@@ -118,8 +118,8 @@ class Feature:
         - If neither condition applies, it returns the feature's original name.
 
         Parameters:
-            feature_group (FeatureGroup, optional): The feature group context in which the name is being used.
-            prefix (str, optional): A prefix to prepend to the feature name if applicable.
+            feature_group: The feature group context in which the name is being used.
+            prefix: A prefix to prepend to the feature name if applicable.
 
         Returns:
             str: The fully qualified feature name.

@@ -41,9 +41,9 @@ class OnlineIngestionResult:
         """Initialize an OnlineIngestionResult object.
 
         Parameters:
-            online_ingestion_id (int, optional): The unique identifier for the online ingestion batch.
-            status (str, optional): The status of the ingestion batch (e.g., "UPSERTED", "FAILED").
-            rows (int, optional): The number of rows processed in this batch.
+            online_ingestion_id: The unique identifier for the online ingestion batch.
+            status: The status of the ingestion batch (e.g., "UPSERTED", "FAILED").
+            rows: The number of rows processed in this batch.
         """
         self._online_ingestion_id = online_ingestion_id
         self._status = status
@@ -54,7 +54,7 @@ class OnlineIngestionResult:
         """Create an OnlineIngestionResult object (or list of objects) from a JSON response.
 
         Parameters:
-            json_dict (Dict[str, Any]): The JSON dictionary from the API response.
+            json_dict: The JSON dictionary from the API response.
 
         Returns:
             OnlineIngestionResult or List[OnlineIngestionResult] or None: The created object(s), or None if input is None.

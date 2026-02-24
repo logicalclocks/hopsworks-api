@@ -477,7 +477,7 @@ class FeatureStore:
             data_source = fs.get_data_source("test_data_source")
             ```
 
-        Arguments:
+        Parameters:
             name: Name of the data source to retrieve.
 
         Returns:
@@ -766,7 +766,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the feature group after it is saved. Defaults to None.
+                Tags will be attached to the feature group after it is saved.
 
         Returns:
             The feature group metadata object.
@@ -1154,7 +1154,9 @@ class FeatureStore:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
             )
-        elif storage_connector is not None or query is not None or path not in (None, ""):
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
             warnings.warn(
                 "When `data_source` is provided, `storage_connector`, `query` and "
                 "`path` parameters are ignored. Use `data_source` only.",
@@ -1356,7 +1358,9 @@ class FeatureStore:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
             )
-        elif storage_connector is not None or query is not None or path not in (None, ""):
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
             warnings.warn(
                 "When `data_source` is provided, `storage_connector`, `query` and "
                 "`path` parameters are ignored. Use `data_source` only.",
@@ -1607,7 +1611,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the training dataset after it is saved. Defaults to None.
+                Tags will be attached to the training dataset after it is saved.
 
         Returns:
             The training dataset metadata object.
@@ -1910,7 +1914,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the feature view after it is saved. Defaults to None.
+                Tags will be attached to the feature view after it is saved.
 
         Returns:
             The feature view metadata object.
@@ -2137,7 +2141,7 @@ class FeatureStore:
             )
             ```
 
-        Arguments:
+        Parameters:
             title: Title of the chart.
             description: Description of the chart.
             url: URL where the chart is hosted or can be accessed.
@@ -2186,7 +2190,7 @@ class FeatureStore:
             chart = fs.get_chart(chart_id=123)
             ```
 
-        Arguments:
+        Parameters:
             chart_id: ID of the chart to retrieve.
 
         Returns:
@@ -2218,7 +2222,7 @@ class FeatureStore:
             )
             ```
 
-        Arguments:
+        Parameters:
             name: Name of the dashboard.
             charts: List of charts to include in the dashboard.
 
@@ -2263,7 +2267,7 @@ class FeatureStore:
             dashboard = fs.get_dashboard(dashboard_id=123)
             ```
 
-        Arguments:
+        Parameters:
             dashboard_id: ID of the dashboard to retrieve.
 
         Returns:

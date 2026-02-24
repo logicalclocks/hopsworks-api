@@ -33,10 +33,9 @@ class ValidationResultEngine:
     def __init__(self, feature_store_id: int, feature_group_id: int):
         """Validation Result engine.
 
-        :param feature_store_id: id of the respective featurestore
-        :type feature_store_id: int
-        :param feature_group_id: id of the featuregroup it is attached to
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: id of the respective featurestore
+            feature_group_id: id of the featuregroup it is attached to
         """
         self._validation_result_api = validation_result_api.ValidationResultApi(
             feature_store_id=feature_store_id, feature_group_id=feature_group_id
@@ -55,20 +54,13 @@ class ValidationResultEngine:
     ):
         """Get Validation Results relevant to an Expectation specified by expectation_id.
 
-        :param expectation_id: id of the expectation for which to fetch the validation history
-        :type expectation_id: int
-        :param ingestion_only: retrieve only validation result linked to data ingested in the Feature Group
-        :type ingestion_only: bool
-        :param rejected_only: retrieve only validation result linked to data not ingested in the Feature Group
-        :type rejected_only: bool
-        :param ge_type: whether to convert Hopsworks object to native Great Expectations object
-        :type ge_type: bool
-        :param start_validation_time: retrieve validation result posterior to start_validation_time.
-        Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
-        :type start_validation_time: Union[str, int, datetime, date, None]
-        :param end_validation_time: retrieve validation result anterior to end_validation_time
-        Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
-        :type end_validation_time: Union[str, int, datetime, date, None]
+        Parameters:
+            expectation_id: id of the expectation for which to fetch the validation history
+            ingestion_only: retrieve only validation result linked to data ingested in the Feature Group
+            rejected_only: retrieve only validation result linked to data not ingested in the Feature Group
+            ge_type: whether to convert Hopsworks object to native Great Expectations object
+            start_validation_time: retrieve validation result posterior to start_validation_time. Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
+            end_validation_time: retrieve validation result anterior to end_validation_time Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
         """
         query_params = self._build_query_params(
             filter_by=filter_by or [],

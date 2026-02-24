@@ -24,10 +24,9 @@ class ExpectationSuiteApi:
     def __init__(self, feature_store_id: int, feature_group_id: int) -> None:
         """Expectation Suite endpoints for the Feature Group resource.
 
-        :param feature_store_id: id of the respective Feature Store
-        :type feature_store_id: int
-        :param feature_group_id: id of the respective Feature Group
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: id of the respective Feature Store
+            feature_group_id: id of the respective Feature Group
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
@@ -36,10 +35,11 @@ class ExpectationSuiteApi:
     def create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Create an expectation suite attached to a Feature Group.
 
-        :param expectation_suite: expectation suite object to be created for a Feature Group
-        :type expectation_suite: `ExpectationSuite`
-        :return: the created expectation suite
-        :rtype: ExpectationSuite
+        Parameters:
+            expectation_suite: expectation suite object to be created for a Feature Group
+
+        Returns:
+            the created expectation suite
         """
         _client = client.get_instance()
         path_params = [
@@ -68,10 +68,11 @@ class ExpectationSuiteApi:
     def update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Update an expectation suite attached to a Feature Group.
 
-        :param expectation_suite: expectation suite object to be created for a Feature Group
-        :type expectation_suite: `ExpectationSuite`
-        :return: the updated expectation suite
-        :rtype: ExpectationSuite
+        Parameters:
+            expectation_suite: expectation suite object to be created for a Feature Group
+
+        Returns:
+            the updated expectation suite
         """
         _client = client.get_instance()
         path_params = [
@@ -105,10 +106,11 @@ class ExpectationSuiteApi:
     ) -> es.ExpectationSuite:
         """Update the metadata of an expectation suite attached to a Feature Group.
 
-        :param expectation_suite: expectation suite object to be updated
-        :type expectation_suite: `ExpectationSuite`
-        :return: the expectation suite with updated metadata.
-        :rtype: ExpectationSuite
+        Parameters:
+            expectation_suite: expectation suite object to be updated
+
+        Returns:
+            the expectation suite with updated metadata.
         """
         _client = client.get_instance()
         path_params = [
@@ -164,8 +166,8 @@ class ExpectationSuiteApi:
     def get(self) -> es.ExpectationSuite | None:
         """Get the expectation suite attached to a Feature Group.
 
-        :return: fetched expectation suite attached to the FeatureG Group
-        :rtype: ExpectationSuite || None
+        Returns:
+            fetched expectation suite attached to the FeatureG Group
         """
         _client = client.get_instance()
         path_params = [

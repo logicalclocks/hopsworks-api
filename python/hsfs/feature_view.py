@@ -1953,6 +1953,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, write_options can contain the
                 following entries:
@@ -1964,7 +1965,6 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2233,6 +2233,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, write_options can contain the
                 following entries:
@@ -2244,7 +2245,6 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2359,6 +2359,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, write_options can contain the
                 following entries:
@@ -2370,7 +2371,6 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2485,6 +2485,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, read_options can contain the
                 following entries:
@@ -2493,7 +2494,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2653,6 +2653,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, read_options can contain the
                 following entries:
@@ -2661,7 +2662,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2861,6 +2861,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, read_options can contain the
                 following entries:
@@ -2869,7 +2870,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -3007,11 +3007,11 @@ class FeatureView:
         Parameters:
             training_dataset_version: training dataset version
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
-                Defaults to `{}`.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -3077,11 +3077,11 @@ class FeatureView:
         Parameters:
             training_dataset_version: training dataset version
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
-                Defaults to `{}`.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -3152,11 +3152,11 @@ class FeatureView:
         Parameters:
             training_dataset_version: training dataset version
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
-                Defaults to `{}`.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -4157,11 +4157,11 @@ class FeatureView:
             serving_keys: The serving keys to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
             extra_logging_features: Extra features to be logged. The features must be specified when enabled logging or while creating the feature view. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
             request_id: The request ID that can be used to identify an online inference request.
-            write_options: Options for writing the log. Defaults to None.
+            write_options: Options for writing the log.
             training_dataset_version: Version of the training dataset. If training dataset version is definied in
                 `init_serving` or `init_batch_scoring`, or model has training dataset version,
                 or training dataset version was cached, then the version will be used, otherwise defaults to None.
-            model: Hopsworks model associated with the log. Defaults to None.
+            model: Hopsworks model associated with the log.
             model_name: Name of the model to be associated with the log.
                 If `model` is provided, this parameter will be ignored.
             model_version: Version of the model to be associated with the log.
@@ -4276,9 +4276,9 @@ class FeatureView:
         """Retrieve the log timeline for the current feature view.
 
         Parameters:
-            wallclock_time: Specific time to get the log timeline for. Can be a string, integer, datetime, or date. Defaults to None.
-            limit: Maximum number of entries to retrieve. Defaults to None.
-            transformed: Whether to include transformed logs. Defaults to False.
+            wallclock_time: Specific time to get the log timeline for. Can be a string, integer, datetime, or date.
+            limit: Maximum number of entries to retrieve.
+            transformed: Whether to include transformed logs.
 
         Example:
             ```python
@@ -4313,12 +4313,12 @@ class FeatureView:
         Optionally, filter can be applied to start/end time, training dataset version, hsml model, and custom filter.
 
         Parameters:
-            start_time: Start time for the log entries. Can be a string, integer, datetime, or date. Defaults to None.
-            end_time: End time for the log entries. Can be a string, integer, datetime, or date. Defaults to None.
-            filter: Filter to apply on the log entries. Can be a Filter or Logic object. Defaults to None.
-            transformed: Whether to include transformed logs. Defaults to False.
-            training_dataset_version: Version of the training dataset. Defaults to None.
-            model: HSML model associated with the log. Defaults to None.
+            start_time: Start time for the log entries. Can be a string, integer, datetime, or date.
+            end_time: End time for the log entries. Can be a string, integer, datetime, or date.
+            filter: Filter to apply on the log entries. Can be a Filter or Logic object.
+            transformed: Whether to include transformed logs.
+            training_dataset_version: Version of the training dataset.
+            model: HSML model associated with the log.
             model_name: Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
             model_version: Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
 
@@ -4391,7 +4391,7 @@ class FeatureView:
         """Materialize the log for the current feature view.
 
         Parameters:
-            wait: Whether to wait for the materialization to complete. Defaults to False.
+            wait: Whether to wait for the materialization to complete.
             transformed: Whether to materialize transformed or untrasformed logs. Defaults to None, in which case the returned list contains a job for materialization of transformed features and then a job for untransformed features. Otherwise the list contains only transformed jobs if transformed is True and untransformed jobs if it is False.
 
         Example:

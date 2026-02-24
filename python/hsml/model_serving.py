@@ -226,7 +226,7 @@ class ModelServing:
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
 
@@ -363,7 +363,7 @@ class ModelServing:
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
 

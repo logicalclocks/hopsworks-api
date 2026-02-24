@@ -97,7 +97,7 @@ if HAS_PYARROW:
         Supports simple types (int, bigint, string, etc.), array types (array<type>),
         and struct types (struct<field1:type1,field2:type2>).
 
-        Arguments:
+        Parameters:
             offline_type: The offline type string to convert.
 
         Returns:
@@ -251,7 +251,7 @@ if HAS_PANDAS:
 def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
     """This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
 
-    Args:
+    Parameters:
         base_type : The base class to extend
     """
 

@@ -129,7 +129,6 @@ def get_knative_domain():
     return _knative_domain
 
 
-
 @also_available_as("hopsworks.client.set_knative_domain")
 def set_knative_domain(knative_domain):
     global _knative_domain

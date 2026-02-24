@@ -585,7 +585,9 @@ class ModelEngine:
         """Get all tags for a model."""
         return self._model_api.get_tags(model_instance)
 
-    def get_feature_view_provenance(self, model_instance) -> explicit_provenance.Links | None:
+    def get_feature_view_provenance(
+        self, model_instance
+    ) -> explicit_provenance.Links | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
         These feature views can be accessible, deleted or inaccessible.
@@ -600,7 +602,9 @@ class ModelEngine:
         """
         return self._model_api.get_feature_view_provenance(model_instance)
 
-    def get_training_dataset_provenance(self, model_instance) -> explicit_provenance.Links | None:
+    def get_training_dataset_provenance(
+        self, model_instance
+    ) -> explicit_provenance.Links | None:
         """Get the parent training dataset of this model, based on explicit provenance.
 
         These training datasets can be accessible, deleted or inaccessible.

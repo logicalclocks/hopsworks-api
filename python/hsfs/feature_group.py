@@ -4050,10 +4050,10 @@ class FeatureGroup(FeatureGroupBase):
 
         Parameters:
             to_commit_time:
-                Date and time of the last commit of the window. Defaults to `None`.
+                Date and time of the last commit of the window.
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             from_commit_time:
-                Date and time of the first commit of the window. Defaults to `None`.
+                Date and time of the first commit of the window.
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
 

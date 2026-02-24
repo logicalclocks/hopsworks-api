@@ -1042,7 +1042,9 @@ class FeatureViewEngine:
             feature_view_obj, training_dataset_version=training_dataset_version
         )
 
-    def get_parent_feature_groups(self, feature_view_obj) -> explicit_provenance.Links | None:
+    def get_parent_feature_groups(
+        self, feature_view_obj
+    ) -> explicit_provenance.Links | None:
         """Get the parents of this feature view, based on explicit provenance.
 
         Parents are feature groups or external feature groups. These feature
@@ -1285,9 +1287,8 @@ class FeatureViewEngine:
     def get_logging_feature_from_dataframe(
         self,
         feature_view_obj: feature_view.FeatureView,
-        dataframes: list[
-            pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame")
-        ] | None = None,
+        dataframes: list[pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame")]
+        | None = None,
     ) -> list[feature.Feature]:
         """Function to extract features from a logging dataframe.
 

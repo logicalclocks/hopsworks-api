@@ -29,13 +29,14 @@ class ModelServingApi:
         self._dataset_api = dataset_api.DatasetApi()
         self._serving_api = serving_api.ServingApi()
 
-    def get(self):
+    def get(self) -> ModelServing:
         """Get model serving for specific project.
 
-        :param project: project of the model registry
-        :type project: str
-        :return: the model serving metadata
-        :rtype: ModelServing.
+        Parameters:
+            project: project of the model registry
+
+        Returns:
+            the model serving metadata
         """
         _client = client.get_instance()
 

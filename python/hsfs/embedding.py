@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_apigen import public
@@ -24,6 +25,10 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
 from hsfs.core.vector_db_client import VectorDbClient
+
+
+if TYPE_CHECKING:
+    from hsfs.feature_group import FeatureGroup
 
 
 @public
@@ -117,7 +122,6 @@ class EmbeddingFeature:
         similarity_function_type:
             The type of similarity function used for the embedding feature.
             Available functions are `L2`, `COSINE`, and `DOT_PRODUCT`.
-            Defaults to `SimilarityFunctionType.L2`.
         model: `hsml.model.Model` A Model in hsml.
         feature_group: The feature group object that contains the embedding feature.
         embedding_index: `EmbeddingIndex` The index for managing embedding features.
@@ -195,11 +199,11 @@ class EmbeddingFeature:
         return self._feature_group
 
     @feature_group.setter
-    def feature_group(self, feature_group):
+    def feature_group(self, feature_group: FeatureGroup) -> None:
         """Set the feature group object that contains the embedding feature.
 
-        Args:
-            feature_group (FeatureGroup): The feature group object.
+        Parameters:
+            feature_group: The feature group object.
         """
         self._feature_group = feature_group
 
@@ -210,11 +214,11 @@ class EmbeddingFeature:
         return self._embedding_index
 
     @embedding_index.setter
-    def embedding_index(self, embedding_index):
+    def embedding_index(self, embedding_index: EmbeddingIndex) -> None:
         """Set the index for managing embedding features.
 
-        Args:
-            embedding_index (EmbeddingIndex): The embedding index object.
+        Parameters:
+            embedding_index: The embedding index object.
         """
         self._embedding_index = embedding_index
 

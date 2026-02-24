@@ -123,8 +123,8 @@ class OpensearchRequestOption:
     def get_options(cls, options: dict):
         """Construct a map of options for the request to the vector database.
 
-        Args:
-            options (dict): The options used for the request to the vector database.
+        Parameters:
+            options: The options used for the request to the vector database.
                 The keys are attribute values of the OpensearchRequestOption class.
 
         Returns:
@@ -476,7 +476,7 @@ class OpenSearchClientSingleton:
     ):
         """Invalidate cached ProjectOpenSearchClient and connector config.
 
-        Args:
+        Parameters:
             feature_store_id: The feature store ID to invalidate cache for.
             close_opensearch_client: Whether to close the cached OpenSearch client when invalidating.
         """

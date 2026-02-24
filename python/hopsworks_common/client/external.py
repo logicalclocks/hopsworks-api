@@ -348,22 +348,23 @@ class Client(base.Client):
             if not os.path.exists(self._cert_folder):
                 os.makedirs(self._cert_folder, mode=0o700, exist_ok=True)
 
-    def _get_project_info(self, project_name):
+    def _get_project_info(self, project_name: str) -> dict:
         """Makes a REST call to hopsworks to get all metadata of a project for the provided project.
 
-        :param project_name: the name of the project
-        :type project_name: str
-        :return: JSON response with project info
-        :rtype: dict
+        Parameters:
+            project_name: the name of the project
+
+        Returns:
+            JSON response with project info
         """
         _logger.debug("Getting project info for project: %s", project_name)
         return self._send_request("GET", ["project", "getProjectInfo", project_name])
 
-    def _get_username(self):
+    def _get_username(self) -> str:
         """Get the username of the logged in user.
 
-        :return: the username of the logged in user
-        :rtype: str
+        Returns:
+            the username of the logged in user
         """
         _logger.debug("Getting username of logged in user")
         project_teams = self._send_request("GET", ["project"])
@@ -371,13 +372,12 @@ class Client(base.Client):
             return project_teams[0]["user"]["username"]
         return None
 
-    def _write_b64_cert_to_bytes(self, b64_string, path):
+    def _write_b64_cert_to_bytes(self, b64_string: str, path: str) -> None:
         """Converts b64 encoded certificate to bytes file .
 
-        :param b64_string:  b64 encoded string of certificate
-        :type b64_string: str
-        :param path: path where file is saved, including file name. e.g. /path/key-store.jks
-        :type path: str
+        Parameters:
+            b64_string: b64 encoded string of certificate
+            path: path where file is saved, including file name. e.g. /path/key-store.jks
         """
         _logger.debug(f"Writing b64 encoded certificate to {path}")
         self._write_pem_file(base64.b64decode(b64_string), path, mode="wb")

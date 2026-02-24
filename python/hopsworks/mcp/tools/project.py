@@ -30,7 +30,7 @@ class ProjectTools:
     def __init__(self, mcp):
         """Initialize project tools.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp

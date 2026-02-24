@@ -796,21 +796,21 @@ def generate_fully_qualified_feature_name(
 class AsyncTask:
     """Generic class to represent an async task.
 
-    Args:
-        func (Callable): The function to run asynchronously.
-        requires_connection_pool (bool): Whether the task requires a connection pool.
+    Parameters:
+        func: The function to run asynchronously.
+        requires_connection_pool: Whether the task requires a connection pool.
         **kwargs: Key word arguments to be passed to the functions.
 
     Properties:
-        result (Any): The result of the async task.
-        event (threading.Event): The event that will be set when the async task is finished.
+        result: The result of the async task.
+        event: The event that will be set when the async task is finished.
     """
 
     def __init__(
         self,
         task_function: Callable,
         task_args: tuple = (),
-        requires_connection_pool=None,
+        requires_connection_pool: bool = False,
         **kwargs,
     ):
         self.task_function = task_function
@@ -852,12 +852,12 @@ class AsyncTaskThread(threading.Thread):
     The thread also store and fetches a connection pool that can be used by the async tasks.
 
     Parameters:
-        connection_pool_initializer (Callable): A function that initializes a connection pool.
-        connection_pool_params (Tuple): The parameters to pass to the connection pool initializer.
+        connection_pool_initializer: A function that initializes a connection pool.
+        connection_pool_params: The parameters to pass to the connection pool initializer.
         *thread_args: Arguments to be passed to the thread.
         **thread_kwargs: Key word arguments to be passed to the thread.
-        event_loop (asyncio.AbstractEventLoop): The event loop used by the thread.
-        task_queue (queue.Queue[AsyncTask]): The queue used to submit tasks to the thread.
+        event_loop: The event loop used by the thread.
+        task_queue: The queue used to submit tasks to the thread.
         connection_pool: The connection pool used
     """
 

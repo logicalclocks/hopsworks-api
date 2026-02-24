@@ -61,7 +61,9 @@ class FeatureGroupBaseEngine:
             return tags
         return {}
 
-    def get_parent_feature_groups(self, feature_group) -> explicit_provenance.Links | None:
+    def get_parent_feature_groups(
+        self, feature_group
+    ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
         Parents are feature groups or external feature groups.
@@ -79,7 +81,9 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def get_storage_connector_provenance(self, feature_group) -> explicit_provenance.Links | None:
+    def get_storage_connector_provenance(
+        self, feature_group
+    ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
         Parents are storage connectors.
@@ -97,7 +101,9 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def get_generated_feature_views(self, feature_group) -> explicit_provenance.Links | None:
+    def get_generated_feature_views(
+        self, feature_group
+    ) -> explicit_provenance.Links | None:
         """Get the generated feature view using this feature group, based on explicit provenance.
 
         These feature views can be accessible or inaccessible.
@@ -115,7 +121,9 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def get_generated_feature_groups(self, feature_group) -> explicit_provenance.Links | None:
+    def get_generated_feature_groups(
+        self, feature_group
+    ) -> explicit_provenance.Links | None:
         """Get the generated feature groups using this feature group, based on explicit provenance.
 
         These feature groups can be accessible or inaccessible.

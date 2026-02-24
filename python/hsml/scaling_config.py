@@ -60,15 +60,15 @@ class ComponentScalingConfig(ABC):
     ):
         """Initialize a ComponentScalingConfig instance.
 
-        Args:
-            min_instances (int): Minimum number of instances to scale to.
-            max_instances (int | None, optional): Maximum number of instances to scale to.
-            scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
-            target (int | None, optional): Target value for the selected scaling metric.
-            panic_window_percentage (float | None, optional): Percentage of the stable window to use as the panic window.
-            panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
-            stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
-            scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+        Parameters:
+            min_instances: Minimum number of instances to scale to.
+            max_instances: Maximum number of instances to scale to.
+            scale_metric: Metric to use for scaling.
+            target: Target value for the selected scaling metric.
+            panic_window_percentage: Percentage of the stable window to use as the panic window.
+            panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
+            stable_window_seconds: Interval in seconds for calculating the average metric.
+            scale_to_zero_retention_seconds: Time in seconds to retain the last instance before scaling to zero.
             **kwargs: Backwards-compatible aliases for the parameters above.
         """
         scale_metric = scale_metric or kwargs.get("scale_metric")
@@ -343,7 +343,7 @@ class PredictorScalingConfig(ComponentScalingConfig):
     def __init__(self, **kwargs):
         """Initialize a PredictorScalingConfig instance.
 
-        Args:
+        Parameters:
             **kwargs: Keyword arguments for the predictor scaling configuration.
                 - min_instances (int): Minimum number of instances to scale to (required).
                 - max_instances (int | None, optional): Maximum number of instances to scale to.
@@ -384,7 +384,7 @@ class TransformerScalingConfig(ComponentScalingConfig):
     def __init__(self, **kwargs):
         """Initialize a TransformerScalingConfig instance.
 
-        Args:
+        Parameters:
             **kwargs: Keyword arguments for the transformer scaling configuration.
                 - min_instances (int): Minimum number of instances to scale to (required).
                 - max_instances (int | None, optional): Maximum number of instances to scale to.

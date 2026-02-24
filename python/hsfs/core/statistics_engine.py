@@ -40,7 +40,7 @@ class StatisticsEngine:
     ) -> statistics.Statistics | job.Job:
         """Compute statistics for a dataframe and send the result json to Hopsworks.
 
-        Args:
+        Parameters:
             metadata_instance: Union[FeatureGroup, TrainingDataset]. Metadata of the entity containing the data.
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
             feature_group_commit_id: int. Feature group commit id.
@@ -108,7 +108,7 @@ class StatisticsEngine:
     ) -> statistics.Statistics:
         """Compute statistics for one or more features and send the result to Hopsworks.
 
-        Args:
+        Parameters:
             metadata_instance: Union[FeatureGroup, TrainingDataset]. Metadata of the entity containing the data.
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
             window_start_commit_time: int. Window start commit time
@@ -154,7 +154,7 @@ class StatisticsEngine:
     def profile_statistics_with_config(feature_dataframe, statistics_config) -> str:
         """Compute statistics on a feature DataFrame based on a given configuration.
 
-        Args:
+        Parameters:
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
             statistics_config: StatisticsConfig. Configuration for the statistics to be computed.
 
@@ -175,7 +175,7 @@ class StatisticsEngine:
     ) -> str:
         """Compute statistics on a feature DataFrame.
 
-        Args:
+        Parameters:
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
             columns: List[str]. List of feature names to compute the statistics on.
             correlations: bool. Whether to compute correlations or not.
@@ -205,7 +205,7 @@ class StatisticsEngine:
     ) -> statistics.Statistics:
         """Compute statistics on Training Dataset splits.
 
-        Args:
+        Parameters:
             td_metadata_instance: TrainingDataset. Training Dataset containing the splits.
             feature_view_obj: FeatureView. Metadata of the feature view used to create the Training Dataset. This parameter is optional.
             feature_dataframes: Spark or Pandas DataFrames containing the splits to compute the statistics on.
@@ -247,7 +247,7 @@ class StatisticsEngine:
     ) -> statistics.Statistics:
         """Compute statistics for transformation functions.
 
-        Args:
+        Parameters:
             td_metadata_instance: TrainingDataset. Training Dataset containing the splits.
             columns: List[str]. List of feature names where transformation functions are applied, excluding label encoded features.
             label_encoder_features: List[str]. List of label encoded feature names.
@@ -282,7 +282,7 @@ class StatisticsEngine:
 
         If the computation time is not provided, the most recently computed statistics will be retrieved.
 
-        Args:
+        Parameters:
             metadata_instance: Union[FeatureGroup, TrainingDataset]. Metadata of the entity containing the data.
             feature_names: List[str]. List of feature names of which statistics are retrieved.
             computation_time: Union[str, int, float, datetime, date]. Timestamp or computation time when statistics where computed.
@@ -313,7 +313,7 @@ class StatisticsEngine:
 
         If the computation time is not provided, all the statistics will be retrieved.
 
-        Args:
+        Parameters:
             metadata_instance: Union[FeatureGroup, TrainingDataset]. Metadata of the entity containing the data.
             feature_names: List[str]. List of feature names of which statistics are retrieved.
             computation_time: Union[str, int, float, datetime, date]. Timestamp or computation time when statistics where computed.
@@ -344,7 +344,7 @@ class StatisticsEngine:
     ) -> statistics.Statistics | list[statistics.Statistics] | None:
         """Get the statistics of an entity based on a commit time window.
 
-        Args:
+        Parameters:
             metadata_instance: Union[FeatureGroup]: Metadata of the entity containing the data.
             start_commit_time: int: Window start commit time
             end_commit_time: int: Window end commit time

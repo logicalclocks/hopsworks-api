@@ -23,10 +23,11 @@ class FeatureStoreApi:
     def get(self, identifier: int | str) -> hsfs.feature_store.FeatureStore:
         """Get feature store with specific id or name.
 
-        :param identifier: id or name of the feature store
-        :type identifier: int, str
-        :return: the featurestore metadata
-        :rtype: FeatureStore
+        Parameters:
+            identifier: id or name of the feature store
+
+        Returns:
+            the featurestore metadata
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "featurestores", identifier]

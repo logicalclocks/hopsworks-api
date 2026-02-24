@@ -120,7 +120,7 @@ class FeatureMonitoringConfigEngine:
     ) -> dict[str, Any]:
         """Validates the statistics comparison config.
 
-        Args:
+        Parameters:
             metric:
                 Statistical metric to perform comparison on.
             threshold:
@@ -203,7 +203,7 @@ class FeatureMonitoringConfigEngine:
     def save(self, config: fmc.FeatureMonitoringConfig) -> fmc.FeatureMonitoringConfig:
         """Saves a feature monitoring config.
 
-        Args:
+        Parameters:
             config: FeatureMonitoringConfig, required
                 The feature monitoring config to save.
 
@@ -225,7 +225,7 @@ class FeatureMonitoringConfigEngine:
     ) -> fmc.FeatureMonitoringConfig:
         """Updates a feature monitoring config.
 
-        Args:
+        Parameters:
             config: FeatureMonitoringConfig, required
                 The feature monitoring config to update.
 
@@ -245,7 +245,7 @@ class FeatureMonitoringConfigEngine:
     def delete(self, config_id: int) -> None:
         """Deletes a feature monitoring config.
 
-        Args:
+        Parameters:
             config_id: int, required
                 The id of the feature monitoring config to delete.
         """
@@ -266,16 +266,13 @@ class FeatureMonitoringConfigEngine:
         entity) and returns an empty list if none are found. If a config_id is provided,
         it fetches a single configuration and returns None if not found.
 
-        Args:
+        Parameters:
             name: str, optional
                 If provided, fetch only configuration with given name.
-                Defaults to None.
             feature_name: str, optional
                 If provided, fetch all configurations attached to a specific feature.
-                Defaults to None.
             config_id: int, optional
                 If provided, fetch only configuration with given id.
-                Defaults to None.
 
         Raises:
             ValueError: If both name and feature_name are provided.
@@ -317,7 +314,7 @@ class FeatureMonitoringConfigEngine:
     ) -> Job:
         """Make a REST call to start an execution of the monitoring job.
 
-        Args:
+        Parameters:
             job_name: Name of the job to trigger.
 
         Returns:
@@ -333,7 +330,7 @@ class FeatureMonitoringConfigEngine:
     ) -> Job:
         """Make a REST call to fetch the job entity.
 
-        Args:
+        Parameters:
             job_name: Name of the job to trigger.
 
         Returns:
@@ -348,7 +345,7 @@ class FeatureMonitoringConfigEngine:
     ) -> list[FeatureMonitoringResult]:
         """Main function used by the job to actually perform the monitoring.
 
-        Args:
+        Parameters:
             entity: Union[feature_group.FeatureGroup, "feature_view.FeatureView"]
                 Featuregroup or Featureview object containing the feature to monitor.
             config_name: str: name of the monitoring config.
@@ -405,7 +402,7 @@ class FeatureMonitoringConfigEngine:
     ) -> fmc.FeatureMonitoringConfig:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
-        Args:
+        Parameters:
             name: str, required
                 Name of the feature monitoring configuration, must be unique for
                 the feature view or feature group.
@@ -463,7 +460,7 @@ class FeatureMonitoringConfigEngine:
     ) -> fmc.FeatureMonitoringConfig:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
-        Args:
+        Parameters:
             name: str, required
                 Name of the feature monitoring configuration, must be unique for
                 the feature view or feature group.

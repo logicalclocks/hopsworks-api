@@ -226,7 +226,10 @@ class Connection:
     @usage.method_logger
     @connected
     def create_project(
-        self, name: str, description: str | None = None, feature_store_topic: str | None = None
+        self,
+        name: str,
+        description: str | None = None,
+        feature_store_topic: str | None = None,
     ) -> Project:
         """Create a new project.
 

@@ -32,7 +32,7 @@ class TransformationFunctionApi:
     ) -> transformation_function.TransformationFunction:
         """Register transformation function in backend.
 
-        Args:
+        Parameters:
             transformation_function_instance:
                 metadata object of transformation function.
         """
@@ -65,7 +65,7 @@ class TransformationFunctionApi:
     ):
         """Retrieve transformation function from backend.
 
-        Args:
+        Parameters:
             name:
                 name of transformation function.
             version:
@@ -96,7 +96,7 @@ class TransformationFunctionApi:
     ) -> None:
         """Delete a transformation function.
 
-        Args:
+        Parameters:
         transformation_function_instance: TransformationFunction, required
             metadata object of transformation function.
         """
