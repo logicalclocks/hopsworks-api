@@ -42,7 +42,11 @@ class TagsApi:
 
     @usage.method_logger
     def add(
-        self, metadata_instance: TrainingDataset | FeatureGroup, name: str, value: str, training_dataset_version=None
+        self,
+        metadata_instance: TrainingDataset | FeatureGroup,
+        name: str,
+        value: str,
+        training_dataset_version=None,
     ):
         """Attach a name/value tag to a training dataset or feature group.
 
@@ -63,7 +67,12 @@ class TagsApi:
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     @usage.method_logger
-    def delete(self, metadata_instance: TrainingDataset | FeatureGroup, name: str, training_dataset_version=None):
+    def delete(
+        self,
+        metadata_instance: TrainingDataset | FeatureGroup,
+        name: str,
+        training_dataset_version=None,
+    ):
         """Delete a tag from a training dataset or feature group.
 
         Tag names are unique identifiers.
@@ -82,7 +91,10 @@ class TagsApi:
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
     def get(
-        self, metadata_instance: TrainingDataset | FeatureGroup, name: str | None = None, training_dataset_version=None
+        self,
+        metadata_instance: TrainingDataset | FeatureGroup,
+        name: str | None = None,
+        training_dataset_version=None,
     ) -> dict:
         """Get the tags of a training dataset or feature group.
 

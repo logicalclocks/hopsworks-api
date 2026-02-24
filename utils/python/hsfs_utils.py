@@ -8,7 +8,7 @@ import os
 import sys
 import traceback
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 import fsspec.implementations.arrow as pfs
 

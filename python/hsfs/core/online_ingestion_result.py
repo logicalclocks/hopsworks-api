@@ -50,7 +50,9 @@ class OnlineIngestionResult:
         self._rows = rows
 
     @classmethod
-    def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineIngestionResult | list[OnlineIngestionResult] | None:
+    def from_response_json(
+        cls, json_dict: dict[str, Any]
+    ) -> OnlineIngestionResult | list[OnlineIngestionResult] | None:
         """Create an OnlineIngestionResult object (or list of objects) from a JSON response.
 
         Parameters:

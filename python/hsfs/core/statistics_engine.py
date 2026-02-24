@@ -105,7 +105,8 @@ class StatisticsEngine:
 
     def compute_and_save_monitoring_statistics(
         self,
-        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
+        metadata_instance: feature_group.FeatureGroup
+        | training_dataset.TrainingDataset,
         feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame,
         window_start_commit_time: int,
         window_end_commit_time: int,
@@ -181,7 +182,7 @@ class StatisticsEngine:
         columns: list[str],
         correlations: bool,
         histograms: bool,
-        exact_uniqueness: bool
+        exact_uniqueness: bool,
     ) -> str:
         """Compute statistics on a feature DataFrame.
 
@@ -252,7 +253,9 @@ class StatisticsEngine:
         td_metadata_instance: training_dataset.TrainingDataset,
         columns: list[str],
         label_encoder_features: list[str],
-        feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame | None = None,
+        feature_dataframe: TypeVar("pyspark.sql.DataFrame")
+        | pd.DataFrame
+        | None = None,
         feature_view_obj: feature_view.FeatureView | None = None,
     ) -> statistics.Statistics:
         """Compute statistics for transformation functions.
@@ -282,7 +285,8 @@ class StatisticsEngine:
     @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def get(
         self,
-        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
+        metadata_instance: feature_group.FeatureGroup
+        | training_dataset.TrainingDataset,
         feature_names: list[str] | None = None,
         computation_time: str | float | datetime | date | None = None,
         before_transformation: bool | None = None,
@@ -314,7 +318,8 @@ class StatisticsEngine:
     @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def get_all(
         self,
-        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
+        metadata_instance: feature_group.FeatureGroup
+        | training_dataset.TrainingDataset,
         feature_names: list[str] | None = None,
         computation_time: str | float | datetime | date | None = None,
         training_dataset_version: int | None = None,
@@ -346,7 +351,8 @@ class StatisticsEngine:
     )
     def get_by_time_window(
         self,
-        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
+        metadata_instance: feature_group.FeatureGroup
+        | training_dataset.TrainingDataset,
         start_commit_time: str | int | datetime | date | None = None,
         end_commit_time: str | int | datetime | date | None = None,
         feature_names: list[str] | None = None,
