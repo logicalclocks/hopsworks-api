@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     import pandas as pd
     from hsfs.core.explicit_provenance import Links
     from hsfs.feature_group import FeatureGroup
-    from hsfs.training_dataset import TrainingDataset
 
 
 _logger = logging.getLogger(__name__)

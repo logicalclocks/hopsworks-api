@@ -32,7 +32,6 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
