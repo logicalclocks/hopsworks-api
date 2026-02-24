@@ -589,14 +589,14 @@ public abstract class StorageConnector {
     public static final String POSTGRESQL = "POSTGRESQL";
 
     private static final Map<String, String> DRIVERS = new HashMap<String, String>() {{
-      put(MYSQL, "com.mysql.cj.jdbc.Driver");
-      put(POSTGRESQL, "org.postgresql.Driver");
-    }};
+        put(MYSQL, "com.mysql.cj.jdbc.Driver");
+        put(POSTGRESQL, "org.postgresql.Driver");
+      }};
 
     private static final Map<String, String> JDBC_SCHEMES = new HashMap<String, String>() {{
-      put(MYSQL, "mysql");
-      put(POSTGRESQL, "postgresql");
-    }};
+        put(MYSQL, "mysql");
+        put(POSTGRESQL, "postgresql");
+      }};
 
     @Getter @Setter
     protected String databaseType;
