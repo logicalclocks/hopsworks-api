@@ -159,10 +159,10 @@ class StorageConnectorApi:
         will always be empty.
         For inaccessible training datasets, only a minimal information is returned.
 
-        # Arguments
+        Args:
             storage_connector_instance: Metadata object of storage connector.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the training datasets generated using this
             storage connector
         """

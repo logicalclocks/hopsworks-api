@@ -754,10 +754,10 @@ class FeatureGroupBase:
         For deleted and inaccessible storage connector, only minimal information is
         returned.
 
-        # Returns
+        Returns:
             `Links`: the data source used to generate this feature group or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
@@ -797,10 +797,10 @@ class FeatureGroupBase:
         Only the accessible data source is returned.
         For more items use the base method - get_data_source_provenance.
 
-        # Returns
+        Returns:
             `DataSource`: Data source or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         data_source_provenance = self.get_data_source_provenance()

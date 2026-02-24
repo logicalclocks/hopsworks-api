@@ -582,10 +582,10 @@ class FeatureStore:
     ) -> list[tag.Tag]:
         """Normalize tags input to a list of Tag objects.
 
-        # Arguments
+        Args:
             tags: Tags in various formats (single Tag, dict, or list of Tags/dicts)
 
-        # Returns
+        Returns:
             `list[tag.Tag]`: List of Tag objects.
         """
         return tag.Tag.normalize(tags)

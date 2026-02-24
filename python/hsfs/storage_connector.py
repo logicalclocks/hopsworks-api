@@ -173,7 +173,7 @@ class StorageConnector(ABC):
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
-        # Arguments
+        Args:
             path: Path to prepare for reading from cloud storage. Defaults to `None`.
         """
         return path

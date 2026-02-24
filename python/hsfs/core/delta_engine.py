@@ -332,13 +332,11 @@ class DeltaEngine:
 
         Supports pyarrow.Table, polars.DataFrame, and pandas.DataFrame as input.
 
-        # Arguments
-
+        Args:
             dataset: `pyarrow.Table` or `polars.DataFrame` or `pandas.DataFrame`.
                 Dataset to write to the Delta table.
 
-        # Returns
-
+        Returns:
             `None`. Writes the dataset to the Delta table.
         """
         try:
@@ -500,7 +498,7 @@ class DeltaEngine:
         and creates an empty DataFrame with that schema, then writes it to the
         feature group location using Delta format.
 
-        # Arguments
+        Args:
             write_options: Optional dictionary of write options for Delta.
                 * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
                 disable cdf operations on the feature group delta table. Set to true by default on FG created
@@ -533,7 +531,7 @@ class DeltaEngine:
 
         Supports simple types, array types, and struct types.
 
-        # Arguments
+        Args:
             write_options: Optional dictionary of write options for Delta.
                 * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
                 disable cdf operations on the feature group delta table. Set to true by default on FG created
