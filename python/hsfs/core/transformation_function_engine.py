@@ -42,6 +42,21 @@ class TransformationFunctionEngine:
         "standard_scaler",
         "robust_scaler",
         "label_encoder",
+        "one_hot_encoder",
+        "log_transform",
+        "quantile_transformer",
+        "rank_normalizer",
+        "winsorize",
+        "equal_width_binner",
+        "equal_frequency_binner",
+        "quantile_binner",
+        "top_k_categorical_binner",
+        # "target_mean_encoder",
+        "impute_mean",
+        "impute_median",
+        "impute_constant",
+        "impute_mode",
+        "impute_category",
     ]
     AMBIGUOUS_FEATURE_ERROR = (
         "Provided feature '{}' in transformation functions is ambiguous and exists in more than one feature groups."

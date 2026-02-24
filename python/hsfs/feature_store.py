@@ -32,6 +32,7 @@ from hsfs import (
     usage,
     util,
 )
+from hsfs.client.exceptions import RestAPIError
 from hsfs.core import (
     data_source as ds,
 )
@@ -2008,18 +2009,32 @@ class FeatureStore:
         """
         fv_object = self._feature_view_engine.get(name, version)
         if not fv_object:
-            fv_object = self.create_feature_view(
-                name=name,
-                query=query,
-                version=version,
-                description=description,
-                labels=labels or [],
-                inference_helper_columns=inference_helper_columns or [],
-                training_helper_columns=training_helper_columns or [],
-                transformation_functions=transformation_functions or [],
-                logging_enabled=logging_enabled,
-                extra_log_columns=extra_log_columns,
-            )
+            try:
+                fv_object = self.create_feature_view(
+                    name=name,
+                    query=query,
+                    version=version,
+                    description=description,
+                    labels=labels or [],
+                    inference_helper_columns=inference_helper_columns or [],
+                    training_helper_columns=training_helper_columns or [],
+                    transformation_functions=transformation_functions or [],
+                    logging_enabled=logging_enabled,
+                    extra_log_columns=extra_log_columns,
+                )
+            except RestAPIError as e:
+                # Handle the case where the feature view was created but the response was lost
+                # due to a connection issue, and the retry failed with "already exists"
+                if (
+                    e.response.status_code == 400
+                    and e.response.json().get("errorCode") == 270179
+                ):
+                    # Feature view already exists, try to get it
+                    fv_object = self._feature_view_engine.get(name, version)
+                    if fv_object:
+                        return fv_object
+                # Re-raise the exception if it's not the "already exists" error or if GET failed
+                raise
         return fv_object
 
     @public
