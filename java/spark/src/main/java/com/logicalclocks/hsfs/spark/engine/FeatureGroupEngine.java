@@ -133,7 +133,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
     }
 
     saveDataframe(featureGroup, featureData, storage, operation,
-        writeOptions, SparkEngine.getInstance().getKafkaConfig(featureGroup, writeOptions), validationId);
+        writeOptions, validationId);
   }
 
   public void insert(StreamFeatureGroup streamFeatureGroup, Dataset<Row> featureData,
@@ -153,9 +153,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       // After that it's going to be just a normal append
       featureGroupApi.deleteContent(streamFeatureGroup);
     }
-    SparkEngine.getInstance().writeOnlineDataframe(streamFeatureGroup, featureData,
-        streamFeatureGroup.getOnlineTopicName(),
-        SparkEngine.getInstance().getKafkaConfig(streamFeatureGroup, writeOptions));
+    SparkEngine.getInstance().writeOnlineDataframe(streamFeatureGroup, featureData, writeOptions);
   }
 
   public void insert(ExternalFeatureGroup externalFeatureGroup, Dataset<Row> featureData,
@@ -172,9 +170,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       externalFeatureGroup = saveExternalFeatureGroup(externalFeatureGroup);
     }
 
-    SparkEngine.getInstance().writeOnlineDataframe(externalFeatureGroup, featureData,
-        externalFeatureGroup.getOnlineTopicName(),
-        SparkEngine.getInstance().getKafkaConfig(externalFeatureGroup, writeOptions));
+    SparkEngine.getInstance().writeOnlineDataframe(externalFeatureGroup, featureData, writeOptions);
   }
 
   @Deprecated
@@ -224,7 +220,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
 
   public void saveDataframe(FeatureGroup featureGroup, Dataset<Row> dataset, Storage storage,
                             HudiOperationType operation, Map<String, String> offlineWriteOptions,
-                            Map<String, String> onlineWriteOptions, Integer validationId)
+                            Integer validationId)
           throws IOException, FeatureStoreException, ParseException {
     if (!featureGroup.getOnlineEnabled() && storage == Storage.ONLINE) {
       throw new FeatureStoreException("Online storage is not enabled for this feature group. Set `online=false` to "
@@ -233,13 +229,11 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       SparkEngine.getInstance().writeOfflineDataframe(featureGroup, dataset, operation,
               offlineWriteOptions, validationId);
     } else if (storage == Storage.ONLINE) {
-      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, featureGroup.getOnlineTopicName(),
-              onlineWriteOptions);
+      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions);
     } else if (featureGroup.getOnlineEnabled() && storage == null) {
       SparkEngine.getInstance().writeOfflineDataframe(featureGroup, dataset, operation,
               offlineWriteOptions, validationId);
-      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, featureGroup.getOnlineTopicName(),
-              onlineWriteOptions);
+      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions);
     } else {
       throw new FeatureStoreException("Error writing to offline and online feature store.");
     }

@@ -485,6 +485,45 @@ class HopsFSConnector(StorageConnector):
             return sub_path
         return self._hopsfs_path
 
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str = "",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Reads a path into a dataframe using the HopsFS storage connector.
+
+        Parameters:
+            query:
+                Not used for HopsFS. Kept for interface consistency.
+            data_format: The file format to be read, e.g., `csv`, `parquet`.
+            options: Any additional key/value options to be passed to the connector.
+            path:
+                Path to be read within HopsFS. If the connector has a base path configured,
+                relative paths will be resolved against it. Absolute `hopsfs://` paths are used as-is.
+            dataframe_type:
+                The type of the returned dataframe.
+                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        Returns:
+            The read dataframe.
+        """
+        if not path.startswith("hopsfs://"):
+            path = self._get_path(path)
+        return engine.get_instance().read(
+            self, data_format, options or {}, path, dataframe_type
+        )
+
 
 @public
 class S3Connector(StorageConnector):
