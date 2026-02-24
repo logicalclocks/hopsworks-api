@@ -397,12 +397,8 @@ class StorageConnector(ABC):
             ```
 
         Args:
-<<<<<<< HEAD
             data_source (DataSource): The data source to retrieve data from.
             use_cached (bool): Whether to use cached data if available. Only supported for CRM and REST connectors. Defaults to `True`.
-=======
-            data_source: The data source to retrieve data from.
->>>>>>> lc-enterprise/main
 
         Returns:
             An object containing the data retrieved from the data source.
