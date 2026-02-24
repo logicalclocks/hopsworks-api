@@ -16,11 +16,16 @@
 
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from hopsworks_apigen import also_available_as
-from hopsworks_common import git_op_execution
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.core import git_op_execution_api
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.git_op_execution import GitOpExecution
+
 
 
 @also_available_as("hopsworks.engine.git_engine.GitEngine")
@@ -30,8 +35,8 @@ class GitEngine:
         self._log = logging.getLogger(__name__)
 
     def execute_op_blocking(
-        self, git_op: git_op_execution.GitOpExecution, command: str
-    ) -> git_op_execution.GitOpExecution:
+        self, git_op: GitOpExecution, command: str
+    ) -> GitOpExecution:
         """Poll a git execution status until it reaches a terminal state.
 
         Parameters:
