@@ -162,12 +162,11 @@ def delete(self, path: str, missing_ok: bool = False) -> None:
 Or this:
 
 ```python
+@deprecated("hsfs.feature.Feature.isin")
+# ^ Adds deprecation warning telling to use isin instead.
+# See https://github.com/logicalclocks/hopsworks-apigen/blob/main/README.md
 def contains(self, other: str | list) -> filter.Filter:
     """Construct a filter similar to SQL's `IN` operator.
-
-    Warning: Deprecated
-        `contains` method is deprecated.
-        Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
 
     Parameters:
         other: A single feature value or a list of feature values.
@@ -175,6 +174,38 @@ def contains(self, other: str | list) -> filter.Filter:
     Returns:
         A filter that leaves only the feature values also contained in `other`.
     """
+    ...
+```
+
+In case you want to deprecate an alias or an attribute, you have to use admonitions.
+Always place the aliases warning last in the docstring, and parameters one before the parameters.
+Hopsworks version should be specified as `major.minor`, also always say what to use instead.
+
+```python
+@public("", "hsfs.function", "hsml.function")
+def function(
+    *,
+    old_param: str,
+    new_param: str,
+):
+    """...
+
+    ...
+
+    Warning: Deprecated Parameters
+        Parameter `old_param` is deprecated, and will be removed in Hopsworks v5.0.
+        Use `new_param` instead.
+
+    Parameters:
+        old_param: Deprecated, use `new_param` instead.
+        new param: ...
+
+    ...
+
+    Warning: Deprecated Aliases
+        Aliases [`hsfs.function`][hsfs.function] and [`hsml.function`][hsml.function] are deprecated, and will be removed in a future release of Hopsworks.
+    """
+    ...
 ```
 
 ##### Linking

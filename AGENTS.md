@@ -28,6 +28,7 @@
   - Lint: `uv run ruff check --fix`
   - Format: `uv run ruff format`
   - Test: `uv run pytest tests`
+  - Interpreter: `uv run python`
 - **CI:**
   - See `.github/workflows/python.yml` for checks (lint, format, test).
 
