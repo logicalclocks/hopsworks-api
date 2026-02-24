@@ -2281,9 +2281,7 @@ class TestPython:
         )
 
         # Assert
-        assert isinstance(result_df, pl.DataFrame) or isinstance(
-            result_df, pl.dataframe.frame.DataFrame
-        )
+        assert isinstance(result_df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         assert result_df_split is None
 
     def test_split_labels_dataframe_type_python(self):
@@ -2381,9 +2379,7 @@ class TestPython:
         )
 
         # Assert
-        assert isinstance(result_df, pl.DataFrame) or isinstance(
-            result_df, pl.dataframe.frame.DataFrame
-        )
+        assert isinstance(result_df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         assert isinstance(result_df_split, pl.Series)
 
     def test_split_labels_labels_dataframe_type_python(self):
@@ -3137,9 +3133,7 @@ class TestPython:
         )
 
         # Assert
-        assert isinstance(result, pl.DataFrame) or isinstance(
-            result, pl.dataframe.frame.DataFrame
-        )
+        assert isinstance(result, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         assert df.equals(result)
 
     def test_return_dataframe_type_numpy(self):
@@ -8559,7 +8553,7 @@ class TestPython:
         )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        meta_data_logging_columnn_names = [col for col in meta_data_logging_columns]
+        meta_data_logging_columnn_names = list(meta_data_logging_columns)
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         transformed_features_df = logging_test_dataframe[
@@ -9057,7 +9051,7 @@ class TestPython:
         )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        meta_data_logging_columns_names = [col for col in meta_data_logging_columns]
+        meta_data_logging_columns_names = list(meta_data_logging_columns)
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
@@ -9141,7 +9135,7 @@ class TestPython:
         )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        meta_data_logging_columns_names = [col for col in meta_data_logging_columns]
+        meta_data_logging_columns_names = list(meta_data_logging_columns)
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 

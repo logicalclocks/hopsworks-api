@@ -141,9 +141,11 @@ class TestLogin(TestCase):
         assert in_home is True and not os.path.exists(path)
         assert in_tmp is False
 
-        with self.assertRaises(exceptions.RestAPIError):
-            with input({"hidden": "incorrect_api_key"}):
-                hopsworks.login()
+        with (
+            self.assertRaises(exceptions.RestAPIError),
+            input({"hidden": "incorrect_api_key"}),
+        ):
+            hopsworks.login()
 
     @skip(
         "To be removed once https://hopsworks.atlassian.net/browse/FSTORE-1474 is resolved."
