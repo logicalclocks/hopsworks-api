@@ -167,16 +167,13 @@ class FeatureMonitoringResultEngine:
         """Fetch all feature monitoring results by config id.
 
         Parameters:
-            config_id: int. Id of the feature monitoring configuration.
-            start_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time greater than or equal to start_time.
-            end_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time less than or equal to end_time.
-            with_statistics: bool.
-                Whether to include the statistics attached to the results or not
+            config_id: Id of the feature monitoring configuration.
+            start_time: Query results with monitoring time greater than or equal to start_time.
+            end_time: Query results with monitoring time less than or equal to end_time.
+            with_statistics: Whether to include the statistics attached to the results or not.
 
         Returns:
-            List[FeatureMonitoringResult]. List of feature monitoring results.
+            List of feature monitoring results.
         """
         query_params = self._build_query_params(
             start_time=start_time,
@@ -200,19 +197,20 @@ class FeatureMonitoringResultEngine:
         """Convenience method to fetch feature monitoring results from an entity.
 
         Parameters:
-            config_id: Optional[int]. Id of the feature monitoring configuration.
-                Defaults to None if config_name is provided.
-            config_name: Optional[str]. Name of the feature monitoring configuration.
-                Defaults to None if config_id is provided.
-            start_time: Optional[Union[str, int, datetime, date]].
-                Query results with monitoring time greater than or equal to start_time.
-            end_time: Optional[Union[str, int, datetime, date]].
-                Query results with monitoring time less than or equal to end_time.
-            with_statistics: bool. Whether to include the statistics attached to the results.
-                Defaults to True. Set to False to fetch only monitoring metadata.
+            config_id:
+                ID of the feature monitoring configuration.
+                Defaults to `None` if config_name is provided.
+            config_name:
+                Name of the feature monitoring configuration.
+                Defaults to `None` if config_id is provided.
+            start_time: Query results with monitoring time greater than or equal to start_time.
+            end_time: Query results with monitoring time less than or equal to end_time.
+            with_statistics:
+                Whether to include the statistics attached to the results.
+                Set to `False` to fetch only monitoring metadata.
 
         Returns:
-            List[FeatureMonitoringResult]. List of feature monitoring results.
+            List of feature monitoring results.
         """
         if all([config_id is None, config_name is None]):
             raise ValueError(
@@ -250,15 +248,12 @@ class FeatureMonitoringResultEngine:
         """Build query parameters for feature monitoring result API calls.
 
         Parameters:
-            start_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time greater than or equal to start_time.
-            end_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time less than or equal to end_time.
-            with_statistics: bool.
-                Whether to include the statistics attached to the results or not
+            start_time: Query results with monitoring time greater than or equal to start_time.
+            end_time: Query results with monitoring time less than or equal to end_time.
+            with_statistics: Whether to include the statistics attached to the results or not.
 
         Returns:
-            Dict[str, Union[str, List[str]]]. Query parameters.
+            Query parameters.
         """
         query_params = {"sort_by": "monitoring_time:desc"}
 
@@ -287,13 +282,13 @@ class FeatureMonitoringResultEngine:
         """Run and upload statistics comparison between detection and reference stats.
 
         Parameters:
-            fm_config: FeatureMonitoringConfig. Feature monitoring configuration.
-            detection_statistics: List[FeatureDescriptiveStatistics]. Computed statistics from detection data.
-            reference_statistics: Optional[List[FeatureDescriptiveStatistics]]]. Computed statistics from reference data.
-            specific_value: Optional[Union[int, float]]. A specific value to use as reference.
+            fm_config: Feature monitoring configuration.
+            detection_statistics: Computed statistics from detection data.
+            reference_statistics: Computed statistics from reference data.
+            specific_value: A specific value to use as reference.
 
         Returns:
-            Union[FeatureMonitoringResult, List[FeatureMonitoringResult]]. Feature monitoring result
+            Feature monitoring result.
         """
         if specific_value:
             # compare detection statistics against a specific value

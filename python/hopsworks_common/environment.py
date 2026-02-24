@@ -89,7 +89,7 @@ class Environment:
     @usage.method_logger
     def install_wheel(
         self, path: str, await_installation: bool | None = True
-    ) -> Library:
+    ) -> Library:  # TODO: publish Library or do no return it here
         """Install a python library packaged in a wheel file.
 
         ```python
@@ -145,7 +145,7 @@ class Environment:
     @usage.method_logger
     def install_requirements(
         self, path: str, await_installation: bool | None = True
-    ) -> Library:
+    ) -> Library:  # TODO: publish Library or do no return it here
         """Install libraries specified in a `requirements.txt` file.
 
         ```python

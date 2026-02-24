@@ -18,9 +18,11 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+@public("hopsworks.alert.Alert")
 class Alert:
     def __init__(
         self,
@@ -98,6 +100,7 @@ class Alert:
         return f"Alert({self._id!r}, {self._status!r}, {self._severity!r}, {self._receiver!r}, {self._created!r})"
 
 
+@public("hopsworks.alert.ProjectAlert")
 class ProjectAlert(Alert):
     NOT_FOUND_ERROR_CODE = 150078
 
@@ -159,6 +162,7 @@ class ProjectAlert(Alert):
         return f"ProjectAlert({self._id!r}, {self._project_name!r}, {self._status!r}, {self._severity!r}, {self._receiver!r}, {self._created!r}, {self._service!r}, {self._threshold!r})"
 
 
+@public("hopsworks.alert.JobAlert")
 class JobAlert(Alert):
     NOT_FOUND_ERROR_CODE = 130034
 
@@ -212,6 +216,7 @@ class JobAlert(Alert):
         return f"JobAlert({self._id!r}, {self._job_name!r}, {self._status!r}, {self._severity!r}, {self._receiver!r}, {self._created!r}, {self._threshold!r})"
 
 
+@public("hopsworks.alert.FeatureGroupAlert")
 class FeatureGroupAlert(Alert):
     NOT_FOUND_ERROR_CODE = 270155
 
@@ -273,6 +278,7 @@ class FeatureGroupAlert(Alert):
         return f"FeatureGroupAlert({self._id!r}, {self._feature_store_name!r}, {self._feature_group_id!r}, {self._feature_group_name!r}, {self._status!r}, {self._severity!r}, {self._receiver!r}, {self._created!r})"
 
 
+@public("hopsworks.alert.FeatureViewAlert")
 class FeatureViewAlert(Alert):
     NOT_FOUND_ERROR_CODE = 270155
 

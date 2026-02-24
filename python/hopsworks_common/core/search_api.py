@@ -20,7 +20,7 @@ import logging
 from typing import Literal, get_args
 from urllib.parse import quote
 
-from hopsworks_apigen import also_available_as, public
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.search_results import (
     FeatureGroupSearchResult,
@@ -37,7 +37,7 @@ DOC_TYPE_ARG = Literal[
 ]
 
 
-@also_available_as("hopsworks.core.search_api.TagSearchFilter")
+@public("hopsworks.core.search_api.TagSearchFilter")
 class TagSearchFilter:
     """Filter for searching entities by tag."""
 
@@ -46,16 +46,19 @@ class TagSearchFilter:
         self._key = key
         self._value = value
 
+    @public
     @property
     def name(self):
         """Name of the tag."""
         return self._name
 
+    @public
     @property
     def key(self):
         """Key of the tag."""
         return self._key
 
+    @public
     @property
     def value(self):
         """Value of the tag key."""
@@ -126,9 +129,10 @@ class SearchApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
+    @public
     def feature_store(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -222,9 +226,10 @@ class SearchApi:
             global_search=global_search,
         )
 
+    @public
     def feature_groups(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -280,9 +285,10 @@ class SearchApi:
         )
         return result.feature_groups
 
+    @public
     def feature_views(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -338,9 +344,10 @@ class SearchApi:
         )
         return result.feature_views
 
+    @public
     def training_datasets(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -396,9 +403,10 @@ class SearchApi:
         )
         return result.training_datasets
 
+    @public
     def features(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]

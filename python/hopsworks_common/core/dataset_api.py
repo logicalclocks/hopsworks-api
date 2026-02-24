@@ -627,7 +627,7 @@ class DatasetApi:
     def upload_feature_group(self, feature_group, path, dataframe):
         """Upload a dataframe to a path in Parquet format using a feature group metadata.
 
-        !!! Note
+        Warning:
             This method is a legacy method kept for backwards-compatibility; do not use it in new code.
         """
         # Convert the dataframe into PARQUET for upload

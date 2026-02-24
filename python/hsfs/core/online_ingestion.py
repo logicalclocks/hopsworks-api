@@ -168,7 +168,7 @@ class OnlineIngestion:
         """Get the list of ingestion results.
 
         Returns:
-            List[OnlineIngestionResult]: List of ingestion result objects.
+            List of ingestion result objects.
         """
         return self._results
 

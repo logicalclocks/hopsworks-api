@@ -125,11 +125,11 @@ class GitRepo:
         return self._read_only
 
     @public
-    def status(self):
+    def status(self) -> list[GitFileStatus]:
         """Get the status of the repo.
 
         Returns:
-            `List[GitFileStatus]`
+            The list of file statuses for the git repo.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.

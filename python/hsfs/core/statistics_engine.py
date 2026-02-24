@@ -18,11 +18,17 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import date, datetime
+from typing import TYPE_CHECKING, TypeVar
 
 from hsfs import decorators, engine, split_statistics, statistics, util
 from hsfs.client import exceptions
 from hsfs.core import job, statistics_api
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from hsfs import feature_group, feature_view, training_dataset
 
 
 class StatisticsEngine:
@@ -99,25 +105,25 @@ class StatisticsEngine:
 
     def compute_and_save_monitoring_statistics(
         self,
-        metadata_instance,
-        feature_dataframe,
-        window_start_commit_time,
-        window_end_commit_time,
-        row_percentage,
-        feature_name=None,
+        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
+        feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame,
+        window_start_commit_time: int,
+        window_end_commit_time: int,
+        row_percentage: float,
+        feature_name: str | list[str] | None = None,
     ) -> statistics.Statistics:
         """Compute statistics for one or more features and send the result to Hopsworks.
 
         Parameters:
-            metadata_instance: Union[FeatureGroup, TrainingDataset]. Metadata of the entity containing the data.
+            metadata_instance: Metadata of the entity containing the data.
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
-            window_start_commit_time: int. Window start commit time
-            window_end_commit_time: int. Window end commit time
-            row_percentage: float. Percentage of rows to include.
-            feature_name: Optional[Union[str, List[str]]]. Feature name or list of names to compute the statistics on. If not set, statistics are computed on all features.
+            window_start_commit_time: Window start commit time
+            window_end_commit_time: Window end commit time
+            row_percentage: Percentage of rows to include.
+            feature_name: Feature name or list of names to compute the statistics on. If not set, statistics are computed on all features.
 
         Returns:
-            Statistics. Statistics metadata containing a list of single feature descriptive statistics.
+            Statistics metadata containing a list of single feature descriptive statistics.
         """
         feature_names = []
         if feature_name is None:
@@ -171,19 +177,23 @@ class StatisticsEngine:
 
     @staticmethod
     def profile_statistics(
-        feature_dataframe, columns, correlations, histograms, exact_uniqueness
+        feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame,
+        columns: list[str],
+        correlations: bool,
+        histograms: bool,
+        exact_uniqueness: bool
     ) -> str:
         """Compute statistics on a feature DataFrame.
 
         Parameters:
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
-            columns: List[str]. List of feature names to compute the statistics on.
-            correlations: bool. Whether to compute correlations or not.
-            histograms: bool. Whether to compute histograms or not.
-            exact_uniqueness: bool. Whether to compute exact uniqueness values or not.
+            columns: List of feature names to compute the statistics on.
+            correlations: Whether to compute correlations or not.
+            histograms: Whether to compute histograms or not.
+            exact_uniqueness: Whether to compute exact uniqueness values or not.
 
         Returns:
-            str. Serialized features statistics.
+            Serialized features statistics.
         """
         if len(feature_dataframe.head(1)) == 0:
             warnings.warn(
@@ -239,23 +249,23 @@ class StatisticsEngine:
 
     def compute_transformation_fn_statistics(
         self,
-        td_metadata_instance,
-        columns,
-        label_encoder_features,
-        feature_dataframe=None,
-        feature_view_obj=None,
+        td_metadata_instance: training_dataset.TrainingDataset,
+        columns: list[str],
+        label_encoder_features: list[str],
+        feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame | None = None,
+        feature_view_obj: feature_view.FeatureView | None = None,
     ) -> statistics.Statistics:
         """Compute statistics for transformation functions.
 
         Parameters:
-            td_metadata_instance: TrainingDataset. Training Dataset containing the splits.
-            columns: List[str]. List of feature names where transformation functions are applied, excluding label encoded features.
-            label_encoder_features: List[str]. List of label encoded feature names.
+            td_metadata_instance: Training Dataset containing the splits.
+            columns: List of feature names where transformation functions are applied, excluding label encoded features.
+            label_encoder_features: List of label encoded feature names.
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on. This parameter is optional.
-            feature_view_obj: FeatureView. Metadata of the feature view used to create the Training Dataset. This parameter is optional.
+            feature_view_obj: Metadata of the feature view used to create the Training Dataset. This parameter is optional.
 
         Returns:
-            Statistics. Statistics metadata containing a list of single feature descriptive statistics.
+            Statistics metadata containing a list of single feature descriptive statistics.
         """
         computation_time = int(float(datetime.now().timestamp()) * 1000)
         stats_str = self._profile_transformation_fn_statistics(
@@ -272,7 +282,7 @@ class StatisticsEngine:
     @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def get(
         self,
-        metadata_instance,
+        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
         feature_names: list[str] | None = None,
         computation_time: str | float | datetime | date | None = None,
         before_transformation: bool | None = None,
@@ -283,14 +293,14 @@ class StatisticsEngine:
         If the computation time is not provided, the most recently computed statistics will be retrieved.
 
         Parameters:
-            metadata_instance: Union[FeatureGroup, TrainingDataset]. Metadata of the entity containing the data.
-            feature_names: List[str]. List of feature names of which statistics are retrieved.
-            computation_time: Union[str, int, float, datetime, date]. Timestamp or computation time when statistics where computed.
-            before_transformation: bool. Whether the statistics were computed before transformation functions or not.
-            training_dataset_version: int. Version of the training dataset on which statistics were computed.
+            metadata_instance: Metadata of the entity containing the data.
+            feature_names: List of feature names of which statistics are retrieved.
+            computation_time: Timestamp or computation time when statistics where computed.
+            before_transformation: Whether the statistics were computed before transformation functions or not.
+            training_dataset_version: Version of the training dataset on which statistics were computed.
 
         Returns:
-            Statistics. Statistics metadata containing a list of single feature descriptive statistics.
+            Statistics metadata containing a list of single feature descriptive statistics.
         """
         computation_timestamp = util.convert_event_time_to_timestamp(computation_time)
         return self._statistics_api.get(
@@ -304,7 +314,7 @@ class StatisticsEngine:
     @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def get_all(
         self,
-        metadata_instance,
+        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
         feature_names: list[str] | None = None,
         computation_time: str | float | datetime | date | None = None,
         training_dataset_version: int | None = None,
@@ -314,13 +324,13 @@ class StatisticsEngine:
         If the computation time is not provided, all the statistics will be retrieved.
 
         Parameters:
-            metadata_instance: Union[FeatureGroup, TrainingDataset]. Metadata of the entity containing the data.
-            feature_names: List[str]. List of feature names of which statistics are retrieved.
-            computation_time: Union[str, int, float, datetime, date]. Timestamp or computation time when statistics where computed.
-            training_dataset_version: int. Version of the training dataset on which statistics were computed.
+            metadata_instance: Metadata of the entity containing the data.
+            feature_names: List of feature names of which statistics are retrieved.
+            computation_time: Timestamp or computation time when statistics where computed.
+            training_dataset_version: Version of the training dataset on which statistics were computed.
 
         Returns:
-            Statistics. Statistics metadata containing a list of single feature descriptive statistics.
+            Statistics metadata containing a list of single feature descriptive statistics.
         """
         return self._statistics_api.get_all(
             metadata_instance,
@@ -336,7 +346,7 @@ class StatisticsEngine:
     )
     def get_by_time_window(
         self,
-        metadata_instance,
+        metadata_instance: feature_group.FeatureGroup | training_dataset.TrainingDataset,
         start_commit_time: str | int | datetime | date | None = None,
         end_commit_time: str | int | datetime | date | None = None,
         feature_names: list[str] | None = None,
@@ -345,13 +355,14 @@ class StatisticsEngine:
         """Get the statistics of an entity based on a commit time window.
 
         Parameters:
-            metadata_instance: Union[FeatureGroup]: Metadata of the entity containing the data.
-            start_commit_time: int: Window start commit time
-            end_commit_time: int: Window end commit time
-            feature_names: List[str]. List of feature names of which statistics are retrieved.
-            row_percentage: float. Percentage of feature values used during statistics computation
+            metadata_instance: Metadata of the entity containing the data.
+            start_commit_time: Window start commit time
+            end_commit_time: Window end commit time
+            feature_names: List of feature names of which statistics are retrieved.
+            row_percentage: Percentage of feature values used during statistics computation
+
         Returns:
-            Statistics:  Statistics metadata containing a list of single feature descriptive statistics.
+            Statistics metadata containing a list of single feature descriptive statistics.
         """
         start_commit_time = util.convert_event_time_to_timestamp(start_commit_time)
         end_commit_time = util.convert_event_time_to_timestamp(end_commit_time)

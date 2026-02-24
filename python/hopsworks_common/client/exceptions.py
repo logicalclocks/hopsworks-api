@@ -176,7 +176,10 @@ class InternalClientError(TypeError):
 @public("hopsworks.client.exceptions.HopsworksSSLClientError")
 @also_available_as("hsml.client.exceptions.HopsworksSSLClientError")
 class HopsworksSSLClientError(SSLError):
-    """Raised when the client connection fails with SSL related errors."""
+    """Raised when the client connection fails with SSL related errors.
+
+    `SSLError` inherits from [`requests.exceptions.ConnectionError`][requests.exceptions.ConnectionError].
+    """
 
     def __init__(self, message: str) -> None:
         super().__init__(message)

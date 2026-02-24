@@ -856,11 +856,11 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.get_tag(self, name)
 
     @public
-    def get_tags(self):
+    def get_tags(self) -> dict[str, tag.Tag]:
         """Returns all tags attached to a training dataset.
 
         Returns:
-            `Dict[str, obj]` of tags.
+            Dictionary of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
@@ -1103,7 +1103,7 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def get_serving_vectors(
         self, entry: dict[str, list[Any]], external: bool | None = None
-    ):
+    ) -> list[list]:
         """Returns assembled serving vectors in batches from online feature store.
 
         Parameters:
@@ -1117,8 +1117,7 @@ class TrainingDataset(TrainingDatasetBase):
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
 
         Returns:
-            `List[list]` List of lists of feature values related to provided primary keys, ordered according to
-            positions of this features in training dataset query.
+            List of lists of feature values related to provided primary keys, ordered according to positions of this features in training dataset query.
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)

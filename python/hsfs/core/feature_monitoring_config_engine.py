@@ -267,20 +267,16 @@ class FeatureMonitoringConfigEngine:
         it fetches a single configuration and returns None if not found.
 
         Parameters:
-            name: str, optional
-                If provided, fetch only configuration with given name.
-            feature_name: str, optional
-                If provided, fetch all configurations attached to a specific feature.
-            config_id: int, optional
-                If provided, fetch only configuration with given id.
+            name: If provided, fetch only configuration with given name.
+            feature_name: If provided, fetch all configurations attached to a specific feature.
+            config_id: If provided, fetch only configuration with given id.
 
         Raises:
             ValueError: If both name and feature_name are provided.
             TypeError: If name or feature_name are not strings.
 
         Returns:
-            FeatureMonitoringConfig or List[FeatureMonitoringConfig] The monitoring
-            configuration(s).
+            The monitoring configuration(s).
         """
         if any(
             [
@@ -346,13 +342,11 @@ class FeatureMonitoringConfigEngine:
         """Main function used by the job to actually perform the monitoring.
 
         Parameters:
-            entity: Union[feature_group.FeatureGroup, "feature_view.FeatureView"]
-                Featuregroup or Featureview object containing the feature to monitor.
-            config_name: str: name of the monitoring config.
+            entity: Featuregroup or Featureview object containing the feature to monitor.
+            config_name: name of the monitoring config.
 
         Returns:
-            List[FeatureMonitoringResult]: A list of result object describing the
-                outcome of the monitoring.
+            A list of result object describing the outcome of the monitoring.
         """
         config = self._feature_monitoring_config_api.get_by_name(config_name)
 
@@ -403,28 +397,21 @@ class FeatureMonitoringConfigEngine:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
         Parameters:
-            name: str, required
-                Name of the feature monitoring configuration, must be unique for
-                the feature view or feature group.
-            feature_name: str, optional
-                If provided, compute statistics only for this feature. If none,
-                defaults, compute statistics for all features.
-            cron_expression: str, optional
-                cron expression defining the schedule for computing statistics. The expression
-                must be in UTC timezone and based on Quartz cron syntax. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
-            start_date_time: Union[str, int, date, datetime, pd.Timestamp], optional
-                Statistics will start being computed on schedule from that time.
-            end_date_time: Union[str, int, date, datetime, pd.Timestamp], optional
-                Statistics will stop being computed on schedule from that time.
-            description: str, optional
-                Description of the feature monitoring configuration.
-            valid_feature_names: List[str], optional
-                List of the feature names for the feature view or feature group.
+            name: Name of the feature monitoring configuration, must be unique for the feature view or feature group.
+            feature_name:
+                If provided, compute statistics only for this feature.
+                If `None`, compute statistics for all features.
+            cron_expression:
+                The cron expression defining the schedule for computing statistics.
+                The expression must be in UTC timezone and based on Quartz cron syntax.
+                Default is '0 0 12 ? * * *', every day at 12pm UTC.
+            start_date_time: Statistics will start being computed on schedule from that time.
+            end_date_time: Statistics will stop being computed on schedule from that time.
+            description: Description of the feature monitoring configuration.
+            valid_feature_names: List of the feature names for the feature view or feature group.
 
         Returns:
-            FeatureMonitoringConfig A Feature Monitoring Configuration to compute
-              the statistics of a snapshot of all data present in the entity.
+            A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.
         """
         self.validate_config_name(name)
         self.validate_description(description)
@@ -461,28 +448,21 @@ class FeatureMonitoringConfigEngine:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
         Parameters:
-            name: str, required
-                Name of the feature monitoring configuration, must be unique for
-                the feature view or feature group.
-            feature_name: str, optional
-                If provided, compute statistics only for this feature. If none,
-                defaults, compute statistics for all features.
-            cron_expression: str, optional
-                cron expression defining the schedule for computing statistics. The expression
-                must be in UTC timezone and based on Quartz cron syntax. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
-            start_date_time: Union[str, int, date, datetime, pd.Timestamp], optional
-                Statistics will start being computed on schedule from that time.
-            end_date_time: Union[str, int, date, datetime, pd.Timestamp], optional
-                Statistics will stop being computed on schedule from that time.
-            description: str, optional
-                Description of the feature monitoring configuration.
-            valid_feature_names: List[str], optional
-                List of the feature names for the feature view or feature group.
+            name: Name of the feature monitoring configuration, must be unique for the feature view or feature group.
+            feature_name:
+                If provided, compute statistics only for this feature.
+                If `None`, compute statistics for all features.
+            cron_expression:
+                The cron expression defining the schedule for computing statistics.
+                The expression must be in UTC timezone and based on Quartz cron syntax.
+                Default is '0 0 12 ? * * *', every day at 12pm UTC.
+            start_date_time: Statistics will start being computed on schedule from that time.
+            end_date_time: Statistics will stop being computed on schedule from that time.
+            description: Description of the feature monitoring configuration.
+            valid_feature_names: List of the feature names for the feature view or feature group.
 
         Returns:
-            FeatureMonitoringConfig A Feature Monitoring Configuration to compute
-              the statistics of a snapshot of all data present in the entity.
+            A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.
         """
         self.validate_feature_name(feature_name, valid_feature_names)
         self.validate_config_name(name)

@@ -50,14 +50,14 @@ class OnlineIngestionResult:
         self._rows = rows
 
     @classmethod
-    def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineIngestionResult:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineIngestionResult | list[OnlineIngestionResult] | None:
         """Create an OnlineIngestionResult object (or list of objects) from a JSON response.
 
         Parameters:
             json_dict: The JSON dictionary from the API response.
 
         Returns:
-            OnlineIngestionResult or List[OnlineIngestionResult] or None: The created object(s), or None if input is None.
+            The created object(s), or `None` if input is `None`.
         """
         if json_dict is None:
             return None

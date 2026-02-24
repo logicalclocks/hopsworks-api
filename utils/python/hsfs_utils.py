@@ -29,7 +29,7 @@ from pyspark.sql.types import StructField, StructType, _parse_datatype_string
 from pyspark.sql.window import Window
 
 
-def read_job_conf(path: str) -> Dict[Any, Any]:
+def read_job_conf(path: str) -> dict[Any, Any]:
     """
     The configuration file is passed as path on HopsFS
     The path is a JSON containing different values depending on the op type
@@ -61,7 +61,7 @@ def sort_schema(fg_schema: StructType, csv_df_schema: StructType) -> StructType:
     return StructType([f[0] for f in fg_schema_sorted])
 
 
-def get_fg_spark_df(job_conf: Dict[Any, Any], fg_schema: StructType) -> Any:
+def get_fg_spark_df(job_conf: dict[Any, Any], fg_schema: StructType) -> Any:
     data_path = job_conf.pop("data_path")
     data_format = job_conf.pop("data_format")
     data_options = job_conf.pop("data_options")
@@ -78,7 +78,7 @@ def get_fg_spark_df(job_conf: Dict[Any, Any], fg_schema: StructType) -> Any:
     )
 
 
-def insert_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
+def insert_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> None:
     """
     Insert data into a feature group.
     The data path, feature group name and versions are in the configuration file
@@ -96,7 +96,7 @@ def insert_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
     fg.insert(df, write_options=job_conf.pop("write_options", {}) or {})
 
 
-def create_td(job_conf: Dict[Any, Any]) -> None:
+def create_td(job_conf: dict[Any, Any]) -> None:
     # Extract the feature store handle
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
@@ -112,7 +112,7 @@ def create_td(job_conf: Dict[Any, Any]) -> None:
     )
 
 
-def create_fv_td(job_conf: Dict[Any, Any]) -> None:
+def create_fv_td(job_conf: dict[Any, Any]) -> None:
     # Extract the feature store handle
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
@@ -135,7 +135,7 @@ def create_fv_td(job_conf: Dict[Any, Any]) -> None:
     )
 
 
-def compute_stats(job_conf: Dict[Any, Any]) -> None:
+def compute_stats(job_conf: dict[Any, Any]) -> None:
     """
     Compute/Update statistics on a feature group
     """
@@ -161,7 +161,7 @@ def compute_stats(job_conf: Dict[Any, Any]) -> None:
     entity.compute_statistics()
 
 
-def ge_validate(job_conf: Dict[Any, Any]) -> None:
+def ge_validate(job_conf: dict[Any, Any]) -> None:
     """
     Run expectation suite attached to a feature group.
     """
@@ -177,7 +177,7 @@ def ge_validate(job_conf: Dict[Any, Any]) -> None:
     )
 
 
-def import_fg(job_conf: Dict[Any, Any]) -> None:
+def import_fg(job_conf: dict[Any, Any]) -> None:
     """
     Import data to a feature group using storage connector.
     """
@@ -207,7 +207,7 @@ def import_fg(job_conf: Dict[Any, Any]) -> None:
     fg.insert(df)
 
 
-def run_feature_monitoring(job_conf: Dict[str, str]) -> None:
+def run_feature_monitoring(job_conf: dict[str, str]) -> None:
     """
     Run feature monitoring for a given entity (feature_group or feature_view)
     based on a feature monitoring configuration.
@@ -255,7 +255,7 @@ def run_feature_monitoring(job_conf: Dict[str, str]) -> None:
         raise e
 
 
-def delta_vacuum_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
+def delta_vacuum_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> None:
     """
     Run delta vacuum on a feature group.
     """
@@ -268,7 +268,7 @@ def delta_vacuum_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
 
 
 def offline_fg_materialization(
-    spark: SparkSession, job_conf: Dict[Any, Any], initial_check_point_string: str
+    spark: SparkSession, job_conf: dict[Any, Any], initial_check_point_string: str
 ) -> None:
     """
     Run materialization job on a feature group.
@@ -407,7 +407,7 @@ def offline_fg_materialization(
     offset_df.coalesce(1).write.mode("overwrite").json(offset_location)
 
 
-def update_table_schema_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
+def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> None:
     """
     Run table schema update job on a feature group.
     """

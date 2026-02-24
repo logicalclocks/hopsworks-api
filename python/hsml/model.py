@@ -348,7 +348,7 @@ class Model:
         """Retrieves all tags attached to a model.
 
         Returns:
-            `Dict[str, obj]` of tags.
+            Dictionary of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
