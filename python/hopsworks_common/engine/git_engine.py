@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from hopsworks_common.git_op_execution import GitOpExecution
 
 
-
 @also_available_as("hopsworks.engine.git_engine.GitEngine")
 class GitEngine:
     def __init__(self):

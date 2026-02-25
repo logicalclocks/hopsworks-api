@@ -35,7 +35,10 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 feature_group.data_source.database
                 and feature_group.data_source.group
                 and feature_group.data_source.table
-            ) or (feature_group.data_source.query and not engine.get_type().startswith("spark")):
+            ) or (
+                feature_group.data_source.query
+                and not engine.get_type().startswith("spark")
+            ):
                 # If the user provided a data source, we can use it to infer the schema
                 feature_group._features = [
                     feature.Feature.from_response_json(feat)
