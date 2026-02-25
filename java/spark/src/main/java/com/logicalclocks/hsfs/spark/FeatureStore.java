@@ -987,24 +987,24 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   }
 
   /**
-   * Get a previously created rds compliant storage connector from the feature store.
+   * Get a previously created SQL storage connector from the feature store.
    *
    * <pre>
    * {@code
    *        // get feature store handle
    *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
-   *        StorageConnector.RdsConnector rdsSc = fs.getRdsConnector("gsc_sc_name");
+   *        StorageConnector.SqlConnector sqlSc = fs.getSqlConnector("sql_sc_name");
    * }
    * </pre>
    *
    * @param name Name of the storage connector to retrieve.
-   * @return StorageConnector.RdsConnector Storage connector object.
+   * @return StorageConnector.SqlConnector Storage connector object.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
   @Override
-  public StorageConnector.RdsConnector getRdsConnector(String name) throws FeatureStoreException, IOException {
-    return storageConnectorApi.getByName(this, name, StorageConnector.RdsConnector.class);
+  public StorageConnector.SqlConnector getSqlConnector(String name) throws FeatureStoreException, IOException {
+    return storageConnectorApi.getByName(this, name, StorageConnector.SqlConnector.class);
   }
 
   @Deprecated

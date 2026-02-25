@@ -58,7 +58,7 @@ import java.util.stream.Collectors;
     @JsonSubTypes.Type(value = StorageConnector.KafkaConnector.class, name = "KAFKA"),
     @JsonSubTypes.Type(value = StorageConnector.GcsConnector.class, name = "GCS"),
     @JsonSubTypes.Type(value = StorageConnector.BigqueryConnector.class, name = "BIGQUERY"),
-    @JsonSubTypes.Type(value = StorageConnector.RdsConnector.class, name = "RDS")
+    @JsonSubTypes.Type(value = StorageConnector.SqlConnector.class, name = "SQL")
 })
 public abstract class StorageConnector {
 
@@ -583,7 +583,23 @@ public abstract class StorageConnector {
     }
   }
 
-  public static class RdsConnector extends StorageConnector {
+  public static class SqlConnector extends StorageConnector {
+
+    public static final String MYSQL = "MYSQL";
+    public static final String POSTGRESQL = "POSTGRESQL";
+
+    private static final Map<String, String> DRIVERS = new HashMap<String, String>() {{
+        put(MYSQL, "com.mysql.cj.jdbc.Driver");
+        put(POSTGRESQL, "org.postgresql.Driver");
+      }};
+
+    private static final Map<String, String> JDBC_SCHEMES = new HashMap<String, String>() {{
+        put(MYSQL, "mysql");
+        put(POSTGRESQL, "postgresql");
+      }};
+
+    @Getter @Setter
+    protected String databaseType;
 
     @Getter @Setter
     protected String host;
@@ -601,22 +617,19 @@ public abstract class StorageConnector {
     protected String password;
 
     @Getter @Setter
-    protected List<Option>  arguments;
+    protected List<Option> arguments;
 
-    /**
-     * Set spark options specific to Rds.
-     * @return Map
-     */
     @Override
     public Map<String, String> sparkOptions(DataSource dataSource) {
       String databaseName = dataSource == null ? database : dataSource.getDatabase();
+      String scheme = JDBC_SCHEMES.getOrDefault(databaseType, JDBC_SCHEMES.get(POSTGRESQL));
+      String driver = DRIVERS.getOrDefault(databaseType, DRIVERS.get(POSTGRESQL));
 
       Map<String, String> options = new HashMap<>();
-      options.put("url", "jdbc:postgresql://" + getHost() + ":" + getPort()
-          + "/" + databaseName);
-      options.put("user", getUser());
-      options.put("password", getPassword());
-      options.put("driver", "org.postgresql.Driver");
+      options.put(Constants.JDBC_URL, "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + "/" + databaseName);
+      options.put(Constants.JDBC_USER, getUser());
+      options.put(Constants.JDBC_PWD, getPassword());
+      options.put(Constants.JDBC_DRIVER, driver);
       if (arguments != null && !arguments.isEmpty()) {
         Map<String, String> argOptions = arguments.stream()
             .collect(Collectors.toMap(Option::getName, Option::getValue));
@@ -626,7 +639,8 @@ public abstract class StorageConnector {
     }
 
     public void update() throws FeatureStoreException, IOException {
-      RdsConnector updatedConnector = (RdsConnector) refetch();
+      SqlConnector updatedConnector = (SqlConnector) refetch();
+      this.databaseType = updatedConnector.getDatabaseType();
       this.host = updatedConnector.getHost();
       this.port = updatedConnector.getPort();
       this.database = updatedConnector.getDatabase();

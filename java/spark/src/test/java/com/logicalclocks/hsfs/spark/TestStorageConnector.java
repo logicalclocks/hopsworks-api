@@ -181,13 +181,13 @@ public class TestStorageConnector {
   }
 
   @Nested
-  class Rds {
+  class Sql {
     @Test
-    public void test_read() throws Exception {
+    public void test_read_postgresql() throws Exception {
       // Arrange
-      StorageConnector.RdsConnector connector = new StorageConnector.RdsConnector();
+      StorageConnector.SqlConnector connector = new StorageConnector.SqlConnector();
 
-      StorageConnector.RdsConnector spyConnector = spy(connector);
+      StorageConnector.SqlConnector spyConnector = spy(connector);
       doNothing().when(spyConnector).update();
 
       SparkEngine sparkEngine = Mockito.mock(SparkEngine.class);
@@ -212,6 +212,51 @@ public class TestStorageConnector {
       expectedOptions.put("driver", "org.postgresql.Driver");
       expectedOptions.put("user", null);
       expectedOptions.put("password", null);
+
+      // Act
+      storageConnectorUtils.read(spyConnector, dataSource, null);
+
+      // Assert
+      Mockito.verify(sparkEngine).read(Mockito.any(), formatArg.capture(), mapArg.capture(), pathArg.capture());
+      Assertions.assertEquals(formatArg.getValue(), Constants.JDBC_FORMAT);
+      Assertions.assertEquals(mapArg.getValue(), expectedOptions);
+      Assertions.assertEquals(null, pathArg.getValue());
+      // clear static instance
+      SparkEngine.setInstance(null);
+    }
+
+    @Test
+    public void test_read_mysql() throws Exception {
+      // Arrange
+      StorageConnector.SqlConnector connector = new StorageConnector.SqlConnector();
+      connector.setDatabaseType(StorageConnector.SqlConnector.MYSQL);
+      connector.setHost("localhost");
+      connector.setPort(3306);
+      connector.setUser("test_user");
+      connector.setPassword("test_password");
+
+      StorageConnector.SqlConnector spyConnector = spy(connector);
+      doNothing().when(spyConnector).update();
+
+      SparkEngine sparkEngine = Mockito.mock(SparkEngine.class);
+      SparkEngine.setInstance(sparkEngine);
+
+      StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
+      ArgumentCaptor<String> formatArg = ArgumentCaptor.forClass(String.class);
+      ArgumentCaptor<Map> mapArg = ArgumentCaptor.forClass(Map.class);
+      ArgumentCaptor<String> pathArg = ArgumentCaptor.forClass(String.class);
+      String query = "select * from dbtable";
+
+      DataSource dataSource = new DataSource();
+      dataSource.setQuery(query);
+      dataSource.setDatabase("test_database");
+
+      Map<String, String> expectedOptions = new HashMap<>();
+      expectedOptions.put("query", query);
+      expectedOptions.put("url", "jdbc:mysql://localhost:3306/test_database");
+      expectedOptions.put("driver", "com.mysql.cj.jdbc.Driver");
+      expectedOptions.put("user", "test_user");
+      expectedOptions.put("password", "test_password");
 
       // Act
       storageConnectorUtils.read(spyConnector, dataSource, null);

@@ -20,7 +20,7 @@ package com.logicalclocks.hsfs;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logicalclocks.hsfs.StorageConnector.BigqueryConnector;
-import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+import com.logicalclocks.hsfs.StorageConnector.SqlConnector;
 import com.logicalclocks.hsfs.StorageConnector.RedshiftConnector;
 import com.logicalclocks.hsfs.StorageConnector.S3Connector;
 import com.logicalclocks.hsfs.StorageConnector.SnowflakeConnector;
@@ -92,15 +92,15 @@ class TestDataSource {
   }
 
   @Test
-  void testUpdateStorageConnectorRds() {
+  void testUpdateStorageConnectorSql() {
     // Arrange
     DataSource ds = new DataSource();
     ds.setDatabase("test_database");
     ds.setGroup("test_group");
     ds.setTable("test_table");
 
-    RdsConnector sc = new RdsConnector();
-    sc.setStorageConnectorType(StorageConnectorType.RDS);
+    SqlConnector sc = new SqlConnector();
+    sc.setStorageConnectorType(StorageConnectorType.SQL);
 
     // Act
     ds.updateStorageConnector(sc);

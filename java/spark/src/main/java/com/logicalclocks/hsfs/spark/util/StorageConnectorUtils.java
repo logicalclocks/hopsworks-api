@@ -244,16 +244,16 @@ public class StorageConnectorUtils {
   }
 
   /**
-   * Reads a query or a path into a spark dataframe using the sBigqueryConnector.
+   * Reads a query into a spark dataframe using the SqlConnector.
    *
-   * @param connector RdsConnector object.
+   * @param connector SqlConnector object.
    * @param dataSource Data source object.
    * @param options Any additional key/value options to be passed to the connector.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.RdsConnector connector, DataSource dataSource,
+  public Dataset<Row> read(StorageConnector.SqlConnector connector, DataSource dataSource,
       Map<String, String> options) throws FeatureStoreException, IOException {
     connector.update();
     Map<String, String> readOptions = connector.sparkOptions(dataSource);
@@ -298,8 +298,8 @@ public class StorageConnectorUtils {
       return read((StorageConnector.GcsConnector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof StorageConnector.BigqueryConnector) {
       return read((StorageConnector.BigqueryConnector) connector, dataSource, options);
-    } else if (connector instanceof StorageConnector.RdsConnector) {
-      return read((StorageConnector.RdsConnector) connector, dataSource, options);
+    } else if (connector instanceof StorageConnector.SqlConnector) {
+      return read((StorageConnector.SqlConnector) connector, dataSource, options);
     } else if (connector instanceof StorageConnector.KafkaConnector) {
       throw new NotSupportedException("Reading a Kafka Stream into a static Spark Dataframe is not supported.");
     } else {

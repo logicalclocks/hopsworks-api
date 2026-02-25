@@ -441,5 +441,5 @@ class DataSource:
                 storage_connector._dataset = self.group
             if self.table:
                 storage_connector._query_table = self.table
-        if storage_connector.type == sc.StorageConnector.RDS and self.database:
+        if storage_connector.type == sc.StorageConnector.SQL and self.database:
             storage_connector._database = self.database
