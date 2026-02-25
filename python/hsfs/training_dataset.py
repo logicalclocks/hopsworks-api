@@ -23,7 +23,8 @@ from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import engine, tag, training_dataset_feature, util
-from hsfs.constructor import filter, query
+from hsfs.constructor import filter
+from hsfs.constructor import query as query_module
 from hsfs.core import data_source as ds
 from hsfs.core import (
     statistics_engine,
@@ -644,7 +645,7 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def save(
         self,
-        features: query.Query
+        features: query_module.Query
         | pd.DataFrame
         | TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -703,7 +704,7 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def insert(
         self,
-        features: query.Query
+        features: query_module.Query
         | pd.DataFrame
         | TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
