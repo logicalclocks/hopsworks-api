@@ -217,7 +217,6 @@ class Deployment:
             data = { "instances": [ my_model.input_example ], "key2": "value2" }
             predictions = my_deployment.predict(data)
             ```
-
         # Arguments
             data: Payload dictionary for the inference request including the model input(s)
             inputs: Model inputs used in the inference requests
@@ -282,6 +281,69 @@ class Deployment:
             + str(self.id)
         )
         return util.get_hostname_replaced_url(path)
+
+    def get_endpoint_url(self) -> str | None:
+        """Get the base endpoint URL for this deployment.
+
+        Returns the base URL that can be used with external HTTP clients.
+        This is the path-based routing base endpoint without any protocol-specific
+        suffixes like `:predict` or `/v1`.
+
+        If Istio client is not available, returns `None`.
+
+        Returns:
+            Base endpoint URL, or `None` if unavailable.
+
+        Examples:
+            ```python
+            deployment = ms.get_deployment("my_deployment")
+            url = deployment.get_endpoint_url()
+            # url = "https://host:port/v1/project/name"
+            ```
+        """
+        return self._predictor.get_endpoint_url()
+
+    def get_openai_url(self) -> str | None:
+        """Get the OpenAI-compatible API URL for vLLM deployments.
+
+        Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
+        This method only returns a URL for LLM (vLLM) deployments.
+
+        Returns:
+            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment.
+
+        Examples:
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            url = deployment.get_openai_url()
+            # url = "https://host:port/v1/project/name/v1"
+            # Then use: url + "/chat/completions"
+            ```
+        """
+        return self._predictor.get_openai_url()
+
+    def get_inference_url(self) -> str | None:
+        """Get the KServe inference URL for standard model deployments.
+
+        Returns the full URL with `:predict` suffix for KServe inference protocol.
+        This method only returns a URL for standard model deployments (non-vLLM,
+        with a model attached).
+
+        If Istio client is not available, falls back to Hopsworks REST API path.
+
+        Returns:
+            Inference URL with `:predict` suffix, or `None` if not a standard model deployment.
+
+        Examples:
+            ```python
+            deployment = ms.get_deployment("my_deployment")
+            url = deployment.get_inference_url()
+            # Use with any HTTP client
+            import requests
+            response = requests.post(url, json={"instances": [[1, 2, 3]]})
+            ```
+        """
+        return self._predictor.get_inference_url()
 
     def describe(self):
         """Print a description of the deployment"""
