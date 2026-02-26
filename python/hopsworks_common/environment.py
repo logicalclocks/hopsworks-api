@@ -87,9 +87,7 @@ class Environment:
 
     @public
     @usage.method_logger
-    def install_wheel(
-        self, path: str, await_installation: bool | None = True
-    ) -> Library:  # TODO: publish Library or do no return it here
+    def install_wheel(self, path: str, await_installation: bool | None = True):
         """Install a python library packaged in a wheel file.
 
         ```python
@@ -112,9 +110,6 @@ class Environment:
             path: The path in Hopsworks where the wheel file is located.
             await_installation: If `True` the method returns only when the installation finishes.
 
-        Returns:
-            The library object.
-
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
@@ -132,20 +127,14 @@ class Environment:
             "packageSource": "WHEEL",
         }
 
-        library_rest = self._library_api._install(library_name, self.name, library_spec)
+        self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            return self._environment_engine.await_library_command(
-                self.name, library_name
-            )
-
-        return library_rest
+            self._environment_engine.await_library_command(self.name, library_name)
 
     @public
     @usage.method_logger
-    def install_requirements(
-        self, path: str, await_installation: bool | None = True
-    ) -> Library:  # TODO: publish Library or do no return it here
+    def install_requirements(self, path: str, await_installation: bool | None = True):
         """Install libraries specified in a `requirements.txt` file.
 
         ```python
@@ -168,9 +157,6 @@ class Environment:
             path: The path in Hopsworks where the `requirements.txt` file is located.
             await_installation: If `True` the method returns only when the installation is finished.
 
-        Returns:
-            The library object.
-
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
@@ -188,14 +174,10 @@ class Environment:
             "packageSource": "REQUIREMENTS_TXT",
         }
 
-        library_rest = self._library_api._install(library_name, self.name, library_spec)
+        self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            return self._environment_engine.await_library_command(
-                self.name, library_name
-            )
-
-        return library_rest
+            self._environment_engine.await_library_command(self.name, library_name)
 
     @public
     @usage.method_logger
