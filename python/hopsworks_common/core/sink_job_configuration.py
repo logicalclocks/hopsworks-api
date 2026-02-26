@@ -37,7 +37,7 @@ class LoadingStrategy(Enum):
     INCREMENTAL_DATE = "INCREMENTAL_DATE"
 
 
-@public
+@public("hopsworks.core.FeatureColumnMapping")
 class FeatureColumnMapping:
     def __init__(self, source_column: str, feature_name: str):
         self.source_column = source_column
@@ -76,7 +76,7 @@ class FeatureColumnMapping:
         self._feature_name = feature_name
 
 
-@public
+@public("hopsworks.core.LoadingConfig")
 class LoadingConfig:
     def __init__(
         self,
