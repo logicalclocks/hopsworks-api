@@ -24,7 +24,7 @@ from hopsworks_common import util
 from hopsworks_common.constants import RESOURCES, Default
 
 
-@public
+@public(order=1)
 class Resources:
     """Resource configuration for a predictor or transformer.
 
@@ -107,6 +107,7 @@ class Resources:
         return f"Resources(cores: {self._cores!r}, memory: {self._memory!r}, gpus: {self._gpus!r})"
 
 
+@public
 class ComponentResources(ABC):
     """Resource configuration for a predictor or transformer.
 
@@ -142,6 +143,7 @@ class ComponentResources(ABC):
             self._requests.gpus,
         )
 
+    @public
     def describe(self):
         """Print a JSON description of the resource configuration."""
         util.pretty_print(self)
@@ -204,6 +206,7 @@ class ComponentResources(ABC):
     def to_dict(self):
         pass
 
+    @public
     @property
     def num_instances(self):
         """Number of instances."""
@@ -223,6 +226,7 @@ class ComponentResources(ABC):
         )
         self._num_instances = num_instances
 
+    @public
     @property
     def requests(self):
         """Minimum resources to allocate."""
@@ -232,6 +236,7 @@ class ComponentResources(ABC):
     def requests(self, requests: Resources):
         self._resources = requests
 
+    @public
     @property
     def limits(self):
         """Maximum resources to allocate."""
@@ -245,6 +250,7 @@ class ComponentResources(ABC):
         return f"ComponentResources(num_instances: {self._num_instances!r}, requests: {self._requests is not None!r}, limits: {self._limits is not None!r})"
 
 
+@public
 class PredictorResources(ComponentResources):
     RESOURCES_CONFIG_KEY = "predictor_resources"
     NUM_INSTANCES_KEY = "requested_instances"
@@ -273,6 +279,7 @@ class PredictorResources(ComponentResources):
         }
 
 
+@public
 class TransformerResources(ComponentResources):
     RESOURCES_CONFIG_KEY = "transformer_resources"
     NUM_INSTANCES_KEY = "requested_transformer_instances"
