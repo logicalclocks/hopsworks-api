@@ -26,7 +26,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import engine, storage_connector, util
 from hsfs import feature_group as fg_mod
-from hsfs.constructor import join
+from hsfs.constructor import join as join_module
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import query_constructor_api, storage_connector_api
 from hsfs.decorators import typechecked
@@ -77,7 +77,7 @@ class Query:
         feature_store_id: int | None = None,
         left_feature_group_start_time: str | int | date | datetime | None = None,
         left_feature_group_end_time: str | int | date | datetime | None = None,
-        joins: list[join.Join] | None = None,
+        joins: list[join_module.Join] | None = None,
         filter: Filter | Logic | dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
@@ -162,7 +162,7 @@ class Query:
 
     def _extract_feature_to_feature_group_mapping_joins(
         self,
-        joins: list[join.Join],
+        joins: list[join_module.Join],
         ambiguous_feature_feature_group_mapping: dict[str, set[str]],
     ) -> tuple[dict[str, set[str]], set[str]]:
         """Function that extracts all the features in the list of joins and maps them to the feature group they are selected from.
@@ -400,7 +400,7 @@ class Query:
             A new Query object representing the join.
         """
         self._joins.append(
-            join.Join(
+            join_module.Join(
                 sub_query,
                 on or [],
                 left_on or [],
@@ -646,7 +646,7 @@ class Query:
                 "left_feature_group_end_time", None
             ),
             joins=[
-                join.Join.from_response_json(_join)
+                join_module.Join.from_response_json(_join)
                 for _join in json_decamelized.get("joins", [])
             ],
             filter=json_decamelized.get("filter", None),
@@ -883,7 +883,7 @@ class Query:
 
     @public
     @property
-    def joins(self) -> list[join.Join]:
+    def joins(self) -> list[join_module.Join]:
         """List of joins in the query."""
         return self._joins
 
