@@ -26,6 +26,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable
 
+from hopsworks_apigen import public
 from hsfs.core.feature_logging_client import (
     get_instance as get_feature_logging_client,
 )
@@ -149,6 +150,7 @@ class AsyncWorkerThread(threading.Thread):
         self._event_loop.stop()
 
 
+@public
 class AsyncFeatureLogger(FeatureLogger):
     def __init__(
         self,
@@ -178,6 +180,7 @@ class AsyncFeatureLogger(FeatureLogger):
             self._feature_logger_config["pool_size"] = max_concurrent_tasks
         self._feature_encoders = {}
 
+    @public
     def log(
         self,
         untransformed_features: list[dict] = None,
@@ -281,6 +284,7 @@ class AsyncFeatureLogger(FeatureLogger):
     def _avro_encode_features(self, complex_feature_encoder, feature_encoder, features):
         return encode_row(complex_feature_encoder, feature_encoder, features)
 
+    @public
     def close(self):
         """Close the async feature logger."""
         # Close the async worker thread

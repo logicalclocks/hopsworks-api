@@ -273,6 +273,7 @@ def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
     return HopsworksLoggingMetadataType
 
 
+# TODO: Rework whatever is going on here
 HopsworksLoggingMetadataType = NewType(
     "HopsworksLoggingMetadataType", create_extended_type(type)
 )  # Adding new type for type hinting and static analysis.

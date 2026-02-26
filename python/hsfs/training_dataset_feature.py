@@ -16,12 +16,14 @@
 from __future__ import annotations
 
 import humps
+from hopsworks_apigen import public
 from hsfs import feature as feature_mod
 from hsfs import feature_group as feature_group_mod
 from hsfs import util
 from hsfs.transformation_function import TransformationFunction, TransformationType
 
 
+@public
 class TrainingDatasetFeature:
     def __init__(
         self,
@@ -80,17 +82,20 @@ class TrainingDatasetFeature:
             )
         return cls(**json_decamelized)
 
+    @public
     def is_complex(self):
         """Returns true if the feature has a complex type."""
         return any(
             map(str(self._type).upper().startswith, feature_mod.Feature.COMPLEX_TYPES)
         )
 
+    @public
     @property
     def name(self):
         """Name of the feature."""
         return self._name
 
+    @public
     @property
     def type(self):
         """Data type of the feature in the feature store.
@@ -102,11 +107,13 @@ class TrainingDatasetFeature:
         """
         return self._type
 
+    @public
     @property
     def index(self):
         """Index of the feature in the training dataset, required to restore the correct order of features."""
         return self._index
 
+    @public
     @property
     def label(self):
         """Indicator if the feature is part of the prediction label."""
@@ -116,6 +123,7 @@ class TrainingDatasetFeature:
     def label(self, label):
         self._label = label
 
+    @public
     @property
     def inference_helper_column(self):
         """Indicator if it is feature."""
@@ -125,11 +133,13 @@ class TrainingDatasetFeature:
     def inference_helper_column(self, inference_helper_column):
         self._inference_helper_column = inference_helper_column
 
+    @public
     @property
     def on_demand_transformation_function(self) -> TransformationFunction:
         """Whether the feature is a on-demand feature computed using on-demand transformation functions."""
         return self._on_demand_transformation_function
 
+    @public
     @property
     def training_helper_column(self):
         """Indicator if it is feature."""
@@ -139,10 +149,12 @@ class TrainingDatasetFeature:
     def training_helper_column(self, training_helper_column):
         self._training_helper_column = training_helper_column
 
+    @public
     @property
     def feature_group(self):
         return self._feature_group
 
+    @public
     @property
     def feature_group_feature_name(self):
         return self._feature_group_feature_name

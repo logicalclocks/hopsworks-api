@@ -239,7 +239,7 @@ class TransformationStatistics:
     All statistics for a feature is initially initialized with null values and will be populated with values when training dataset is created for the soe.
 
     Parameters:
-        *features: `str`.
+        *features:
             The features for which training dataset statistics need to be computed.
 
     Example:

@@ -56,7 +56,8 @@ from hsfs import (
 from hsfs import (
     storage_connector as sc,
 )
-from hsfs.constructor import filter, query
+from hsfs.constructor import filter as filter_module
+from hsfs.constructor import query
 from hsfs.core import data_source as ds
 from hsfs.core import (
     deltastreamer_jobconf,
@@ -597,7 +598,7 @@ class FeatureGroupBase:
         return self.select_all()
 
     @public
-    def filter(self, f: filter.Filter | filter.Logic) -> query.Query:
+    def filter(self, f: filter_module.Filter | filter_module.Logic) -> query.Query:
         """Apply filter to the feature group.
 
         Selects all features and returns the resulting `Query` with the applied filter.
@@ -3831,7 +3832,7 @@ class FeatureGroup(FeatureGroupBase):
         write_options: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
-    ) -> TypeVar("StreamingQuery"):
+    ) -> TypeVar("pyspark.sql.streaming.StreamingQuery"):
         """Ingest a Spark Structured Streaming Dataframe to the online feature store.
 
         This method creates a long running Spark Streaming Query, you can control the termination of the query through the arguments.

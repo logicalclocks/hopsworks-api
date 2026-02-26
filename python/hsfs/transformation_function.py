@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+@public
 class TransformationType(Enum):
     """Class that store the possible types of transformation functions."""
 

@@ -89,6 +89,7 @@ if HAS_NUMPY:
 
 _logger = logging.getLogger(__name__)
 
+# TODO: Rework TrainingDatasetDataFrameTypes
 TrainingDatasetDataFrameTypes = Union[
     pd.DataFrame,
     TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
@@ -106,6 +107,7 @@ if HAS_POLARS:
     ]
 
 
+# TODO: Rework SplineDataFrameTypes
 SplineDataFrameTypes = Union[
     pd.DataFrame,
     TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
