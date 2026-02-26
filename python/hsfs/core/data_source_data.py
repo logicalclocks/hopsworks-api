@@ -34,7 +34,7 @@ class DataSourceData:
 
     def __init__(
         self,
-        limit: int | None = None,
+        limit: int = 50,
         features: list[feature.Feature] | None = None,
         preview: list[dict] | None = None,
         schema_fetch_failed: bool = False,
@@ -62,8 +62,8 @@ class DataSourceData:
 
     @public
     @property
-    def limit(self) -> int | None:
-        """The total number of rows available, if it is known."""
+    def limit(self) -> int:
+        """The number of expected preview rows."""
         return self._limit
 
     @public
