@@ -458,6 +458,7 @@ class FeatureStore:
         """
         return self.get_data_source(name).storage_connector
 
+    @public
     @usage.method_logger
     def get_data_source(self, name: str) -> ds.DataSource:
         """Get a data source from the feature store.

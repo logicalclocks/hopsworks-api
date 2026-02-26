@@ -29,6 +29,7 @@ from hsfs.core.vector_db_client import VectorDbClient
 
 if TYPE_CHECKING:
     from hsfs.feature_group import FeatureGroup
+    from hsml.model import Model
 
 
 @public
@@ -122,19 +123,19 @@ class EmbeddingFeature:
         similarity_function_type:
             The type of similarity function used for the embedding feature.
             Available functions are `L2`, `COSINE`, and `DOT_PRODUCT`.
-        model: `hsml.model.Model` A Model in hsml.
+        model: A Model in hsml.
         feature_group: The feature group object that contains the embedding feature.
-        embedding_index: `EmbeddingIndex` The index for managing embedding features.
+        embedding_index: The index for managing embedding features.
     """
 
     def __init__(
         self,
-        name: str = None,
-        dimension: int = None,
+        name: str | None = None,
+        dimension: int | None = None,
         similarity_function_type: SimilarityFunctionType = SimilarityFunctionType.L2,
-        model=None,
-        feature_group=None,
-        embedding_index=None,
+        model: Model | None = None,
+        feature_group: FeatureGroup | None = None,
+        embedding_index: EmbeddingIndex | None = None,
     ):
         self._name = name
         self._dimension = dimension
@@ -176,26 +177,26 @@ class EmbeddingFeature:
 
     @public
     @property
-    def dimension(self):
-        """int: The dimensionality of the embedding feature."""
+    def dimension(self) -> int:
+        """The dimensionality of the embedding feature."""
         return self._dimension
 
     @public
     @property
-    def similarity_function_type(self):
+    def similarity_function_type(self) -> SimilarityFunctionType:
         """SimilarityFunctionType: The type of similarity function used for the embedding feature."""
         return self._similarity_function_type
 
     @public
     @property
-    def model(self):
-        """hsml.model.Model: The Model in hsml."""
+    def model(self) -> Model | None:
+        """The Model in hsml."""
         return self._model
 
     @public
     @property
-    def feature_group(self):
-        """FeatureGroup: The feature group object that contains the embedding feature."""
+    def feature_group(self) -> FeatureGroup | None:
+        """The feature group object that contains the embedding feature."""
         return self._feature_group
 
     @feature_group.setter
@@ -209,8 +210,8 @@ class EmbeddingFeature:
 
     @public
     @property
-    def embedding_index(self):
-        """EmbeddingIndex: The index for managing embedding features."""
+    def embedding_index(self) -> EmbeddingIndex | None:
+        """The index for managing embedding features."""
         return self._embedding_index
 
     @embedding_index.setter
@@ -253,7 +254,7 @@ class EmbeddingIndex:
         index_name:
             The name of the embedding index.
             The name of the project index is used if not provided.
-        features: A list of `EmbeddingFeature` objects for the features that contain embeddings that should be indexed for similarity search.
+        features: A list of the features that contain embeddings that should be indexed for similarity search.
         col_prefix:
             The prefix to be added to column names when using project index.
             It is managed by Hopsworks and should not be provided.
@@ -286,9 +287,8 @@ class EmbeddingIndex:
         self,
         name: str,
         dimension: int,
-        similarity_function_type: SimilarityFunctionType
-        | None = SimilarityFunctionType.L2,
-        model=None,
+        similarity_function_type: SimilarityFunctionType = SimilarityFunctionType.L2,
+        model: Model | None = None,
     ):
         """Adds a new embedding feature to the index.
 
@@ -341,7 +341,7 @@ class EmbeddingIndex:
         return self._features.values()
 
     @public
-    def count(self, options: map = None) -> int:
+    def count(self, options: dict | None = None) -> int:
         """Count the number of records in the feature group.
 
         Parameters:
@@ -374,25 +374,25 @@ class EmbeddingIndex:
 
     @public
     @property
-    def feature_group(self):
-        """FeatureGroup: The feature group object that contains the embedding feature."""
+    def feature_group(self) -> FeatureGroup | None:
+        """The feature group object that contains the embedding feature."""
         return self._feature_group
 
     @feature_group.setter
-    def feature_group(self, feature_group):
+    def feature_group(self, feature_group: FeatureGroup | None) -> None:
         """Setter for the feature group object."""
         self._feature_group = feature_group
 
     @public
     @property
-    def index_name(self):
-        """str: The name of the embedding index."""
+    def index_name(self) -> str:
+        """The name of the embedding index."""
         return self._index_name
 
     @public
     @property
-    def col_prefix(self):
-        """str: The prefix to be added to column names."""
+    def col_prefix(self) -> str:
+        """The prefix to be added to column names."""
         return self._col_prefix
 
     def json(self):

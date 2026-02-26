@@ -24,7 +24,7 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
@@ -100,7 +100,7 @@ def _handle_opensearch_exception(func):
     return error_handler_wrapper
 
 
-@also_available_as(
+@public(
     "hopsworks.core.opensearch.OpensearchRequestOption",
     "hsfs.core.opensearch.OpensearchRequestOption",
 )
@@ -115,10 +115,13 @@ class OpensearchRequestOption:
         "timeout": 30,
     }
 
+    @public
     @classmethod
-    def get_version(cls):
+    def get_version(cls) -> tuple[int, int]:
+        """Get the major and minor version of the opensearch client."""
         return opensearchpy.__version__[0:2]
 
+    @public
     @classmethod
     def get_options(cls, options: dict):
         """Construct a map of options for the request to the vector database.

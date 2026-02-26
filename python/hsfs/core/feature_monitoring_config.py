@@ -38,8 +38,8 @@ if TYPE_CHECKING:
     import builtins
     from datetime import date, datetime
 
+    from hopsworks_common.job import Job
     from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
-    from python.hopsworks_common.job import Job
 
 
 MAX_LENGTH_DESCRIPTION = 2000

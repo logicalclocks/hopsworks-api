@@ -29,7 +29,13 @@ if TYPE_CHECKING:
     import builtins
 
 
+@public
 class WindowConfigType(str, Enum):
+    """Type of the window.
+
+    It can be one of `"ALL_TIME"`, `"ROLLING_TIME"`, `"TRAINING_DATASET"` or `"SPECIFIC_VALUE"`.
+    """
+
     ALL_TIME = "ALL_TIME"
     ROLLING_TIME = "ROLLING_TIME"
     TRAINING_DATASET = "TRAINING_DATASET"
