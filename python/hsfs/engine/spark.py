@@ -545,7 +545,9 @@ class Engine:
                     "No duplicate records found. Proceeding with Delta write."
                 )
 
-            if not isinstance(feature_group, fg_mod.ExternalFeatureGroup) and storage in [None, "offline"]:
+            if not isinstance(
+                feature_group, fg_mod.ExternalFeatureGroup
+            ) and storage in [None, "offline"]:
                 self._save_offline_dataframe(
                     feature_group,
                     dataframe,

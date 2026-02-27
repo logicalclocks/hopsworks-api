@@ -1015,7 +1015,7 @@ class TestSpark:
             (False, "online", False, 0, 0),
             ## online_enabled
             (True, None, False, 1, 1),
-            (True, "offline", False, 0, 1), 
+            (True, "offline", False, 0, 1),
             (True, "online", False, 1, 0),
             # stream fg
             ## not online_enabled
@@ -1070,8 +1070,13 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
-        assert mock_spark_engine_save_offline_dataframe.call_count == expected_offline_calls
+        assert (
+            mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
+        )
+        assert (
+            mock_spark_engine_save_offline_dataframe.call_count
+            == expected_offline_calls
+        )
 
     @pytest.mark.parametrize(
         "online_enabled, storage, expected_online_calls, expected_offline_calls",
@@ -1122,8 +1127,13 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
-        assert mock_spark_engine_save_offline_dataframe.call_count == expected_offline_calls
+        assert (
+            mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
+        )
+        assert (
+            mock_spark_engine_save_offline_dataframe.call_count
+            == expected_offline_calls
+        )
 
     def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
         # Arrange
