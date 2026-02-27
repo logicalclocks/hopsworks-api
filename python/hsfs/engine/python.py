@@ -1724,7 +1724,9 @@ class Engine:
         producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
             feature_group,
             offline_write_options,
-            num_entries=len(dataframe),
+            num_entries=None
+            if offline_write_options.get("disable_online_ingestion_count", False)
+            else len(dataframe),
         )
 
         if not feature_group._multi_part_insert:
