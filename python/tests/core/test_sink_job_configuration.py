@@ -174,12 +174,12 @@ class TestSinkJobConfiguration:
             featuregroup_id=1,
             featurestore_id=2,
             storage_connector_id=3,
-            endpoint_config={"url": "http://example"},
+            endpoint_config={"relativeUrl": "/example"},
             name="new_name",
         )
 
         assert config.to_dict()["featuregroupId"] == 1
         assert config.to_dict()["featurestoreId"] == 2
         assert config.to_dict()["storageConnectorId"] == 3
-        assert config.to_dict()["endpointConfig"] == {"url": "http://example"}
+        assert config.to_dict()["endpointConfig"] == {"relativeUrl": "/example"}
         assert config.to_dict()["name"] == "new_name"
