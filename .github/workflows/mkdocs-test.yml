@@ -59,7 +59,7 @@ jobs:
 
       - name: Check mkdocs warnings
         working-directory: logicalclocks.github.io
-        run: ls -lah; ls -lah docs; mkdocs build -s
+        run: ls -lahR docs; mkdocs build -s
 
       - name: Check for broken links
         working-directory: logicalclocks.github.io
