@@ -147,7 +147,6 @@ class FeatureGroupBase:
             Overrides `online_config.table_space`.
             Defaults to using cluster wide configuration `featurestore_online_tablespace` to identify tablespace for disk storage.
         sink_enabled: Whether to enable sink from data source to feature group. A storage connector and data source must be defined for the feature group.
-        **kwargs: Additional keyword arguments
     """
 
     NOT_FOUND_ERROR_CODE = 270009
@@ -2013,7 +2012,7 @@ class FeatureGroupBase:
         )
 
     @public
-    def get_online_ingestion(self, id) -> online_ingestion.OnlineIngestion:
+    def get_online_ingestion(self, id: int) -> online_ingestion.OnlineIngestion:
         """Retrieve a specific online ingestion operation by its ID for this feature group.
 
         This method fetches metadata about a particular online ingestion job, including its status and progress, if available.

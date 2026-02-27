@@ -215,8 +215,7 @@ class ModelServing:
         Parameters:
             model: Model to be deployed.
             name: Name of the predictor.
-            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
-            or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
             config_file: Model server configuration file to be passed to the model deployment.

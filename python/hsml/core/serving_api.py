@@ -385,7 +385,7 @@ class ServingApi:
 
         Inference requests sent to this path will be forwarded by Hopsworks to the Istio ingress endpoint.
 
-        Args:
+        Parameters:
             project_id: Id of the project.
             deployment_instance: Metadata object of the deployment to get the inference path for.
 
@@ -405,7 +405,7 @@ class ServingApi:
     ) -> list[str]:
         """Get the Istio inference path for a deployment.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment to get the inference path for.
             base_only: If `True`, return only the base path. Used for vLLM and Python deployments without a model.
 

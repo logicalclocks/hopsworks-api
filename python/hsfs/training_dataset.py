@@ -753,15 +753,17 @@ class TrainingDataset(TrainingDatasetBase):
         return td_job
 
     @public
-    def read(self, split=None, read_options=None) -> TypeVar("pyspark.sql.DataFrame"):
+    def read(
+        self, split: str | None = None, read_options: dict | None = None
+    ) -> TypeVar("pyspark.sql.DataFrame"):
         """Read the training dataset into a dataframe.
 
         It is also possible to read only a specific split.
 
         Parameters:
-            split: Name of the split to read, defaults to `None`, reading the entire
-                training dataset. If the training dataset has split, the `split` parameter
-                is mandatory.
+            split:
+                Name of the split to read; by default reads the entire training dataset.
+                If the training dataset has split, the `split` parameter is mandatory.
             read_options: Additional read options as key/value pairs, defaults to `{}`.
 
         Returns:
@@ -814,7 +816,7 @@ class TrainingDataset(TrainingDatasetBase):
         self.read(split).show(n)
 
     @public
-    def add_tag(self, name: str, value):
+    def add_tag(self, name: str, value: Any):
         """Attach a tag to a training dataset.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -842,7 +844,7 @@ class TrainingDataset(TrainingDatasetBase):
         self._training_dataset_engine.delete_tag(self, name)
 
     @public
-    def get_tag(self, name):
+    def get_tag(self, name: str) -> Any:
         """Get the tags of a training dataset.
 
         Parameters:
@@ -1044,7 +1046,7 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.query(self, True, True, False)
 
     @public
-    def get_query(self, online: bool = True, with_label: bool = False):
+    def get_query(self, online: bool = True, with_label: bool = False) -> str | None:
         """Returns the query used to generate this training dataset.
 
         Parameters:
@@ -1080,7 +1082,7 @@ class TrainingDataset(TrainingDatasetBase):
         self._vector_server.init_serving(self, batch, external)
 
     @public
-    def get_serving_vector(self, entry: dict[str, Any], external: bool | None = None):
+    def get_serving_vector(self, entry: dict[str, Any], external: bool | None = None) -> list:
         """Returns assembled serving vector from online feature store.
 
         Parameters:
@@ -1094,8 +1096,7 @@ class TrainingDataset(TrainingDatasetBase):
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
 
         Returns:
-            `list` List of feature values related to provided primary keys, ordered according to positions of this
-            features in training dataset query.
+            List of feature values related to provided primary keys, ordered according to positions of this features in training dataset query.
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)

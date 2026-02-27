@@ -450,7 +450,7 @@ class AlertsApi:
         status: _PROJECT_FS_STATUS_ARG | _PROJECT_JOB_STATUS_ARG,
         severity: _SEVERITY_ARG,
         service: _SERVICES_ARG,
-        threshold=0,
+        threshold: int = 0,
     ) -> alert.ProjectAlert:
         """Create a new alert.
 

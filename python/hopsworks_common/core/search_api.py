@@ -144,15 +144,19 @@ class SearchApi:
         """Search for feature groups, feature views, training datasets and features.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: `"name"` (the tag schema name as defined by Hopsworks Admin), `"key"` (the property within that tag schema), and `"value"` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
             The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
@@ -241,15 +245,19 @@ class SearchApi:
         """Search for feature groups only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: `"name"` (the tag schema name as defined by Hopsworks Admin), `"key"` (the property within that tag schema), and `"value"` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
             A list of metadata objects for feature groups matching the search criteria.
@@ -300,15 +308,19 @@ class SearchApi:
         """Search for feature views only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
             A list of metadata objects for feature views matching the search criteria.
@@ -359,15 +371,19 @@ class SearchApi:
         """Search for training datasets only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
             A list of metadata objects for training datasets matching the search criteria.
@@ -418,15 +434,19 @@ class SearchApi:
         """Search for features only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
             A list of features matching the search criteria.

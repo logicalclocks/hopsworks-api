@@ -2470,18 +2470,18 @@ class FeatureView:
             Spark dataframes.
 
         Parameters:
-            start_time: Start event time for the training dataset query, inclusive. Strings should
-            be formatted in one of the following
-                formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`. Int, i.e Unix Epoch should be in seconds.
-            end_time: End event time for the training dataset query, exclusive. Strings should be
-            formatted in one of the following
-                formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`. Int, i.e Unix Epoch should be in seconds.
-            description: A string describing the contents of the training dataset to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            extra_filter: Additional filters to be attached to the training dataset.
+            start_time:
+                Start event time for the training dataset query, inclusive.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Int, i.e Unix Epoch should be in seconds.
+            end_time:
+                End event time for the training dataset query, exclusive.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Int, i.e Unix Epoch should be in seconds.
+            description:
+                A string describing the contents of the training dataset to improve discoverability for Data Scientists, defaults to empty string `""`.
+            extra_filter:
+                Additional filters to be attached to the training dataset.
                 The filters will be also applied in `get_batch_data`.
             statistics_config: A configuration object, or a dictionary with keys
                 "`enabled`" to generally enable descriptive statistics computation for
@@ -3609,9 +3609,9 @@ class FeatureView:
                 Defaults to None.
             config_id: The id of the feature monitoring config to fetch history for.
                 Defaults to None.
-            start_date: The start date of the feature monitoring history to fetch.
+            start_time: The start date of the feature monitoring history to fetch.
                 Defaults to None.
-            end_date: The end date of the feature monitoring history to fetch.
+            end_time: The end date of the feature monitoring history to fetch.
                 Defaults to None.
             with_statistics: Whether to include statistics in the feature monitoring history.
                 Defaults to True. If False, only metadata about the monitoring will be fetched.
@@ -3792,7 +3792,7 @@ class FeatureView:
         )
 
     @public
-    def get_alert(self, alert_id: int):
+    def get_alert(self, alert_id: int) -> FeatureViewAlert | None:
         """Get an alert for this feature view by ID.
 
         Parameters:
@@ -3817,7 +3817,7 @@ class FeatureView:
         receiver: str,
         status: str,
         severity: str,
-    ):
+    ) -> FeatureViewAlert:
         """Create an alert for this feature view.
 
         Example:
@@ -4154,28 +4154,32 @@ class FeatureView:
     ) -> list[Job] | None:
         """Log features and optionally predictions for the current feature view. The logged features are written periodically to the offline store. If you need it to be available immediately, call `materialize_log`.
 
-        Note: If features is a `pyspark.Dataframe`, prediction needs to be provided as columns in the dataframe,
-            values in `predictions` will be ignored.
+        Note:
+            If features is a `pyspark.Dataframe`, prediction needs to be provided as columns in the dataframe, values in `predictions` will be ignored.
 
         Parameters:
-            logging_dataframe: The features to be logged, this can contain both transformed features, untransfored features and predictions. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            untransformed_features: The untransformed features to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            prediction: The predictions to be logged.  Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list, a list of lists, or a numpy ndarray.
-            transformed_features: The transformed features to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            inference_helper_columns: The inference helper columns to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            request_parameters: The request parameters to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            event_time: The event time to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            serving_keys: The serving keys to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            extra_logging_features: Extra features to be logged. The features must be specified when enabled logging or while creating the feature view. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            logging_data: The features to be logged, this can contain both transformed features, untransfored features and predictions.
+            untransformed_features: The untransformed features to be logged.
+            predictions: The predictions to be logged.
+            transformed_features: The transformed features to be logged.
+            inference_helper_columns: The inference helper columns to be logged.
+            request_parameters: The request parameters to be logged.
+            event_time: The event time to be logged.
+            serving_keys: The serving keys to be logged.
+            extra_logging_features:
+                Extra features to be logged.
+                The features must be specified when enabled logging or while creating the feature view.
             request_id: The request ID that can be used to identify an online inference request.
             write_options: Options for writing the log.
-            training_dataset_version: Version of the training dataset. If training dataset version is definied in
-                `init_serving` or `init_batch_scoring`, or model has training dataset version,
-                or training dataset version was cached, then the version will be used, otherwise defaults to None.
+            training_dataset_version:
+                Version of the training dataset.
+                If training dataset version is definied in `init_serving` or `init_batch_scoring`, or model has training dataset version, or training dataset version was cached, then the version will be used, otherwise defaults to None.
             model: Hopsworks model associated with the log.
-            model_name: Name of the model to be associated with the log.
+            model_name:
+                Name of the model to be associated with the log.
                 If `model` is provided, this parameter will be ignored.
-            model_version: Version of the model to be associated with the log.
+            model_version:
+                Version of the model to be associated with the log.
                 If `model` is provided, this parameter will be ignored.
 
         Returns:

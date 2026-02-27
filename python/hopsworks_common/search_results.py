@@ -16,9 +16,16 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
 from hopsworks_common import client
+
+
+if TYPE_CHECKING:
+    from hsfs.feature_group import FeatureGroup
+    from hsfs.feature_view import FeatureView
+    from hsfs.training_dataset import TrainingDataset
 
 
 @public("hopsworks.core.search_api.Project")
@@ -241,7 +248,7 @@ class FeatureGroupSearchResult(SearchResultItem):
     """Search result for a Feature Group."""
 
     @public
-    def get(self):
+    def get(self) -> FeatureGroup | None:
         """Retrieve the full FeatureGroup object.
 
         This uses the project associated with this search result to obtain a
@@ -264,7 +271,7 @@ class FeatureViewSearchResult(SearchResultItem):
     """Search result for a Feature View."""
 
     @public
-    def get(self):
+    def get(self) -> FeatureView | None:
         """Retrieve the full FeatureView object.
 
         This uses the project associated with this search result to obtain a
@@ -287,7 +294,7 @@ class TrainingDatasetSearchResult(SearchResultItem):
     """Search result for a Training Dataset."""
 
     @public
-    def get(self):
+    def get(self) -> TrainingDataset | None:
         """Retrieve the full TrainingDataset object.
 
         This uses the project associated with this search result to obtain a

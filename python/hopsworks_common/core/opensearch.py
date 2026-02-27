@@ -123,17 +123,16 @@ class OpensearchRequestOption:
 
     @public
     @classmethod
-    def get_options(cls, options: dict):
+    def get_options(cls, options: dict) -> dict:
         """Construct a map of options for the request to the vector database.
 
         Parameters:
-            options: The options used for the request to the vector database.
+            options:
+                The options used for the request to the vector database.
                 The keys are attribute values of the OpensearchRequestOption class.
 
         Returns:
-            dict: A dictionary containing the constructed options map, where keys represent
-            attribute values of the OpensearchRequestOption class, and values are obtained
-            either from the provided options or default values if not available.
+            A dictionary containing the constructed options map, where keys represent attribute values of the OpensearchRequestOption class, and values are obtained either from the provided options or default values if not available.
         """
         default_option = (
             cls.DEFAULT_OPTION_MAP

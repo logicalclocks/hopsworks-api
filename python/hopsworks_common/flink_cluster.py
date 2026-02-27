@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import time
 from typing import Literal
@@ -71,7 +72,7 @@ class FlinkCluster:
 
     @public
     @usage.method_logger
-    def start(self, await_time=1800):
+    def start(self, await_time: int = 1800):
         """Start the flink cluster and wait until it reaches RUNNING state.
 
         ```python
@@ -148,7 +149,7 @@ class FlinkCluster:
         )
 
     @public
-    def get_job(self, job_id) -> dict:
+    def get_job(self, job_id: str) -> dict:
         """Get specific job from the flink cluster.
 
         ```python
@@ -180,7 +181,7 @@ class FlinkCluster:
 
     @public
     @usage.method_logger
-    def stop_job(self, job_id):
+    def stop_job(self, job_id: str):
         """Stop specific job in the flink cluster.
 
         ```python
@@ -235,7 +236,7 @@ class FlinkCluster:
         )
 
     @public
-    def upload_jar(self, jar_file):
+    def upload_jar(self, jar_file: str):
         """Upload jar file to the flink cluster.
 
         ```python
@@ -264,7 +265,7 @@ class FlinkCluster:
 
     @public
     @usage.method_logger
-    def submit_job(self, jar_id, main_class, job_arguments=None) -> str:
+    def submit_job(self, jar_id: str, main_class: str, job_arguments: str | None = None) -> str:
         """Submit job using the specific jar file uploaded to the flink cluster.
 
         ```python
@@ -305,7 +306,7 @@ class FlinkCluster:
 
     @public
     def job_state(
-        self, job_id
+        self, job_id: str
     ) -> Literal[
         "INITIALIZING",
         "CREATED",

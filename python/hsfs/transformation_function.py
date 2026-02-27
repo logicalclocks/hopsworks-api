@@ -53,15 +53,7 @@ class TransformationType(Enum):
 @typechecked
 class TransformationFunction:
     NOT_FOUND_ERROR_CODE = 270160
-    """DTO class for transformation functions.
-
-    Parameters:
-        featurestore_id: Id of the feature store in which the transformation function is saved.
-        hopsworks_udf: The meta data object for UDF in Hopsworks, which can be created using the `@udf` decorator.
-        version: The version of the transformation function.
-        id: The id of the transformation function in the feature store.
-        transformation_type: The type of the transformation function. Can be "on-demand" or "model-dependent"
-    """
+    """DTO class for transformation functions."""
 
     def __init__(
         self,
@@ -76,6 +68,15 @@ class TransformationFunction:
         href=None,
         **kwargs,
     ):
+        """Construct a TransformationFunction.
+
+        Parameters:
+            featurestore_id: Id of the feature store in which the transformation function is saved.
+            hopsworks_udf: The meta data object for UDF in Hopsworks, which can be created using the `@udf` decorator.
+            version: The version of the transformation function.
+            id: The id of the transformation function in the feature store.
+            transformation_type: The type of the transformation function. Can be "on-demand" or "model-dependent"
+        """
         self._id: int = id
         self._featurestore_id: int = featurestore_id
         self._version: int = version

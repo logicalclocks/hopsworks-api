@@ -25,7 +25,7 @@ class GRPCInferenceServiceStub:
     def __init__(self, channel):
         """Constructor.
 
-        Args:
+        Parameters:
             channel: A grpc.Channel.
         """
         self.ServerLive = channel.unary_unary(

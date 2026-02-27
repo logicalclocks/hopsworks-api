@@ -110,9 +110,9 @@ class Model:
     @usage.method_logger
     def save(
         self,
-        model_path,
-        await_registration=480,
-        keep_original_files=False,
+        model_path: str,
+        await_registration: int = 480,
+        keep_original_files: bool = False,
         upload_configuration: dict[str, Any] | None = None,
     ) -> Model:
         """Persist this model including model files and metadata to the model registry.
@@ -177,7 +177,7 @@ class Model:
 
     @public
     @usage.method_logger
-    def download(self, local_path=None) -> str:
+    def download(self, local_path: str | None = None) -> str:
         """Download the model files.
 
         Parameters:

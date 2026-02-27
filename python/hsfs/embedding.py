@@ -34,17 +34,14 @@ if TYPE_CHECKING:
 
 @public
 class SimilarityFunctionType:
-    """Enumeration class representing different types of similarity functions.
-
-    Parameters:
-        L2: Represents L2 norm similarity function.
-        COSINE: Represents cosine similarity function.
-        DOT_PRODUCT: Represents dot product similarity function.
-    """
+    """Enumeration class representing different types of similarity functions."""
 
     L2: str = "l2_norm"
+    """Represents L2 norm similarity function."""
     COSINE: str = "cosine"
+    """Represents cosine similarity function."""
     DOT_PRODUCT: str = "dot_product"
+    """Represents dot product similarity function."""
 
     def __init__(self) -> None:
         # Fix for the doc

@@ -994,7 +994,7 @@ def renaming_wrapper(*args):
 
     @public
     def execute(
-        self, *args
+        self, *args: Any
     ) -> (
         pd.Series
         | pd.DataFrame
@@ -1030,7 +1030,8 @@ def renaming_wrapper(*args):
             ```
 
         Parameters:
-            *args: Input arguments matching the UDF's parameter signature.
+            *args:
+                Input arguments matching the UDF's parameter signature.
                 For batch processing, pass pandas Series or DataFrames.
 
         Returns:

@@ -44,7 +44,9 @@ class FlinkClusterApi:
 
     @public
     @usage.method_logger
-    def setup_cluster(self, name: str, config=None) -> flink_cluster.FlinkCluster:
+    def setup_cluster(
+        self, name: str, config: dict | None = None
+    ) -> flink_cluster.FlinkCluster:
         """Create a new flink job representing a flink cluster, or update an existing one.
 
         ```python

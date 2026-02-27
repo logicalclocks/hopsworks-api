@@ -78,7 +78,7 @@ class Deployment:
     def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
-        Args:
+        Parameters:
             await_update: If the deployment is running, awaiting time (seconds) for the running instances to be updated.
                           If the running instances are not updated within this timespan, the call to this method returns while
                           the update in the background.
@@ -93,7 +93,7 @@ class Deployment:
     def start(self, await_running: int | None = 600):
         """Start the deployment.
 
-        Args:
+        Parameters:
             await_running: Awaiting time (seconds) for the deployment to start.
                            If the deployment has not started within this timespan, the call to this method returns while
                            it deploys in the background.
@@ -108,7 +108,7 @@ class Deployment:
     def stop(self, await_stopped: int | None = 600):
         """Stop the deployment.
 
-        Args:
+        Parameters:
             await_stopped: Awaiting time (seconds) for the deployment to stop.
                            If the deployment has not stopped within this timespan, the call to this method returns while
                            it stopping in the background.
@@ -120,11 +120,12 @@ class Deployment:
 
     @public
     @usage.method_logger
-    def delete(self, force=False):
+    def delete(self, force: bool = False):
         """Delete the deployment.
 
-        Args:
-            force: Force the deletion of the deployment.
+        Parameters:
+            force:
+                Force the deletion of the deployment.
                 If the deployment is running, it will be stopped and deleted automatically.
 
         Warning:
@@ -163,10 +164,10 @@ class Deployment:
         )
 
     @public
-    def is_running(self, or_idle=True, or_updating=True) -> bool:
+    def is_running(self, or_idle: bool = True, or_updating: bool = True) -> bool:
         """Check whether the deployment is ready to handle inference requests.
 
-        Args:
+        Parameters:
             or_idle: Whether the idle state is considered as running (default is True).
             or_updating: Whether the updating state is considered as running (default is True).
 
@@ -184,10 +185,10 @@ class Deployment:
         )
 
     @public
-    def is_stopped(self, or_created=True) -> bool:
+    def is_stopped(self, or_created: bool = True) -> bool:
         """Check whether the deployment is stopped.
 
-        Args:
+        Parameters:
             or_created: Whether the creating and created state is considered as stopped (default is True).
 
         Returns:
@@ -259,10 +260,10 @@ class Deployment:
 
     @public
     @usage.method_logger
-    def download_artifact_files(self, local_path=None):
+    def download_artifact_files(self, local_path: str | None = None):
         """Download the artifact files served by the deployment.
 
-        Args:
+        Parameters:
             local_path: Path where to download the artifact files in the local filesystem.
 
         Raises:
@@ -271,10 +272,10 @@ class Deployment:
         return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
     @public
-    def get_logs(self, component="predictor", tail=10):
+    def get_logs(self, component: str = "predictor", tail: int = 10):
         """Prints the deployment logs of the predictor or transformer.
 
-        Args:
+        Parameters:
             component: Deployment component to get the logs from (e.g., predictor or transformer).
             tail: Number of most recent lines to retrieve from the logs.
 

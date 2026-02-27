@@ -73,9 +73,8 @@ class ComponentScalingConfig(ABC):
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds: Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds: Time in seconds to retain the last instance before scaling to zero.
-            **kwargs: Backwards-compatible aliases for the parameters above.
         """
-        scale_metric = scale_metric or kwargs.get("scale_metric")
+        scale_metric = scale_metric
         if scale_metric:
             if isinstance(scale_metric, str):
                 if not ScaleMetric.has_value(scale_metric.upper()):
@@ -93,30 +92,12 @@ class ComponentScalingConfig(ABC):
             self._scale_metric = None
 
         self._min_instances = min_instances
-        self._max_instances = (
-            max_instances if max_instances is not None else kwargs.get("max_instances")
-        )
-        self._target = target if target is not None else kwargs.get("target")
-        self._panic_window_percentage = (
-            panic_window_percentage
-            if panic_window_percentage is not None
-            else kwargs.get("panic_window_percentage")
-        )
-        self._panic_threshold_percentage = (
-            panic_threshold_percentage
-            if panic_threshold_percentage is not None
-            else kwargs.get("panic_threshold_percentage")
-        )
-        self._stable_window_seconds = (
-            stable_window_seconds
-            if stable_window_seconds is not None
-            else kwargs.get("stable_window_seconds")
-        )
-        self._scale_to_zero_retention_seconds = (
-            scale_to_zero_retention_seconds
-            if scale_to_zero_retention_seconds is not None
-            else kwargs.get("scale_to_zero_retention_seconds")
-        )
+        self._max_instances = max_instances
+        self._target = target
+        self._panic_window_percentage = panic_window_percentage
+        self._panic_threshold_percentage = panic_threshold_percentage
+        self._stable_window_seconds = stable_window_seconds
+        self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
 
     @public
     def describe(self):

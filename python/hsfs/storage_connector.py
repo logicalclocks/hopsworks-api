@@ -1106,8 +1106,10 @@ class AdlsConnector(StorageConnector):
             query: Not relevant for ADLS connectors.
             data_format: The file format of the files to be read, e.g. `csv`, `parquet`.
             options: Any additional key/value options to be passed to the ADLS connector.
-            path: Path within the bucket to be read. For example, path=`path` will read directly from the container specified on connector by constructing the URI as 'abfss://[container-name]@[account_name].dfs.core.windows.net/[path]'.
-            If no path is specified default container path will be used from connector.
+            path:
+                Path within the bucket to be read.
+                For example, path=`path` will read directly from the container specified on connector by constructing the URI as 'abfss://[container-name]@[account_name].dfs.core.windows.net/[path]'.
+                If no path is specified default container path will be used from connector.
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
