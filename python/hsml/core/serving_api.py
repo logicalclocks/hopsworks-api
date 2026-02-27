@@ -42,10 +42,10 @@ class ServingApi:
         """Get the metadata of a deployment with a certain id.
 
         Parameters:
-            id: id of the deployment
+            id: Id of the deployment.
 
         Returns:
-            deployment metadata object
+            Deployment metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -66,10 +66,10 @@ class ServingApi:
         """Get the metadata of a deployment with a certain name.
 
         Parameters:
-            name: name of the deployment
+            name: Name of the deployment.
 
         Returns:
-            deployment metadata object
+            Deployment metadata object.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -89,7 +89,7 @@ class ServingApi:
         """Get the metadata of all deployments.
 
         Returns:
-            model metadata objects
+            List of deployment metadata objects.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -112,7 +112,7 @@ class ServingApi:
         """Get inference endpoints.
 
         Returns:
-            inference endpoints for the current project.
+            Inference endpoints for the current project.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "inference", "endpoints"]
@@ -123,10 +123,10 @@ class ServingApi:
         """Save deployment metadata to model serving.
 
         Parameters:
-            deployment_instance: metadata object of deployment to be saved
+            deployment_instance: Metadata object of deployment to be saved.
 
         Returns:
-            updated metadata object of the deployment
+            Updated metadata object of the deployment.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -148,7 +148,8 @@ class ServingApi:
         """Perform an action on the deployment.
 
         Parameters:
-            action: action to perform on the deployment (i.e., START or STOP)
+            deployment_instance: Metadata object of the deployment.
+            action: Action to perform on the deployment (i.e., START or STOP).
         """
         _client = client.get_instance()
         path_params = [
@@ -164,7 +165,7 @@ class ServingApi:
         """Delete the deployment and metadata.
 
         Parameters:
-            deployment_instance: metadata object of the deployment to delete
+            deployment_instance: Metadata object of the deployment to delete.
         """
         _client = client.get_instance()
         path_params = [
@@ -181,10 +182,10 @@ class ServingApi:
         """Get the state of a given deployment.
 
         Parameters:
-            deployment_instance: metadata object of the deployment to get state of
+            deployment_instance: Metadata object of the deployment to get state of.
 
         Returns:
-            predictor state
+            Predictor state.
         """
         _client = client.get_instance()
         path_params = [
@@ -202,10 +203,10 @@ class ServingApi:
         """Reset a given deployment to the original values in the Hopsworks instance.
 
         Parameters:
-            deployment_instance: metadata object of the deployment to reset
+            deployment_instance: Metadata object of the deployment to reset.
 
         Returns:
-            deployment with reset values
+            Deployment with reset values.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
@@ -228,12 +229,12 @@ class ServingApi:
         """Send inference requests to a deployment with a certain id.
 
         Parameters:
-            deployment_instance: metadata object of the deployment to be used for the prediction
-            data: payload of the inference request
-            through_hopsworks: whether to send the inference request through the Hopsworks REST API or not
+            deployment_instance: Metadata object of the deployment to be used for the prediction.
+            data: Payload of the inference request.
+            through_hopsworks: Whether to send the inference request through the Hopsworks REST API or not.
 
         Returns:
-            inference response
+            Inference response.
         """
         if deployment_instance.api_protocol == IE.API_PROTOCOL_REST:
             # REST protocol, use hopsworks or istio client
@@ -262,12 +263,6 @@ class ServingApi:
             if _client is not None:
                 # use istio client
                 path_params = self._get_istio_inference_path(deployment_instance)
-                # - add host header
-                headers["host"] = self._get_inference_request_host_header(
-                    deployment_instance.project_namespace,
-                    deployment_instance.name,
-                    client.get_knative_domain(),
-                )
                 with_base_path_params = False
             else:
                 # fallback to Hopsworks client
@@ -314,18 +309,16 @@ class ServingApi:
 
     def _create_grpc_channel(self, deployment_instance):
         _client = client.istio.get_instance()
-        service_hostname = self._get_inference_request_host_header(
-            deployment_instance.project_namespace,
-            deployment_instance.name,
-            client.get_knative_domain(),
+        path_prefix = (
+            f"/v1/{deployment_instance.project_name}/{deployment_instance.name}"
         )
-        return _client._create_grpc_channel(service_hostname)
+        return _client._create_grpc_channel(path_prefix)
 
     def is_kserve_installed(self) -> bool:
         """Check if kserve is installed.
 
         Returns:
-            whether kserve is installed
+            Whether kserve is installed.
         """
         _client = client.get_instance()
         path_params = ["variables", "kube_kserve_installed"]
@@ -335,7 +328,7 @@ class ServingApi:
             and kserve_installed["successMessage"] == "true"
         )
 
-    def get_num_instances_limits(self):
+    def get_num_instances_limits(self) -> list[int]:
         """Get number of instances limits for model serving."""
         _client = client.get_instance()
 
@@ -350,7 +343,7 @@ class ServingApi:
             int(max_instances["successMessage"]),
         ]
 
-    def get_knative_domain(self):
+    def get_knative_domain(self) -> str:
         """Get the domain used by knative."""
         _client = client.get_instance()
 
@@ -361,16 +354,16 @@ class ServingApi:
 
     def get_logs(
         self, deployment_instance: deployment.Deployment, component: str, tail: int
-    ) -> deployable_component_logs.DeployableComponentLogs:
+    ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
         Parameters:
-            deployment_instance: metadata object of the deployment to get logs from
-            component: deployment component (e.g., predictor or transformer)
-            tail: number of tailing lines to retrieve
+            deployment_instance: Metadata object of the deployment to get logs from.
+            component: Deployment component (e.g., predictor or transformer).
+            tail: Number of tailing lines to retrieve.
 
         Returns:
-            deployment logs
+            Deployment logs.
         """
         _client = client.get_instance()
         path_params = [
@@ -385,12 +378,20 @@ class ServingApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def _get_inference_request_host_header(
-        self, project_namespace: str, deployment_name: str, domain: str
-    ):
-        return f"{deployment_name}.{project_namespace}.{domain}".lower()
+    def _get_hopsworks_inference_path(
+        self, project_id: int, deployment_instance
+    ) -> list[str]:
+        """Get the Hopsworks inference path for a deployment.
 
-    def _get_hopsworks_inference_path(self, project_id: int, deployment_instance):
+        Inference requests sent to this path will be forwarded by Hopsworks to the Istio ingress endpoint.
+
+        Args:
+            project_id: Id of the project.
+            deployment_instance: Metadata object of the deployment to get the inference path for.
+
+        Returns:
+            List of path segments.
+        """
         return [
             "project",
             project_id,
@@ -399,5 +400,19 @@ class ServingApi:
             deployment_instance.name + ":predict",
         ]
 
-    def _get_istio_inference_path(self, deployment_instance):
-        return ["v1", "models", deployment_instance.name + ":predict"]
+    def _get_istio_inference_path(
+        self, deployment_instance, base_only: bool = False
+    ) -> list[str]:
+        """Get the Istio inference path for a deployment.
+
+        Args:
+            deployment_instance: Metadata object of the deployment to get the inference path for.
+            base_only: If `True`, return only the base path. Used for vLLM and Python deployments without a model.
+
+        Returns:
+            List of path segments.
+        """
+        base_path = ["v1", deployment_instance.project_name, deployment_instance.name]
+        if base_only:
+            return base_path
+        return base_path + ["v1", "models", deployment_instance.name + ":predict"]

@@ -73,9 +73,9 @@ class Client(base.Client):
         """Closes a client. Can be implemented for clean up purposes, not mandatory."""
         self._connected = False
 
-    def _create_grpc_channel(self, service_hostname: str) -> GRPCInferenceServerClient:
+    def _create_grpc_channel(self, path_prefix: str) -> GRPCInferenceServerClient:
         return GRPCInferenceServerClient(
             url=self._host + ":" + str(self._port),
-            channel_args=(("grpc.ssl_target_name_override", service_hostname),),
+            path_prefix=path_prefix,
             serving_api_key=self._auth._token,
         )
