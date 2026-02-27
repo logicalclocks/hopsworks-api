@@ -62,5 +62,5 @@ class TestRestEndpoint:
         serialized = endpoint.to_dict()
         assert serialized["relativeUrl"] == "/items"
         assert serialized["queryParams"] == [{"name": "page_size", "value": 50}]
-        assert serialized["paginationConfig"]["type"] == "json_link"
+        assert serialized["paginationConfig"]["type"] == "JSON_LINK"
         assert serialized["paginationConfig"]["nextUrlPath"] == "pagination.next"
