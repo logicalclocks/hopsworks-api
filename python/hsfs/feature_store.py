@@ -20,7 +20,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hsfs import (
     expectation_suite,
     feature,
@@ -431,6 +431,7 @@ class FeatureStore:
         """
         return self._training_dataset_api.get(name, None)
 
+    @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
     @public
     @usage.method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
@@ -440,9 +441,6 @@ class FeatureStore:
         This storage can be S3, a JDBC compliant database or the distributed filesystem HOPSFS.
 
         If you want to connect to the online feature store, see the `get_online_storage_connector` method to get the JDBC connector for the Online Feature Store.
-
-        !!! warning "Deprecated"
-            `get_storage_connector` method is deprecated. Use `get_data_source` instead.
 
         Example:
             ```python
@@ -460,6 +458,7 @@ class FeatureStore:
         """
         return self.get_data_source(name).storage_connector
 
+    @public
     @usage.method_logger
     def get_data_source(self, name: str) -> ds.DataSource:
         """Get a data source from the feature store.
@@ -479,7 +478,7 @@ class FeatureStore:
             data_source = fs.get_data_source("test_data_source")
             ```
 
-        Arguments:
+        Parameters:
             name: Name of the data source to retrieve.
 
         Returns:
@@ -768,7 +767,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the feature group after it is saved. Defaults to None.
+                Tags will be attached to the feature group after it is saved.
 
         Returns:
             The feature group metadata object.
@@ -1156,7 +1155,9 @@ class FeatureStore:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
             )
-        elif storage_connector is not None or query is not None or path not in (None, ""):
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
             warnings.warn(
                 "When `data_source` is provided, `storage_connector`, `query` and "
                 "`path` parameters are ignored. Use `data_source` only.",
@@ -1358,7 +1359,9 @@ class FeatureStore:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
             )
-        elif storage_connector is not None or query is not None or path not in (None, ""):
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
             warnings.warn(
                 "When `data_source` is provided, `storage_connector`, `query` and "
                 "`path` parameters are ignored. Use `data_source` only.",
@@ -1609,7 +1612,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the training dataset after it is saved. Defaults to None.
+                Tags will be attached to the training dataset after it is saved.
 
         Returns:
             The training dataset metadata object.
@@ -1912,7 +1915,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the feature view after it is saved. Defaults to None.
+                Tags will be attached to the feature view after it is saved.
 
         Returns:
             The feature view metadata object.
@@ -2139,7 +2142,7 @@ class FeatureStore:
             )
             ```
 
-        Arguments:
+        Parameters:
             title: Title of the chart.
             description: Description of the chart.
             url: URL where the chart is hosted or can be accessed.
@@ -2188,7 +2191,7 @@ class FeatureStore:
             chart = fs.get_chart(chart_id=123)
             ```
 
-        Arguments:
+        Parameters:
             chart_id: ID of the chart to retrieve.
 
         Returns:
@@ -2220,7 +2223,7 @@ class FeatureStore:
             )
             ```
 
-        Arguments:
+        Parameters:
             name: Name of the dashboard.
             charts: List of charts to include in the dashboard.
 
@@ -2265,7 +2268,7 @@ class FeatureStore:
             dashboard = fs.get_dashboard(dashboard_id=123)
             ```
 
-        Arguments:
+        Parameters:
             dashboard_id: ID of the dashboard to retrieve.
 
         Returns:

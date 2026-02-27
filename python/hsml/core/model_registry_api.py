@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 from hsml import client
 from hsml.client.exceptions import ModelRegistryException
 from hsml.core import dataset_api
@@ -24,13 +26,14 @@ class ModelRegistryApi:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()
 
-    def get(self, project=None):
+    def get(self, project: str | None = None) -> ModelRegistry:
         """Get model registry for specific project.
 
-        :param project: project of the model registry
-        :type project: str
-        :return: the model registry metadata
-        :rtype: ModelRegistry.
+        Parameters:
+            project: project of the model registry
+
+        Returns:
+            the model registry metadata
         """
         _client = client.get_instance()
 

@@ -98,7 +98,7 @@ class MonitoringWindowConfigEngine:
     ) -> mwc.MonitoringWindowConfig:
         """Builds a monitoring window config.
 
-        Args:
+        Parameters:
             window_config_type: str, required
                 Type of the window config, can be either
                 `ROLLING_TIME`,`SPECIFIC_VALUE`,`TRAINING_DATASET`.
@@ -238,13 +238,13 @@ class MonitoringWindowConfigEngine:
     ) -> list[FeatureDescriptiveStatistics]:
         """Fetch the entity data based on monitoring window configuration and compute statistics.
 
-        Args:
-            entity: FeatureStore: Feature store to fetch the entity to monitor.
-            monitoring_window_config: MonitoringWindowConfig: Monitoring window config.
-            feature_name: str: Name of the feature to monitor.
+        Parameters:
+            entity: The entity to monitor.
+            monitoring_window_config: Monitoring window config.
+            feature_name: Name of the feature to monitor.
 
         Returns:
-            [FeatureDescriptiveStatistics, List[FeatureDescriptiveStatitics]]: List of Descriptive statistics.
+            List of Descriptive statistics.
         """
         self._init_statistics_engine(entity._feature_store_id, entity.ENTITY_TYPE)
         (
@@ -329,15 +329,15 @@ class MonitoringWindowConfigEngine:
     ) -> TypeVar("pyspark.sql.DataFrame"):
         """Fetch the entity data based on time window and row percentage.
 
-        Args:
-            entity: Union[FeatureGroup, FeatureView]: Entity to monitor.
-            feature_name: str: Name of the feature to monitor.
-            start_time: int: Window start commit or event time
-            end_time: int: Window end commit or event time
+        Parameters:
+            entity: Entity to monitor.
+            feature_name: Name of the feature to monitor.
+            start_time: Window start commit or event time
+            end_time: Window end commit or event time
             row_percentage: fraction of rows to include [0, 1.0]
 
         Returns:
-            `pyspark.sql.DataFrame`. A Spark DataFrame with the entity data
+            A Spark DataFrame with the entity data
         """
         try:
             if isinstance(entity, feature_group.FeatureGroup):
@@ -382,14 +382,14 @@ class MonitoringWindowConfigEngine:
     ) -> TypeVar("pyspark.sql.DataFrame"):
         """Fetch the feature view data based on time window and row percentage.
 
-        Args:
-            entity: FeatureView: Feature view to monitor.
-            feature_name: str: Name of the feature to monitor.
-            start_time: int: Window start commit or event time.
-            end_time: int: Window end commit or event time.
+        Parameters:
+            entity: Feature view to monitor.
+            feature_name: Name of the feature to monitor.
+            start_time: Window start commit or event time.
+            end_time: Window end commit or event time.
 
         Returns:
-            `pyspark.sql.DataFrame`. A Spark DataFrame with the entity data
+            A Spark DataFrame with the entity data
         """
         # TODO: This fails for FV on non-time-travel FGs.
         entity_df = entity.query.as_of(
@@ -410,11 +410,11 @@ class MonitoringWindowConfigEngine:
     ) -> TypeVar("pyspark.sql.Dataframe"):
         """Fetch the feature group data based on time window.
 
-        Args:
-            entity: FeatureGroup: Feature group to monitor.
-            feature_name: str: Name of the feature to monitor.
-            start_time: int: Window start commit time.
-            end_time: int: Window end commit time.
+        Parameters:
+            entity: Feature group to monitor.
+            feature_name: Name of the feature to monitor.
+            start_time: Window start commit time.
+            end_time: Window end commit time.
         """
         pre_df = entity.select(features=[feature_name]) if feature_name else entity
 
@@ -423,7 +423,7 @@ class MonitoringWindowConfigEngine:
     def round_and_convert_event_time(self, event_time: datetime) -> int | None:
         """Round event time to the latest hour and convert to timestamp.
 
-        Args:
+        Parameters:
             event_time: datetime: Event time to round and convert.
 
         Returns:

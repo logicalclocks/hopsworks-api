@@ -41,16 +41,16 @@ class DataSource:
     The DataSource class encapsulates the details of a data source that can be used for reading or writing data.
     It supports various types of sources, such as SQL queries, database tables, file paths, and storage connectors.
 
-    Attributes:
-        _query (Optional[str]): SQL query string for the data source, if applicable.
-        _database (Optional[str]): Name of the database containing the data source.
-        _group (Optional[str]): Group or schema name for the data source.
-        _table (Optional[str]): Table name for the data source.
-        _path (Optional[str]): File system path for the data source.
-        _storage_connector (Optional[StorageConnector]): Storage connector object holds configuration for accessing the data source.
-        _metrics (List[str]): List of metric column names for the data source.
-        _dimensions (List[str]): List of dimension column names for the data source.
-        _rest_endpoint (Optional[RestEndpointConfig]): REST endpoint configuration for the data source.
+    Parameters:
+        query: SQL query string for the data source, if applicable.
+        database: Name of the database containing the data source.
+        group: Group or schema name for the data source.
+        table: Table name for the data source.
+        path: File system path for the data source.
+        storage_connector: Storage connector object holds configuration for accessing the data source.
+        metrics: List of metric column names for the data source.
+        dimensions: List of dimension column names for the data source.
+        rest_endpoint: REST endpoint configuration for the data source.
     """
 
     def __init__(
@@ -68,7 +68,7 @@ class DataSource:
     ):
         """Initialize a DataSource object.
 
-        Args:
+        Parameters:
             query: SQL query string for the data source, if applicable.
             database: Name of the database containing the data source.
             group: Group or schema name for the data source.
@@ -107,7 +107,7 @@ class DataSource:
     ) -> DataSource | list[DataSource] | None:
         """Create a DataSource object (or list of objects) from a JSON response.
 
-        Args:
+        Parameters:
             json_dict: The JSON dictionary from the API response.
             storage_connector: The storage connector object.
 
@@ -277,7 +277,7 @@ class DataSource:
             tables = data_source.get_tables()
             ```
 
-        Args:
+        Parameters:
             database:
                 The name of the database to list tables from.
                 If not provided, the default database is used.

@@ -41,7 +41,7 @@ class ServingApi:
     def get_by_id(self, id: int) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain id.
 
-        Args:
+        Parameters:
             id: Id of the deployment.
 
         Returns:
@@ -65,7 +65,7 @@ class ServingApi:
     def get(self, name: str) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain name.
 
-        Args:
+        Parameters:
             name: Name of the deployment.
 
         Returns:
@@ -108,7 +108,7 @@ class ServingApi:
             deployment_instance.project_name = _client._project_name
         return deployment_instances
 
-    def get_inference_endpoints(self):
+    def get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
         """Get inference endpoints.
 
         Returns:
@@ -119,10 +119,10 @@ class ServingApi:
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
-    def put(self, deployment_instance) -> deployment.Deployment:
+    def put(self, deployment_instance: deployment.Deployment) -> deployment.Deployment:
         """Save deployment metadata to model serving.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of deployment to be saved.
 
         Returns:
@@ -144,10 +144,10 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
-    def post(self, deployment_instance, action: str):
+    def post(self, deployment_instance: deployment.Deployment, action: str):
         """Perform an action on the deployment.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment.
             action: Action to perform on the deployment (i.e., START or STOP).
         """
@@ -161,10 +161,10 @@ class ServingApi:
         query_params = {"action": action}
         return _client._send_request("POST", path_params, query_params=query_params)
 
-    def delete(self, deployment_instance):
+    def delete(self, deployment_instance: deployment.Deployment):
         """Delete the deployment and metadata.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment to delete.
         """
         _client = client.get_instance()
@@ -176,10 +176,12 @@ class ServingApi:
         ]
         return _client._send_request("DELETE", path_params)
 
-    def get_state(self, deployment_instance) -> predictor_state.PredictorState:
+    def get_state(
+        self, deployment_instance: deployment.Deployment
+    ) -> predictor_state.PredictorState:
         """Get the state of a given deployment.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment to get state of.
 
         Returns:
@@ -195,10 +197,12 @@ class ServingApi:
         deployment_json = _client._send_request("GET", path_params)
         return predictor_state.PredictorState.from_response_json(deployment_json)
 
-    def reset_changes(self, deployment_instance) -> deployment.Deployment:
+    def reset_changes(
+        self, deployment_instance: deployment.Deployment
+    ) -> deployment.Deployment:
         """Reset a given deployment to the original values in the Hopsworks instance.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment to reset.
 
         Returns:
@@ -218,13 +222,13 @@ class ServingApi:
 
     def send_inference_request(
         self,
-        deployment_instance,
+        deployment_instance: deployment.Deployment,
         data: dict | list[InferInput],
         through_hopsworks: bool = False,
     ) -> dict | list[InferOutput]:
         """Send inference requests to a deployment with a certain id.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment to be used for the prediction.
             data: Payload of the inference request.
             through_hopsworks: Whether to send the inference request through the Hopsworks REST API or not.
@@ -349,11 +353,11 @@ class ServingApi:
         return domain["successMessage"]
 
     def get_logs(
-        self, deployment_instance, component, tail
+        self, deployment_instance: deployment.Deployment, component: str, tail: int
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment to get logs from.
             component: Deployment component (e.g., predictor or transformer).
             tail: Number of tailing lines to retrieve.
@@ -381,7 +385,7 @@ class ServingApi:
 
         Inference requests sent to this path will be forwarded by Hopsworks to the Istio ingress endpoint.
 
-        Args:
+        Parameters:
             project_id: Id of the project.
             deployment_instance: Metadata object of the deployment to get the inference path for.
 
@@ -401,7 +405,7 @@ class ServingApi:
     ) -> list[str]:
         """Get the Istio inference path for a deployment.
 
-        Args:
+        Parameters:
             deployment_instance: Metadata object of the deployment to get the inference path for.
             base_only: If `True`, return only the base path. Used for vLLM and Python deployments without a model.
 

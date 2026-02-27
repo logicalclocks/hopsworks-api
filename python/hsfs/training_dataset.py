@@ -23,7 +23,8 @@ from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import engine, tag, training_dataset_feature, util
-from hsfs.constructor import filter, query
+from hsfs.constructor import filter
+from hsfs.constructor import query as query_module
 from hsfs.core import data_source as ds
 from hsfs.core import (
     statistics_engine,
@@ -38,6 +39,8 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 
 if TYPE_CHECKING:
     from hopsworks_common.core.constants import HAS_NUMPY
+    from hopsworks_common.job import Job
+    from hsfs.statistics import Statistics
 
     if HAS_NUMPY:
         import numpy as np
@@ -642,14 +645,14 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def save(
         self,
-        features: query.Query
+        features: query_module.Query
         | pd.DataFrame
         | TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
         | np.ndarray
         | list[list],
         write_options: dict[Any, Any] | None = None,
-    ):
+    ) -> Job:
         """Materialize the training dataset to storage.
 
         This method materializes the training dataset either from a Feature Store
@@ -673,8 +676,7 @@ class TrainingDataset(TrainingDatasetBase):
                   after the Hopsworks Job has finished. By default it waits.
 
         Returns:
-            `Job`: When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            When using the `python` engine, it returns the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: Unable to create training dataset metadata.
@@ -702,7 +704,7 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def insert(
         self,
-        features: query.Query
+        features: query_module.Query
         | pd.DataFrame
         | TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -710,7 +712,7 @@ class TrainingDataset(TrainingDatasetBase):
         | list[list],
         overwrite: bool,
         write_options: dict[Any, Any] | None = None,
-    ):
+    ) -> Job:
         """Insert additional feature data into the training dataset.
 
         Warning: Deprecated
@@ -736,8 +738,7 @@ class TrainingDataset(TrainingDatasetBase):
                   after the Hopsworks Job has finished. By default it waits.
 
         Returns:
-            `Job`: When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            When using the `python` engine, it returns the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: Unable to create training dataset metadata.
@@ -752,20 +753,21 @@ class TrainingDataset(TrainingDatasetBase):
         return td_job
 
     @public
-    def read(self, split=None, read_options=None):
+    def read(
+        self, split: str | None = None, read_options: dict | None = None
+    ) -> TypeVar("pyspark.sql.DataFrame"):
         """Read the training dataset into a dataframe.
 
         It is also possible to read only a specific split.
 
         Parameters:
-            split: Name of the split to read, defaults to `None`, reading the entire
-                training dataset. If the training dataset has split, the `split` parameter
-                is mandatory.
+            split:
+                Name of the split to read; by default reads the entire training dataset.
+                If the training dataset has split, the `split` parameter is mandatory.
             read_options: Additional read options as key/value pairs, defaults to `{}`.
 
         Returns:
-            `DataFrame`: The spark dataframe containing the feature data of the
-                training dataset.
+            The spark dataframe containing the feature data of the training dataset.
         """
         if self.splits and split is None:
             raise ValueError(
@@ -814,7 +816,7 @@ class TrainingDataset(TrainingDatasetBase):
         self.read(split).show(n)
 
     @public
-    def add_tag(self, name: str, value):
+    def add_tag(self, name: str, value: Any):
         """Attach a tag to a training dataset.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -842,7 +844,7 @@ class TrainingDataset(TrainingDatasetBase):
         self._training_dataset_engine.delete_tag(self, name)
 
     @public
-    def get_tag(self, name):
+    def get_tag(self, name: str) -> Any:
         """Get the tags of a training dataset.
 
         Parameters:
@@ -857,11 +859,11 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.get_tag(self, name)
 
     @public
-    def get_tags(self):
+    def get_tags(self) -> dict[str, tag.Tag]:
         """Returns all tags attached to a training dataset.
 
         Returns:
-            `Dict[str, obj]` of tags.
+            Dictionary of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
@@ -869,14 +871,14 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.get_tags(self)
 
     @public
-    def update_statistics_config(self):
+    def update_statistics_config(self) -> TrainingDataset:
         """Update the statistics configuration of the training dataset.
 
         Change the `statistics_config` object and persist the changes by calling
         this method.
 
         Returns:
-            `TrainingDataset`. The updated metadata object of the training dataset.
+            The updated metadata object of the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend encounters an issue
@@ -1029,11 +1031,11 @@ class TrainingDataset(TrainingDatasetBase):
 
     @public
     @property
-    def statistics(self):
+    def statistics(self) -> Statistics:
         """Get computed statistics for the training dataset.
 
         Returns:
-            `Statistics`. Object with statistics information.
+            Object with statistics information.
         """
         return self._statistics_engine.get(self, before_transformation=False)
 
@@ -1044,7 +1046,7 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.query(self, True, True, False)
 
     @public
-    def get_query(self, online: bool = True, with_label: bool = False):
+    def get_query(self, online: bool = True, with_label: bool = False) -> str | None:
         """Returns the query used to generate this training dataset.
 
         Parameters:
@@ -1055,8 +1057,7 @@ class TrainingDataset(TrainingDatasetBase):
                 created, defaults to `False`.
 
         Returns:
-            `str`. Query string for the chosen storage used to generate this training
-                dataset.
+            Query string for the chosen storage used to generate this training dataset.
         """
         return self._training_dataset_engine.query(
             self, online, with_label, engine.get_type() == "python"
@@ -1081,7 +1082,7 @@ class TrainingDataset(TrainingDatasetBase):
         self._vector_server.init_serving(self, batch, external)
 
     @public
-    def get_serving_vector(self, entry: dict[str, Any], external: bool | None = None):
+    def get_serving_vector(self, entry: dict[str, Any], external: bool | None = None) -> list:
         """Returns assembled serving vector from online feature store.
 
         Parameters:
@@ -1095,8 +1096,7 @@ class TrainingDataset(TrainingDatasetBase):
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
 
         Returns:
-            `list` List of feature values related to provided primary keys, ordered according to positions of this
-            features in training dataset query.
+            List of feature values related to provided primary keys, ordered according to positions of this features in training dataset query.
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)
@@ -1105,7 +1105,7 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def get_serving_vectors(
         self, entry: dict[str, list[Any]], external: bool | None = None
-    ):
+    ) -> list[list]:
         """Returns assembled serving vectors in batches from online feature store.
 
         Parameters:
@@ -1119,8 +1119,7 @@ class TrainingDataset(TrainingDatasetBase):
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
 
         Returns:
-            `List[list]` List of lists of feature values related to provided primary keys, ordered according to
-            positions of this features in training dataset query.
+            List of lists of feature values related to provided primary keys, ordered according to positions of this features in training dataset query.
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)

@@ -18,9 +18,11 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+@public("hopsworks.alert_receiver.EmailConfig")
 class EmailConfig:
     def __init__(
         self,
@@ -84,6 +86,7 @@ class _EmailConfig:
         return f"EmailConfig({self._to!r})"
 
 
+@public("hopsworks.alert_receiver.SlackConfig")
 class SlackConfig:
     def __init__(
         self,
@@ -147,6 +150,7 @@ class _SlackConfig:
         return f"SlackConfig({self._channel!r})"
 
 
+@public("hopsworks.alert_receiver.PagerDutyConfig")
 class PagerDutyConfig:
     def __init__(
         self,
@@ -223,6 +227,7 @@ class _PagerDutyConfig:
         return f"PagerDutyConfig({self._service_key!r}, {self._routing_key!r})"
 
 
+@public("hopsworks.alert_receiver.WebhookConfig")
 class WebhookConfig:
     def __init__(
         self,
@@ -286,6 +291,7 @@ class _WebhookConfig:
         return f"WebhookConfig({self._url!r})"
 
 
+@public("hopsworks.alert_receiver.AlertReceiver")
 class AlertReceiver:
     NOT_FOUND_ERROR_CODE = 390003
 

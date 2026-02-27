@@ -16,11 +16,13 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
+from hopsworks_apigen import public
 from hsfs import feature, util
 
 
+@public
 class Filter:
     GE = "GREATER_THAN_OR_EQUAL"
     GT = "GREATER_THAN"
@@ -83,19 +85,37 @@ class Filter:
     def __str__(self) -> str:
         return self.json()
 
+    @public
     @property
     def feature(self) -> feature.Feature:
+        """The feature the filter is applied on."""
         return self._feature
 
+    @public
     @property
-    def condition(self) -> str:
+    def condition(
+        self,
+    ) -> Literal[
+        "GREATER_THAN_OR_EQUAL",
+        "GREATER_THAN",
+        "NOT_EQUALS",
+        "EQUALS",
+        "LESS_THAN_OR_EQUAL",
+        "LESS_THAN",
+        "IN",
+        "LIKE",
+    ]:
+        """Condition of the filter."""
         return self._condition
 
+    @public
     @property
     def value(self) -> Any:
+        """Value of the filter."""
         return self._value
 
 
+@public
 class Logic:
     AND = "AND"
     OR = "OR"
@@ -189,12 +209,18 @@ class Logic:
     def __str__(self) -> str:
         return self.json()
 
+    @public
     @property
-    def type(self) -> str | None:
+    def type(self) -> Literal["AND", "OR", "SINGLE"] | None:
+        """Type of the logical operator."""
         return self._type
 
+    @public
     def get_left_filter_or_logic(self) -> Filter | Logic:
+        """Left side of the logical operator."""
         return self._left_f or self._left_l
 
+    @public
     def get_right_filter_or_logic(self) -> Filter | Logic | None:
+        """Right side of the logical operator."""
         return self._right_f or self._right_l

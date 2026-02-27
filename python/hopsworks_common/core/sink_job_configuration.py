@@ -21,6 +21,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.job_schedule import JobSchedule
 
@@ -36,6 +37,7 @@ class LoadingStrategy(Enum):
     INCREMENTAL_DATE = "INCREMENTAL_DATE"
 
 
+@public("hopsworks.core.FeatureColumnMapping")
 class FeatureColumnMapping:
     def __init__(self, source_column: str, feature_name: str):
         self.source_column = source_column
@@ -55,6 +57,7 @@ class FeatureColumnMapping:
     def to_json(self):
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def source_column(self) -> str:
         return self._source_column
@@ -63,6 +66,7 @@ class FeatureColumnMapping:
     def source_column(self, source_column: str) -> None:
         self._source_column = source_column
 
+    @public
     @property
     def feature_name(self) -> str:
         return self._feature_name
@@ -72,6 +76,7 @@ class FeatureColumnMapping:
         self._feature_name = feature_name
 
 
+@public("hopsworks.core.LoadingConfig")
 class LoadingConfig:
     def __init__(
         self,
@@ -126,6 +131,7 @@ class LoadingConfig:
         return json.dumps(self, cls=util.Encoder)
 
 
+@public("hopsworks.core.SinkJobConfiguration")
 class SinkJobConfiguration:
     DTO_TYPE = "ingestionJobConfiguration"
 
@@ -231,6 +237,7 @@ class SinkJobConfiguration:
         self._endpoint_config = kwargs.get("endpoint_config")
         self._name = kwargs.get("name", self._name)
 
+    @public
     @property
     def batch_size(self) -> int | None:
         return self._batch_size
@@ -239,6 +246,7 @@ class SinkJobConfiguration:
     def batch_size(self, batch_size: int | None) -> None:
         self._batch_size = batch_size
 
+    @public
     @property
     def loading_config(self) -> LoadingConfig | dict | None:
         return self._loading_config
@@ -247,6 +255,7 @@ class SinkJobConfiguration:
     def loading_config(self, loading_config: LoadingConfig | dict | None) -> None:
         self._loading_config = loading_config
 
+    @public
     @property
     def column_mappings(self) -> list[FeatureColumnMapping] | list[dict] | None:
         return self._column_mappings
@@ -257,6 +266,7 @@ class SinkJobConfiguration:
     ) -> None:
         self._column_mappings = column_mappings
 
+    @public
     @property
     def name(self) -> str | None:
         return self._name
@@ -265,6 +275,7 @@ class SinkJobConfiguration:
     def name(self, name: str | None) -> None:
         self._name = name
 
+    @public
     @property
     def schedule_config(self) -> JobSchedule | None:
         return self._schedule_config

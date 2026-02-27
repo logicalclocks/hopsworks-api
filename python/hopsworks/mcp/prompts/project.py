@@ -24,7 +24,7 @@ class ProjectPrompts:
     def __init__(self, mcp):
         """Initialize project prompts.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
@@ -37,7 +37,7 @@ class ProjectPrompts:
     def create_project_request(self, name: str = None, description: str = None) -> str:
         """Generates a user message for creating a new project.
 
-        Args:
+        Parameters:
             name: The name of the project
             description: A brief description of the project
 
@@ -52,7 +52,7 @@ class ProjectPrompts:
     def change_project_request(self, name: str = None) -> str:
         """Generates a user message for changing the current project.
 
-        Args:
+        Parameters:
             name: The name of the project to switch to
 
         Returns:
@@ -66,7 +66,7 @@ class ProjectPrompts:
     def get_project_details_request(self, name: str = None) -> str:
         """Generates a user message for getting project details.
 
-        Args:
+        Parameters:
             name: The name of the project
 
         Returns:

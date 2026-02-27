@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import humps
 from hopsworks_apigen import public
@@ -32,6 +32,12 @@ from hopsworks_common.core import (
     opensearch_api,
     search_api,
 )
+
+
+if TYPE_CHECKING:
+    from hsfs.feature_store import FeatureStore
+    from hsml.model_registry import ModelRegistry
+    from hsml.model_serving import ModelServing
 
 
 @public("hopsworks.project.Project")
@@ -127,7 +133,7 @@ class Project:
         return self._project_namespace
 
     @public
-    def get_feature_store(self, name: str | None = None):
+    def get_feature_store(self, name: str | None = None) -> FeatureStore:
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a
@@ -146,7 +152,7 @@ class Project:
             name: Project name of the feature store.
 
         Returns:
-            hsfs.feature_store.FeatureStore: The Feature Store API.
+            The Feature Store API.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -154,7 +160,7 @@ class Project:
         return client.get_connection().get_feature_store(name)
 
     @public
-    def get_model_registry(self):
+    def get_model_registry(self) -> ModelRegistry:
         """Connect to Project's Model Registry API.
 
         Example: Example for getting the Model Registry API of a project
@@ -167,7 +173,7 @@ class Project:
             ```
 
         Returns:
-            hsml.model_registry.ModelRegistry: The Model Registry API.
+            The Model Registry API.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -175,7 +181,7 @@ class Project:
         return client.get_connection().get_model_registry()
 
     @public
-    def get_model_serving(self):
+    def get_model_serving(self) -> ModelServing:
         """Connect to Project's Model Serving API.
 
         Example: Example for getting the Model Serving API of a project
@@ -188,7 +194,7 @@ class Project:
             ```
 
         Returns:
-            hsml.model_serving.ModelServing: The Model Serving API.
+            The Model Serving API.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.

@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import humps
 from hopsworks_apigen import public
@@ -28,6 +28,10 @@ from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
 from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.execution import Execution
 
 
 @public("hopsworks.job.Job", "hsfs.core.job.Job")
@@ -157,7 +161,7 @@ class Job:
 
     @public
     @usage.method_logger
-    def run(self, args: str = None, await_termination: bool = True):
+    def run(self, args: str | None = None, await_termination: bool = True) -> Execution:
         """Run the job.
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
@@ -188,7 +192,7 @@ class Job:
             await_termination: Identifies if the client should wait for the job to complete.
 
         Returns:
-            `Execution`: The execution object for the submitted run.
+            The execution object for the submitted run.
         """
         if self._is_materialization_running(args):
             return None
@@ -260,11 +264,11 @@ class Job:
         return last_execution[0].final_status
 
     @public
-    def get_executions(self):
+    def get_executions(self) -> list[Execution]:
         """Retrieves all executions for the job ordered by submission time.
 
         Returns:
-            `List[Execution]`: List of Execution objects.
+            List of Execution objects.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.

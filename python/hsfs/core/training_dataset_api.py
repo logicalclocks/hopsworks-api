@@ -121,7 +121,7 @@ class TrainingDatasetApi:
     ) -> job.Job:
         """Setup a Hopsworks job to compute the query and write the training dataset.
 
-        Args:
+        Parameters:
             training_dataset_instance: the metadata instance of the training dataset
             td_app_conf: the configuration for the training dataset job application.
         """
@@ -193,8 +193,8 @@ class TrainingDatasetApi:
     ) -> serving_prepared_statement.ServingPreparedStatement:
         """Get serving prepared statement metadata object for a training dataset.
 
-        Args:
-            training_dataset_instance (training_dataset): the metadata instance of the training dataset
+        Parameters:
+            training_dataset_instance: the metadata instance of the training dataset
             batch: boolean. Weather to retrieve batch serving vector or not.
         """
         _client = client.get_instance()

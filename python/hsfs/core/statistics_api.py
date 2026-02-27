@@ -26,10 +26,9 @@ class StatisticsApi:
     def __init__(self, feature_store_id: int, entity_type: str) -> None:
         """Statistics endpoint for `trainingdatasets` and `featuregroups` resource.
 
-        :param feature_store_id: id of the respective featurestore
-        :type feature_store_id: int
-        :param entity_type: "trainingdatasets" or "featuregroups" or "featureview"
-        :type entity_type: str
+        Parameters:
+            feature_store_id: id of the respective featurestore
+            entity_type: "trainingdatasets" or "featuregroups" or "featureview"
         """
         self._feature_store_id = feature_store_id
         self._entity_type = entity_type  # TODO: Support FV
@@ -68,22 +67,15 @@ class StatisticsApi:
     ) -> statistics.Statistics | None:
         """Get single statistics of an entity.
 
-        :param metadata_instance: metadata object of the instance to get statistics of
-        :type metadata_instance: TrainingDataset, FeatureGroup, FeatureView
-        :param computation_time: Time at which statistics where computed
-        :type computation_time: int
-        :param start_commit_time: Window start commit time
-        :type start_time: int
-        :param end_commit_time: Window end commit time
-        :type end_time: int
-        :param feature_names: List of feature names of which statistics are retrieved
-        :type feature_names: List[str]
-        :param row_percentage: Percentage of feature values used during statistics computation
-        :type row_percentage: float
-        :param before_transformation: Whether the statistics were computed before transformations or not
-        :type before_transformation: bool
-        :param training_dataset_version: Version of the training dataset on which statistics were computed
-        :type training_dataset_version: int
+        Parameters:
+            metadata_instance: metadata object of the instance to get statistics of
+            computation_time: Time at which statistics where computed
+            start_commit_time: Window start commit time
+            end_commit_time: Window end commit time
+            feature_names: List of feature names of which statistics are retrieved
+            row_percentage: Percentage of feature values used during statistics computation
+            before_transformation: Whether the statistics were computed before transformations or not
+            training_dataset_version: Version of the training dataset on which statistics were computed
         """
         # get statistics by entity + filters + sorts, including the feature descriptive statistics
         _client = client.get_instance()
@@ -129,22 +121,15 @@ class StatisticsApi:
     ) -> list[statistics.Statistics] | None:
         """Get all statistics of an entity.
 
-        :param metadata_instance: metadata object of the instance to get statistics of
-        :type metadata_instance: TrainingDataset, FeatureGroup, FeatureView
-        :param computation_time: Time at which statistics where computed
-        :type computation_time: int
-        :param start_commit_time: Window start commit time
-        :type start_commit_time: int
-        :param end_commit_time: Window end commit time
-        :type end_commit_time: int
-        :param feature_names: List of feature names of which statistics are retrieved
-        :type feature_names: List[str]
-        :param row_percentage: Percentage of feature values used during statistics computation
-        :type row_percentage: float
-        :param before_transformation: Whether the statistics were computed before transformations or not
-        :type before_transformation: bool
-        :param training_dataset_version: Version of the training dataset on which statistics were computed
-        :type training_dataset_version: int
+        Parameters:
+            metadata_instance: metadata object of the instance to get statistics of
+            computation_time: Time at which statistics where computed
+            start_commit_time: Window start commit time
+            end_commit_time: Window end commit time
+            feature_names: List of feature names of which statistics are retrieved
+            row_percentage: Percentage of feature values used during statistics computation
+            before_transformation: Whether the statistics were computed before transformations or not
+            training_dataset_version: Version of the training dataset on which statistics were computed
         """
         # get all statistics by entity + filters + sorts, without the feature descriptive statistics
         _client = client.get_instance()
@@ -182,10 +167,9 @@ class StatisticsApi:
     ) -> job.Job:
         """Compute statistics for an entity.
 
-        :param metadata_instance: metadata object of the instance to compute statistics for
-        :type metadata_instance: TrainingDataset, FeatureGroup, FeatureView
-        :param training_dataset_version: version of the training dataset metadata object
-        :type training_dataset_version: int
+        Parameters:
+            metadata_instance: metadata object of the instance to compute statistics for
+            training_dataset_version: version of the training dataset metadata object
         """
         _client = client.get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version) + [
@@ -202,10 +186,9 @@ class StatisticsApi:
     ) -> list[str | int]:
         """Get statistics path.
 
-        :param metadata_instance: metadata object of the instance to compute statistics for
-        :type metadata_instance: TrainingDataset, FeatureGroup
-        :param training_dataset_version: version of the training dataset metadata object
-        :type training_dataset_version: int
+        Parameters:
+            metadata_instance: metadata object of the instance to compute statistics for
+            training_dataset_version: version of the training dataset metadata object
         """
         _client = client.get_instance()
         if isinstance(metadata_instance, feature_view.FeatureView):
@@ -257,26 +240,17 @@ class StatisticsApi:
     ) -> dict[str, Any]:
         """Build query parameters for statistics requests.
 
-        :param computation_time: Time at which statistics where computed
-        :type computation_time: int
-        :param start_commit_time: Window start commit time
-        :type start_commit_time: int
-        :param end_commit_time: Window end commit time
-        :type end_commit_time: int
-        :param feature_names: List of feature names of which statistics are retrieved
-        :type feature_names: List[str]
-        :param row_percentage: Percentage of feature values used during statistics computation
-        :type row_percentage: float
-        :param before_transformation: Whether the statistics were computed for transformations or not
-        :type before_transformation: bool
-        :param training_dataset_version: Version of the training dataset on which statistics were computed
-        :type training_dataset_version: int
-        :param offset: Offset for pagination queries
-        :type offset: int
-        :param limit: Limit for pagination queries
-        :type limit: int
-        :param with_content: Whether include feature descriptive statistics in the response or not
-        :type with_content: bool
+        Parameters:
+            computation_time: Time at which statistics where computed
+            start_commit_time: Window start commit time
+            end_commit_time: Window end commit time
+            feature_names: List of feature names of which statistics are retrieved
+            row_percentage: Percentage of feature values used during statistics computation
+            before_transformation: Whether the statistics were computed for transformations or not
+            training_dataset_version: Version of the training dataset on which statistics were computed
+            offset: Offset for pagination queries
+            limit: Limit for pagination queries
+            with_content: Whether include feature descriptive statistics in the response or not
         """
         query_params: dict[str, int | str | list[str]] = {"offset": offset}
         if limit is not None:

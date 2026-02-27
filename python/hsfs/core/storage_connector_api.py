@@ -49,12 +49,12 @@ class StorageConnectorApi:
     ) -> storage_connector.StorageConnector:
         """Get storage connector with name.
 
-        :param feature_store_id: feature store id
-        :type feature_store_id: int
-        :param name: name of the storage connector
-        :type name: str
-        :return: the storage connector
-        :rtype: StorageConnector
+        Parameters:
+            feature_store_id: feature store id
+            name: name of the storage connector
+
+        Returns:
+            the storage connector
         """
         storage_connector_json = self._get(feature_store_id, name)
         if storage_connector_json:
@@ -110,7 +110,7 @@ class StorageConnectorApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def get_feature_groups_provenance(self, storage_connector_instance):
+    def get_feature_groups_provenance(self, storage_connector_instance) -> Links:
         """Get the generated feature groups using this storage connector, based on explicit provenance.
 
         These feature groups can be accessible or inaccessible. Explicit
@@ -122,8 +122,7 @@ class StorageConnectorApi:
             storage_connector_instance: Metadata object of storage connector.
 
         Returns:
-            `ExplicitProvenance.Links`: the feature groups generated using this
-            storage connector
+            The feature groups generated using this storage connector.
         """
         _client = client.get_instance()
         path_params = [
@@ -154,17 +153,15 @@ class StorageConnectorApi:
     def get_training_datasets_provenance(self, storage_connector_instance) -> Links:
         """Get the generated training datasets using this storage connector, based on explicit provenance.
 
-        These training datasets can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated training dataset links, so deleted
-        will always be empty.
+        These training datasets can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated training dataset links, so deleted will always be empty.
         For inaccessible training datasets, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             storage_connector_instance: Metadata object of storage connector.
 
-        # Returns
-            `ExplicitProvenance.Links`: the training datasets generated using this
-            storage connector
+        Returns:
+            The training datasets generated using this storage connector.
         """
         _client = client.get_instance()
         path_params = [

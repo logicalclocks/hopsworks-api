@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     import builtins
     from datetime import date, datetime
 
+    from hopsworks_common.job import Job
     from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 
 
@@ -262,7 +263,7 @@ class FeatureMonitoringConfig:
             row_percentage: The fraction of rows to use when computing the statistics [0, 1.0].
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
         self.detection_window_config = {
@@ -311,7 +312,7 @@ class FeatureMonitoringConfig:
             row_percentage: The percentage of rows to use when computing the statistics. Defaults to 20%.
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation and build monitoring window config object.
         if self.detection_window_config is None:
@@ -355,7 +356,7 @@ class FeatureMonitoringConfig:
             value: A float value to use as reference.
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
             "specific_value": value,
@@ -392,7 +393,7 @@ class FeatureMonitoringConfig:
             training_dataset_version: The version of the training dataset to use as reference.
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
             "training_dataset_version": training_dataset_version,
@@ -437,7 +438,7 @@ class FeatureMonitoringConfig:
             relative: Whether to use a relative comparison (e.g. relative mean) or an absolute comparison (e.g. absolute mean).
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
         self.statistics_comparison_config = {
@@ -450,7 +451,7 @@ class FeatureMonitoringConfig:
         return self
 
     @public
-    def save(self):
+    def save(self) -> FeatureMonitoringConfig:
         """Saves the feature monitoring configuration.
 
         Example:
@@ -464,7 +465,7 @@ class FeatureMonitoringConfig:
             ```
 
         Returns:
-            `FeatureMonitoringConfig`. The saved FeatureMonitoringConfig object.
+            The saved FeatureMonitoringConfig object.
         """
         registered_config = self._feature_monitoring_config_engine.save(self)
         self.detection_window_config = registered_config._detection_window_config
@@ -484,7 +485,7 @@ class FeatureMonitoringConfig:
         return self
 
     @public
-    def update(self):
+    def update(self) -> FeatureMonitoringConfig:
         """Updates allowed fields of the saved feature monitoring configuration.
 
         Example:
@@ -499,12 +500,12 @@ class FeatureMonitoringConfig:
             ```
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         return self._feature_monitoring_config_engine.update(self)
 
     @public
-    def run_job(self):
+    def run_job(self) -> Job:
         """Trigger the feature monitoring job which computes and compares statistics on the detection and reference windows.
 
         Example:
@@ -522,10 +523,10 @@ class FeatureMonitoringConfig:
             Calling this method does not affect the ongoing schedule.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
 
         Returns:
-            `Job`. A handle for the job computing the statistics.
+            A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
             raise FeatureStoreException(
@@ -537,7 +538,7 @@ class FeatureMonitoringConfig:
         )
 
     @public
-    def get_job(self):
+    def get_job(self) -> Job:
         """Get the feature monitoring job which computes and compares statistics on the detection and reference windows.
 
         Example:
@@ -550,10 +551,10 @@ class FeatureMonitoringConfig:
             job.executions
             ```
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
 
         Returns:
-            `Job`. A handle for the job computing the statistics.
+            A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
             raise FeatureStoreException(
@@ -580,7 +581,7 @@ class FeatureMonitoringConfig:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -604,7 +605,7 @@ class FeatureMonitoringConfig:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=False)
 
@@ -625,7 +626,7 @@ class FeatureMonitoringConfig:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=True)
 
@@ -672,7 +673,7 @@ class FeatureMonitoringConfig:
             with_statistics: Whether to include the computed statistics in the results.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         if not self._id:
             raise FeatureStoreException(

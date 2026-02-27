@@ -18,11 +18,13 @@ from __future__ import annotations
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 from hsfs import util
 from hsfs.constructor import query
 from hsfs.decorators import typechecked
 
 
+@public
 @typechecked
 class Join:
     INNER = "INNER"

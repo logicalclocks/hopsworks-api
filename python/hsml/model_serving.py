@@ -71,7 +71,7 @@ class ModelServing:
             id: Id of the deployment to get.
 
         Returns:
-            `Deployment`: The deployment metadata object or `None` if it does not exist.
+            The deployment metadata object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
@@ -98,7 +98,7 @@ class ModelServing:
             name: Name of the deployment to get.
 
         Returns:
-            `Deployment`: The deployment metadata object or `None` if it does not exist.
+            The deployment metadata object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
@@ -132,11 +132,13 @@ class ModelServing:
             for deployment in list_deployments:
                 print(deployment.get_state())
             ```
+
         Parameters:
             model: Filter by model served in the deployments
             status: Filter by status of the deployments
+
         Returns:
-            `List[Deployment]`: A list of deployments.
+            A list of deployments.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployments from model serving.
@@ -163,7 +165,7 @@ class ModelServing:
         """Get all inference endpoints available in the current project.
 
         Returns:
-            `List[InferenceEndpoint]`: Inference endpoints for model inference
+            Inference endpoints for model inference
         """
         return self._serving_api.get_inference_endpoints()
 
@@ -213,8 +215,7 @@ class ModelServing:
         Parameters:
             model: Model to be deployed.
             name: Name of the predictor.
-            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
-            or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
             config_file: Model server configuration file to be passed to the model deployment.
@@ -224,12 +225,12 @@ class ModelServing:
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
 
         Returns:
-            `Predictor`. The predictor metadata object.
+            The predictor metadata object.
         """
         if name is None:
             name = model._get_default_serving_name()
@@ -314,7 +315,7 @@ class ModelServing:
             resources: Resources to be allocated for the transformer.
 
         Returns:
-            `Transformer`. The transformer metadata object.
+            The transformer metadata object.
         """
         return Transformer(
             script_file=script_file,
@@ -361,12 +362,12 @@ class ModelServing:
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
 
         Returns:
-            `Predictor`. The predictor metadata object.
+            The predictor metadata object.
         """
         return Predictor.for_server(
             name=name,
@@ -453,7 +454,7 @@ class ModelServing:
             environment: (**Deprecated**) The project Python environment to use. This argument will be ignored, use the argument `environment` in the `create_predictor()` or `create_endpoint()` methods instead.
 
         Returns:
-            `Deployment`. The deployment metadata object.
+            The deployment metadata object.
         """
         return Deployment(predictor=predictor, name=name)
 

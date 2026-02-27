@@ -24,7 +24,7 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
@@ -100,7 +100,7 @@ def _handle_opensearch_exception(func):
     return error_handler_wrapper
 
 
-@also_available_as(
+@public(
     "hopsworks.core.opensearch.OpensearchRequestOption",
     "hsfs.core.opensearch.OpensearchRequestOption",
 )
@@ -115,22 +115,24 @@ class OpensearchRequestOption:
         "timeout": 30,
     }
 
+    @public
     @classmethod
-    def get_version(cls):
+    def get_version(cls) -> tuple[int, int]:
+        """Get the major and minor version of the opensearch client."""
         return opensearchpy.__version__[0:2]
 
+    @public
     @classmethod
-    def get_options(cls, options: dict):
+    def get_options(cls, options: dict) -> dict:
         """Construct a map of options for the request to the vector database.
 
-        Args:
-            options (dict): The options used for the request to the vector database.
+        Parameters:
+            options:
+                The options used for the request to the vector database.
                 The keys are attribute values of the OpensearchRequestOption class.
 
         Returns:
-            dict: A dictionary containing the constructed options map, where keys represent
-            attribute values of the OpensearchRequestOption class, and values are obtained
-            either from the provided options or default values if not available.
+            A dictionary containing the constructed options map, where keys represent attribute values of the OpensearchRequestOption class, and values are obtained either from the provided options or default values if not available.
         """
         default_option = (
             cls.DEFAULT_OPTION_MAP
@@ -476,7 +478,7 @@ class OpenSearchClientSingleton:
     ):
         """Invalidate cached ProjectOpenSearchClient and connector config.
 
-        Args:
+        Parameters:
             feature_store_id: The feature store ID to invalidate cache for.
             close_opensearch_client: Whether to close the cached OpenSearch client when invalidating.
         """

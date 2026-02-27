@@ -91,17 +91,17 @@ else:
 
 if HAS_PYARROW:
 
-    def convert_offline_type_to_pyarrow_type(offline_type: str):
+    def convert_offline_type_to_pyarrow_type(offline_type: str) -> pa.DataType:
         """Convert an offline type string to a PyArrow type.
 
         Supports simple types (int, bigint, string, etc.), array types (array<type>),
         and struct types (struct<field1:type1,field2:type2>).
 
-        # Arguments
-            offline_type: `str`. The offline type string to convert.
+        Parameters:
+            offline_type: The offline type string to convert.
 
-        # Returns
-            `pa.DataType`. The corresponding PyArrow type.
+        Returns:
+            The corresponding PyArrow type.
         """
         offline_type = offline_type.strip().lower()
 
@@ -251,7 +251,7 @@ if HAS_PANDAS:
 def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
     """This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
 
-    Args:
+    Parameters:
         base_type : The base class to extend
     """
 
@@ -273,6 +273,7 @@ def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
     return HopsworksLoggingMetadataType
 
 
+# TODO: Rework whatever is going on here
 HopsworksLoggingMetadataType = NewType(
     "HopsworksLoggingMetadataType", create_extended_type(type)
 )  # Adding new type for type hinting and static analysis.

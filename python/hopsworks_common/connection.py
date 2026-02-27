@@ -23,6 +23,7 @@ import re
 import sys
 import warnings
 import weakref
+from typing import TYPE_CHECKING
 
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client, constants, usage, util, version
@@ -38,6 +39,13 @@ from hopsworks_common.core.opensearch import OpenSearchClientSingleton
 from hopsworks_common.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
 from typing_extensions import Self
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.project import Project
+    from hsfs import feature_store
+    from hsml.model_registry import ModelRegistry
+    from hsml.model_serving import ModelServing
 
 
 HOPSWORKS_PORT_DEFAULT = 443
@@ -155,8 +163,7 @@ class Connection:
     def get_feature_store(
         self,
         name: str | None = None,
-    ):  # -> feature_store.FeatureStore
-        # the typing is commented out due to circular dependency, it breaks auto_doc.py
+    ) -> feature_store.FeatureStore:
         """Get a reference to a feature store to perform operations on.
 
         Defaulting to the project name of default feature store.
@@ -166,7 +173,7 @@ class Connection:
             name: The name of the feature store.
 
         Returns:
-            `FeatureStore`. A feature store handle object to perform operations on.
+            A feature store handle object to perform operations on.
         """
         if not name:
             name = client.get_instance()._project_name
@@ -174,7 +181,7 @@ class Connection:
 
     @usage.method_logger
     @connected
-    def get_model_registry(self, project: str = None):
+    def get_model_registry(self, project: str | None = None) -> ModelRegistry:
         """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
 
         Shared model registries can be retrieved by passing the `project` argument.
@@ -183,13 +190,13 @@ class Connection:
             project: The name of the project that owns the shared model registry, the model registry must be shared with the project the connection was established for.
 
         Returns:
-            `ModelRegistry`. A model registry handle object to perform operations on.
+            A model registry handle object to perform operations on.
         """
         return self._model_registry_api.get(project)
 
     @usage.method_logger
     @connected
-    def get_model_serving(self):
+    def get_model_serving(self) -> ModelServing:
         """Get a reference to model serving to perform operations on. Model serving operates on top of a model registry, defaulting to the project's default model registry.
 
         Example:
@@ -202,7 +209,7 @@ class Connection:
             ```
 
         Returns:
-            `ModelServing`. A model serving handle object to perform operations on.
+            A model serving handle object to perform operations on.
         """
         return self._model_serving_api.get()
 
@@ -212,15 +219,18 @@ class Connection:
         """Get the secrets api.
 
         Returns:
-            `SecretsApi`: The Secrets Api handle
+            The Secrets Api handle.
         """
         return self._secret_api
 
     @usage.method_logger
     @connected
     def create_project(
-        self, name: str, description: str = None, feature_store_topic: str = None
-    ):
+        self,
+        name: str,
+        description: str | None = None,
+        feature_store_topic: str | None = None,
+    ) -> Project:
         """Create a new project.
 
         Example:
@@ -238,20 +248,20 @@ class Connection:
             feature_store_topic: Feature store topic name.
 
         Returns:
-            `Project`. A project handle object to perform operations on.
+            A project handle object to perform operations on.
         """
         return self._project_api._create_project(name, description, feature_store_topic)
 
     @usage.method_logger
     @connected
-    def get_project(self, name: str = None):
+    def get_project(self, name: str | None = None) -> Project:
         """Get an existing project.
 
         Parameters:
             name: The name of the project.
 
         Returns:
-            `Project`. A project handle object to perform operations on.
+            A project handle object to perform operations on.
         """
         _client = client.get_instance()
         if not name and not _client._project_name:
@@ -268,24 +278,24 @@ class Connection:
 
     @usage.method_logger
     @connected
-    def get_projects(self):
+    def get_projects(self) -> list[Project]:
         """Get all projects.
 
         Returns:
-            `List[Project]`: List of Project objects.
+            List of Project objects.
         """
         return self._project_api._get_projects()
 
     @usage.method_logger
     @connected
-    def project_exists(self, name: str):
+    def project_exists(self, name: str) -> bool:
         """Check if a project exists.
 
         Parameters:
             name: The name of the project.
 
         Returns:
-            `bool`. True if project exists, otherwise False.
+            Whether the project exists.
         """
         return self._project_api._exists(name)
 

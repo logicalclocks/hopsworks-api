@@ -21,11 +21,11 @@ import json
 from typing import Any
 
 import humps
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@also_available_as("hopsworks.tag.Tag", "hsfs.tag.Tag", "hsml.tag.Tag")
+@public("hopsworks.tag.Tag", "hsfs.tag.Tag", "hsml.tag.Tag")
 class Tag:
     """Represents a tag in Hopsworks.
 
@@ -128,6 +128,7 @@ class Tag:
             tags.append(cls(name=tag_dict["name"], value=tag_dict["value"]))
         return tags
 
+    @public
     @property
     def name(self) -> str:
         """Name of the tag."""
@@ -139,6 +140,7 @@ class Tag:
             raise ValueError("Tag name cannot be None")
         self._name = name
 
+    @public
     @property
     def value(self) -> Any:
         """Value of the tag."""

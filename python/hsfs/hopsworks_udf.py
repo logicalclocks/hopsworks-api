@@ -39,6 +39,7 @@ from packaging.version import Version
 
 
 if TYPE_CHECKING:
+    import pandas as pd
     from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 _logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ class UDFKeyWords(Enum):
     CONTEXT = "context"
 
 
+@public
 def udf(
     return_type: list[type] | type,
     drop: str | list[str] | None = None,
@@ -848,6 +850,7 @@ def renaming_wrapper(*args):
             f"Invalid execution mode '{self.execution_mode}' for UDF '{self.function_name}'."
         )
 
+    @public
     def executor(
         self,
         statistics: TransformationStatistics
@@ -992,7 +995,20 @@ def renaming_wrapper(*args):
         return executable
 
     @public
-    def execute(self, *args) -> Any:
+    def execute(
+        self, *args: Any
+    ) -> (
+        pd.Series
+        | pd.DataFrame
+        | int
+        | float
+        | str
+        | bool
+        | datetime
+        | time
+        | date
+        | tuple[int | float | str | bool | datetime | time | date, ...]
+    ):
         """Execute the UDF directly with the provided arguments.
 
         This is a convenience method for quick testing of simple UDFs that don't require
@@ -1016,15 +1032,12 @@ def renaming_wrapper(*args):
             ```
 
         Parameters:
-            *args: Input arguments matching the UDF's parameter signature.
+            *args:
+                Input arguments matching the UDF's parameter signature.
                 For batch processing, pass pandas Series or DataFrames.
 
         Returns:
             The transformed values.
-            - pd.Series - Single output Pandas UDFs.
-            - pd.DataFrame - Multi-output Pandas UDFs.
-            - int | float | str | bool | datetime | time | date - Single output Python UDFs.
-            - tuple[int | float | str | bool | datetime | time | date] - Multi-output Python UDFs.
         """
         return self.executor().execute(*args)
 

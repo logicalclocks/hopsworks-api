@@ -103,8 +103,8 @@ class OnlineStoreRestClientEngine:
             features: List of TrainingDatasetFeature objects containing feature metadata
 
         Returns:
-            Dict[int, str]: A dictionary mapping feature indices to their type strings for features
-                that require decoding. The indices correspond to the position in _ordered_feature_names.
+            A dictionary mapping feature indices to their type strings for features that require decoding.
+            The indices correspond to the position in _ordered_feature_names.
         """
         feature_to_decode = {}
         for feat in features:

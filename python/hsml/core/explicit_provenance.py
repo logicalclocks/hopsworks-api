@@ -13,13 +13,19 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 import logging
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_apigen import public
+
+
+if TYPE_CHECKING:
+    from hsfs import feature_view, training_dataset
 
 
 _logger = logging.getLogger(__name__)
@@ -133,8 +139,8 @@ class Links:
 
     @public
     @property
-    def deleted(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
+    def deleted(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
 
         These entities have been removed from the feature store.
         """
@@ -142,8 +148,8 @@ class Links:
 
     @public
     @property
-    def inaccessible(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
+    def inaccessible(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
 
         These entities exist in the feature store, however the user does not have access to them anymore.
         """
@@ -151,8 +157,10 @@ class Links:
 
     @public
     @property
-    def accessible(self):
-        """List of [FeatureView|TrainingDataset objects] objects which are part of the provenance graph requested.
+    def accessible(
+        self,
+    ) -> list[feature_view.FeatureView | training_dataset.TrainingDataset]:
+        """List of objects which are part of the provenance graph requested.
 
         These entities exist in the feature store and the user has access to them.
         """
@@ -160,8 +168,8 @@ class Links:
 
     @public
     @property
-    def faulty(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
+    def faulty(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
 
         These entities exist in the feature store, however they are corrupted.
         """

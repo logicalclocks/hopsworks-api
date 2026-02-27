@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 from abc import abstractmethod
 
 from hopsworks_apigen import also_available_as
@@ -35,20 +37,17 @@ class Client(base.Client):
     def __init__(self):
         """To be implemented by clients."""
 
-    def _get_verify(self, verify, trust_store_path):
+    def _get_verify(self, verify: str, trust_store_path: str | None) -> str | bool:
         """Get verification method for sending inference requests to Istio.
 
         Credit to https://gist.github.com/gdamjan/55a8b9eec6cf7b771f92021d93b87b2c
 
-        :param verify: perform hostname verification, 'true' or 'false'
-        :type verify: str
-        :param trust_store_path: path of the truststore locally if it was uploaded manually to
-            the external environment such as EKS or AKS
-        :type trust_store_path: str
-        :return: if verify is true and the truststore is provided, then return the trust store location
-                 if verify is true but the truststore wasn't provided, then return true
-                 if verify is false, then return false
-        :rtype: str or boolean
+        Parameters:
+            verify: Whether to perform hostname verification, is interpreted as `True` only if it is the string `"true"`.
+            trust_store_path: The path of the truststore locally if it was uploaded manually to the external environment such as EKS or AKS.
+
+        Returns:
+            If verify is true and the truststore is provided, then return the trust store location; if verify is true but the truststore wasn't provided, then return true; if verify is false, then return false.
         """
         if verify == "true":
             if trust_store_path is not None:

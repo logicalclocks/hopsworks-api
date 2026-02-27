@@ -16,12 +16,19 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from hopsworks_apigen import also_available_as, public
+from hopsworks_apigen import public
 from hopsworks_common import client
 
 
-@also_available_as("hopsworks.core.search_api.Project")
+if TYPE_CHECKING:
+    from hsfs.feature_group import FeatureGroup
+    from hsfs.feature_view import FeatureView
+    from hsfs.training_dataset import TrainingDataset
+
+
+@public("hopsworks.core.search_api.Project")
 class Project:
     """Represents a project associated with a search result."""
 
@@ -30,11 +37,13 @@ class Project:
         self._id = project_id
         self._name = project_name
 
+    @public
     @property
     def id(self) -> int:
         """Project ID."""
         return self._id
 
+    @public
     @property
     def name(self) -> str:
         """Project name."""
@@ -48,9 +57,13 @@ class Project:
         return f"Project(id={self._id}, name='{self._name}')"
 
 
-@also_available_as("hopsworks.core.search_api.Highlights")
+@public("hopsworks.core.search_api.Highlights")
 class Highlights:
-    """Container for search result highlights showing where matches occurred."""
+    """Container for search result highlights showing where matches occurred.
+
+    The results are highlighted by wrapping the matched terms in `<em>` tags.
+    Check the [OpenSearch Highlight Queries](https://docs.opensearch.org/latest/search-plugins/searching-data/highlight/) for more details.
+    """
 
     def __init__(self, highlights_data: dict):
         self._log = logging.getLogger(__name__)
@@ -62,34 +75,40 @@ class Highlights:
         self._features = highlights_data.get("features", [])
         self._source_feature_groups = highlights_data.get("sourceFeatureGroups", [])
 
+    @public
     @property
     def name(self) -> str | None:
-        """Highlighted name with <em> tags showing matched terms."""
+        """Highlighted name with the matched parts enwrapped in `<em>` tags."""
         return self._name
 
+    @public
     @property
     def description(self) -> str | None:
-        """Highlighted description with <em> tags showing matched terms."""
+        """Highlighted description with the matched parts enwrapped in `<em>` tags."""
         return self._description
 
+    @public
     @property
     def tags(self) -> list:
-        """List of highlighted tags with <em> tags showing matched terms."""
+        """List of highlighted tags with the matched parts enwrapped in `<em>` tags."""
         return self._tags
 
+    @public
     @property
     def keywords(self) -> list:
-        """Highlighted keywords with <em> tags showing matched terms."""
+        """Highlighted keywords with the matched parts enwrapped in `<em>` tags."""
         return self._keywords
 
+    @public
     @property
     def features(self) -> list:
-        """Highlighted features with <em> tags showing matched terms."""
+        """Highlighted features with the matched parts enwrapped in `<em>` tags."""
         return self._features
 
+    @public
     @property
     def source_feature_groups(self) -> list:
-        """Highlighted source feature groups with <em> tags showing matched terms."""
+        """Highlighted source feature groups with the matched parts enwrapped in `<em>` tags."""
         return self._source_feature_groups
 
     @property
@@ -139,7 +158,7 @@ class Highlights:
         return "Highlights(none)"
 
 
-@also_available_as("hopsworks.core.search_api.SearchResultItem")
+@public("hopsworks.core.search_api.SearchResultItem")
 class SearchResultItem:
     """Base class for search result items."""
 
@@ -159,31 +178,37 @@ class SearchResultItem:
             Project(project_id, project_name) if project_id and project_name else None
         )
 
+    @public
     @property
     def href(self):
         """URL to get the full resource."""
         return self._href
 
+    @public
     @property
     def name(self):
         """Name of the resource."""
         return self._name
 
+    @public
     @property
     def version(self):
         """Version of the resource."""
         return self._version
 
+    @public
     @property
     def description(self):
         """Description of the resource."""
         return self._description
 
+    @public
     @property
     def highlights(self) -> Highlights:
         """Search highlights showing matched terms."""
         return self._highlights
 
+    @public
     @property
     def project(self) -> Project | None:
         """Parent project of this resource."""
@@ -222,7 +247,8 @@ class SearchResultItem:
 class FeatureGroupSearchResult(SearchResultItem):
     """Search result for a Feature Group."""
 
-    def get(self):
+    @public
+    def get(self) -> FeatureGroup | None:
         """Retrieve the full FeatureGroup object.
 
         This uses the project associated with this search result to obtain a
@@ -244,7 +270,8 @@ class FeatureGroupSearchResult(SearchResultItem):
 class FeatureViewSearchResult(SearchResultItem):
     """Search result for a Feature View."""
 
-    def get(self):
+    @public
+    def get(self) -> FeatureView | None:
         """Retrieve the full FeatureView object.
 
         This uses the project associated with this search result to obtain a
@@ -266,7 +293,8 @@ class FeatureViewSearchResult(SearchResultItem):
 class TrainingDatasetSearchResult(SearchResultItem):
     """Search result for a Training Dataset."""
 
-    def get(self):
+    @public
+    def get(self) -> TrainingDataset | None:
         """Retrieve the full TrainingDataset object.
 
         This uses the project associated with this search result to obtain a
@@ -320,61 +348,73 @@ class FeaturestoreSearchResult:
         self._features_offset = response_data.get("featuresFrom", 0)
         self._features_total = response_data.get("featuresTotal", 0)
 
+    @public
     @property
     def feature_groups(self) -> list[FeatureGroupSearchResult]:
         """List of Feature Group search results."""
         return self._feature_groups
 
+    @public
     @property
     def feature_views(self) -> list[FeatureViewSearchResult]:
         """List of Feature View search results."""
         return self._feature_views
 
+    @public
     @property
     def training_datasets(self) -> list[TrainingDatasetSearchResult]:
         """List of Training Dataset search results."""
         return self._training_datasets
 
+    @public
     @property
     def features(self) -> list[FeatureSearchResult]:
         """List of Feature search results."""
         return self._features
 
+    @public
     @property
     def feature_groups_offset(self) -> int:
         """Total offset for the return list of feature groups within the whole result."""
         return self._feature_groups_offset
 
+    @public
     @property
     def feature_views_offset(self) -> int:
         """Total offset for the return list of feature views within the whole result."""
         return self._feature_views_offset
 
+    @public
     @property
     def training_datasets_offset(self) -> int:
         """Total offset for the return list of training datasets within the whole result."""
         return self._training_datasets_offset
 
+    @public
     @property
     def features_offset(self) -> int:
         """Total offset for the return list of features within the whole result."""
         return self._features_offset
 
+    @public
     @property
     def feature_groups_total(self) -> int:
         """Total number of Feature Groups matching the search."""
         return self._feature_groups_total
 
+    @public
     @property
     def feature_views_total(self) -> int:
         """Total number of Feature Views matching the search."""
         return self._feature_views_total
 
+    @public
     @property
     def training_datasets_total(self) -> int:
         """Total number of Training Datasets matching the search."""
         return self._training_datasets_total
 
+    @public
     @property
     def features_total(self) -> int:
         """Total number of Features matching the search."""

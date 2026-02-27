@@ -36,10 +36,9 @@ class ValidationReportEngine:
     def __init__(self, feature_store_id: int, feature_group_id: int):
         """Validation Report engine.
 
-        :param feature_store_id: id of the respective featurestore
-        :type feature_store_id: int
-        :param feature_group_id: id of the featuregroup it is attached to
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: id of the respective featurestore
+            feature_group_id: id of the featuregroup it is attached to
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id

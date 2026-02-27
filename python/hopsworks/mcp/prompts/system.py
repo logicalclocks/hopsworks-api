@@ -24,7 +24,7 @@ class SystemPrompts:
     def __init__(self, mcp):
         """Initialize system prompts.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp

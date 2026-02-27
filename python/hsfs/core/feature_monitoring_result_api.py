@@ -23,14 +23,11 @@ from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 class FeatureMonitoringResultApi:
     """Feature Monitoring Result endpoints for the Feature Group resource.
 
-    :param feature_store_id: id of the respective Feature Store
-    :type feature_store_id: int
-    :param feature_group_id: id of the feature group, if attaching a config to a feature group
-    :type feature_group_id: int, optional
-    :param feature_view_name: name of the feature view, if attaching a config to a feature view
-    :type feature_view_name: str, optional
-    :param feature_view_version: version of the feature view, if attaching a config to a feature view
-    :type feature_view_version: int, optional
+    Parameters:
+        feature_store_id: id of the respective Feature Store
+        feature_group_id: id of the feature group, if attaching a config to a feature group
+        feature_view_name: name of the feature view, if attaching a config to a feature view
+        feature_view_version: version of the feature view, if attaching a config to a feature view
     """
 
     def __init__(
@@ -56,10 +53,11 @@ class FeatureMonitoringResultApi:
     ) -> FeatureMonitoringResult:
         """Create an feature monitoring result attached to the Feature of a Feature Group.
 
-        :param fm_result: feature monitoring result object to be attached to a Feature
-        :type fm_result: `FeatureMonitoringResult`
-        :return: the created feature monitoring result
-        :rtype: FeatureMonitoringResult
+        Parameters:
+            fm_result: feature monitoring result object to be attached to a Feature
+
+        Returns:
+            the created feature monitoring result
         """
         _client = client.get_instance()
         path_params = self.build_path_params(
@@ -96,12 +94,12 @@ class FeatureMonitoringResultApi:
     ) -> list[FeatureMonitoringResult]:
         """Get all Feature Monitoring Result attached to a Monitoring Config.
 
-        :param config_id: Id of the feature monitoring config for which to fetch all results
-        :type config_id: int
-        :param query_params: query parameters to filter the results by monitoring_time
-        :type query_params: Dict[str, Union[str, List[str]]], optional
-        :return: fetched feature monitoring results attached to the Feature Group
-        :rtype: List[FeatureMonitoringResult]
+        Parameters:
+            config_id: Id of the feature monitoring config for which to fetch all results
+            query_params: query parameters to filter the results by monitoring_time
+
+        Returns:
+            fetched feature monitoring results attached to the Feature Group
         """
         _client = client.get_instance()
         path_params = self.build_path_params(
@@ -121,10 +119,11 @@ class FeatureMonitoringResultApi:
     ) -> list[FeatureMonitoringResult]:
         """Get the Feature Monitoring Result attached to a Feature.
 
-        :param result_id: Id of the feature monitoring result to fetch
-        :type result_id: int
-        :return: fetched feature monitoring result attached to the Feature Group
-        :rtype: FeatureMonitoringResult || None
+        Parameters:
+            result_id: Id of the feature monitoring result to fetch
+
+        Returns:
+            fetched feature monitoring result attached to the Feature Group
         """
         _client = client.get_instance()
         path_params = self.build_path_params(
@@ -142,10 +141,11 @@ class FeatureMonitoringResultApi:
     ) -> list[str]:
         """Build the path parameters for the Feature Monitoring Result API.
 
-        :param project_id: Id of the project
-        :type project_id: int
-        :return: list of path parameters
-        :rtype: List[str]
+        Parameters:
+            project_id: Id of the project
+
+        Returns:
+            list of path parameters
         """
         path_params = [
             "project",

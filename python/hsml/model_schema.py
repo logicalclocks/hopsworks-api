@@ -32,9 +32,6 @@ class ModelSchema:
     Parameters:
         input_schema: Schema to describe the inputs.
         output_schema: Schema to describe the outputs.
-
-    Returns:
-        `ModelSchema`. The model schema object.
     """
 
     def __init__(

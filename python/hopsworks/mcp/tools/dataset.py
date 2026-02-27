@@ -29,7 +29,7 @@ class DatasetTools:
     def __init__(self, mcp):
         """Initialize the DatasetTools with the MCP server instance.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
@@ -54,9 +54,9 @@ class DatasetTools:
     ) -> Datasets:
         """Get the dataset for the current project.
 
-        Args:
-            offset (int | str): The offset for pagination. Defaults to 0.
-            limit (int | str): The limit for pagination. Defaults to 100.
+        Parameters:
+            offset: The offset for pagination.
+            limit: The limit for pagination.
             ctx: The MCP context, provided automatically.
 
         Returns:
@@ -100,10 +100,10 @@ class DatasetTools:
     ) -> Datasets:
         """Get the dataset for a specific project.
 
-        Args:
-            project_name (str): The name of the project to get the dataset for.
-            offset (int | str): The offset for pagination. Defaults to 0.
-            limit (int | str): The limit for pagination. Defaults to 100.
+        Parameters:
+            project_name: The name of the project to get the dataset for.
+            offset: The offset for pagination.
+            limit: The limit for pagination.
             ctx: The MCP context, provided automatically.
 
         Returns:
@@ -148,10 +148,10 @@ class DatasetTools:
     ) -> Files:
         """List files in a specific path.
 
-        Args:
-            path (str): The path to list files in.
-            offset (int | str): The offset for pagination. Defaults to 0.
-            limit (int | str): The limit for pagination. Defaults to 100.
+        Parameters:
+            path: The path to list files in.
+            offset: The offset for pagination.
+            limit: The limit for pagination.
             ctx: The MCP context, provided automatically.
 
         Returns:
@@ -199,11 +199,11 @@ class DatasetTools:
     ) -> Files:
         """List files in a specific path of a project.
 
-        Args:
-            project_name (str): The name of the project to list files for.
-            path (str): The path to list files in.
-            offset (int | str): The offset for pagination. Defaults to 0.
-            limit (int | str): The limit for pagination. Defaults to 100.
+        Parameters:
+            project_name: The name of the project to list files for.
+            path: The path to list files in.
+            offset: The offset for pagination.
+            limit: The limit for pagination.
             ctx: The MCP context, provided automatically.
 
         Returns:
@@ -247,8 +247,8 @@ class DatasetTools:
     async def mkdir_in_current_project(self, path: str, ctx: Context = None) -> str:
         """Create a directory in the current project.
 
-        Args:
-            path (str): The path to create the directory in.
+        Parameters:
+            path: The path to create the directory in.
             ctx: The MCP context, provided automatically.
 
         Returns:
@@ -267,9 +267,9 @@ class DatasetTools:
     ) -> str:
         """Create a directory in a specific project.
 
-        Args:
-            project_name (str): The name of the project to create the directory in.
-            path (str): The path to create the directory in.
+        Parameters:
+            project_name: The name of the project to create the directory in.
+            path: The path to create the directory in.
             ctx: The MCP context, provided automatically.
 
         Returns:

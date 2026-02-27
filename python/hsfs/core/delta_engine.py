@@ -326,20 +326,14 @@ class DeltaEngine:
             return location
 
     def _write_delta_rs_dataset(
-        self, dataset, write_options: dict[str, Any] | None = None
+        self,
+        dataset: pa.Table | pl.DataFrame | pd.DataFrame,
+        write_options: dict[str, Any] | None = None,
     ):
         """Write a dataset to a Delta table using delta-rs.
 
-        Supports pyarrow.Table, polars.DataFrame, and pandas.DataFrame as input.
-
-        # Arguments
-
-            dataset: `pyarrow.Table` or `polars.DataFrame` or `pandas.DataFrame`.
-                Dataset to write to the Delta table.
-
-        # Returns
-
-            `None`. Writes the dataset to the Delta table.
+        Parameters:
+            dataset: Dataset to write to the Delta table.
         """
         try:
             from deltalake import DeltaTable as DeltaRsTable

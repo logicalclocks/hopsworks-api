@@ -72,18 +72,17 @@ class ModelRegistry:
 
     @public
     @usage.method_logger
-    def get_model(self, name: str, version: int = None) -> model.Model | None:
+    def get_model(self, name: str, version: int | None = None) -> model.Model | None:
         """Get a model entity from the model registry.
 
         Getting a model from the Model Registry means getting its metadata handle so you can subsequently download the model directory.
 
         Parameters:
             name: Name of the model to get.
-            version: Version of the model to retrieve, defaults to `None` and will
-                return the `version=1`.
+            version: Version of the model to retrieve, defaults to `None` and will return the `version=1`.
 
         Returns:
-            `Model`: The model metadata object or `None` if it does not exist.
+            The model metadata object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve model from the model registry.
@@ -114,7 +113,7 @@ class ModelRegistry:
             name: Name of the model to get.
 
         Returns:
-            `List[Model]`: A list of model metadata objects.
+            A list of model metadata objects.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve model versions from the model registry.
@@ -141,7 +140,7 @@ class ModelRegistry:
             direction: 'max' to get the model entity with the highest value of the set metric, or 'min' for the lowest.
 
         Returns:
-            `Model`: The model metadata object or `None` if it does not exist.
+            The model metadata object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve model from the model registry.

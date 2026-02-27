@@ -29,23 +29,20 @@ class OpenApiException(Exception):
 
 @also_available_as("hsml.client.istio.grpc.exceptions.ApiTypeError")
 class ApiTypeError(OpenApiException, TypeError):
-    def __init__(self, msg, path_to_item=None, valid_classes=None, key_type=None):
+    def __init__(
+        self,
+        msg: str,
+        path_to_item: list | None = None,
+        valid_classes: tuple | None = None,
+        key_type: bool | None = None,
+    ) -> None:
         """Raises an exception for TypeErrors.
 
-        Args:
-            msg (str): the exception message
-
-        Keyword Args:
-            path_to_item (list): a list of keys an indices to get to the
-                                 current_item
-                                 None if unset
-            valid_classes (tuple): the primitive classes that current item
-                                   should be an instance of
-                                   None if unset
-            key_type (bool): False if our value is a value in a dict
-                             True if it is a key in a dict
-                             False if our item is an item in a list
-                             None if unset
+        Parameters:
+            msg: the exception message
+            path_to_item: a list of keys an indices to get to the current_item; None if unset
+            valid_classes: the primitive classes that current item should be an instance of; None if unset
+            key_type: False if our value is a value in a dict; True if it is a key in a dict; False if our item is an item in a list; None if unset
         """
         self.path_to_item = path_to_item
         self.valid_classes = valid_classes

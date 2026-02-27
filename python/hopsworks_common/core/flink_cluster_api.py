@@ -31,11 +31,11 @@ class FlinkClusterApi:
         self._job_api = job_api.JobApi()
 
     @usage.method_logger
-    def get_configuration(self):
+    def get_configuration(self) -> dict:
         """Get configuration for the Flink cluster.
 
         Returns:
-            `dict`: Default configuration for the Flink cluster,
+            Default configuration for the Flink cluster.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -44,7 +44,9 @@ class FlinkClusterApi:
 
     @public
     @usage.method_logger
-    def setup_cluster(self, name: str, config=None) -> flink_cluster.FlinkCluster:
+    def setup_cluster(
+        self, name: str, config: dict | None = None
+    ) -> flink_cluster.FlinkCluster:
         """Create a new flink job representing a flink cluster, or update an existing one.
 
         ```python

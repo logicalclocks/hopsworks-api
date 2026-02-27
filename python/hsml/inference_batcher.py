@@ -31,9 +31,6 @@ class InferenceBatcher:
         max_batch_size: Maximum requests batch size.
         max_latency: Maximum latency for request batching.
         timeout: Maximum waiting time for request batching.
-
-    Returns:
-        `InferenceLogger`. Configuration of an inference logger.
     """
 
     def __init__(

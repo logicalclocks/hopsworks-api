@@ -21,6 +21,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, util
 from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from hopsworks_common.constants import Default
 
 
+@public
 class ScaleMetric(Enum):
     """Scaling metric for a predictor or transformer. Can be either 'CONCURRENCY' or 'RPS'."""
 
@@ -43,9 +45,11 @@ class ScaleMetric(Enum):
         return self.value
 
 
+@public
 class ComponentScalingConfig(ABC):
     """Scaling configuration for a predictor or transformer."""
 
+    @public
     def __init__(
         self,
         min_instances: int,
@@ -60,18 +64,17 @@ class ComponentScalingConfig(ABC):
     ):
         """Initialize a ComponentScalingConfig instance.
 
-        Args:
-            min_instances (int): Minimum number of instances to scale to.
-            max_instances (int | None, optional): Maximum number of instances to scale to.
-            scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
-            target (int | None, optional): Target value for the selected scaling metric.
-            panic_window_percentage (float | None, optional): Percentage of the stable window to use as the panic window.
-            panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
-            stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
-            scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
-            **kwargs: Backwards-compatible aliases for the parameters above.
+        Parameters:
+            min_instances: Minimum number of instances to scale to.
+            max_instances: Maximum number of instances to scale to.
+            scale_metric: Metric to use for scaling.
+            target: Target value for the selected scaling metric.
+            panic_window_percentage: Percentage of the stable window to use as the panic window.
+            panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
+            stable_window_seconds: Interval in seconds for calculating the average metric.
+            scale_to_zero_retention_seconds: Time in seconds to retain the last instance before scaling to zero.
         """
-        scale_metric = scale_metric or kwargs.get("scale_metric")
+        scale_metric = scale_metric
         if scale_metric:
             if isinstance(scale_metric, str):
                 if not ScaleMetric.has_value(scale_metric.upper()):
@@ -89,31 +92,14 @@ class ComponentScalingConfig(ABC):
             self._scale_metric = None
 
         self._min_instances = min_instances
-        self._max_instances = (
-            max_instances if max_instances is not None else kwargs.get("max_instances")
-        )
-        self._target = target if target is not None else kwargs.get("target")
-        self._panic_window_percentage = (
-            panic_window_percentage
-            if panic_window_percentage is not None
-            else kwargs.get("panic_window_percentage")
-        )
-        self._panic_threshold_percentage = (
-            panic_threshold_percentage
-            if panic_threshold_percentage is not None
-            else kwargs.get("panic_threshold_percentage")
-        )
-        self._stable_window_seconds = (
-            stable_window_seconds
-            if stable_window_seconds is not None
-            else kwargs.get("stable_window_seconds")
-        )
-        self._scale_to_zero_retention_seconds = (
-            scale_to_zero_retention_seconds
-            if scale_to_zero_retention_seconds is not None
-            else kwargs.get("scale_to_zero_retention_seconds")
-        )
+        self._max_instances = max_instances
+        self._target = target
+        self._panic_window_percentage = panic_window_percentage
+        self._panic_threshold_percentage = panic_threshold_percentage
+        self._stable_window_seconds = stable_window_seconds
+        self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
 
+    @public
     def describe(self):
         """Print a JSON description of the scaling configuration."""
         util.pretty_print(self)
@@ -123,6 +109,7 @@ class ComponentScalingConfig(ABC):
         json_decamelized = humps.decamelize(json_dict)
         return cls.from_json(json_decamelized)
 
+    @public
     @staticmethod
     def get_default_scaling_configuration(
         serving_tool: str, min_instances: int | None, component_type: str = "predictor"
@@ -248,6 +235,7 @@ class ComponentScalingConfig(ABC):
     def from_json(cls, json_decamelized):
         pass
 
+    @public
     @property
     def scale_metric(self):
         """The metric to use for scaling. Can be either 'CONCURRENCY' or 'RPS'."""
@@ -268,6 +256,7 @@ class ComponentScalingConfig(ABC):
                 f"scale_metric must be a string or ScaleMetric, got {type(scale_metric)}"
             )
 
+    @public
     @property
     def target(self):
         """Target value for the selected scaling metric that the autoscaler should try to maintain during the stable window. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests."""
@@ -277,6 +266,7 @@ class ComponentScalingConfig(ABC):
     def target(self, target: int):
         self._target = target
 
+    @public
     @property
     def min_instances(self) -> int:
         """Minimum number of instances to scale to. For deployments using kserve, this must be set to 0 to enable scaling to zero. Default is 0 for deployments using kserve and 1 for deployments not using kserve."""
@@ -286,6 +276,7 @@ class ComponentScalingConfig(ABC):
     def min_instances(self, min_instances: int):
         self._min_instances = min_instances
 
+    @public
     @property
     def max_instances(self):
         """Maximum number of instances to scale to. Maximum allowed is configured in the cluster settings by the cluster administrator. Must be at least 1 and greater than or equal to min_instances."""
@@ -295,6 +286,7 @@ class ComponentScalingConfig(ABC):
     def max_instances(self, max_instances: int):
         self._max_instances = max_instances
 
+    @public
     @property
     def panic_window_percentage(self):
         """The percentage of the stable window to use as the panic window during high load situations. Min is 1. Max is 100. Default is 10."""
@@ -304,6 +296,7 @@ class ComponentScalingConfig(ABC):
     def panic_window_percentage(self, panic_window_percentage: float):
         self._panic_window_percentage = panic_window_percentage
 
+    @public
     @property
     def panic_threshold_percentage(self):
         """The percentage of the scale metric threshold that, when exceeded during the panic window, will trigger a scale-up event. Min is 1. Max is 200. Default is 200."""
@@ -313,6 +306,7 @@ class ComponentScalingConfig(ABC):
     def panic_threshold_percentage(self, panic_threshold_percentage: float):
         self._panic_threshold_percentage = panic_threshold_percentage
 
+    @public
     @property
     def stable_window_seconds(self):
         """The interval in seconds over which to calculate the average metric. Larger values result in smoother scaling but slower reaction times. Min is 1 second. Max is 3600 seconds."""
@@ -322,6 +316,7 @@ class ComponentScalingConfig(ABC):
     def stable_window_seconds(self, stable_window_seconds: int):
         self._stable_window_seconds = stable_window_seconds
 
+    @public
     @property
     def scale_to_zero_retention_seconds(self):
         """The amount of time in seconds the last instance must be kept before being scaled down to zero. Default is 0."""
@@ -335,24 +330,25 @@ class ComponentScalingConfig(ABC):
         return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r})"
 
 
+@public
 class PredictorScalingConfig(ComponentScalingConfig):
     """Scaling configuration for a predictor."""
 
     SCALING_CONFIG_KEY = "predictor_scaling_config"
 
+    @public
     def __init__(self, **kwargs):
         """Initialize a PredictorScalingConfig instance.
 
-        Args:
-            **kwargs: Keyword arguments for the predictor scaling configuration.
-                - min_instances (int): Minimum number of instances to scale to (required).
-                - max_instances (int | None, optional): Maximum number of instances to scale to.
-                - scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
-                - target (int | None, optional): Target value for the selected scaling metric.
-                - panic_window_percentage (float | None, optional): Percentage of the stable window to use as the panic window.
-                - panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
-                - stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
-                - scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+        Other Parameters: Keyword arguments for the predictor scaling configuration:
+            min_instances (int): Minimum number of instances to scale to (required).
+            max_instances (int | None, optional): Maximum number of instances to scale to.
+            scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
+            target (int | None, optional): Target value for the selected scaling metric.
+            panic_window_percentage (float | None, optional): Percentage of the stable window to use as the panic window.
+            panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
+            stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
+            scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
 
         Raises:
             ValueError: If `min_instances` is not provided.
@@ -376,24 +372,25 @@ class PredictorScalingConfig(ComponentScalingConfig):
         return f"PredictorScalingConfig({super().__repr__()})"
 
 
+@public
 class TransformerScalingConfig(ComponentScalingConfig):
     """Scaling configuration for a transformer."""
 
     SCALING_CONFIG_KEY = "transformer_scaling_config"
 
+    @public
     def __init__(self, **kwargs):
         """Initialize a TransformerScalingConfig instance.
 
-        Args:
-            **kwargs: Keyword arguments for the transformer scaling configuration.
-                - min_instances (int): Minimum number of instances to scale to (required).
-                - max_instances (int | None, optional): Maximum number of instances to scale to.
-                - scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
-                - target (int | None, optional): Target value for the selected scaling metric.
-                - panic_window_percentage (float | None, optional): Percentage of the stable window to use as the panic window.
-                - panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
-                - stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
-                - scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+        Other Parameters: Keyword arguments for the transformer scaling configuration:
+            min_instances (int): Minimum number of instances to scale to (required).
+            max_instances (int | None, optional): Maximum number of instances to scale to.
+            scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
+            target (int | None, optional): Target value for the selected scaling metric.
+            panic_window_percentage (float | None, optional): Percentage of the stable window to use as the panic window.
+            panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
+            stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
+            scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
 
         Raises:
             ValueError: If `min_instances` is not provided.

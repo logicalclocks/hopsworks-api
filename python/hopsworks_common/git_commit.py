@@ -17,11 +17,11 @@
 import json
 
 import humps
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@also_available_as("hopsworks.git_commit.GitCommit")
+@public("hopsworks.git_commit.GitCommit")
 class GitCommit:
     def __init__(
         self,
@@ -59,26 +59,31 @@ class GitCommit:
             return cls(**json_decamelized)
         return None
 
+    @public
     @property
     def name(self):
         """Name of the user."""
         return self._name
 
+    @public
     @property
     def email(self):
         """Email of the user."""
         return self._email
 
+    @public
     @property
     def message(self):
         """Commit message."""
         return self._message
 
+    @public
     @property
     def hash(self):
         """Commit hash."""
         return self._hash
 
+    @public
     @property
     def time(self):
         """Timestamp for the commit."""

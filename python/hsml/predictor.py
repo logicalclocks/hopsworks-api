@@ -126,7 +126,7 @@ class Predictor(DeployableComponent):
         self._project_name = None
 
     @public
-    def deploy(self):
+    def deploy(self) -> deployment.Deployment:
         """Create a deployment for this predictor and persists it in the Model Serving.
 
         Returns:

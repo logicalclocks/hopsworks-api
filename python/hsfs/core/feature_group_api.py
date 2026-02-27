@@ -42,11 +42,11 @@ class FeatureGroupApi:
     ) -> fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup:
         """Save feature group metadata to the feature store.
 
-        :param feature_group_instance: metadata object of feature group to be
-            saved
-        :type feature_group_instance: FeatureGroup
-        :return: updated metadata object of the feature group
-        :rtype: FeatureGroup
+        Parameters:
+            feature_group_instance: metadata object of feature group to be saved
+
+        Returns:
+            updated metadata object of the feature group
         """
         _client = client.get_instance()
         path_params = [
@@ -121,15 +121,13 @@ class FeatureGroupApi:
     ):
         """Get the metadata of a feature group with a certain name and version.
 
-        :param feature_store_id: feature store id
-        :type feature_store_id: int
-        :param name: name of the feature group
-        :type name: str
-        :param version: version of the feature group
-        :type version: int
+        Parameters:
+            feature_store_id: feature store id
+            name: name of the feature group
+            version: version of the feature group
 
-        :return: feature group metadata object
-        :rtype: FeatureGroup, SpineGroup, ExternalFeatureGroup, List[FeatureGroup], List[SpineGroup], List[ExternalFeatureGroup]
+        Returns:
+            feature group metadata object
         """
         if version:
             fgs_json = self._get_feature_group_by_version(
@@ -184,13 +182,12 @@ class FeatureGroupApi:
     ) -> fg_mod.FeatureGroup | fg_mod.SpineGroup | fg_mod.ExternalFeatureGroup:
         """Get the metadata of a feature group with a certain id.
 
-        :param feature_store_id: feature store id
-        :type feature_store_id: int
-        :param feature_group_id: id of the feature group
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: feature store id
+            feature_group_id: id of the feature group
 
-        :return: feature group metadata object
-        :rtype: FeatureGroup, SpineGroup, ExternalFeatureGroup
+        Returns:
+            feature group metadata object
         """
         _client = client.get_instance()
         path_params = [
@@ -223,12 +220,12 @@ class FeatureGroupApi:
     ) -> list[fg_mod.FeatureGroup | fg_mod.SpineGroup | fg_mod.ExternalFeatureGroup]:
         """Get a list of feature groups in a feature store.
 
-        :param feature_store_id: feature store id
-        :type feature_store_id: int
-        :param feature_group_type: type of the feature group to return
-        :type feature_group_type: string
-        :return: list of feature group metadata objects
-        :rtype: List[FeatureGroup].
+        Parameters:
+            feature_store_id: feature store id
+            feature_group_type: type of the feature group to return
+
+        Returns:
+            list of feature group metadata objects
         """
         _client = client.get_instance()
         path_params = [
@@ -260,9 +257,8 @@ class FeatureGroupApi:
 
         This endpoint serves to simulate the overwrite/insert mode.
 
-        :param feature_group_instance: metadata object of feature group to clear
-            the content for
-        :type feature_group_instance: FeatureGroup
+        Parameters:
+            feature_group_instance: metadata object of feature group to clear the content for
         """
         _client = client.get_instance()
         path_params = [
@@ -286,8 +282,8 @@ class FeatureGroupApi:
 
         Drops the metadata and data of a version of a feature group.
 
-        :param feature_group_instance: metadata object of feature group
-        :type feature_group_instance: FeatureGroup
+        Parameters:
+            feature_group_instance: metadata object of feature group
         """
         _client = client.get_instance()
         path_params = [
@@ -429,7 +425,7 @@ class FeatureGroupApi:
     ) -> ingestion_job.IngestionJob:
         """Setup a Hopsworks job for dataframe ingestion.
 
-        Args:
+        Parameters:
             feature_group_instance:
                 metadata object of feature group.
             ingestion_conf: the configuration for the ingestion job application.
@@ -458,7 +454,7 @@ class FeatureGroupApi:
     ) -> job.Job:
         """Setup a Hopsworks job to update table schema.
 
-        Args:
+        Parameters:
             feature_group_instance:
                 metadata object of feature group.
             job_conf: the configuration for the job application.
@@ -496,8 +492,7 @@ class FeatureGroupApi:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`:  the feature groups used to generate this
-            feature group
+            The feature groups used to generate this feature group.
         """
         _client = client.get_instance()
         path_params = [
@@ -522,20 +517,20 @@ class FeatureGroupApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
-    def get_storage_connector_provenance(self, feature_group_instance):
+    def get_storage_connector_provenance(
+        self, feature_group_instance
+    ) -> explicit_provenance.Links:
         """Get the parents of this feature group, based on explicit provenance.
 
-        Parents are storage connectors. These storage connector can be accessible,
-        deleted or inaccessible.
-        For deleted and inaccessible storage connector, only a minimal information is
-        returned.
+        Parents are storage connectors.
+        These storage connector can be accessible, deleted or inaccessible.
+        For deleted and inaccessible storage connector, only a minimal information is returned.
 
         Parameters:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`: the storage connector used to generated this
-            feature group
+            The storage connector used to generated this feature group.
         """
         _client = client.get_instance()
         path_params = [
@@ -568,17 +563,15 @@ class FeatureGroupApi:
     ) -> explicit_provenance.Links:
         """Get the generated feature view using this feature group, based on explicit provenance.
 
-        These feature views can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature view links, so deleted
-        will always be empty.
+        These feature views can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature view links, so deleted will always be empty.
         For inaccessible feature views, only a minimal information is returned.
 
         Parameters:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`: the feature views generated using this feature
-            group
+            The feature views generated using this feature group.
         """
         _client = client.get_instance()
         path_params = [
@@ -611,17 +604,15 @@ class FeatureGroupApi:
     ) -> explicit_provenance.Links:
         """Get the generated feature groups using this feature group, based on explicit provenance.
 
-        These feature groups can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature group links, so deleted
-        will always be empty.
+        These feature groups can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature group links, so deleted will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
         Parameters:
             feature_group_instance: Metadata object of feature group.
 
         Returns:
-            `ExplicitProvenance.Links`: the feature groups generated using this
-            feature group
+            The feature groups generated using this feature group.
         """
         _client = client.get_instance()
         path_params = [

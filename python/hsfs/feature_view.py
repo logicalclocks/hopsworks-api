@@ -71,10 +71,11 @@ from hsfs.transformation_function import TransformationFunction, TransformationT
 if TYPE_CHECKING:
     from datetime import date, datetime
 
+    from hopsworks_common.alert import Alert, FeatureViewAlert
     from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
+    from hopsworks_common.job import Job
     from hsfs.constructor.filter import Filter, Logic
     from hsfs.core.feature_logging import FeatureLogging
-    from hsfs.core.job import Job
     from hsfs.feature_logger import FeatureLogger
     from hsfs.hopsworks_udf import HopsworksUdf
     from hsfs.statistics import Statistics
@@ -88,6 +89,7 @@ if HAS_NUMPY:
 
 _logger = logging.getLogger(__name__)
 
+# TODO: Rework TrainingDatasetDataFrameTypes
 TrainingDatasetDataFrameTypes = Union[
     pd.DataFrame,
     TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
@@ -105,6 +107,7 @@ if HAS_POLARS:
     ]
 
 
+# TODO: Rework SplineDataFrameTypes
 SplineDataFrameTypes = Union[
     pd.DataFrame,
     TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
@@ -903,7 +906,7 @@ class FeatureView:
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
 
         Returns:
-            Returned `List[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (depending on the `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
+            Returned `list[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (depending on the `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
@@ -970,7 +973,7 @@ class FeatureView:
             The dataframe.
 
         Raises:
-            `Exception`: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            Exception: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
         """
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
@@ -1022,7 +1025,7 @@ class FeatureView:
             return_type: The format in which to return the dataframes.
 
         Returns:
-            Returned `pd.DataFrame`, `polars.DataFrame` or `List[dict]` (depending on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
+            Returned `pd.DataFrame`, `polars.DataFrame` or `list[dict]` (depending on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
             Exception: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
@@ -1394,7 +1397,7 @@ class FeatureView:
         returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -1953,6 +1956,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, write_options can contain the
                 following entries:
@@ -1964,14 +1968,14 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
@@ -2233,6 +2237,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, write_options can contain the
                 following entries:
@@ -2244,14 +2249,14 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
@@ -2359,6 +2364,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, write_options can contain the
                 following entries:
@@ -2370,19 +2376,18 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
-            `Job`: When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            When using the `python` engine, it returns the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -2465,18 +2470,18 @@ class FeatureView:
             Spark dataframes.
 
         Parameters:
-            start_time: Start event time for the training dataset query, inclusive. Strings should
-            be formatted in one of the following
-                formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`. Int, i.e Unix Epoch should be in seconds.
-            end_time: End event time for the training dataset query, exclusive. Strings should be
-            formatted in one of the following
-                formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`. Int, i.e Unix Epoch should be in seconds.
-            description: A string describing the contents of the training dataset to
-                improve discoverability for Data Scientists, defaults to empty string
-                `""`.
-            extra_filter: Additional filters to be attached to the training dataset.
+            start_time:
+                Start event time for the training dataset query, inclusive.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Int, i.e Unix Epoch should be in seconds.
+            end_time:
+                End event time for the training dataset query, exclusive.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Int, i.e Unix Epoch should be in seconds.
+            description:
+                A string describing the contents of the training dataset to improve discoverability for Data Scientists, defaults to empty string `""`.
+            extra_filter:
+                Additional filters to be attached to the training dataset.
                 The filters will be also applied in `get_batch_data`.
             statistics_config: A configuration object, or a dictionary with keys
                 "`enabled`" to generally enable descriptive statistics computation for
@@ -2486,6 +2491,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, read_options can contain the
                 following entries:
@@ -2494,7 +2500,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2513,7 +2518,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
@@ -2654,6 +2660,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, read_options can contain the
                 following entries:
@@ -2662,7 +2669,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2681,7 +2687,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
@@ -2862,6 +2869,7 @@ class FeatureView:
                 statistics computation pass `statistics_config=False`. Defaults to
                 `None` and will compute only descriptive statistics.
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 When using the `python` engine, read_options can contain the
                 following entries:
@@ -2870,7 +2878,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-                Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2889,7 +2896,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
@@ -3008,11 +3016,11 @@ class FeatureView:
         Parameters:
             training_dataset_version: training dataset version
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
-                Defaults to `{}`.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -3078,11 +3086,11 @@ class FeatureView:
         Parameters:
             training_dataset_version: training dataset version
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
-                Defaults to `{}`.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -3095,7 +3103,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
@@ -3153,11 +3162,11 @@ class FeatureView:
         Parameters:
             training_dataset_version: training dataset version
             read_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
-                Defaults to `{}`.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -3170,7 +3179,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
@@ -3213,7 +3223,7 @@ class FeatureView:
             ```
 
         Returns:
-            `List[TrainingDatasetBase]` List of training datasets metadata.
+            List of training datasets metadata.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -3359,7 +3369,7 @@ class FeatureView:
             ```
 
         Returns:
-            `Dict[str, obj]` of tags.
+            Dictionary of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -3540,22 +3550,18 @@ class FeatureView:
 
         Parameters:
             name: If provided fetch only the feature monitoring config with the given name.
-                Defaults to None.
             feature_name: If provided, fetch only configs attached to a particular feature.
-                Defaults to None.
             config_id: If provided, fetch only the feature monitoring config with the given id.
-                Defaults to None.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
             ValueError: if both name and feature_name are provided.
-            `TypeError`: if name or feature_name are not string or None.
+            TypeError: if name or feature_name are not string or None.
 
         Returns:
-            Union[`FeatureMonitoringConfig`, List[`FeatureMonitoringConfig`], None]
-                A list of feature monitoring configs. If name provided,
-                returns either a single config or None if not found.
+            A list of feature monitoring configs.
+            If name provided, returns either a single config or None if not found.
         """
         # TODO: Should this filter out scheduled statistics only configs?
         if not self._id:
@@ -3603,24 +3609,21 @@ class FeatureView:
                 Defaults to None.
             config_id: The id of the feature monitoring config to fetch history for.
                 Defaults to None.
-            start_date: The start date of the feature monitoring history to fetch.
+            start_time: The start date of the feature monitoring history to fetch.
                 Defaults to None.
-            end_date: The end date of the feature monitoring history to fetch.
+            end_time: The end date of the feature monitoring history to fetch.
                 Defaults to None.
             with_statistics: Whether to include statistics in the feature monitoring history.
                 Defaults to True. If False, only metadata about the monitoring will be fetched.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
             ValueError: if both config_name and config_id are provided.
-            `TypeError`: if config_name or config_id are not respectively string, int or None.
+            TypeError: if config_name or config_id are not respectively string, int or None.
 
         Returns:
-            List[`FeatureMonitoringResult`]
-                A list of feature monitoring results containing the monitoring metadata
-                as well as the computed statistics for the detection and reference window
-                if requested.
+            A list of feature monitoring results containing the monitoring metadata as well as the computed statistics for the detection and reference window if requested.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -3680,11 +3683,11 @@ class FeatureView:
                 every day at 12pm UTC.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
 
         Returns:
-            `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
-                Additional information are required before feature monitoring is enabled.
+            Configuration with minimal information about the feature monitoring.
+            Additional information are required before feature monitoring is enabled.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -3751,11 +3754,11 @@ class FeatureView:
                 every day at 12pm UTC.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
 
         Returns:
-            `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
-                Additional information are required before feature monitoring is enabled.
+            Configuration with minimal information about the feature monitoring.
+            Additional information are required before feature monitoring is enabled.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -3773,11 +3776,11 @@ class FeatureView:
         )
 
     @public
-    def get_alerts(self):
+    def get_alerts(self) -> list[FeatureViewAlert] | Alert:
         """Get all alerts for this feature view.
 
         Returns:
-            List[FeatureViewAlert] or Alert.
+            A list of `FeatureViewAlert` objects or a single `Alert` object if there is only one alert.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -3789,7 +3792,7 @@ class FeatureView:
         )
 
     @public
-    def get_alert(self, alert_id: int):
+    def get_alert(self, alert_id: int) -> FeatureViewAlert | None:
         """Get an alert for this feature view by ID.
 
         Parameters:
@@ -3814,7 +3817,7 @@ class FeatureView:
         receiver: str,
         status: str,
         severity: str,
-    ):
+    ) -> FeatureViewAlert:
         """Create an alert for this feature view.
 
         Example:
@@ -3858,10 +3861,10 @@ class FeatureView:
         """Function that constructs the class object from its json serialization.
 
         Parameters:
-            json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+            json_dict: JSON serialized dictionary for the class.
 
         Returns:
-            `TransformationFunction`: Json deserialized class object.
+            JSON deserialized class object.
         """
         json_decamelized = humps.decamelize(json_dict)
 
@@ -3924,10 +3927,10 @@ class FeatureView:
         """Function that updates the class object from its json serialization.
 
         Parameters:
-            json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+            json_dict: JSON serialized dictionary for the class.
 
         Returns:
-            `TransformationFunction`: Json deserialized class object.
+            JSON deserialized class object.
         """
         other = self.from_response_json(json_dict)
         for key in [
@@ -3958,21 +3961,21 @@ class FeatureView:
         | pl.DataFrame
         | None = None,
         request_parameters: list[dict[str, Any]] | dict[str, Any] | None = None,
-        transformation_context: dict[str, Any] = None,
-        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
-    ):
+        transformation_context: dict[str, Any] | None = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
+    ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Function computes on-demand features present in the feature view.
 
         Parameters:
-            feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
+            feature_vector: The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
                 These parameters take **higheshighestt priority** when resolving feature values - if a key exists in both `request_parameters` and the feature vector, the value from `request_parameters` is used.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
+            The feature vector that contains all on-demand features in the feature view.
         """
         return self._vector_server.compute_on_demand_features(
             feature_vectors=feature_vector,
@@ -3986,28 +3989,28 @@ class FeatureView:
         self,
         feature_vector: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
         external: bool | None = None,
-        transformation_context: dict[str, Any] = None,
-        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
-    ):
+        transformation_context: dict[str, Any] | None = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
+    ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
 
         Warning: List input must match the schema of the feature view
                     If features are provided as a List to the transform function. Make sure that the input are ordered to match the schema
                     in the feature view.
         Parameters:
-            feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
+            feature_vector: The feature vector to be transformed.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
                 for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector obtained by applying Model-Dependent Transformations.
+            The transformed feature vector obtained by applying Model-Dependent Transformations.
         """
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
@@ -4027,7 +4030,7 @@ class FeatureView:
         This method activates logging of features.
 
         Parameters:
-            extra_log_columns: `Union[Feature, List[Dict[str, str]]]` Additional columns to be logged. Any duplicate columns will be ignored.
+            extra_log_columns: Additional columns to be logged. Any duplicate columns will be ignored.
 
         Example: Enable feature logging
             ```python
@@ -4085,7 +4088,8 @@ class FeatureView:
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         untransformed_features: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
@@ -4104,72 +4108,82 @@ class FeatureView:
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         inference_helper_columns: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         request_parameters: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         event_time: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         serving_keys: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
         extra_logging_features: pd.DataFrame
         | pl.DataFrame
         | list[list[Any]]
         | list[dict[str, Any]]
         | np.ndarray
-        | TypeVar("pyspark.sql.DataFrame") = None,
-        request_id: str | list[str] = None,
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
+        request_id: str | list[str] | None = None,
         write_options: dict[str, Any] | None = None,
         training_dataset_version: int | None = None,
-        model: Model = None,
+        model: Model | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
     ) -> list[Job] | None:
         """Log features and optionally predictions for the current feature view. The logged features are written periodically to the offline store. If you need it to be available immediately, call `materialize_log`.
 
-        Note: If features is a `pyspark.Dataframe`, prediction needs to be provided as columns in the dataframe,
-            values in `predictions` will be ignored.
+        Note:
+            If features is a `pyspark.Dataframe`, prediction needs to be provided as columns in the dataframe, values in `predictions` will be ignored.
 
         Parameters:
-            logging_dataframe: The features to be logged, this can contain both transformed features, untransfored features and predictions. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            untransformed_features: The untransformed features to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            prediction: The predictions to be logged.  Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list, a list of lists, or a numpy ndarray.
-            transformed_features: The transformed features to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            inference_helper_columns: The inference helper columns to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            request_parameters: The request parameters to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            event_time: The event time to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            serving_keys: The serving keys to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
-            extra_logging_features: Extra features to be logged. The features must be specified when enabled logging or while creating the feature view. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            logging_data: The features to be logged, this can contain both transformed features, untransfored features and predictions.
+            untransformed_features: The untransformed features to be logged.
+            predictions: The predictions to be logged.
+            transformed_features: The transformed features to be logged.
+            inference_helper_columns: The inference helper columns to be logged.
+            request_parameters: The request parameters to be logged.
+            event_time: The event time to be logged.
+            serving_keys: The serving keys to be logged.
+            extra_logging_features:
+                Extra features to be logged.
+                The features must be specified when enabled logging or while creating the feature view.
             request_id: The request ID that can be used to identify an online inference request.
-            write_options: Options for writing the log. Defaults to None.
-            training_dataset_version: Version of the training dataset. If training dataset version is definied in
-                `init_serving` or `init_batch_scoring`, or model has training dataset version,
-                or training dataset version was cached, then the version will be used, otherwise defaults to None.
-            model: `Union[str, hsml.model.Model]` Hopsworks model associated with the log. Defaults to None.
-            model_name: `Optional[str]`. Name of the model to be associated with the log.
+            write_options: Options for writing the log.
+            training_dataset_version:
+                Version of the training dataset.
+                If training dataset version is definied in `init_serving` or `init_batch_scoring`, or model has training dataset version, or training dataset version was cached, then the version will be used, otherwise defaults to None.
+            model: Hopsworks model associated with the log.
+            model_name:
+                Name of the model to be associated with the log.
                 If `model` is provided, this parameter will be ignored.
-            model_version: `Optional[int]`. Version of the model to be associated with the log.
+            model_version:
+                Version of the model to be associated with the log.
                 If `model` is provided, this parameter will be ignored.
 
         Returns:
-            `list[Job]` job information for feature insertion if python engine is used
+            Job information for feature insertion if python engine is used.
 
         Example: Implicitly Logging Batch Data and Predictions with all Logging metadata
             ```python
@@ -4277,9 +4291,9 @@ class FeatureView:
         """Retrieve the log timeline for the current feature view.
 
         Parameters:
-            wallclock_time: Specific time to get the log timeline for. Can be a string, integer, datetime, or date. Defaults to None.
-            limit: Maximum number of entries to retrieve. Defaults to None.
-            transformed: Whether to include transformed logs. Defaults to False.
+            wallclock_time: Specific time to get the log timeline for. Can be a string, integer, datetime, or date.
+            limit: Maximum number of entries to retrieve.
+            transformed: Whether to include transformed logs.
 
         Example:
             ```python
@@ -4288,8 +4302,7 @@ class FeatureView:
             ```
 
         Returns:
-            `Dict[str, Dict[str, str]]`. Dictionary object of commit metadata timeline, where Key is commit id and value
-            is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
+            Dictionary object of commit metadata timeline, where Key is commit id and value is `dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the log timeline.
@@ -4306,7 +4319,7 @@ class FeatureView:
         filter: Filter | Logic | None = None,
         transformed: bool | None = False,
         training_dataset_version: int | None = None,
-        model: Model = None,
+        model: Model | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
     ) -> TypeVar("pyspark.sql.DataFrame") | pd.DataFrame | pl.DataFrame:
@@ -4315,14 +4328,14 @@ class FeatureView:
         Optionally, filter can be applied to start/end time, training dataset version, hsml model, and custom filter.
 
         Parameters:
-            start_time: Start time for the log entries. Can be a string, integer, datetime, or date. Defaults to None.
-            end_time: End time for the log entries. Can be a string, integer, datetime, or date. Defaults to None.
-            filter: Filter to apply on the log entries. Can be a Filter or Logic object. Defaults to None.
-            transformed: Whether to include transformed logs. Defaults to False.
-            training_dataset_version: Version of the training dataset. Defaults to None.
-            model: HSML model associated with the log. Defaults to None.
-            model_name: `Optional[str]`. Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
-            model_version: `Optional[int]`. Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
+            start_time: Start time for the log entries. Can be a string, integer, datetime, or date.
+            end_time: End time for the log entries. Can be a string, integer, datetime, or date.
+            filter: Filter to apply on the log entries. Can be a Filter or Logic object.
+            transformed: Whether to include transformed logs.
+            training_dataset_version: Version of the training dataset.
+            model: HSML model associated with the log.
+            model_name: Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
+            model_version: Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
 
         Example:
             ```python
@@ -4339,10 +4352,7 @@ class FeatureView:
             ```
 
         Returns:
-            `DataFrame`: The spark dataframe containing the feature data.
-            `pyspark.DataFrame`. A Spark DataFrame.
-            `pandas.DataFrame`. A Pandas DataFrame.
-            `polars.DataFrame`. A Polars DataFrame.
+            The dataframe containing the feature data.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to read the log entries.
@@ -4396,7 +4406,7 @@ class FeatureView:
         """Materialize the log for the current feature view.
 
         Parameters:
-            wait: Whether to wait for the materialization to complete. Defaults to False.
+            wait: Whether to wait for the materialization to complete.
             transformed: Whether to materialize transformed or untrasformed logs. Defaults to None, in which case the returned list contains a job for materialization of transformed features and then a job for untransformed features. Otherwise the list contains only transformed jobs if transformed is True and untransformed jobs if it is False.
 
         Example:
@@ -4406,8 +4416,7 @@ class FeatureView:
             ```
 
         Returns:
-            List[`Job`] Job information for the materialization jobs of transformed and untransformed features.
-
+            Job information for the materialization jobs of transformed and untransformed features.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to materialize the log.
@@ -4673,10 +4682,10 @@ class FeatureView:
         )
 
     def json(self) -> str:
-        """Convert class into its json serialized form.
+        """Convert class into its JSON serialized form.
 
         Returns:
-            `str`: Json serialized object.
+            JSON serialized object.
         """
         return json.dumps(self, cls=util.Encoder)
 
@@ -4684,7 +4693,7 @@ class FeatureView:
         """Convert class into a dictionary.
 
         Returns:
-            `Dict`: Dictionary that contains all data required to json serialize the object.
+            Dictionary that contains all data required to JSON serialize the object.
         """
         fv_dict = {
             "featurestoreId": self._featurestore_id,
@@ -4722,7 +4731,7 @@ class FeatureView:
             ```
 
         Returns:
-            `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
+            List of training dataset features objects.
         """
         return self._feature_view_engine.get_training_dataset_schema(
             self, training_dataset_version

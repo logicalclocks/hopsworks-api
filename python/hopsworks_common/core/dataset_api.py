@@ -627,7 +627,7 @@ class DatasetApi:
     def upload_feature_group(self, feature_group, path, dataframe):
         """Upload a dataframe to a path in Parquet format using a feature group metadata.
 
-        !!! Note
+        Warning:
             This method is a legacy method kept for backwards-compatibility; do not use it in new code.
         """
         # Convert the dataframe into PARQUET for upload
@@ -747,7 +747,7 @@ class DatasetApi:
 
     @public
     @usage.method_logger
-    def read_content(self, path: str, dataset_type: str = "DATASET"):
+    def read_content(self, path: str, dataset_type: str = "DATASET") -> dict | None:
         """Read the content of a file.
 
         Parameters:
@@ -878,7 +878,7 @@ class DatasetApi:
                 return False
 
     @public
-    def unzip(self, remote_path: str, block: bool = False, timeout: int | None = 120):
+    def unzip(self, remote_path: str, block: bool = False, timeout: int | None = 120) -> bool:
         """Unzip an archive in the dataset.
 
         Parameters:

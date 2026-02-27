@@ -28,7 +28,7 @@ class JobTools:
     def __init__(self, mcp):
         """Initialize the JobTools with the MCP server instance.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp

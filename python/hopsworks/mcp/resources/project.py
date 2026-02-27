@@ -27,7 +27,7 @@ class ProjectResources:
     def __init__(self, mcp):
         """Initialize project resources.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
@@ -92,9 +92,9 @@ class ProjectResources:
     async def get_project_details(self, name: str, ctx: Context = None) -> Project:
         """Get project details.
 
-        Args:
-            name (str): The name of the project.
-            ctx (Context | None): The MCP context, provided automatically.
+        Parameters:
+            name: The name of the project.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             Project: The project details or an error message.

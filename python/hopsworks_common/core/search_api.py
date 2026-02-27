@@ -20,7 +20,7 @@ import logging
 from typing import Literal, get_args
 from urllib.parse import quote
 
-from hopsworks_apigen import also_available_as, public
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.search_results import (
     FeatureGroupSearchResult,
@@ -37,30 +37,28 @@ DOC_TYPE_ARG = Literal[
 ]
 
 
-@also_available_as("hopsworks.core.search_api.TagSearchFilter")
+@public("hopsworks.core.search_api.TagSearchFilter")
 class TagSearchFilter:
-    """Filter for searching entities by tag.
-
-    * ``name``  – the tag name as defined by the Hopsworks Admin,
-    * ``key``   – the specific tag key within that tag,
-    * ``value`` – the value that the tag key must match.
-    """
+    """Filter for searching entities by tag."""
 
     def __init__(self, name: str, key: str, value: str):
         self._name = name
         self._key = key
         self._value = value
 
+    @public
     @property
     def name(self):
         """Name of the tag."""
         return self._name
 
+    @public
     @property
     def key(self):
-        """Key (property) of the tag."""
+        """Key of the tag."""
         return self._key
 
+    @public
     @property
     def value(self):
         """Value of the tag key."""
@@ -131,9 +129,10 @@ class SearchApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
+    @public
     def feature_store(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -145,77 +144,81 @@ class SearchApi:
         """Search for feature groups, feature views, training datasets and features.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: `"name"` (the tag schema name as defined by Hopsworks Admin), `"key"` (the property within that tag schema), and `"value"` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
-            `FeaturestoreSearchResult`: The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+            The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
 
         Example:
-        ```python
-        import hopsworks
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
-        search_api = project.get_search_api()
+            project = hopsworks.login()
+            search_api = project.get_search_api()
 
-        # Simple search
-        result = search_api.feature_store("search-term")
+            # Simple search
+            result = search_api.feature_store("search-term")
 
-        # Access results
-        for fg_meta in result.feature_groups:
-            print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
-            print(f"Description: {fg_meta.description}")
-            print(f"Highlights: {fg_meta.highlights}")
+            # Access results
+            for fg_meta in result.feature_groups:
+                print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+                print(f"Description: {fg_meta.description}")
+                print(f"Highlights: {fg_meta.highlights}")
 
-            # Get the same FeatureGroup object as returned by featurestore.get_feature_group
-            fg = fg_meta.get()
+                # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+                fg = fg_meta.get()
 
-        # Search with a single keyword (string)
-        result = search_api.feature_store("search-term", keyword_filter="ml")
+            # Search with a single keyword (string)
+            result = search_api.feature_store("search-term", keyword_filter="ml")
 
-        # Search with multiple keywords (array of strings)
-        result = search_api.feature_store("search-term", keyword_filter=["ml", "production"])
+            # Search with multiple keywords (array of strings)
+            result = search_api.feature_store("search-term", keyword_filter=["ml", "production"])
 
-        # Search with tag filter as a single dictionary
-        result = search_api.feature_store(
-            "search-term",
-            tag_filter={"name": "tag1", "key": "environment", "value": "production"}
-        )
+            # Search with tag filter as a single dictionary
+            result = search_api.feature_store(
+                "search-term",
+                tag_filter={"name": "tag1", "key": "environment", "value": "production"}
+            )
 
-        # Search with tag filter as an array of dictionaries
-        result = search_api.feature_store(
-            "search-term",
-            tag_filter=[
-                {"name": "tag1", "key": "environment", "value": "production"},
-                {"name": "tag2", "key": "version", "value": "v1.0"}
+            # Search with tag filter as an array of dictionaries
+            result = search_api.feature_store(
+                "search-term",
+                tag_filter=[
+                    {"name": "tag1", "key": "environment", "value": "production"},
+                    {"name": "tag2", "key": "version", "value": "v1.0"}
+                ]
+            )
+
+            # Search with TagSearchFilter objects
+            from hopsworks_common.core.search_api import TagSearchFilter
+            tags = [
+                TagSearchFilter(name="tag1", key="environment", value="production"),
+                TagSearchFilter(name="tag2", key="version", value="v1.0")
             ]
-        )
+            result = search_api.feature_store("search-term", tag_filter=tags)
 
-        # Search with TagSearchFilter objects
-        from hopsworks_common.core.search_api import TagSearchFilter
-        tags = [
-            TagSearchFilter(name="tag1", key="environment", value="production"),
-            TagSearchFilter(name="tag2", key="version", value="v1.0")
-        ]
-        result = search_api.feature_store("search-term", tag_filter=tags)
-
-        # Search with both keyword_filter and tag_filter
-        result = search_api.feature_store(
-            "search-term",
-            keyword_filter=["ml", "production"],
-            tag_filter=tags
-        )
-        ```
+            # Search with both keyword_filter and tag_filter
+            result = search_api.feature_store(
+                "search-term",
+                keyword_filter=["ml", "production"],
+                tag_filter=tags
+            )
+            ```
         """
         return self._search(
             doc_type="ALL",
@@ -227,9 +230,10 @@ class SearchApi:
             global_search=global_search,
         )
 
+    @public
     def feature_groups(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -241,38 +245,42 @@ class SearchApi:
         """Search for feature groups only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: `"name"` (the tag schema name as defined by Hopsworks Admin), `"key"` (the property within that tag schema), and `"value"` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
-            `List`: A list of metadata objects for feature groups matching the search criteria.
+            A list of metadata objects for feature groups matching the search criteria.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
 
         Example:
-        ```python
-        import hopsworks
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
-        search_api = project.get_search_api()
+            project = hopsworks.login()
+            search_api = project.get_search_api()
 
-        # Search for feature groups
-        fg_metas = search_api.feature_groups("customer")
+            # Search for feature groups
+            fg_metas = search_api.feature_groups("customer")
 
-        for fg_meta in fg_metas:
-            print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+            for fg_meta in fg_metas:
+                print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
 
-            # Get the same FeatureGroup object as returned by featurestore.get_feature_group
-            fg = fg_meta.get()
-        ```
+                # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+                fg = fg_meta.get()
+            ```
         """
         result = self._search(
             doc_type="FEATUREGROUP",
@@ -285,9 +293,10 @@ class SearchApi:
         )
         return result.feature_groups
 
+    @public
     def feature_views(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -299,38 +308,42 @@ class SearchApi:
         """Search for feature views only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
-            `List`: A list of metadata objects for feature views matching the search criteria.
+            A list of metadata objects for feature views matching the search criteria.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
 
         Example:
-        ```python
-        import hopsworks
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
-        search_api = project.get_search_api()
+            project = hopsworks.login()
+            search_api = project.get_search_api()
 
-        # Search for feature views
-        fv_metas = search_api.feature_views("customer")
+            # Search for feature views
+            fv_metas = search_api.feature_views("customer")
 
-        for fv_meta in fv_metas:
-            print(f"Feature View: {fv_meta.name} v{fv_meta.version}")
+            for fv_meta in fv_metas:
+                print(f"Feature View: {fv_meta.name} v{fv_meta.version}")
 
-            # Get the same FeatureView object as returned by featurestore.get_feature_view
-            fv = fv_meta.get()
-        ```
+                # Get the same FeatureView object as returned by featurestore.get_feature_view
+                fv = fv_meta.get()
+            ```
         """
         result = self._search(
             doc_type="FEATUREVIEW",
@@ -343,9 +356,10 @@ class SearchApi:
         )
         return result.feature_views
 
+    @public
     def training_datasets(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -357,38 +371,42 @@ class SearchApi:
         """Search for training datasets only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
-            `List`: A list of metadata objects for training datasets matching the search criteria.
+            A list of metadata objects for training datasets matching the search criteria.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
 
         Example:
-        ```python
-        import hopsworks
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
-        search_api = project.get_search_api()
+            project = hopsworks.login()
+            search_api = project.get_search_api()
 
-        # Search for training datasets
-        td_metas = search_api.training_datasets("model")
+            # Search for training datasets
+            td_metas = search_api.training_datasets("model")
 
-        for td_meta in td_metas:
-            print(f"Training Dataset: {td_meta.name} v{td_meta.version}")
+            for td_meta in td_metas:
+                print(f"Training Dataset: {td_meta.name} v{td_meta.version}")
 
-            # Get the same TrainingDataset object as returned by featurestore.get_training_dataset
-            td = td_meta.get()
-        ```
+                # Get the same TrainingDataset object as returned by featurestore.get_training_dataset
+                td = td_meta.get()
+            ```
         """
         result = self._search(
             doc_type="TRAININGDATASET",
@@ -401,9 +419,10 @@ class SearchApi:
         )
         return result.training_datasets
 
+    @public
     def features(
         self,
-        search_term: str = None,
+        search_term: str | None = None,
         keyword_filter: str | list[str] | None = None,
         tag_filter: dict[str, str]
         | list[dict[str, str] | TagSearchFilter]
@@ -415,35 +434,39 @@ class SearchApi:
         """Search for features only.
 
         Parameters:
-            search_term: the term to search for.
-            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
-            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Can be a single string or an array of strings.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
 
         Returns:
-            `List`: A list of features matching the search criteria.
+            A list of features matching the search criteria.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
 
         Example:
-        ```python
-        import hopsworks
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
-        search_api = project.get_search_api()
+            project = hopsworks.login()
+            search_api = project.get_search_api()
 
-        # Search for features
-        features = search_api.features("age")
+            # Search for features
+            features = search_api.features("age")
 
-        for feature in features:
-            print(f"Feature: {feature.name}")
-        ```
+            for feature in features:
+                print(f"Feature: {feature.name}")
+            ```
         """
         result = self._search(
             doc_type="FEATURE",
@@ -468,7 +491,7 @@ class SearchApi:
                 - List of strings: converts each to KeywordSearchFilter
 
         Returns:
-            `list[KeywordSearchFilter] | None`: Parsed list of KeywordSearchFilter objects, or None.
+            Parsed list of KeywordSearchFilter objects, or None.
         """
         if keyword_filter is None:
             return None
@@ -501,7 +524,7 @@ class SearchApi:
                 - List of mixed dicts and TagSearchFilter: parses all to TagSearchFilter
 
         Returns:
-            `list[TagSearchFilter] | None`: Parsed list of TagSearchFilter objects, or None.
+            Parsed list of TagSearchFilter objects, or None.
         """
         if tag_filter is None:
             return None
