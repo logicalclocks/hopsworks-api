@@ -76,6 +76,7 @@ class UDFKeyWords(Enum):
     CONTEXT = "context"
 
 
+@public
 def udf(
     return_type: list[type] | type,
     drop: str | list[str] | None = None,
@@ -849,6 +850,7 @@ def renaming_wrapper(*args):
             f"Invalid execution mode '{self.execution_mode}' for UDF '{self.function_name}'."
         )
 
+    @public
     def executor(
         self,
         statistics: TransformationStatistics
