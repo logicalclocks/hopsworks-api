@@ -4154,12 +4154,12 @@ class FeatureGroup(FeatureGroupBase):
                     )
                     for transformation_function in transformation_functions
                 ]
-            if "sink_job" in json_decamelized:
+            if isinstance(json_dict, dict) and "sinkJob" in json_dict:
                 json_decamelized["sink_job"] = job.Job.from_response_json(
-                    json_decamelized["sink_job"]
+                    json_dict["sinkJob"]
                 )
             return cls(**json_decamelized)
-        for fg in json_decamelized:
+        for raw_fg, fg in zip(json_dict, json_decamelized):
             if "type" in fg:
                 fg["stream"] = fg["type"] == "streamFeatureGroupDTO"
             _ = fg.pop("type", None)
@@ -4179,8 +4179,8 @@ class FeatureGroup(FeatureGroupBase):
                     )
                     for transformation_function in transformation_functions
                 ]
-            if "sink_job" in fg:
-                fg["sink_job"] = job.Job.from_response_json(fg["sink_job"])
+            if "sinkJob" in raw_fg:
+                fg["sink_job"] = job.Job.from_response_json(raw_fg["sinkJob"])
         return [cls(**fg) for fg in json_decamelized]
 
     def update_from_response_json(self, json_dict: dict[str, Any]) -> FeatureGroup:
@@ -4202,6 +4202,10 @@ class FeatureGroup(FeatureGroupBase):
                 )
                 for transformation_function in transformation_functions
             ]
+        if "sinkJob" in json_dict:
+            json_decamelized["sink_job"] = job.Job.from_response_json(
+                json_dict["sinkJob"]
+            )
         self.__init__(**json_decamelized)
         return self
 

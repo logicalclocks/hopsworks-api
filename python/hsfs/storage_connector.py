@@ -381,7 +381,7 @@ class StorageConnector(ABC):
 
         return self._data_source_api.get_tables(self, database)
 
-    def get_data(self, data_source: ds.DataSource) -> DataSourceData:
+    def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
         """Retrieve the data from the data source.
 
         Example:
@@ -397,7 +397,8 @@ class StorageConnector(ABC):
             ```
 
         Args:
-            data_source: The data source to retrieve data from.
+            data_source (DataSource): The data source to retrieve data from.
+            use_cached (bool): Whether to use cached data if available. Only supported for CRM and REST connectors. Defaults to `True`.
 
         Returns:
             An object containing the data retrieved from the data source.
@@ -409,8 +410,10 @@ class StorageConnector(ABC):
                 )
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
-            return self._get_no_sql_data(data_source)
-        return self._data_source_api.get_data(data_source)
+            return self._get_no_sql_data(data_source, use_cached)
+        return self._data_source_api.get_data(
+            self._featurestore_id, self._name, data_source
+        )
 
     def get_metadata(self, data_source: ds.DataSource) -> dict:
         """Retrieve metadata information about the data source.
@@ -437,8 +440,12 @@ class StorageConnector(ABC):
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api.get_metadata(data_source)
 
-    def _get_no_sql_data(self, data_source: ds.DataSource) -> DataSourceData:
-        data: DataSourceData = self._data_source_api.get_no_sql_data(self, data_source)
+    def _get_no_sql_data(
+        self, data_source: ds.DataSource, use_cached=True
+    ) -> DataSourceData:
+        data: DataSourceData = self._data_source_api.get_no_sql_data(
+            self, data_source, use_cached
+        )
 
         while data.schema_fetch_in_progress:
             time.sleep(3)

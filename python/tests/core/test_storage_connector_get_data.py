@@ -37,7 +37,7 @@ class TestStorageConnectorGetData:
 
         assert data == "result"
         assert isinstance(source.rest_endpoint, RestEndpointConfig)
-        connector._get_no_sql_data.assert_called_once_with(source)
+        connector._get_no_sql_data.assert_called_once_with(source, True)
 
     def test_crm_connector_requires_table(self, mocker):
         connector = CRMAndAnalyticsConnector(
