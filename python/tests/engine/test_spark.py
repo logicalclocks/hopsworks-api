@@ -1005,7 +1005,38 @@ class TestSpark:
         assert original_schema == original_df.schema
         assert result_schema == result_df.schema
 
-    def test_save_dataframe(self, mocker):
+    @pytest.mark.parametrize(
+        "online_enabled, storage, stream, expected_online_calls, expected_offline_calls",
+        [
+            # cached fg
+            ## not online_enabled
+            (False, None, False, 0, 1),
+            (False, "offline", False, 0, 1),
+            (False, "online", False, 0, 0),
+            ## online_enabled
+            (True, None, False, 1, 1),
+            (True, "offline", False, 0, 1), 
+            (True, "online", False, 1, 0),
+            # stream fg
+            ## not online_enabled
+            (False, None, True, 0, 1),
+            (False, "offline", True, 0, 1),
+            (False, "online", True, 0, 0),
+            ## online_enabled
+            (True, None, True, 1, 1),
+            (True, "offline", True, 0, 1),
+            (True, "online", True, 1, 0),
+        ],
+    )
+    def test_save_dataframe(
+        self,
+        mocker,
+        online_enabled,
+        storage,
+        stream,
+        expected_online_calls,
+        expected_offline_calls,
+    ):
         # Arrange
         mock_spark_engine_save_online_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine._save_online_dataframe"
@@ -1023,6 +1054,7 @@ class TestSpark:
             primary_key=[],
             partition_key=[],
             id=10,
+            stream=stream,
         )
 
         # Act
@@ -1030,18 +1062,38 @@ class TestSpark:
             feature_group=fg,
             dataframe=None,
             operation=None,
-            online_enabled=None,
-            storage=None,
+            online_enabled=online_enabled,
+            storage=storage,
             offline_write_options=None,
             online_write_options=None,
             validation_id=None,
         )
 
         # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+        assert mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
+        assert mock_spark_engine_save_offline_dataframe.call_count == expected_offline_calls
 
-    def test_save_dataframe_storage_offline(self, mocker):
+    @pytest.mark.parametrize(
+        "online_enabled, storage, expected_online_calls, expected_offline_calls",
+        [
+            # not online_enabled
+            (False, None, 0, 0),
+            (False, "offline", 0, 0),
+            (False, "online", 0, 0),
+            # online_enabled
+            (True, None, 1, 0),
+            (True, "offline", 0, 0),
+            (True, "online", 1, 0),
+        ],
+    )
+    def test_save_dataframe_external_fg(
+        self,
+        mocker,
+        online_enabled,
+        storage,
+        expected_online_calls,
+        expected_offline_calls,
+    ):
         # Arrange
         mock_spark_engine_save_online_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine._save_online_dataframe"
@@ -1052,13 +1104,9 @@ class TestSpark:
 
         spark_engine = spark.Engine()
 
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
+        fg = feature_group.ExternalFeatureGroup(
             id=10,
+            online_enabled=online_enabled,
         )
 
         # Act
@@ -1066,197 +1114,16 @@ class TestSpark:
             feature_group=fg,
             dataframe=None,
             operation=None,
-            online_enabled=None,
-            storage="offline",
+            online_enabled=online_enabled,
+            storage=storage,
             offline_write_options=None,
             online_write_options=None,
             validation_id=None,
         )
 
         # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_storage_offline_online_enabled(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=True,
-            storage="offline",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_storage_online(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage="online",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_storage_online_online_enabled(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=True,
-            storage="online",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 1
-        assert mock_spark_engine_save_offline_dataframe.call_count == 0
-
-    def test_save_dataframe_online_enabled(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=True,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 1
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_fg_stream(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            stream=True,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 1
-        assert mock_spark_engine_save_offline_dataframe.call_count == 0
+        assert mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
+        assert mock_spark_engine_save_offline_dataframe.call_count == expected_offline_calls
 
     def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
         # Arrange

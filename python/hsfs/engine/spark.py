@@ -545,36 +545,18 @@ class Engine:
                     "No duplicate records found. Proceeding with Delta write."
                 )
 
-            if (
-                isinstance(feature_group, fg_mod.ExternalFeatureGroup)
-                and feature_group.online_enabled
-            ) or feature_group.stream:
+            if not isinstance(feature_group, fg_mod.ExternalFeatureGroup) and storage in [None, "offline"]:
+                self._save_offline_dataframe(
+                    feature_group,
+                    dataframe,
+                    operation,
+                    offline_write_options,
+                    validation_id,
+                )
+            if (storage in [None, "online"]) and online_enabled:
                 self._save_online_dataframe(
                     feature_group, dataframe, online_write_options
                 )
-            else:
-                if storage == "offline" or not online_enabled:
-                    self._save_offline_dataframe(
-                        feature_group,
-                        dataframe,
-                        operation,
-                        offline_write_options,
-                        validation_id,
-                    )
-                elif storage == "online":
-                    self._save_online_dataframe(
-                        feature_group, dataframe, online_write_options
-                    )
-                elif online_enabled and storage is None:
-                    self._save_offline_dataframe(
-                        feature_group,
-                        dataframe,
-                        operation,
-                        offline_write_options,
-                    )
-                    self._save_online_dataframe(
-                        feature_group, dataframe, online_write_options
-                    )
         except Exception as e:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
 
