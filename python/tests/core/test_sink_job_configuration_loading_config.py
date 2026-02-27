@@ -25,21 +25,23 @@ class TestLoadingConfig:
         assert config.to_dict() == {
             "loadingStrategy": sink_job_configuration.LoadingStrategy.FULL_LOAD.value,
             "incrementalLoadingConfig": None,
+            "fullLoadConfig": None,
         }
 
     def test_to_dict_incremental_id(self):
         config = sink_job_configuration.LoadingConfig(
             loading_strategy="INCREMENTAL_ID",
             source_cursor_field="id",
-            initial_value="42",
+            initial_value=42,
         )
 
         assert config.to_dict() == {
             "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_ID.value,
             "incrementalLoadingConfig": {
                 "sourceCursorField": "id",
-                "initialValue": "42",
+                "initialValue": 42,
             },
+            "fullLoadConfig": None,
         }
 
     def test_to_dict_incremental_date(self):
@@ -55,20 +57,22 @@ class TestLoadingConfig:
                 "sourceCursorField": "event_date",
                 "initialIngestionDate": 1672531200000,
             },
+            "fullLoadConfig": None,
         }
 
-    def test_to_dict_incremental_date_iso_timestamp(self):
+    def test_to_dict_full_load(self):
         config = sink_job_configuration.LoadingConfig(
-            loading_strategy=sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE,
+            loading_strategy=sink_job_configuration.LoadingStrategy.FULL_LOAD,
             source_cursor_field="event_date",
             initial_value="2024-01-01T00:00:00Z",
         )
 
         assert config.to_dict() == {
-            "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE.value,
-            "incrementalLoadingConfig": {
+            "loadingStrategy": sink_job_configuration.LoadingStrategy.FULL_LOAD.value,
+            "incrementalLoadingConfig": None,
+            "fullLoadConfig": {
                 "sourceCursorField": "event_date",
-                "initialIngestionDate": 1704067200000,
+                "initialValue": "2024-01-01T00:00:00Z",
             },
         }
 
@@ -83,10 +87,35 @@ class TestLoadingConfig:
             }
         )
 
-        assert (
-            config._initial_value == "2024-01-01T00:00:00Z"
-        ), "Expected timestamp to be normalized to ISO UTC string"
+        assert config.to_dict() == {
+            "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE.value,
+            "incrementalLoadingConfig": {
+                "sourceCursorField": "event_date",
+                "initialIngestionDate": 1704067200000,
+            },
+            "fullLoadConfig": None,
+        }
 
     def test_invalid_loading_strategy(self):
         with pytest.raises(ValueError, match="Invalid loading_strategy"):
             sink_job_configuration.LoadingConfig(loading_strategy="NOT_A_STRATEGY")
+
+    def test_from_response_json_full_load(self):
+        config = sink_job_configuration.LoadingConfig.from_response_json(
+            {
+                "loadingStrategy": "FULL_LOAD",
+                "fullLoadConfig": {
+                    "sourceCursorField": "id",
+                    "initialValue": "100",
+                },
+            }
+        )
+
+        assert config.to_dict() == {
+            "loadingStrategy": sink_job_configuration.LoadingStrategy.FULL_LOAD.value,
+            "incrementalLoadingConfig": None,
+            "fullLoadConfig": {
+                "sourceCursorField": "id",
+                "initialValue": "100",
+            },
+        }

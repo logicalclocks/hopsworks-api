@@ -76,6 +76,98 @@ class FeatureColumnMapping:
         self._feature_name = feature_name
 
 
+class FullLoadConfig:
+    def __init__(
+        self,
+        source_cursor_field: str | None = None,
+        initial_value: str | None = None,
+    ):
+        self._source_cursor_field = source_cursor_field
+        self._initial_value = initial_value
+
+    def to_dict(self):
+        return {
+            "sourceCursorField": self._source_cursor_field,
+            "initialValue": self._initial_value,
+        }
+
+    @classmethod
+    def from_response_json(cls, json_dict):
+        json_decamelized = humps.decamelize(json_dict)
+        return cls(
+            source_cursor_field=json_decamelized.get("source_cursor_field"),
+            initial_value=json_decamelized.get("initial_value"),
+        )
+
+    @property
+    def source_cursor_field(self) -> str | None:
+        return self._source_cursor_field
+
+    @source_cursor_field.setter
+    def source_cursor_field(self, source_cursor_field: str | None) -> None:
+        self._source_cursor_field = source_cursor_field
+
+    @property
+    def initial_value(self) -> str | None:
+        return self._initial_value
+
+    @initial_value.setter
+    def initial_value(self, initial_value: str | None) -> None:
+        self._initial_value = initial_value
+
+
+class IncrementalLoadingConfig:
+    def __init__(
+        self,
+        source_cursor_field: str | None = None,
+        initial_value: int | None = None,
+        initial_ingestion_date: int | None = None,
+    ):
+        self._source_cursor_field = source_cursor_field
+        self._initial_value = initial_value
+        self._initial_ingestion_date = initial_ingestion_date
+
+    def to_dict(self):
+        return {
+            "sourceCursorField": self._source_cursor_field,
+            "initialValue": self._initial_value,
+            "initialIngestionDate": self._initial_ingestion_date,
+        }
+
+    @classmethod
+    def from_response_json(cls, json_dict):
+        json_decamelized = humps.decamelize(json_dict)
+        return cls(
+            source_cursor_field=json_decamelized.get("source_cursor_field"),
+            initial_value=json_decamelized.get("initial_value"),
+            initial_ingestion_date=json_decamelized.get("initial_ingestion_date"),
+        )
+
+    @property
+    def source_cursor_field(self) -> str | None:
+        return self._source_cursor_field
+
+    @source_cursor_field.setter
+    def source_cursor_field(self, source_cursor_field: str | None) -> None:
+        self._source_cursor_field = source_cursor_field
+
+    @property
+    def initial_value(self) -> int | None:
+        return self._initial_value
+
+    @initial_value.setter
+    def initial_value(self, initial_value: int | None) -> None:
+        self._initial_value = initial_value
+
+    @property
+    def initial_ingestion_date(self) -> int | None:
+        return self._initial_ingestion_date
+
+    @initial_ingestion_date.setter
+    def initial_ingestion_date(self, initial_ingestion_date: int | None) -> None:
+        self._initial_ingestion_date = initial_ingestion_date
+
+
 class LoadingConfig:
     def __init__(
         self,
@@ -103,79 +195,87 @@ class LoadingConfig:
         self._initial_value = initial_value
 
     def to_dict(self):
-        incremental_config = {
-            "sourceCursorField": self._source_cursor_field,
-        }
+        incremental_config = None
+        full_load_config = None
+
         if self._loading_strategy in [
             LoadingStrategy.INCREMENTAL_ID,
             LoadingStrategy.INCREMENTAL_TIMESTAMP,
+            LoadingStrategy.INCREMENTAL_DATE,
         ]:
-            incremental_config["initialValue"] = self._initial_value
-        elif (
-            self._loading_strategy == LoadingStrategy.INCREMENTAL_DATE
-            and self._initial_value is not None
-        ):
-            if isinstance(self._initial_value, (int, float)):
-                incremental_config["initialIngestionDate"] = int(self._initial_value)
-            else:
-                initial_value = str(self._initial_value)
-                parsed = None
-                if "T" in initial_value:
-                    if initial_value.endswith("Z"):
-                        parsed = datetime.fromisoformat(initial_value[:-1])
-                        if parsed.tzinfo is None:
-                            parsed = parsed.replace(tzinfo=timezone.utc)
-                    else:
-                        parsed = datetime.fromisoformat(initial_value)
-                        if parsed.tzinfo is None:
-                            parsed = parsed.replace(tzinfo=timezone.utc)
-                if parsed is not None:
+            incremental_config = {"sourceCursorField": self._source_cursor_field}
+            if self._loading_strategy in [
+                LoadingStrategy.INCREMENTAL_ID,
+                LoadingStrategy.INCREMENTAL_TIMESTAMP,
+            ]:
+                incremental_config["initialValue"] = self._initial_value
+            elif self._initial_value is not None:
+                if isinstance(self._initial_value, (int, float)):
                     incremental_config["initialIngestionDate"] = int(
-                        parsed.timestamp() * 1000
+                        self._initial_value
                     )
                 else:
-                    incremental_config["initialIngestionDate"] = (
-                        util.get_timestamp_from_date_string(initial_value)
-                    )
+                    initial_value = str(self._initial_value)
+                    parsed = None
+                    if "T" in initial_value:
+                        if initial_value.endswith("Z"):
+                            parsed = datetime.fromisoformat(initial_value[:-1])
+                            if parsed.tzinfo is None:
+                                parsed = parsed.replace(tzinfo=timezone.utc)
+                        else:
+                            parsed = datetime.fromisoformat(initial_value)
+                            if parsed.tzinfo is None:
+                                parsed = parsed.replace(tzinfo=timezone.utc)
+                    if parsed is not None:
+                        incremental_config["initialIngestionDate"] = int(
+                            parsed.timestamp() * 1000
+                        )
+                    else:
+                        incremental_config["initialIngestionDate"] = (
+                            util.get_timestamp_from_date_string(initial_value)
+                        )
+            if all(value is None for value in incremental_config.values()):
+                incremental_config = None
 
-        if all(value is None for value in incremental_config.values()):
-            incremental_config = None
+        if self._loading_strategy == LoadingStrategy.FULL_LOAD:
+            full_load_config = {
+                "sourceCursorField": self._source_cursor_field,
+                "initialValue": self._initial_value,
+            }
+            if all(value is None for value in full_load_config.values()):
+                full_load_config = None
 
         return {
             "loadingStrategy": self._loading_strategy.value,
             "incrementalLoadingConfig": incremental_config,
+            "fullLoadConfig": full_load_config,
         }
 
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        incremental_config = json_decamelized.pop("incremental_loading_config", None)
+        incremental_config = json_decamelized.get("incremental_loading_config")
+        full_load_config = json_decamelized.get("full_load_config")
+
+        source_cursor_field = None
+        initial_value = None
         if incremental_config:
-            json_decamelized.setdefault(
-                "source_cursor_field", incremental_config.get("source_cursor_field")
-            )
-            if "initial_value" not in json_decamelized:
-                if "initial_value" in incremental_config:
-                    json_decamelized["initial_value"] = incremental_config.get(
-                        "initial_value"
-                    )
-                elif "initial_ingestion_date" in incremental_config:
-                    json_decamelized["initial_value"] = incremental_config.get(
-                        "initial_ingestion_date"
-                    )
-        loading_strategy = json_decamelized.get("loading_strategy")
-        if loading_strategy == LoadingStrategy.INCREMENTAL_DATE.value:
-            initial_value = json_decamelized.get("initial_value")
-            if isinstance(initial_value, (int, float)) or (
-                isinstance(initial_value, str) and initial_value.isdigit()
-            ):
-                timestamp_ms = int(initial_value)
-                json_decamelized["initial_value"] = (
-                    datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc)
-                    .isoformat()
-                    .replace("+00:00", "Z")
-                )
-        return cls(**json_decamelized)
+            source_cursor_field = incremental_config.get("source_cursor_field")
+            if "initial_value" in incremental_config:
+                initial_value = incremental_config.get("initial_value")
+            elif "initial_ingestion_date" in incremental_config:
+                initial_value = incremental_config.get("initial_ingestion_date")
+        elif full_load_config:
+            source_cursor_field = full_load_config.get("source_cursor_field")
+            initial_value = full_load_config.get("initial_value")
+
+        return cls(
+            loading_strategy=json_decamelized.get(
+                "loading_strategy", LoadingStrategy.FULL_LOAD.value
+            ),
+            source_cursor_field=source_cursor_field,
+            initial_value=initial_value,
+        )
 
     def to_json(self):
         return humps.decamelize(self.to_dict())
@@ -189,6 +289,10 @@ class SinkJobConfiguration:
         name: str | None = None,
         batch_size: int | None = 100000,
         sql_source_fetch_chunk_size: int | None = 50000,
+        source_read_workers: int | None = 1,
+        data_processing_workers: int | None = 1,
+        max_upload_batch_size_mb: int | None = 128,
+        sql_table_num_partitions: int | None = 2,
         loading_config: LoadingConfig | dict | None = None,
         column_mappings: list[FeatureColumnMapping] | list[dict] | None = None,
         endpoint_config: dict | RestEndpointConfig | None = None,
@@ -197,6 +301,10 @@ class SinkJobConfiguration:
         self._name = name
         self._batch_size = batch_size
         self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
+        self._source_read_workers = source_read_workers
+        self._data_processing_workers = data_processing_workers
+        self._max_upload_batch_size_mb = max_upload_batch_size_mb
+        self._sql_table_num_partitions = sql_table_num_partitions
         if isinstance(loading_config, dict):
             self._loading_config = LoadingConfig.from_response_json(loading_config)
         else:
@@ -234,6 +342,10 @@ class SinkJobConfiguration:
             "name": self._name,
             "batchSize": self._batch_size,
             "sqlSourceFetchChunkSize": self._sql_source_fetch_chunk_size,
+            "sourceReadWorkers": self._source_read_workers,
+            "dataProcessingWorkers": self._data_processing_workers,
+            "maxUploadBatchSizeMB": self._max_upload_batch_size_mb,
+            "sqlTableNumPartitions": self._sql_table_num_partitions,
             "loadingConfig": (
                 self._loading_config.to_dict()
                 if isinstance(self._loading_config, LoadingConfig)
@@ -296,6 +408,14 @@ class SinkJobConfiguration:
             sql_source_fetch_chunk_size=json_decamelized.get(
                 "sql_source_fetch_chunk_size", 50000
             ),
+            source_read_workers=json_decamelized.get("source_read_workers", 1),
+            data_processing_workers=json_decamelized.get("data_processing_workers", 1),
+            max_upload_batch_size_mb=json_decamelized.get(
+                "max_upload_batch_size_mb", 128
+            ),
+            sql_table_num_partitions=json_decamelized.get(
+                "sql_table_num_partitions", 2
+            ),
             name=json_decamelized.get("name", None),
             loading_config=loading_config,
             column_mappings=column_mappings,
@@ -339,6 +459,38 @@ class SinkJobConfiguration:
         self, sql_source_fetch_chunk_size: int | None
     ) -> None:
         self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
+
+    @property
+    def source_read_workers(self) -> int | None:
+        return self._source_read_workers
+
+    @source_read_workers.setter
+    def source_read_workers(self, source_read_workers: int | None) -> None:
+        self._source_read_workers = source_read_workers
+
+    @property
+    def data_processing_workers(self) -> int | None:
+        return self._data_processing_workers
+
+    @data_processing_workers.setter
+    def data_processing_workers(self, data_processing_workers: int | None) -> None:
+        self._data_processing_workers = data_processing_workers
+
+    @property
+    def max_upload_batch_size_mb(self) -> int | None:
+        return self._max_upload_batch_size_mb
+
+    @max_upload_batch_size_mb.setter
+    def max_upload_batch_size_mb(self, max_upload_batch_size_mb: int | None) -> None:
+        self._max_upload_batch_size_mb = max_upload_batch_size_mb
+
+    @property
+    def sql_table_num_partitions(self) -> int | None:
+        return self._sql_table_num_partitions
+
+    @sql_table_num_partitions.setter
+    def sql_table_num_partitions(self, sql_table_num_partitions: int | None) -> None:
+        self._sql_table_num_partitions = sql_table_num_partitions
 
     @property
     def loading_config(self) -> LoadingConfig | dict | None:

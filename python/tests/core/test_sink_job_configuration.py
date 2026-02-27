@@ -26,11 +26,15 @@ class TestSinkJobConfiguration:
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": None,
             "batchSize": 100000,
+            "sqlSourceFetchChunkSize": 50000,
+            "sourceReadWorkers": 1,
+            "dataProcessingWorkers": 1,
+            "maxUploadBatchSizeMB": 128,
+            "sqlTableNumPartitions": 2,
             "loadingConfig": {
                 "loadingStrategy": sink_job_configuration.LoadingStrategy.FULL_LOAD.value,
-                "sourceCursorField": None,
-                "initialValue": None,
-                "initialValueDate": None,
+                "incrementalLoadingConfig": None,
+                "fullLoadConfig": None,
             },
             "columnMappings": [],
             "featuregroupId": None,
@@ -61,6 +65,11 @@ class TestSinkJobConfiguration:
         config = sink_job_configuration.SinkJobConfiguration(
             name="sink_job",
             batch_size=500,
+            sql_source_fetch_chunk_size=600,
+            source_read_workers=2,
+            data_processing_workers=3,
+            max_upload_batch_size_mb=256,
+            sql_table_num_partitions=8,
             loading_config=loading_config,
             column_mappings=column_mappings,
             schedule_config=schedule,
@@ -70,11 +79,18 @@ class TestSinkJobConfiguration:
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": "sink_job",
             "batchSize": 500,
+            "sqlSourceFetchChunkSize": 600,
+            "sourceReadWorkers": 2,
+            "dataProcessingWorkers": 3,
+            "maxUploadBatchSizeMB": 256,
+            "sqlTableNumPartitions": 8,
             "loadingConfig": {
                 "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE.value,
-                "sourceCursorField": "updated_at",
-                "initialValue": None,
-                "initialValueDate": "2023-01-01",
+                "incrementalLoadingConfig": {
+                    "sourceCursorField": "updated_at",
+                    "initialIngestionDate": 1672531200000,
+                },
+                "fullLoadConfig": None,
             },
             "columnMappings": [
                 {"sourceColumn": "source_1", "featureName": "feature_1"}
@@ -96,10 +112,17 @@ class TestSinkJobConfiguration:
         json_dict = {
             "name": "sink_job",
             "batchSize": 123,
+            "sqlSourceFetchChunkSize": 456,
+            "sourceReadWorkers": 7,
+            "dataProcessingWorkers": 8,
+            "maxUploadBatchSizeMB": 512,
+            "sqlTableNumPartitions": 9,
             "loadingConfig": {
                 "loadingStrategy": "INCREMENTAL_ID",
-                "sourceCursorField": "id",
-                "initialValue": "10",
+                "incrementalLoadingConfig": {
+                    "sourceCursorField": "id",
+                    "initialValue": "10",
+                },
             },
             "columnMappings": [
                 {"sourceColumn": "source_a", "featureName": "feature_a"}
@@ -118,12 +141,19 @@ class TestSinkJobConfiguration:
 
         assert config.name == "sink_job"
         assert config.batch_size == 123
+        assert config.sql_source_fetch_chunk_size == 456
+        assert config.source_read_workers == 7
+        assert config.data_processing_workers == 8
+        assert config.max_upload_batch_size_mb == 512
+        assert config.sql_table_num_partitions == 9
         assert isinstance(config.loading_config, sink_job_configuration.LoadingConfig)
         assert config.loading_config.to_dict() == {
             "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_ID.value,
-            "sourceCursorField": "id",
-            "initialValue": "10",
-            "initialValueDate": None,
+            "incrementalLoadingConfig": {
+                "sourceCursorField": "id",
+                "initialValue": "10",
+            },
+            "fullLoadConfig": None,
         }
         assert len(config.column_mappings) == 1
         assert config.column_mappings[0].source_column == "source_a"
