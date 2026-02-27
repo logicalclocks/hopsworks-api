@@ -216,13 +216,11 @@ class Logic:
         return self._type
 
     @public
-    @property
     def get_left_filter_or_logic(self) -> Filter | Logic:
         """Left side of the logical operator."""
         return self._left_f or self._left_l
 
     @public
-    @property
     def get_right_filter_or_logic(self) -> Filter | Logic | None:
         """Right side of the logical operator."""
         return self._right_f or self._right_l
