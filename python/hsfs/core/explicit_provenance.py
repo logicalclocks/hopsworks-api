@@ -160,7 +160,13 @@ class Links:
 
     @public
     @property
-    def accessible(self) -> list[storage_connector.StorageConnector | feature_group.FeatureGroup | feature_view.FeatureView]:
+    def accessible(
+        self,
+    ) -> list[
+        storage_connector.StorageConnector
+        | feature_group.FeatureGroup
+        | feature_view.FeatureView
+    ]:
         """List of objects which are part of the provenance graph requested.
 
         These entities

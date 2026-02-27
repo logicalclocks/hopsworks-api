@@ -22,9 +22,7 @@ from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@public(
-    "hopsworks.job_schedule.JobSchedule", "hsfs.core.job_schedule.JobSchedule"
-)
+@public("hopsworks.job_schedule.JobSchedule", "hsfs.core.job_schedule.JobSchedule")
 class JobSchedule:
     def __init__(
         self,
