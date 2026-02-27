@@ -545,6 +545,9 @@ class Engine:
                     "No duplicate records found. Proceeding with Delta write."
                 )
 
+            # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
+            # FeatureGroups with stream=True use the same batch insert logic as non-stream
+            # feature groups in spark; streaming ingestion is handled by save_stream_dataframe.
             if not isinstance(
                 feature_group, fg_mod.ExternalFeatureGroup
             ) and storage in [None, "offline"]:
