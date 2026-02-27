@@ -37,17 +37,17 @@ class Client(base.Client):
     def __init__(self):
         """To be implemented by clients."""
 
-    def _get_verify(self, verify: bool, trust_store_path: str | None) -> str | bool:
+    def _get_verify(self, verify: str, trust_store_path: str | None) -> str | bool:
         """Get verification method for sending inference requests to Istio.
 
         Credit to https://gist.github.com/gdamjan/55a8b9eec6cf7b771f92021d93b87b2c
 
         Parameters:
-            verify: perform hostname verification, 'true' or 'false'
-            trust_store_path: path of the truststore locally if it was uploaded manually to the external environment such as EKS or AKS
+            verify: Whether to perform hostname verification, is interpreted as `True` only if it is the string `"true"`.
+            trust_store_path: The path of the truststore locally if it was uploaded manually to the external environment such as EKS or AKS.
 
         Returns:
-            if verify is true and the truststore is provided, then return the trust store location if verify is true but the truststore wasn't provided, then return true if verify is false, then return false
+            If verify is true and the truststore is provided, then return the trust store location; if verify is true but the truststore wasn't provided, then return true; if verify is false, then return false.
         """
         if verify == "true":
             if trust_store_path is not None:
