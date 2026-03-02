@@ -303,9 +303,9 @@ class Links:
         There are three types of Links: UpstreamFeatureGroups, DownstreamFeatureGroups, DownstreamFeatureViews.
 
         Parameters:
-            links_json: json response from the explicit provenance endpoint
+            json_dict: json response from the explicit provenance endpoint
             direction: subset of links to parse - UPSTREAM/DOWNSTREAM
-            type: subset of links to parse - FEATURE_VIEW/TRAINING_DATASET/MODEL
+            artifact: subset of links to parse - FEATURE_VIEW/TRAINING_DATASET/MODEL
 
         Returns:
             A ProvenanceLink object for the selected parse type.

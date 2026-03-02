@@ -307,7 +307,12 @@ class Model:
     @public
     @usage.method_logger
     def set_tag(self, name: str, value: str | dict):
-        """Deprecated: Use add_tag instead."""
+        """Deprecated: Use add_tag instead.
+
+        Parameters:
+            name: name of the tag
+            value: value of the tag
+        """
         warnings.warn(
             "The set_tag method is deprecated. Please use add_tag instead.",
             DeprecationWarning,
@@ -374,10 +379,10 @@ class Model:
     ) -> feature_view.FeatureView | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
-         Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
-         For more details, call the base method - get_feature_view_provenance
+        Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
+        For more details, call the base method - get_feature_view_provenance
 
-         Parameters:
+        Parameters:
             init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
 

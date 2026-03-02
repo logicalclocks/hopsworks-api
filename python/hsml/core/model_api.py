@@ -30,6 +30,7 @@ class ModelApi:
 
         Parameters:
             model_instance: metadata object of model to be saved
+            query_params: query parameters for the request
 
         Returns:
             updated metadata object of the model
@@ -67,6 +68,8 @@ class ModelApi:
         Parameters:
             name: name of the model
             version: version of the model
+            model_registry_id: id of the model registry
+            shared_registry_project_name: name of the project owning a shared registry
 
         Returns:
             model metadata object
@@ -101,6 +104,8 @@ class ModelApi:
 
         Parameters:
             name: name of the model
+            model_registry_id: id of the model registry
+            shared_registry_project_name: name of the project owning a shared registry
             metric: Name of the metric to maximize or minimize
             direction: Whether to maximize or minimize the metric, allowed values are 'max' or 'min'
 
@@ -212,7 +217,6 @@ class ModelApi:
 
         Parameters:
             model_instance: model instance to get the tags from
-            name: tag name
 
         Returns:
             dict of tag name/values

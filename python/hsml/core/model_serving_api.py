@@ -32,9 +32,6 @@ class ModelServingApi:
     def get(self) -> ModelServing:
         """Get model serving for specific project.
 
-        Parameters:
-            project: project of the model registry
-
         Returns:
             the model serving metadata
         """

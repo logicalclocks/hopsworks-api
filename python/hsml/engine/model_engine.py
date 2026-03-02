@@ -570,19 +570,39 @@ class ModelEngine:
         self._engine.delete(model_instance)
 
     def set_tag(self, model_instance, name, value):
-        """Attach a name/value tag to a model."""
+        """Attach a name/value tag to a model.
+
+        Parameters:
+            model_instance: the model to tag
+            name: tag name
+            value: tag value
+        """
         self._model_api.set_tag(model_instance, name, value)
 
     def delete_tag(self, model_instance, name):
-        """Remove a tag from a model."""
+        """Remove a tag from a model.
+
+        Parameters:
+            model_instance: the model to remove the tag from
+            name: tag name to remove
+        """
         self._model_api.delete_tag(model_instance, name)
 
     def get_tag(self, model_instance, name):
-        """Get tag with a certain name."""
+        """Get tag with a certain name.
+
+        Parameters:
+            model_instance: the model to get the tag from
+            name: tag name
+        """
         return self._model_api.get_tag(model_instance, name)
 
     def get_tags(self, model_instance):
-        """Get all tags for a model."""
+        """Get all tags for a model.
+
+        Parameters:
+            model_instance: the model to get tags from
+        """
         return self._model_api.get_tags(model_instance)
 
     def get_feature_view_provenance(

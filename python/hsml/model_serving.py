@@ -313,6 +313,7 @@ class ModelServing:
         Parameters:
             script_file: Path to a custom predictor script implementing the Transformer class.
             resources: Resources to be allocated for the transformer.
+            scaling_configuration: Scaling configuration for the transformer.
 
         Returns:
             The transformer metadata object.

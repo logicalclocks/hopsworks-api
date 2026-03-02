@@ -88,6 +88,10 @@ class ServingApi:
     ) -> list[deployment.Deployment]:
         """Get the metadata of all deployments.
 
+        Parameters:
+            model_name: filter deployments by model name
+            status: filter deployments by status
+
         Returns:
             List of deployment metadata objects.
         """
@@ -329,7 +333,11 @@ class ServingApi:
         )
 
     def get_num_instances_limits(self) -> list[int]:
-        """Get number of instances limits for model serving."""
+        """Get number of instances limits for model serving.
+
+        Returns:
+            A list of [min_instances, max_instances].
+        """
         _client = client.get_instance()
 
         path_params = ["variables", "kube_serving_min_num_instances"]
@@ -344,7 +352,11 @@ class ServingApi:
         ]
 
     def get_knative_domain(self) -> str:
-        """Get the domain used by knative."""
+        """Get the domain used by knative.
+
+        Returns:
+            The knative domain name string.
+        """
         _client = client.get_instance()
 
         path_params = ["variables", "kube_knative_domain_name"]

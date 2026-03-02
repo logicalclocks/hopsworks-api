@@ -114,7 +114,16 @@ class ComponentScalingConfig(ABC):
     def get_default_scaling_configuration(
         serving_tool: str, min_instances: int | None, component_type: str = "predictor"
     ) -> ComponentScalingConfig:
-        """Get the default scaling configuration based on the serving tool and number of instances."""
+        """Get the default scaling configuration based on the serving tool and number of instances.
+
+        Parameters:
+            serving_tool: the serving tool to use (e.g. kserve)
+            min_instances: minimum number of instances, or None to use the default
+            component_type: the component type (predictor or transformer)
+
+        Returns:
+            The default scaling configuration for the given serving tool.
+        """
         if min_instances is None:
             min_instances = (
                 0  # enable scale-to-zero by default if required

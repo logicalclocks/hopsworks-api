@@ -91,7 +91,11 @@ class InferenceEndpoint:
         return random.choice(self._hosts) if self._hosts is not None else None
 
     def get_port(self, name):
-        """Get port by name."""
+        """Get port by name.
+
+        Parameters:
+            name: name of the port to retrieve
+        """
         if self._ports is not None:
             for port in self._ports:
                 if port.name == name:

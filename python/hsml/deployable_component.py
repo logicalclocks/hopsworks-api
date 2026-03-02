@@ -53,10 +53,19 @@ class DeployableComponent(ABC):
     @classmethod
     @abstractmethod
     def from_json(cls, json_decamelized):
-        """To be implemented by the component type."""
+        """To be implemented by the component type.
+
+        Parameters:
+            json_decamelized: the decamelized JSON dict to parse
+        """
 
     @classmethod
     def from_response_json(cls, json_dict):
+        """Parse a JSON response into a component instance.
+
+        Parameters:
+            json_dict: the JSON response to parse
+        """
         json_decamelized = humps.decamelize(json_dict)
         return cls.from_json(json_decamelized)
 
@@ -65,7 +74,11 @@ class DeployableComponent(ABC):
 
     @abstractmethod
     def update_from_response_json(self, json_dict):
-        """To be implemented by the component type."""
+        """Update the component instance from a JSON response.
+
+        Parameters:
+            json_dict: the JSON response to update from
+        """
 
     @abstractmethod
     def to_dict(self):
