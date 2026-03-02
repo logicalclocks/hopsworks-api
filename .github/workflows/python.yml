@@ -53,15 +53,13 @@ jobs:
             ${{ steps.get-changed-files.outputs.all_changed_files }}
         run: ruff format --config python/pyproject.toml --check $ALL_CHANGED_FILES
 
-      - name: install pydoclint
-        run: pip install pydoclint==0.8.3
+      - name: install docsig
+        run: pip install docsig==0.79.0
 
-      - name: pydoclint
+      - name: docsig
         if: steps.get-changed-files.outputs.src_any_changed == 'true'
-        env:
-          SRC_ALL_CHANGED_FILES:
-            ${{ steps.get-changed-files.outputs.src_all_changed_files }}
-        run: pydoclint --config python/pyproject.toml -q $SRC_ALL_CHANGED_FILES
+        working-directory: python
+        run: docsig hopsworks_common hopsworks hsfs hsml
 
   unit_tests:
     name: Unit Tests

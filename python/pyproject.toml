@@ -205,6 +205,7 @@ select = [
     "TC",
     "I",
     "W",
+    "DOC",
     "D2",
     "D3",
     "D4",
@@ -256,7 +257,3 @@ disable = [
     "SIG305",
 ]
 ignore_kwargs = true
-
-[tool.pydoclint]
-allow-init-docstring = true
-style = "google"

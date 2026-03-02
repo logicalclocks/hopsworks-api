@@ -629,7 +629,9 @@ class DatasetApi:
 
     @public
     @usage.method_logger
-    def upload_feature_group(self, feature_group: FeatureGroup, path: str, dataframe: pd.DataFrame):
+    def upload_feature_group(
+        self, feature_group: FeatureGroup, path: str, dataframe: pd.DataFrame
+    ):
         """Upload a dataframe to a path in Parquet format using a feature group metadata.
 
         Warning:

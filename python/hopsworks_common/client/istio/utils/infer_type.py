@@ -108,7 +108,9 @@ def serialize_byte_tensor(input_tensor: np.ndarray) -> np.ndarray:
 class InferenceServerException(Exception):
     """Exception indicating non-Success status."""
 
-    def __init__(self, msg:str, status:str|None=None, debug_details:str|None=None):
+    def __init__(
+        self, msg: str, status: str | None = None, debug_details: str | None = None
+    ):
         """Construct an InferenceServerException.
 
         Parameters:

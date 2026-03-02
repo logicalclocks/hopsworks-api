@@ -179,7 +179,9 @@ class FeatureGroupBaseEngine:
             feature_group, feature_group, "updateStatsConfig"
         )
 
-    def new_feature_list(self, feature_group: FeatureGroup, updated_features: list[Feature]) -> list[Feature]:
+    def new_feature_list(
+        self, feature_group: FeatureGroup, updated_features: list[Feature]
+    ) -> list[Feature]:
         # take original schema and replaces the updated features and returns the new list
         new_features = []
         for feature in feature_group.features:

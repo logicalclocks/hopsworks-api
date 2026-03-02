@@ -80,7 +80,9 @@ class FeatureGroupTools:
         except IndexError:
             raise RuntimeError(f"Feature group {name} not found.") from None
 
-    async def get_feature_groups(self, ctx: Context) -> list[FeatureGroup]:  # docsig: disable
+    async def get_feature_groups(  # docsig: disable
+        self, ctx: Context
+    ) -> list[FeatureGroup]:
         """Get the latest versions of all feature groups in the project."""
         await ctx.info("Retrieving feature groups...")
 
@@ -99,7 +101,9 @@ class FeatureGroupTools:
             key=lambda fg: (fg.name, fg.version),
         )
 
-    async def get_feature_group_versions(self, ctx: Context, name: str) -> list[int]:  # docsig: disable
+    async def get_feature_group_versions(  # docsig: disable
+        self, ctx: Context, name: str
+    ) -> list[int]:
         """Get all versions of a feature group with the specified name."""
         await ctx.info("Retrieving feature groups...")
 

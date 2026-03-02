@@ -420,7 +420,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_features(self, feature_group: fg.FeatureGroup, updated_features: list[Feature]) -> None:
+    def update_features(
+        self, feature_group: fg.FeatureGroup, updated_features: list[Feature]
+    ) -> None:
         """Updates features safely.
 
         Parameters:
@@ -433,7 +435,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, self.new_feature_list(feature_group, updated_features)
         )
 
-    def append_features(self, feature_group: fg.FeatureGroup, new_features: list[Feature]) -> None:
+    def append_features(
+        self, feature_group: fg.FeatureGroup, new_features: list[Feature]
+    ) -> None:
         """Appends features to a feature group.
 
         Parameters:
@@ -448,7 +452,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # write empty dataframe to update parquet schema
         engine.get_instance().update_table_schema(feature_group)
 
-    def update_description(self, feature_group: fg.FeatureGroup, description: str) -> None:
+    def update_description(
+        self, feature_group: fg.FeatureGroup, description: str
+    ) -> None:
         """Updates the description of a feature group.
 
         Parameters:
@@ -461,7 +467,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_topic_name(self, feature_group: fg.FeatureGroup, topic_name: str) -> None:
+    def update_topic_name(
+        self, feature_group: fg.FeatureGroup, topic_name: str
+    ) -> None:
         """Updates the topic_name of a feature group.
 
         Parameters:
@@ -474,7 +482,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_notification_topic_name(self, feature_group: fg.FeatureGroup, notification_topic_name: str) -> None:
+    def update_notification_topic_name(
+        self, feature_group: fg.FeatureGroup, notification_topic_name: str
+    ) -> None:
         """Updates the notification_topic_name of a feature group.
 
         Parameters:
@@ -487,7 +497,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_deprecated(self, feature_group: fg.FeatureGroup, deprecate: bool) -> None:
+    def update_deprecated(
+        self, feature_group: fg.FeatureGroup, deprecate: bool
+    ) -> None:
         """Updates the deprecation status of a feature group.
 
         Parameters:
@@ -686,7 +698,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         )
 
-    def update_ttl(self, feature_group: fg.FeatureGroup, ttl: int | None = None, enabled: bool | None = None):
+    def update_ttl(
+        self,
+        feature_group: fg.FeatureGroup,
+        ttl: int | None = None,
+        enabled: bool | None = None,
+    ):
         """Updates the TTL configuration of a feature group.
 
         Parameters:
