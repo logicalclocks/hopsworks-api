@@ -333,6 +333,9 @@ class Query:
         Parameters:
             n: Number of rows to show.
             online: Show from online storage.
+
+        Returns:
+            A list of rows, where each row is represented as a list of feature values.
         """
         self._check_read_supported(online)
         read_options = {}
@@ -519,6 +522,17 @@ class Query:
         Warning: Deprecated
             `pull_changes` method is deprecated.
             Use `as_of(end_wallclock_time, exclude_until=start_wallclock_time) instead.
+
+        Parameters:
+            wallclock_start_time:
+                Start time of the interval to pull changes for.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
+            wallclock_end_time:
+                End time of the interval to pull changes for.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
+
+        Returns:
+            The query object with the applied time travel condition.
         """
         self.left_feature_group_start_time = util.convert_event_time_to_timestamp(
             wallclock_start_time
@@ -710,6 +724,13 @@ class Query:
 
             query.to_string()
             ```
+
+        Parameters:
+            online: Whether to return the query for online or offline storage.
+            arrow_flight: Whether to return the query for Arrow Flight.
+
+        Returns:
+            The string representation of the Query.
         """
         fs_query = self._query_constructor_api.construct_query(self)
 
@@ -770,6 +791,9 @@ class Query:
 
         Parameters:
             feature: Name of the feature to append to the query.
+
+        Returns:
+            The query object with the appended feature.
         """
         feature = util.validate_feature(feature)
 
@@ -779,7 +803,11 @@ class Query:
 
     @public
     def is_time_travel(self) -> bool:
-        """Query contains time travel."""
+        """Query contains time travel.
+
+        Returns:
+            Whether the query contains time travel.
+        """
         return (
             self.left_feature_group_start_time
             or self.left_feature_group_end_time
@@ -788,7 +816,11 @@ class Query:
 
     @public
     def is_cache_feature_group_only(self) -> bool:
-        """Query contains only cached feature groups."""
+        """Query contains only cached feature groups.
+
+        Returns:
+            Whether the query contains only cached feature groups.
+        """
         return all(isinstance(fg, fg_mod.FeatureGroup) for fg in self.featuregroups)
 
     def _get_featuregroup_by_feature(

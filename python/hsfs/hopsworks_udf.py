@@ -552,6 +552,11 @@ class HopsworksUdf:
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a spark udf.
         The wrapper function would be available in the main scope of the program.
 
+        Parameters:
+            rename_outputs:
+                Whether to rename the output columns to the names specified in `output_column_names`.
+                This should be set to `True` when the udf is executed in spark engine.
+
         Returns:
             A wrapper function that renames outputs of the User defined function into specified output column names.
         """
@@ -741,7 +746,11 @@ def renaming_wrapper(*args):
 
     @public
     def alias(self, *args: str):
-        """Set the names of the transformed features output by the UDF."""
+        """Set the names of the transformed features output by the UDF.
+
+        Parameters:
+            args: Name of the output features after transformation. Can be passed as individual string arguments or as a list of strings. The number of output feature names provided must match the number of features returned by the transformation function.
+        """
         if len(args) == 1 and isinstance(args[0], list):
             # If a single list is passed, use it directly
             output_col_names = args[0]
@@ -816,7 +825,7 @@ def renaming_wrapper(*args):
         - In the `python` engine: Always returns a python udf.
 
         Parameters:
-            inference: Specify if udf required for online inference.
+            online: Specify if udf required for online inference.
 
         Returns:
             Pandas UDF in the spark engine otherwise returns a python function for the UDF.

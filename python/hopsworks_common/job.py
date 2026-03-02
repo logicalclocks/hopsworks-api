@@ -120,7 +120,6 @@ class Job:
 
     @config.setter
     def config(self, config: dict):
-        """Update configuration for the job."""
         self._config = config
 
     @public

@@ -876,7 +876,8 @@ class Engine:
             training_dataset_version: Version of training data to be retrieved.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+                If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.

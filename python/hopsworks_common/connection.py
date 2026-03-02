@@ -532,11 +532,11 @@ class Connection:
                 Possible options are `spark`, `python`, `training`, `spark-no-metastore`, or `spark-delta`.
                 The default value, `None`, automatically selects the engine based on the environment:
 
-                - `spark`: Used if Spark is available and the connection is not to serverless Hopsworks, such as in Hopsworks or Databricks environments.
-                - `python`: Used in local Python environments or AWS SageMaker when Spark is not available or the connection is done to serverless Hopsworks.
-                - `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
-                - `spark-no-metastore`: Functions like "spark" but does not rely on the Hive metastore.
-                - `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
+                * `spark`: Used if Spark is available and the connection is not to serverless Hopsworks, such as in Hopsworks or Databricks environments.
+                * `python`: Used in local Python environments or AWS SageMaker when Spark is not available or the connection is done to serverless Hopsworks.
+                * `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+                * `spark-no-metastore`: Functions like "spark" but does not rely on the Hive metastore.
+                * `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
 
             hostname_verification: Whether or not to verify Hopsworks' certificate.
             trust_store_path: Path on the file system containing the Hopsworks certificates.
@@ -632,7 +632,11 @@ class Connection:
 
     @backend_version.setter
     def backend_version(self, backend_version: str) -> None:
-        """The version of the backend currently connected to hopsworks."""
+        """The version of the backend currently connected to hopsworks.
+
+        Parameters:
+            backend_version: The version string of the backend, as obtained from the backend itself.
+        """
         self._backend_version = backend_version.split("-SNAPSHOT")[
             0
         ].strip()  # Strip off the -SNAPSHOT part of the version if it is present.

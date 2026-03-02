@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
@@ -24,6 +24,8 @@ from hsfs.core import feature_group_api, kafka_api, storage_connector_api, tags_
 
 if TYPE_CHECKING:
     from hsfs.core import explicit_provenance
+    from hsfs.feature import Feature
+    from hsfs.feature_group import FeatureGroup
 
 
 class FeatureGroupBaseEngine:
@@ -39,30 +41,56 @@ class FeatureGroupBaseEngine:
     def delete(self, feature_group):
         self._feature_group_api.delete(feature_group)
 
-    def add_tag(self, feature_group, name, value):
-        """Attach a name/value tag to a feature group."""
+    def add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
+        """Attach a name/value tag to a feature group.
+
+        Parameters:
+            feature_group: The feature group to attach the tag to.
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+        """
         self._tags_api.add(feature_group, name, value)
 
-    def delete_tag(self, feature_group, name):
-        """Remove a tag from a feature group."""
+    def delete_tag(self, feature_group: FeatureGroup, name: str):
+        """Remove a tag from a feature group.
+
+        Parameters:
+            feature_group: The feature group to remove the tag from.
+            name: Name of the tag to be removed.
+        """
         self._tags_api.delete(feature_group, name)
 
-    def get_tag(self, feature_group, name):
-        """Get tag with a certain name."""
+    def get_tag(self, feature_group: FeatureGroup, name: str) -> Any:
+        """Get tag with a certain name.
+
+        Parameters:
+            feature_group: The feature group to get the tag from.
+            name: Name of the tag to be retrieved.
+
+        Returns:
+            The value of the tag with the specified name, or `None` if it does not exist.
+        """
         tag = self._tags_api.get(feature_group, name)
         if tag:
             return tag[name]
         return None
 
-    def get_tags(self, feature_group):
-        """Get all tags for a feature group."""
+    def get_tags(self, feature_group: FeatureGroup) -> dict[str, Any]:
+        """Get all tags for a feature group.
+
+        Parameters:
+            feature_group: The feature group to get the tags from.
+
+        Returns:
+            A dictionary of all tags for the feature group, or an empty dictionary if none exist.
+        """
         tags = self._tags_api.get(feature_group)
         if tags:
             return tags
         return {}
 
     def get_parent_feature_groups(
-        self, feature_group
+        self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
@@ -82,7 +110,7 @@ class FeatureGroupBaseEngine:
         return None
 
     def get_storage_connector_provenance(
-        self, feature_group
+        self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
@@ -102,7 +130,7 @@ class FeatureGroupBaseEngine:
         return None
 
     def get_generated_feature_views(
-        self, feature_group
+        self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the generated feature view using this feature group, based on explicit provenance.
 
@@ -122,7 +150,7 @@ class FeatureGroupBaseEngine:
         return None
 
     def get_generated_feature_groups(
-        self, feature_group
+        self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the generated feature groups using this feature group, based on explicit provenance.
 
@@ -141,13 +169,17 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def update_statistics_config(self, feature_group):
-        """Update the statistics configuration of a feature group."""
+    def update_statistics_config(self, feature_group: FeatureGroup):
+        """Update the statistics configuration of a feature group.
+
+        Parameters:
+            feature_group: Metadata object of feature group.
+        """
         self._feature_group_api.update_metadata(
             feature_group, feature_group, "updateStatsConfig"
         )
 
-    def new_feature_list(self, feature_group, updated_features):
+    def new_feature_list(self, feature_group: FeatureGroup, updated_features: list[Feature]) -> list[Feature]:
         # take original schema and replaces the updated features and returns the new list
         new_features = []
         for feature in feature_group.features:

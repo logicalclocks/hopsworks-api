@@ -14,6 +14,8 @@
 #
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from hopsworks_common.client.exceptions import (
     DataValidationException,
     FeatureStoreException,
@@ -21,6 +23,11 @@ from hopsworks_common.client.exceptions import (
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.core import feature_group_base_engine
+
+
+if TYPE_CHECKING:
+    from hsfs.feature import Feature
+    from hsfs.feature_group import FeatureGroup
 
 
 class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -146,21 +153,40 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_features(self, feature_group, updated_features):
-        """Updates features safely."""
+    def update_features(
+        self, feature_group: FeatureGroup, updated_features: list[Feature]
+    ):
+        """Updates features safely.
+
+        Parameters:
+            feature_group: The feature group to update.
+            updated_features:
+                The new list of features to set on the feature group.
+                This will replace the existing list of features.
+        """
         self._update_features_metadata(
             feature_group, self.new_feature_list(feature_group, updated_features)
         )
 
-    def append_features(self, feature_group, new_features):
-        """Appends features to a feature group."""
+    def append_features(self, feature_group: FeatureGroup, new_features: list[Feature]):
+        """Appends features to a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            new_features: The new list of features to append to the feature group.
+        """
         self._update_features_metadata(
             feature_group,
             feature_group.features + new_features,  # todo allows for duplicates
         )
 
-    def update_description(self, feature_group, description):
-        """Updates the description of a feature group."""
+    def update_description(self, feature_group: FeatureGroup, description: str):
+        """Updates the description of a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            description: The new description to set on the feature group.
+        """
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
         copy_feature_group.description = description
@@ -168,8 +194,13 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_deprecated(self, feature_group, deprecate):
-        """Updates the deprecation status of a feature group."""
+    def update_deprecated(self, feature_group: FeatureGroup, deprecate: bool):
+        """Updates the deprecation status of a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            deprecate: The new deprecation status to set on the feature group.
+        """
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
         self._feature_group_api.update_metadata(

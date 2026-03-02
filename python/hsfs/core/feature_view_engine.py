@@ -91,10 +91,10 @@ class FeatureViewEngine:
         """Save a feature view to the backend.
 
         Parameters:
-            feature_view_obj `FeatureView` : The feature view object to be saved.
+            feature_view_obj: The feature view object to be saved.
 
         Returns:
-            `FeatureView` : Updated feature view that has the ID used to save in the backend.
+            Updated feature view that has the ID used to save in the backend.
         """
         if feature_view_obj.query.is_time_travel():
             warnings.warn(
@@ -159,10 +159,10 @@ class FeatureViewEngine:
         """Update the feature view object saved in the backend.
 
         Parameters:
-            feature_view_obj `FeatureView` : The feature view object to be saved.
+            feature_view_obj: The feature view object to be saved.
 
         Returns:
-            `FeatureView` : Updated feature view that has the ID used to save in the backend.
+            Updated feature view that has the ID used to save in the backend.
         """
         self._feature_view_api.update(feature_view_obj)
         return feature_view_obj
@@ -1435,8 +1435,27 @@ class FeatureViewEngine:
 
         The functions collects the data as a list of dictionaries or a dataframe.
         - In the online inference, the data is collected as a list of dictionaries and logged asynchronously using the passed feature logger.
-        - In the batch inference, the data is collected as a dataframe and written directly to the
+        - In the batch inference, the data is collected as a dataframe and written directly to the logging feature groups.
 
+        Parameters:
+            fv: Feature view for which the features are logged.
+            feature_logging: Feature logging object containing the logging configuration for the feature view.
+            logs: The features to be logged.
+            untransformed_features: The untransformed features to be logged.
+            transformed_features: The transformed features to be logged.
+            predictions: The prediction features to be logged.
+            inference_helper_columns: The inference helper columns to be logged.
+            request_parameters: The request parameters to be logged.
+            event_time: The event time to be logged.
+            serving_keys: The serving keys to be logged.
+            extra_logging_features: The extra logging features to be logged.
+            request_id: The request id to be logged.
+            write_options: Dictionary containing the write options for writing the logging data to the logging feature groups.
+            training_dataset_version: The training dataset version used for the inference, to be logged.
+            hsml_model: The HSML model name used for the inference, to be logged.
+            model_name: The name of the model used for inference, to be logged.
+            model_version: The version of the model used for inference, to be logged.
+            logger: The feature logger to be used for logging the features asynchronously.
         """
         if (
             logs is None

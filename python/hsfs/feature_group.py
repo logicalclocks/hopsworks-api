@@ -3271,6 +3271,9 @@ class FeatureGroup(FeatureGroupBase):
         Parameters:
             n: Number of rows to show.
             online: If `True` read from online feature store.
+
+        Returns:
+            A list of rows, where each row is represented as a list of feature values.
         """
         engine.get_instance().set_job_group(
             "Fetching Feature group",
@@ -4287,6 +4290,9 @@ class FeatureGroup(FeatureGroupBase):
             ```python
             fg.json()
             ```
+
+        Returns:
+            A JSON string with all metadata of the feature group.
         """
         return json.dumps(self, cls=util.Encoder)
 
@@ -4303,6 +4309,9 @@ class FeatureGroup(FeatureGroupBase):
 
             fg.to_dict()
             ```
+
+        Returns:
+            A dictionary with all metadata of the feature group.
         """
         fg_meta_dict = {
             "id": self._id,
@@ -4972,6 +4981,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
         Parameters:
             n: Number of rows to show.
             online: If `True` read from online feature store.
+
+        Returns:
+            A list of rows, where each row is represented as a list of feature values.
         """
         engine.get_instance().set_job_group(
             "Fetching Feature group",

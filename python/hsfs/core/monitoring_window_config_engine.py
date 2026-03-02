@@ -99,25 +99,16 @@ class MonitoringWindowConfigEngine:
         """Builds a monitoring window config.
 
         Parameters:
-            window_config_type: str, required
-                Type of the window config, can be either
-                `ROLLING_TIME`,`SPECIFIC_VALUE`,`TRAINING_DATASET`.
-            time_offset: str, optional
-                monitoring window start time is computed as "now - time_offset".
-            window_length: str, optional
-                monitoring window end time is computed as
-                    "now - time_offset + window_length".
-            training_dataset_version: int, optional
-                Specific id of an entity that has fixed statistics.
-            specific_value: float, optional
-                Specific value instead of a statistics computed on data.
-            row_percentage: float, optional
-                Percentage of rows to be used for statistics computation.
-            id: int, optional
-                Id of the monitoring window config in hopsworks.
+            id: ID of the monitoring window config in hopsworks.
+            window_config_type: Type of the window config, can be either `ROLLING_TIME`,`SPECIFIC_VALUE`,`TRAINING_DATASET`.
+            time_offset: monitoring window start time is computed as "now - time_offset".
+            window_length: monitoring window end time is computed as "now - time_offset + window_length".
+            training_dataset_version: Specific id of an entity that has fixed statistics.
+            specific_value: Specific value instead of a statistics computed on data.
+            row_percentage: Percentage of rows to be used for statistics computation.
 
         Returns:
-            MonitoringWindowConfig The monitoring window configuration.
+            The monitoring window configuration.
         """
         detected_window_config_type = self.validate_monitoring_window_config(
             time_offset=time_offset,

@@ -77,7 +77,11 @@ class GeExpectation:
     def from_ge_type(
         cls, ge_expectation: great_expectations.core.ExpectationConfiguration
     ):
-        """Create a GeExpectation object from a Great Expectations ExpectationConfiguration object."""
+        """Create a GeExpectation object from a Great Expectations ExpectationConfiguration object.
+
+        Parameters:
+            ge_expectation: The ExpectationConfiguration object to convert.
+        """
         return cls(**ge_expectation.to_json_dict())
 
     def to_dict(self) -> dict[str, Any]:
@@ -116,7 +120,11 @@ class GeExpectation:
     @public
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationConfiguration:
-        """Convert to Great Expectations ExpectationConfiguration type."""
+        """Convert to Great Expectations ExpectationConfiguration type.
+
+        Returns:
+            The expectation as a Great Expectations object.
+        """
         return great_expectations.core.ExpectationConfiguration(
             expectation_type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
         )

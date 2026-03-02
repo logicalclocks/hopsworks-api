@@ -258,7 +258,13 @@ class TransformationFunction:
 
     @public
     def alias(self, *args: str):
-        """Set the names of the transformed features output by the transformation function."""
+        """Set the names of the transformed features output by the transformation function.
+
+        Parameters:
+            args:
+                The names of the transformed features.
+                The number of names provided must match the number of output features of the transformation function.
+        """
         self.__hopsworks_udf.alias(*args)
 
         return self

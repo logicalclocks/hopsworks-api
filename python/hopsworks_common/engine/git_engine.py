@@ -40,8 +40,8 @@ class GitEngine:
         """Poll a git execution status until it reaches a terminal state.
 
         Parameters:
-            git_op: git execution to monitor.
-            command: git operation running.
+            git_op: Git execution to monitor.
+            command: Git operation running.
 
         Returns:
             The final GitOpExecution object.

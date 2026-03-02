@@ -50,7 +50,11 @@ class Project:
         return self._name
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary."""
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the project.
+        """
         return {"id": self._id, "name": self._name}
 
     def __repr__(self):
@@ -117,7 +121,11 @@ class Highlights:
         return self._raw_data
 
     def has_highlights(self) -> bool:
-        """Check if there are any highlights."""
+        """Check if there are any highlights.
+
+        Returns:
+            Whether any of the highlight fields contain data.
+        """
         return bool(
             self._name
             or self._description
@@ -128,7 +136,11 @@ class Highlights:
         )
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary."""
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the highlights.
+        """
         return {
             "name": self._name,
             "description": self._description,
@@ -220,7 +232,11 @@ class SearchResultItem:
         return self._raw_data
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary."""
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the search result item.
+        """
         return {
             "href": self._href,
             "name": self._name,

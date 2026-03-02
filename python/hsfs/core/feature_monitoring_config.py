@@ -672,6 +672,9 @@ class FeatureMonitoringConfig:
             end_time: The end time of the time range to fetch the history for.
             with_statistics: Whether to include the computed statistics in the results.
 
+        Returns:
+            A list of FeatureMonitoringResult objects containing the history of the computed statistics and comparison results for this configuration.
+
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
@@ -788,10 +791,6 @@ class FeatureMonitoringConfig:
 
     @enabled.setter
     def enabled(self, enabled: bool):
-        """Controls whether or not this config is spawning new feature monitoring jobs.
-
-        This field belongs to the scheduler configuration but is made transparent to the user for convenience.
-        """
         self.job_schedule.enabled = enabled
 
     @public
@@ -865,7 +864,11 @@ class FeatureMonitoringConfig:
         | dict[str, Any]
         | None = None,
     ):
-        """Sets the reference window for monitoring."""
+        """Sets the reference window for monitoring.
+
+        Parameters:
+            reference_window_config: The configuration for the reference window.
+        """
         # TODO: improve setter documentation
         if (
             self._feature_monitoring_type

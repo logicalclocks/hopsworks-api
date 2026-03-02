@@ -1292,6 +1292,8 @@ class FeatureStore:
                 A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
+            embedding_index:
+                If an embedding index is provided, vector database is used as online feature store.
             features:
                 Optionally, define the schema of the external feature group manually as a list of `Feature` objects.
                 Defaults to empty list `[]` and will use the schema information of the DataFrame resulting by executing the provided query against the data source.
@@ -1313,10 +1315,10 @@ class FeatureStore:
                 Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-            online_enabled:
-                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             expectation_suite:
                 Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
+            online_enabled:
+                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
@@ -1658,9 +1660,9 @@ class FeatureStore:
 
             # create transformation function
             plus_one_meta = fs.create_transformation_function(
-                    transformation_function=plus_one,
-                    version=1
-                )
+                transformation_function=plus_one,
+                version=1,
+            )
 
             # persist transformation function in backend
             plus_one_meta.save()
@@ -1672,6 +1674,7 @@ class FeatureStore:
 
         Parameters:
             transformation_function: Hopsworks UDF.
+            version: Version of the transformation function to create.
 
         Returns:
             The TransformationFunction metadata object.

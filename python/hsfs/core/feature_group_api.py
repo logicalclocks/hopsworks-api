@@ -221,11 +221,11 @@ class FeatureGroupApi:
         """Get a list of feature groups in a feature store.
 
         Parameters:
-            feature_store_id: feature store id
-            feature_group_type: type of the feature group to return
+            feature_store_id: Feature store ID.
+            with_features: Whether to also retrieve the features of the feature groups.
 
         Returns:
-            list of feature group metadata objects
+            List of feature group metadata objects.
         """
         _client = client.get_instance()
         path_params = [
@@ -305,7 +305,7 @@ class FeatureGroupApi:
         | fg_mod.ExternalFeatureGroup
         | fg_mod.SpineGroup,
         query_parameter: str,
-        query_parameter_value=True,
+        query_parameter_value: str | bool = True,
     ) -> fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup:
         """Update the metadata of a feature group.
 
@@ -315,12 +315,10 @@ class FeatureGroupApi:
         after a successful REST call.
 
         Parameters:
-            feature_group_instance: FeatureGroup. User metadata object of the
-                feature group.
-            feature_group_copy: FeatureGroup. Metadata object of the feature
-                group with the information to be updated.
-            query_parameter: str. Query parameter that controls which information is updated. E.g. "updateMetadata".
-            query_parameter_value: Str. Value of the query_parameter.
+            feature_group_instance: User metadata object of the feature group.
+            feature_group_copy: Metadata object of the feature group with the information to be updated.
+            query_parameter: Query parameter that controls which information is updated. E.g. "updateMetadata".
+            query_parameter_value: Value of the query_parameter.
 
         Returns:
             FeatureGroup. The updated feature group metadata object.
@@ -354,13 +352,11 @@ class FeatureGroupApi:
         """Save feature group commit metadata.
 
         Parameters:
-            feature_group_instance: FeatureGroup, required
-                metadata object of feature group.
-            feature_group_commit_instance: FeatureGroupCommit, required
-                metadata object of feature group commit.
+            feature_group_instance: Metadata object of feature group.
+            feature_group_commit_instance: Metadata object of feature group commit.
 
         Returns:
-            `FeatureGroupCommit`.
+            The feature group commit metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -391,13 +387,12 @@ class FeatureGroupApi:
         """Get feature group commit metadata.
 
         Parameters:
-            feature_group_instance:
-                metadata object of feature group.
-            limit: number of commits to retrieve
-            wallclock_timestamp: specific point in time.
+            feature_group_instance: Metadata object of feature group.
+            wallclock_timestamp: Specific point in time.
+            limit: Number of commits to retrieve.
 
         Returns:
-            `FeatureGroupCommit`.
+            The feature group commit metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -426,9 +421,11 @@ class FeatureGroupApi:
         """Setup a Hopsworks job for dataframe ingestion.
 
         Parameters:
-            feature_group_instance:
-                metadata object of feature group.
-            ingestion_conf: the configuration for the ingestion job application.
+            feature_group_instance: Metadata object of feature group.
+            ingestion_conf: The configuration for the ingestion job application.
+
+        Returns:
+            The ingestion job metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -455,9 +452,10 @@ class FeatureGroupApi:
         """Setup a Hopsworks job to update table schema.
 
         Parameters:
-            feature_group_instance:
-                metadata object of feature group.
-            job_conf: the configuration for the job application.
+            feature_group_instance: Metadata object of feature group.
+
+        Returns:
+            The job metadata object.
         """
         _client = client.get_instance()
         path_params = [

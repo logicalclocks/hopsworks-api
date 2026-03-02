@@ -54,7 +54,7 @@ class BrewerTools:
 
     # TODO: Use on_notification Middleware to handle cancellation requests, add process manager
 
-    async def execute(
+    async def execute(  # docsig: disable
         self,
         chat_id: int,
         script_path: Path,

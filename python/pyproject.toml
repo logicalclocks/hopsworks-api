@@ -253,5 +253,6 @@ disable = [
     "SIG101",
     "SIG102",
     "SIG501",
+    "SIG305",
 ]
 ignore_kwargs = true

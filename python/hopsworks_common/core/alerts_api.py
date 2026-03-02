@@ -466,9 +466,9 @@ class AlertsApi:
             ```
 
         Parameters:
+            receiver: The receiver of the alert (e.g., email, webhook).
             status: The status that will trigger the alert (job_finished, job_failed, job_killed, job_long_running, feature_validation_success, feature_validation_warning, feature_validation_failure, feature_monitor_shift_undetected, feature_monitor_shift_detected).
             severity: The severity of the alert (warning, critical, info).
-            receiver: The receiver of the alert (e.g., email, webhook).
             service: The service associated with the alert (Featurestore, Jobs).
             threshold: The threshold for the alert.
 
@@ -963,6 +963,7 @@ class AlertsApi:
 
         Parameters:
             receiver_name: The receiver of the alert (e.g., email, webhook).
+            title: The title of the alert.
             summary: The summary of the alert.
             description: The description of the alert.
             severity: The severity of the alert (warning, critical, info).

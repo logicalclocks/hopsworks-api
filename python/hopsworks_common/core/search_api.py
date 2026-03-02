@@ -73,7 +73,14 @@ class TagSearchFilter:
 
     @classmethod
     def from_dict(cls, tag_dict: dict[str, str]) -> TagSearchFilter:
-        """Create a TagSearchFilter from a dictionary."""
+        """Create a TagSearchFilter from a dictionary.
+
+        Parameters:
+            tag_dict: Dictionary containing the tag filter information.
+
+        Returns:
+            A TagSearchFilter object created from the provided dictionary.
+        """
         try:
             name = tag_dict["name"]
             key = tag_dict["key"]
@@ -116,7 +123,14 @@ class KeywordSearchFilter:
 
     @classmethod
     def from_dict(cls, keyword_dict: dict[str, str]) -> KeywordSearchFilter:
-        """Create a KeywordSearchFilter from a dictionary."""
+        """Create a KeywordSearchFilter from a dictionary.
+
+        Parameters:
+            keyword_dict: Dictionary containing the keyword filter information. Must contain a 'value' key with a non-empty string value.
+
+        Returns:
+            A KeywordSearchFilter object created from the provided dictionary.
+        """
         if "value" not in keyword_dict or keyword_dict.get("value") in (None, ""):
             raise ValueError(
                 "KeywordSearchFilter 'value' field is required and cannot be empty."

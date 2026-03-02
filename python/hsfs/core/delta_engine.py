@@ -494,11 +494,11 @@ class DeltaEngine:
         and creates an empty DataFrame with that schema, then writes it to the
         feature group location using Delta format.
 
-        # Arguments
-            write_options: Optional dictionary of write options for Delta.
-                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
-                disable cdf operations on the feature group delta table. Set to true by default on FG created
-                after 4.6
+        Parameters:
+            write_options:
+                Optional dictionary of write options for Delta.
+                - key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or disable cdf operations on the feature group delta table.
+                  Set to true by default on FG created after 4.6.
         """
         # Build DDL schema string from features
         ddl_fields = []
@@ -527,11 +527,11 @@ class DeltaEngine:
 
         Supports simple types, array types, and struct types.
 
-        # Arguments
-            write_options: Optional dictionary of write options for Delta.
-                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
-                disable cdf operations on the feature group delta table. Set to true by default on FG created
-                after 4.6
+        Parameters:
+            write_options:
+                Optional dictionary of write options for Delta.
+                - key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or disable cdf operations on the feature group delta table.
+                  Set to true by default on FG created after 4.6.
         """
         try:
             import pyarrow as pa

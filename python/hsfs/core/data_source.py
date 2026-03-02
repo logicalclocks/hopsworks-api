@@ -163,11 +163,7 @@ class DataSource:
     @public
     @property
     def query(self) -> str | None:
-        """Get or set the SQL query string for the data source.
-
-        Returns:
-            The SQL query string.
-        """
+        """Get or set the SQL query string for the data source."""
         return self._query
 
     @query.setter
@@ -177,11 +173,7 @@ class DataSource:
     @public
     @property
     def database(self) -> str | None:
-        """Get or set the database name for the data source.
-
-        Returns:
-            The database name.
-        """
+        """Get or set the database name for the data source."""
         return self._database
 
     @database.setter
@@ -191,11 +183,7 @@ class DataSource:
     @public
     @property
     def group(self) -> str | None:
-        """Get or set the group/schema name for the data source.
-
-        Returns:
-            The group or schema name.
-        """
+        """Get or set the group/schema name for the data source."""
         return self._group
 
     @group.setter
@@ -205,11 +193,7 @@ class DataSource:
     @public
     @property
     def table(self) -> str | None:
-        """Get or set the table name for the data source.
-
-        Returns:
-            The table name.
-        """
+        """Get or set the table name for the data source."""
         return self._table
 
     @table.setter
@@ -219,11 +203,7 @@ class DataSource:
     @public
     @property
     def path(self) -> str | None:
-        """Get or set the file system path for the data source.
-
-        Returns:
-            The file system path.
-        """
+        """Get or set the file system path for the data source."""
         return self._path
 
     @path.setter
@@ -233,11 +213,7 @@ class DataSource:
     @public
     @property
     def storage_connector(self) -> sc.StorageConnector | None:
-        """Get or set the storage connector for the data source.
-
-        Returns:
-            The storage connector object.
-        """
+        """Get or set the storage connector for the data source."""
         return self._storage_connector
 
     @storage_connector.setter

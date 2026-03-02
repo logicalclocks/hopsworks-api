@@ -132,6 +132,9 @@ class FeatureMonitoringConfigEngine:
             strict:
                 If true, the statistics difference must be strictly above threshold to trigger an alert.
 
+        Returns:
+            A dictionary containing the validated statistics comparison config.
+
         Raises:
             ValueError: If the statistics comparison config is invalid.
         """

@@ -116,8 +116,11 @@ class ExpectationApi:
     def get(self, expectation_id: int) -> GeExpectation:
         """Get an expectation attached to a feature group.
 
+        Parameters:
+            expectation_id: ID of the Expectation to retrieve.
+
         Returns:
-            expectation
+            The expectation object.
         """
         _client = client.get_instance()
         path_params = [

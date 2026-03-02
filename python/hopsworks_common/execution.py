@@ -174,12 +174,8 @@ class Execution:
 
     @public
     @property
-    def success(self) -> bool:
-        """Boolean to indicate if execution ran successfully or failed.
-
-        Returns:
-            `True` if execution ran successfully. `False` if execution failed or was killed.
-        """
+    def success(self) -> bool | None:
+        """Boolean to indicate if execution ran successfully or failed."""
         is_yarn_job = (
             self.job_type.lower() == "spark"
             or self.job_type.lower() == "pyspark"
@@ -214,7 +210,7 @@ class Execution:
             ```
 
         Parameters:
-            path: path to download the logs.
+            path: Path to download the logs.
 
         Returns:
             stdout: Path to downloaded log for stdout.

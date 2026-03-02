@@ -54,9 +54,10 @@ class TagsApi:
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
         Parameters:
-            metadata_instance: metadata object of the instance to add the tag for
-            name: name of the tag to be added
-            value: value of the tag to be added
+            metadata_instance: Metadata object of the instance to add the tag for.
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+            training_dataset_version: Version of the training dataset.
         """
         _client = client.get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version) + [
@@ -78,8 +79,9 @@ class TagsApi:
         Tag names are unique identifiers.
 
         Parameters:
-            metadata_instance: metadata object of training dataset to delete the tag for
-            name: name of the tag to be removed
+            metadata_instance: Metadata object of training dataset to delete the tag for.
+            name: Name of the tag to be removed.
+            training_dataset_version: Version of the training dataset.
         """
         _client = client.get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version) + [
@@ -101,11 +103,12 @@ class TagsApi:
         Gets all tags if no tag name is specified.
 
         Parameters:
-            metadata_instance: metadata object of training dataset to get the tags for
-            name: tag name
+            metadata_instance: Metadata object of training dataset to get the tags for.
+            name: Tag name.
+            training_dataset_version: Version of the training dataset.
 
         Returns:
-            dict of tag name/values
+            Dict of tag name/values.
         """
         _client = client.get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version)

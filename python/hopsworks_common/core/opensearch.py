@@ -118,7 +118,11 @@ class OpensearchRequestOption:
     @public
     @classmethod
     def get_version(cls) -> tuple[int, int]:
-        """Get the major and minor version of the opensearch client."""
+        """Get the major and minor version of the opensearch client.
+
+        Returns:
+            A tuple containing the major and minor version of the opensearch client.
+        """
         return opensearchpy.__version__[0:2]
 
     @public
@@ -469,7 +473,11 @@ class OpenSearchClientSingleton:
 
     @classmethod
     def get_instance(cls) -> OpenSearchClientSingleton:
-        """Get the singleton instance."""
+        """Get the singleton instance.
+
+        Returns:
+            The singleton instance of OpenSearchClientSingleton.
+        """
         return cls._instance
 
     @classmethod

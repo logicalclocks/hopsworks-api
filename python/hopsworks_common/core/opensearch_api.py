@@ -88,7 +88,7 @@ class OpenSearchApi:
 
     @public
     @usage.method_logger
-    def get_default_py_config(self, feature_store_id: int = None) -> dict[str, Any]:
+    def get_default_py_config(self, feature_store_id: int | None = None) -> dict[str, Any]:
         """Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
 
         ```python
@@ -101,6 +101,9 @@ class OpenSearchApi:
 
         client = OpenSearch(**opensearch_api.get_default_py_config())
         ```
+
+        Parameters:
+            feature_store_id: The id of the feature store to get the configuration for.
 
         Returns:
             A dictionary with required configuration.

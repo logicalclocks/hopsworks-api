@@ -104,9 +104,6 @@ class FeatureMonitoringConfigApi:
 
         Parameters:
             config_id: Id of the feature monitoring configuration to delete
-
-        Returns:
-            fetched feature monitoring configuration attached to the Feature Group
         """
         _client = client.get_instance()
         path_params = self.build_path_params(
@@ -171,10 +168,10 @@ class FeatureMonitoringConfigApi:
         """Get all Feature Monitoring Configurations attached to a Feature Name.
 
         Parameters:
-            name: Name of the feature monitoring configuration to fetch
+            name: Name of the feature monitoring configuration to fetch.
 
         Returns:
-            fetched feature monitoring configuration attached to the Feature Group
+            Fetched feature monitoring configuration attached to the Feature Group.
         """
         _client = client.get_instance()
         path_params = self.build_path_params(
@@ -188,11 +185,8 @@ class FeatureMonitoringConfigApi:
     def get_by_entity(self) -> list[fmc.FeatureMonitoringConfig]:
         """Get all Feature Monitoring Configurations attached to a Feature Name.
 
-        Parameters:
-            name: Name of the feature monitoring configuration to fetch
-
         Returns:
-            fetched feature monitoring configuration attached to the Feature Group
+            Fetched feature monitoring configuration attached to the Feature Group.
         """
         _client = client.get_instance()
         path_params = self.build_path_params(
@@ -256,13 +250,14 @@ class FeatureMonitoringConfigApi:
         """Builds the path parameters for the Feature Monitoring Config API.
 
         Parameters:
-            project_id: Id of the project
-            config_id: Id of the feature monitoring configuration. Only to fetch feature monitoring configuration by id.
+            project_id: ID of the project.
+            feature_name: Name of the feature.
+            config_id: ID of the feature monitoring configuration. Only to fetch feature monitoring configuration by ID.
             name: Name of the feature monitoring configuration. Only to fetch feature monitoring configuration by name.
-            entity: Whether to append entity to path params. Defaults to False. Only to fetch all feature monitoring configurations attached to an entity.
+            entity: Whether to append entity to path params. Only to fetch all feature monitoring configurations attached to an entity.
 
         Returns:
-            path parameters
+            Path parameters for the API call.
         """
         path_params = [
             "project",

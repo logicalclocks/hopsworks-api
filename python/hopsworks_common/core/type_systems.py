@@ -252,7 +252,10 @@ def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
     """This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
 
     Parameters:
-        base_type : The base class to extend
+        base_type: The base class to extend.
+
+    Returns:
+        A new class that extends the base_type class with a new attribute `hopsworks_logging_metadata`.
     """
 
     class HopsworksLoggingMetadataType(base_type):

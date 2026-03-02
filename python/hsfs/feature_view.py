@@ -407,6 +407,11 @@ class FeatureView:
                 If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
+            options:
+                Additional options as key/value pairs for configuring online serving engine.
+
+                - key: kwargs of SqlAlchemy engine creation (See: https://docs.sqlalchemy.org/en/20/core/engines.html#sqlalchemy.create_engine).
+                  For example: `{"pool_size": 10}`.
             init_sql_client:
                 If set to `True`, this ensure the online store sql client is initialised, otherwise if init_rest_client is set to true it will skip initialising the sql client.
                 By default the sql client is initialised if no client is specified to match legacy behaviour.
@@ -415,13 +420,6 @@ class FeatureView:
                 Pass additional configuration options via the rest_config parameter.
                 Set reset_rest_client to `True` to reset the rest client.
                 By default the rest client is not initialised.
-            default_client: Which client to default to if both are initialised.
-            options:
-                Additional options as key/value pairs for configuring online serving engine.
-
-                - key: kwargs of SqlAlchemy engine creation (See: https://docs.sqlalchemy.org/en/20/core/engines.html#sqlalchemy.create_engine).
-                  For example: `{"pool_size": 10}`.
-
             reset_rest_client: If set to `True`, the rest client will be reset and reinitialised with provided configuration.
             config_rest_client:
                 Additional configuration options for the rest client.
@@ -446,7 +444,7 @@ class FeatureView:
                 - `use_ssl`: boolean, optional.
                   Use SSL to connect to the online store.
                   Defaults to True.
-
+            default_client: Which client to default to if both are initialised.
             feature_logger:
                 Custom feature logger which [`FeatureView.log`][hsfs.feature_view.FeatureView.log] uses to log feature vectors.
                 If provided, feature vectors will not be inserted to logging feature group automatically when `FeatureView.log` is called.
@@ -723,11 +721,11 @@ class FeatureView:
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: In which format to return the feature vector.
+            allow_missing: Setting to `True` returns feature vectors with missing values.
             force_rest_client:
                 If set to True, reads from online feature store using the REST client if initialised.
             force_sql_client:
                 If set to True, reads from online feature store using the SQL client if initialised.
-            allow_missing: Setting to `True` returns feature vectors with missing values.
             transform:
                 If set to `True`, model-dependent transformations are applied to the feature vector, and `on_demand_feature` is automatically set to `True`, ensuring the inclusion of on-demand features.
                 If set to `False`, the function returns the feature vector without applying any model-dependent transformations.
@@ -885,9 +883,9 @@ class FeatureView:
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the feature vectors.
-            force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
-            force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
             allow_missing: Setting to `True` returns feature vectors with missing values.
+            force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
+            force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
             transform:
                 If set to `True`, model-dependent transformations are applied to the feature vector, and `on_demand_feature` is automatically set to `True`, ensuring the inclusion of on-demand features.
                 If set to `False`, the function returns the feature vector without applying any model-dependent transformations.
@@ -968,6 +966,8 @@ class FeatureView:
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the dataframe.
+            force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
+            force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
 
         Returns:
             The dataframe.
@@ -1023,6 +1023,8 @@ class FeatureView:
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
                 Defaults to `True` if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to `False`.
             return_type: The format in which to return the dataframes.
+            force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
+            force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
 
         Returns:
             Returned `pd.DataFrame`, `polars.DataFrame` or `list[dict]` (depending on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -1499,8 +1501,12 @@ class FeatureView:
         return self._feature_view_engine.delete_tag(self, name)
 
     @public
-    def update_last_accessed_training_dataset(self, version):
-        """Update the cached last accessed training dataset version."""
+    def update_last_accessed_training_dataset(self, version: int) -> None:
+        """Update the cached last accessed training dataset version.
+
+        Parameters:
+            version: The training dataset version to be cached as last accessed.
+        """
         if self._last_accessed_training_dataset is not None:
             _logger.info(
                 f"Provenance cached data - overwriting last accessed/created training dataset from {self._last_accessed_training_dataset} to {version}."
@@ -1692,6 +1698,7 @@ class FeatureView:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
+            tags: Tags to attach to the training dataset for better discoverability.
 
         Returns:
             td_version: training dataset version
@@ -1978,11 +1985,11 @@ class FeatureView:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
+            tags: Tags to attach to the training dataset for better discoverability.
 
         Returns:
-            (td_version, `Job`): Tuple of training dataset version and job.
-                When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            td_version: The version of the created training dataset.
+            Job: When using the `python` engine, the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -2259,11 +2266,11 @@ class FeatureView:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
+            tags: Tags to attach to the training dataset for better discoverability.
 
         Returns:
-            (td_version, `Job`): Tuple of training dataset version and job.
-                When using the `python` engine, it returns the Hopsworks Job
-                that was launched to create the training dataset.
+            td_version: The training dataset version.
+            job: When using the `python` engine, it returns the Hopsworks Job that was launched to create the training dataset.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -3033,6 +3040,10 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+                If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels
@@ -3367,6 +3378,9 @@ class FeatureView:
                 training_dataset_version=1
             )
             ```
+
+        Parameters:
+            training_dataset_version: The training dataset version to get tags for.
 
         Returns:
             Dictionary of tags.
@@ -4721,8 +4735,10 @@ class FeatureView:
         It provides the schema of the features after all transformation functions have been applied.
 
         Parameters:
-            training_dataset_version: Specifies the version of the training dataset for which the schema should be generated.
-                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+            training_dataset_version:
+                Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to None.
+                However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
                 This is because the schema will then depend on the statistics of the training data used.
 
         Example:

@@ -142,7 +142,11 @@ class ExpectationSuiteApi:
         )
 
     def delete(self, expectation_suite_id: int) -> None:
-        """Delete the expectation suite attached to a Feature Group."""
+        """Delete the expectation suite attached to a Feature Group.
+
+        Parameters:
+            expectation_suite_id: id of the Expectation Suite to delete
+        """
         _client = client.get_instance()
         path_params = [
             "project",

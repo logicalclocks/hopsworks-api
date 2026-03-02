@@ -174,13 +174,20 @@ class StorageConnector(ABC):
     @public
     @abstractmethod
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
+        """Return prepared options to be passed to Spark, based on the additional arguments.
+
+        Returns:
+            A dictionary containing the configuration options for Spark.
+        """
 
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
         Parameters:
             path: Path to prepare for reading from cloud storage.
+
+        Returns:
+            The path to be used for reading from Spark, which may be different from the input path if the connector has a base path configured.
         """
         return path
 
@@ -236,6 +243,9 @@ class StorageConnector(ABC):
         """Return prepared options to be passed to an external connector library.
 
         Not implemented for this connector type.
+
+        Returns:
+            An empty dictionary.
         """
         return {}
 
@@ -1262,7 +1272,11 @@ class SnowflakeConnector(StorageConnector):
 
     @public
     def snowflake_connector_options(self) -> dict[str, Any] | None:
-        """Alias for `connector_options`."""
+        """Alias for `connector_options`.
+
+        Returns:
+            A dictionary with the needed arguments for you to connect to a Snowflake database.
+        """
         return self.connector_options()
 
     @public
@@ -1277,6 +1291,9 @@ class SnowflakeConnector(StorageConnector):
         sc = fs.get_storage_connector("snowflake_conn")
         ctx = snowflake.connector.connect(**sc.connector_options())
         ```
+
+        Returns:
+            A dictionary with the needed arguments for you to connect to a Snowflake database.
         """
         props = {
             "user": self._user,
@@ -1589,6 +1606,9 @@ class KafkaConnector(StorageConnector):
 
         These files are used for configuring secure Kafka connections (e.g., with Spark or confluent_kafka).
         The method is idempotent and will only create the files once per connector instance.
+
+        Parameters:
+            kafka_options: A dictionary containing the Kafka configuration options, including keystore and truststore locations and passwords.
         """
         if not self._pem_files_created:
             (
@@ -1605,10 +1625,16 @@ class KafkaConnector(StorageConnector):
             self._pem_files_created = True
 
     @public
-    def kafka_options(self, distribute=True) -> dict[str, Any]:
+    def kafka_options(self, distribute: bool = True) -> dict[str, Any]:
         """Return prepared options to be passed to kafka, based on the additional arguments.
 
         See <https://kafka.apache.org/documentation/>.
+
+        Parameters:
+            distribute: Whether to distribute the SSL certificates to the cluster nodes.
+
+        Returns:
+            A dictionary containing the configuration options for kafka.
         """
         config = {}
 
@@ -1675,6 +1701,9 @@ class KafkaConnector(StorageConnector):
         Right now only producer values with Importance >= medium are implemented.
 
         See <https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.html>.
+
+        Returns:
+            A dictionary containing the configuration options for confluent_kafka.
         """
         pem_files_assigned = False
         config = {}

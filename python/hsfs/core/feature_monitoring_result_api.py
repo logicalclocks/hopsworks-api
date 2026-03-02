@@ -74,7 +74,11 @@ class FeatureMonitoringResultApi:
         self,
         result_id: int,
     ) -> None:
-        """Delete the Feature Monitoring result attached to a Feature."""
+        """Delete the Feature Monitoring result attached to a Feature.
+
+        Parameters:
+            result_id: ID of the feature monitoring result to delete.
+        """
         _client = client.get_instance()
         path_params = self.build_path_params(
             project_id=_client._project_id,

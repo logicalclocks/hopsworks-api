@@ -88,7 +88,7 @@ class FlinkCluster:
         ```
 
         Parameters:
-            await_time: defaults to 1800 seconds to account for auto-scale mechanisms.
+            await_time: Defaults to 1800 seconds to account for auto-scale mechanisms.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -254,7 +254,7 @@ class FlinkCluster:
         ```
 
         Parameters:
-            jar_file: path to the jar file.
+            jar_file: Path to the jar file.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.

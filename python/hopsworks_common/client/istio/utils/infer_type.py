@@ -47,7 +47,11 @@ GRPC_CONTENT_DATATYPE_MAPPINGS = {
 
 
 def raise_error(msg):
-    """Raise error with the provided message."""
+    """Raise error with the provided message.
+
+    Parameters:
+        msg: The error message to include in the exception.
+    """
     raise InferenceServerException(msg=msg) from None
 
 
@@ -197,23 +201,13 @@ class InferInput:
         self._raw_data = None
 
     @property
-    def name(self):
-        """Get the name of input associated with this object.
-
-        Returns.
-        -------
-        str
-            The name of input
-        """
+    def name(self) -> str:
+        """Get the name of input associated with this object."""
         return self._name
 
     @property
     def datatype(self) -> str:
-        """Get the datatype of input associated with this object.
-
-        Returns:
-            The datatype of input
-        """
+        """Get the datatype of input associated with this object."""
         return self._datatype
 
     @property
@@ -223,20 +217,12 @@ class InferInput:
 
     @property
     def shape(self) -> list:
-        """Get the shape of input associated with this object.
-
-        Returns:
-            The shape of input
-        """
+        """Get the shape of input associated with this object."""
         return self._shape
 
     @property
     def parameters(self) -> dict:
-        """Get the parameters of input associated with this object.
-
-        Returns:
-            The key, value pair of string and InferParameter
-        """
+        """Get the parameters of input associated with this object."""
         return self._parameters
 
     def set_shape(self, shape: list):
@@ -414,7 +400,11 @@ class InferRequest:
         )
 
     def to_rest(self) -> dict:
-        """Converts the InferRequest object to v2 REST InferenceRequest message."""
+        """Converts the InferRequest object to v2 REST InferenceRequest message.
+
+        Returns:
+            A dictionary representing the REST InferenceRequest message.
+        """
         infer_inputs = []
         for infer_input in self.inputs:
             infer_input_dict = {
@@ -431,7 +421,11 @@ class InferRequest:
         return {"id": self.id, "inputs": infer_inputs}
 
     def to_grpc(self) -> ModelInferRequest:
-        """Converts the InferRequest object to gRPC ModelInferRequest message."""
+        """Converts the InferRequest object to gRPC ModelInferRequest message.
+
+        Returns:
+            A ModelInferRequest object representing the gRPC ModelInferRequest message.
+        """
         infer_inputs = []
         raw_input_contents = []
         for infer_input in self.inputs:
@@ -467,7 +461,11 @@ class InferRequest:
         )
 
     def as_dataframe(self) -> pd.DataFrame:
-        """Decode the tensor inputs as pandas dataframe."""
+        """Decode the tensor inputs as pandas dataframe.
+
+        Returns:
+            A pandas DataFrame representing the tensor inputs.
+        """
         dfs = []
         for input in self.inputs:
             input_data = input.data
@@ -570,7 +568,11 @@ class InferOutput:
         self._shape = shape
 
     def as_numpy(self) -> numpy.ndarray:
-        """Decode the tensor data as numpy array."""
+        """Decode the tensor data as numpy array.
+
+        Returns:
+            The tensor data in numpy array format.
+        """
         dtype = to_np_dtype(self.datatype)
         if dtype is None:
             raise InvalidInput("invalid datatype in the input")
@@ -734,7 +736,11 @@ class InferResponse:
         )
 
     def to_rest(self) -> dict:
-        """Converts the InferResponse object to v2 REST InferenceRequest message."""
+        """Converts the InferResponse object to v2 REST InferenceRequest message.
+
+        Returns:
+            A dictionary representing the REST InferenceResponse message.
+        """
         infer_outputs = []
         for infer_output in self.outputs:
             infer_output_dict = {
@@ -753,7 +759,11 @@ class InferResponse:
         return {"id": self.id, "model_name": self.model_name, "outputs": infer_outputs}
 
     def to_grpc(self) -> ModelInferResponse:
-        """Converts the InferResponse object to gRPC ModelInferRequest message."""
+        """Converts the InferResponse object to gRPC ModelInferRequest message.
+
+        Returns:
+            A ModelInferResponse object representing the gRPC ModelInferResponse message.
+        """
         infer_outputs = []
         raw_output_contents = []
         for infer_output in self.outputs:

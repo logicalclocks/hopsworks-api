@@ -80,7 +80,7 @@ class FeatureGroupTools:
         except IndexError:
             raise RuntimeError(f"Feature group {name} not found.") from None
 
-    async def get_feature_groups(self, ctx: Context) -> list[FeatureGroup]:
+    async def get_feature_groups(self, ctx: Context) -> list[FeatureGroup]:  # docsig: disable
         """Get the latest versions of all feature groups in the project."""
         await ctx.info("Retrieving feature groups...")
 
@@ -99,14 +99,14 @@ class FeatureGroupTools:
             key=lambda fg: (fg.name, fg.version),
         )
 
-    async def get_feature_group_versions(self, ctx: Context, name: str) -> list[int]:
+    async def get_feature_group_versions(self, ctx: Context, name: str) -> list[int]:  # docsig: disable
         """Get all versions of a feature group with the specified name."""
         await ctx.info("Retrieving feature groups...")
 
         fgs = self._get_feature_group_versions(name)
         return sorted([fg.version for fg in fgs])
 
-    async def get_feature_group_details(
+    async def get_feature_group_details(  # docsig: disable
         self,
         ctx: Context,
         name: str,
@@ -131,7 +131,7 @@ class FeatureGroupTools:
             deprecated=fg.deprecated,
         )
 
-    async def preview_feature_group(
+    async def preview_feature_group(  # docsig: disable
         self,
         ctx: Context,
         name: str,
@@ -176,7 +176,7 @@ class FeatureGroupTools:
             f"Unable to convert preview to dictionary. Here's the raw preview:\n{preview}"
         )
 
-    async def get_features(
+    async def get_features(  # docsig: disable
         self,
         ctx: Context,
         name: str,

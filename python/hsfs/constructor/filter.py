@@ -217,10 +217,18 @@ class Logic:
 
     @public
     def get_left_filter_or_logic(self) -> Filter | Logic:
-        """Left side of the logical operator."""
+        """Left side of the logical operator.
+
+        Returns:
+            The left side of the logical operator.
+        """
         return self._left_f or self._left_l
 
     @public
     def get_right_filter_or_logic(self) -> Filter | Logic | None:
-        """Right side of the logical operator."""
+        """Right side of the logical operator.
+
+        Returns:
+            The right side of the logical operator.
+        """
         return self._right_f or self._right_l

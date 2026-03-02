@@ -238,6 +238,9 @@ class FeatureViewApi:
             inference_helper_columns: Whether to include inference helper columns in the prepared statement.
             logging_meta_data: Whether to include logging meta data in the prepared statement. i.e return feature vector along with inference helper columns and event time of the root feature group.
             feature_vector_with_inference_helpers: Whether to include inference helper columns along with regular features in the prepared statement.
+
+        Returns:
+            The prepared statement for fetching feature vectors.
         """
         path = self._base_path + [
             name,
@@ -356,7 +359,8 @@ class FeatureViewApi:
         returned.
 
         Parameters:
-            feature_view_instance: Metadata object of feature view.
+            name: Name of the feature view.
+            version: Version of the feature view.
 
         Returns:
             The feature groups used to generated this feature view.

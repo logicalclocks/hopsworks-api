@@ -113,7 +113,11 @@ class ValidationResult:
     @public
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationValidationResult:
-        """Convert to Great Expectations ExpectationValidationResult type."""
+        """Convert to Great Expectations ExpectationValidationResult type.
+
+        Returns:
+            The validation result as a Great Expectations object.
+        """
         return great_expectations.core.ExpectationValidationResult(
             success=self.success,
             exception_info=self.exception_info,
