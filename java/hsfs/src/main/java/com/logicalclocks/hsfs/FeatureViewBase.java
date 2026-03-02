@@ -1496,9 +1496,14 @@ public abstract class FeatureViewBase<T extends FeatureViewBase, T3 extends Feat
    *        FeatureView fv = fs.getFeatureView("fv_name", 1);
    *        // delete feature view
    *        fv.delete();
+   *        // or force delete
+   *        fv.delete(true);
    * }
    * </pre>
    *
+   * @param force If set to `true`, forces deletion of the feature view even if there are models associated to it.
+   *              Defaults to `false`, in which case the feature view will not be deleted if there are models
+   *              associated to it and an exception will be raised instead.
    * @throws FeatureStoreException In case client is not connected to Hopsworks.
    * @throws IOException Generic IO exception.
    */
