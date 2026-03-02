@@ -43,8 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2
-    extends FeatureViewBase<T2, T3, T1, T5>, T3 extends FeatureStoreBase<T1>, T4 extends FeatureGroupBase, T5> {
+public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2 extends FeatureViewBase<T2, T3, T1, T5>, T3 extends FeatureStoreBase<T1>, T4 extends FeatureGroupBase, T5> {
 
   protected static final Logger LOGGER = LoggerFactory.getLogger(FeatureViewEngineBase.class);
 
@@ -70,9 +69,12 @@ public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2
       return Lists.newArrayList();
     } else {
       // If provided label matches column with prefix, then attach label.
-      // If provided label matches only one column without prefix, then attach label. (For
-      // backward compatibility purpose, as of v3.0, labels are matched to columns without prefix.)
-      // If provided label matches multiple columns without prefix, then raise exception because it is ambiguous.
+      // If provided label matches only one column without prefix, then attach label.
+      // (For
+      // backward compatibility purpose, as of v3.0, labels are matched to columns
+      // without prefix.)
+      // If provided label matches multiple columns without prefix, then raise
+      // exception because it is ambiguous.
 
       Map<String, String> labelWithPrefixToFeature = Maps.newHashMap();
       Map<String, FeatureGroupBase> labelWithPrefixToFeatureGroup = Maps.newHashMap();
@@ -98,17 +100,17 @@ public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2
       for (String label : labels) {
         if (labelWithPrefixToFeature.containsKey(label)) {
           trainingDatasetFeatures.add(new TrainingDatasetFeature(
-                (StreamFeatureGroup) labelWithPrefixToFeatureGroup.get(label.toLowerCase()),
-                  labelWithPrefixToFeature.get(label.toLowerCase()),
-                  true));
+              (StreamFeatureGroup) labelWithPrefixToFeatureGroup.get(label.toLowerCase()),
+              labelWithPrefixToFeature.get(label.toLowerCase()),
+              true));
         } else if (labelToFeatureGroups.containsKey(label)) {
           if (labelToFeatureGroups.get(label.toLowerCase()).size() > 1) {
             throw new FeatureStoreException(String.format(AMBIGUOUS_LABEL_ERROR, label));
           }
           trainingDatasetFeatures.add(new TrainingDatasetFeature(
-                (StreamFeatureGroup) labelToFeatureGroups.get(label.toLowerCase()).get(0),
-                  label.toLowerCase(),
-                  true));
+              (StreamFeatureGroup) labelToFeatureGroups.get(label.toLowerCase()).get(0),
+              label.toLowerCase(),
+              true));
         } else {
           throw new FeatureStoreException(String.format(LABEL_NOT_EXIST_ERROR, label));
         }
@@ -128,14 +130,14 @@ public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2
     featureViewBase.setFeatureStore(featureStoreBase);
     List<TrainingDatasetFeature> features = featureViewBase.getFeatures();
     features.stream()
-          .filter(f -> f.getFeaturegroup() != null)
-          .forEach(f -> f.getFeaturegroup().setFeatureStore(featureStoreBase));
+        .filter(f -> f.getFeaturegroup() != null)
+        .forEach(f -> f.getFeaturegroup().setFeatureStore(featureStoreBase));
     featureViewBase.getQuery().getLeftFeatureGroup().setFeatureStore(featureStoreBase);
     featureViewBase.setLabels(
         features.stream()
-          .filter(TrainingDatasetFeature::getLabel)
-          .map(TrainingDatasetFeature::getName)
-          .collect(Collectors.toList()));
+            .filter(TrainingDatasetFeature::getLabel)
+            .map(TrainingDatasetFeature::getName)
+            .collect(Collectors.toList()));
     return (T2) featureViewBase;
   }
 
@@ -160,12 +162,22 @@ public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2
 
   public void delete(T3 featureStoreBase, String name) throws FeatureStoreException,
       IOException {
-    featureViewApi.delete(featureStoreBase, name);
+    featureViewApi.delete(featureStoreBase, name, Boolean.FALSE);
   }
 
   public void delete(T3 featureStoreBase, String name, Integer version) throws FeatureStoreException,
       IOException {
-    featureViewApi.delete(featureStoreBase, name, version);
+    featureViewApi.delete(featureStoreBase, name, version, Boolean.FALSE);
+  }
+
+  public void delete(T3 featureStoreBase, String name, Boolean force) throws FeatureStoreException,
+      IOException {
+    featureViewApi.delete(featureStoreBase, name, force);
+  }
+
+  public void delete(T3 featureStoreBase, String name, Integer version, Boolean force) throws FeatureStoreException,
+      IOException {
+    featureViewApi.delete(featureStoreBase, name, version, force);
   }
 
   protected Date getStartTime() {
@@ -216,8 +228,8 @@ public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2
     return tagsApi.get(featureViewBase, trainingDataVersion);
   }
 
-  public T1 getBatchQuery(T2 featureView, Date startTime,  Date endTime, Boolean withLabels,
-                          Integer trainingDataVersion, Class<T1> queryType) throws FeatureStoreException, IOException {
+  public T1 getBatchQuery(T2 featureView, Date startTime, Date endTime, Boolean withLabels,
+      Integer trainingDataVersion, Class<T1> queryType) throws FeatureStoreException, IOException {
     QueryBase query;
     try {
       query = featureViewApi.getBatchQuery(
@@ -228,21 +240,19 @@ public abstract class FeatureViewEngineBase<T1 extends QueryBase<T1, T4, T5>, T2
           endTime == null ? null : endTime.getTime(),
           withLabels,
           trainingDataVersion,
-          queryType
-      );
+          queryType);
     } catch (IOException e) {
       if (e.getMessage().contains("\"errorCode\":270172")) {
         throw new FeatureStoreException(
             "Cannot generate dataset or query from the given start/end time because"
                 + " event time column is not available in the left feature groups."
-                + " A start/end time should not be provided as parameters."
-        );
+                + " A start/end time should not be provided as parameters.");
       } else {
         throw e;
       }
     }
     query.getLeftFeatureGroup().setFeatureStore(featureView.getQuery().getLeftFeatureGroup().getFeatureStore());
-    return (T1)query;
+    return (T1) query;
   }
 
   protected void setEventTime(FeatureViewBase featureView, TrainingDatasetBase trainingDataset) {

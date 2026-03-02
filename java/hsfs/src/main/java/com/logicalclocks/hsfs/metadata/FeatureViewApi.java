@@ -97,9 +97,8 @@ public class FeatureViewApi {
       if (e.getMessage().contains("\"errorCode\":270009")) {
         throw new FeatureStoreException(
             "Cannot get back the feature view because the query defined is no longer valid."
-            + " Some feature groups used in the query may have been deleted."
-            + " You can clean up this feature view on the UI or `FeatureView.clean`."
-        );
+                + " Some feature groups used in the query may have been deleted."
+                + " You can clean up this feature view on the UI or `FeatureView.clean`.");
       } else {
         throw e;
       }
@@ -128,8 +127,7 @@ public class FeatureViewApi {
         throw new FeatureStoreException(
             "Cannot get back the feature view because the query defined is no longer valid."
                 + " Some feature groups used in the query may have been deleted."
-                + " You can clean up this feature view on the UI or `FeatureView.clean`."
-        );
+                + " You can clean up this feature view on the UI or `FeatureView.clean`.");
       } else {
         throw e;
       }
@@ -167,7 +165,8 @@ public class FeatureViewApi {
     return hopsworksClient.handleRequest(request, fvType);
   }
 
-  public void delete(FeatureStoreBase featureStoreBase, String name, Integer version) throws FeatureStoreException,
+  public void delete(FeatureStoreBase featureStoreBase, String name, Integer version, Boolean force)
+      throws FeatureStoreException,
       IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String uri = UriTemplate.fromTemplate(FEATURE_VIEW_PATH)
@@ -175,6 +174,7 @@ public class FeatureViewApi {
         .set("fsId", featureStoreBase.getId())
         .set("fvName", name)
         .set("fvVersion", version)
+        .set("force", force)
         .expand();
 
     HttpDelete request = new HttpDelete(uri);
@@ -183,34 +183,20 @@ public class FeatureViewApi {
     hopsworksClient.handleRequest(request);
   }
 
-  public void delete(FeatureStoreBase featureStoreBase, String name) throws FeatureStoreException, IOException {
+  public void delete(FeatureStoreBase featureStoreBase, String name, Boolean force)
+      throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String uri = UriTemplate.fromTemplate(FEATURE_VIEWS_PATH)
         .set("projectId", hopsworksClient.getProject().getProjectId())
         .set("fsId", featureStoreBase.getId())
         .set("fvName", name)
+        .set("force", force)
         .expand();
 
     HttpDelete request = new HttpDelete(uri);
 
     LOGGER.info("Sending metadata request: " + uri);
     hopsworksClient.handleRequest(request);
-  }
-
-  public List<TransformationFunctionAttached> getTransformationFunctions(FeatureViewBase featureViewBase)
-      throws FeatureStoreException, IOException {
-    HopsworksClient hopsworksClient = HopsworksClient.getInstance();
-    String uri = UriTemplate.fromTemplate(TRANSFORMATION_PATH)
-        .set("projectId", hopsworksClient.getProject().getProjectId())
-        .set("fsId", featureViewBase.getFeatureStore().getId())
-        .set("fvName", featureViewBase.getName())
-        .set("fvVersion", featureViewBase.getVersion())
-        .expand();
-
-    LOGGER.info("Sending metadata request: " + uri);
-    TransformationFunctionAttached transformationFunctionAttached =
-        hopsworksClient.handleRequest(new HttpGet(uri), TransformationFunctionAttached.class);
-    return transformationFunctionAttached.getItems();
   }
 
   public List<ServingPreparedStatement> getServingPreparedStatement(FeatureViewBase featureViewBase, boolean batch)
@@ -247,8 +233,8 @@ public class FeatureViewApi {
   }
 
   public void computeTrainingData(FeatureStoreBase featureStore,
-                                  FeatureViewBase featureViewBase,
-                                  TrainingDatasetBase trainingData)
+      FeatureViewBase featureViewBase,
+      TrainingDatasetBase trainingData)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String uri = UriTemplate.fromTemplate(TRAINING_DATA_COMPUTE)
@@ -267,10 +253,10 @@ public class FeatureViewApi {
   }
 
   public <T extends TrainingDatasetBase> TrainingDatasetBase getTrainingData(FeatureStoreBase featureStoreBase,
-                                                                             String featureViewName,
-                                                                             Integer featureViewVersion,
-                                                                             Integer trainingDataVersion,
-                                                                             Class<T> tdType)
+      String featureViewName,
+      Integer featureViewVersion,
+      Integer trainingDataVersion,
+      Class<T> tdType)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String uri = UriTemplate.fromTemplate(TRAINING_DATA_PATH)
@@ -287,7 +273,7 @@ public class FeatureViewApi {
   }
 
   public void deleteTrainingData(FeatureStoreBase featureStoreBase, String featureViewName,
-                                 Integer featureViewVersion, Integer trainingDataVersion)
+      Integer featureViewVersion, Integer trainingDataVersion)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String uri = UriTemplate.fromTemplate(TRAINING_DATA_PATH)
@@ -321,7 +307,7 @@ public class FeatureViewApi {
   }
 
   public void deleteTrainingDatasetOnly(FeatureStoreBase featureStoreBase, String name,
-                                        Integer version, Integer trainingDataVersion)
+      Integer version, Integer trainingDataVersion)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String uri = UriTemplate.fromTemplate(TRAINING_DATASET_PATH)
@@ -355,8 +341,8 @@ public class FeatureViewApi {
   }
 
   public <T extends QueryBase> T getBatchQuery(FeatureStoreBase featureStoreBase, String name, Integer version,
-                                 Long startTime, Long endTime, Boolean withLabels, Integer trainingDataVersion,
-                                                       Class<T> queryType)
+      Long startTime, Long endTime, Boolean withLabels, Integer trainingDataVersion,
+      Class<T> queryType)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String uri = UriTemplate.fromTemplate(FEATURE_VIEW_BATCH_QUERY_PATH)
