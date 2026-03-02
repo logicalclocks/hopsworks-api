@@ -186,6 +186,7 @@ public class TestStorageConnector {
     public void test_read_postgresql() throws Exception {
       // Arrange
       StorageConnector.SqlConnector connector = new StorageConnector.SqlConnector();
+      connector.setDatabaseType(StorageConnector.SqlConnector.POSTGRESQL);
 
       StorageConnector.SqlConnector spyConnector = spy(connector);
       doNothing().when(spyConnector).update();
