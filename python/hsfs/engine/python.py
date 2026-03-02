@@ -988,21 +988,36 @@ class Engine:
         if feature_group_instance.partition_key:
             key_columns.extend(feature_group_instance.partition_key)
 
-        dataset = self._to_arrow_table(dataset)
-        # Verify all key columns exist
-        table_columns = dataset.column_names
-        missing_columns = [col for col in key_columns if col not in table_columns]
+        # Verify all key columns exist against the original dataframe — no conversion needed.
+        if isinstance(dataset, pd.DataFrame) or (
+            HAS_POLARS and isinstance(dataset, pl.DataFrame)
+        ):
+            available_columns = list(dataset.columns)
+        else:
+            available_columns = list(self._to_arrow_table(dataset).column_names)
+
+        missing_columns = [col for col in key_columns if col not in available_columns]
         if missing_columns:
             raise FeatureStoreException(
                 f"Key columns {missing_columns} are missing from the dataset. "
-                f"Available columns: {table_columns}"
+                f"Available columns: {available_columns}"
             )
 
+        import pyarrow as pa
         import pyarrow.compute as pc
+
+        # Convert only the key columns to Arrow — avoids transcoding all feature columns
+        # (including costly numpy-U → UTF-8 re-encoding) for a check that only needs keys.
+        if isinstance(dataset, pd.DataFrame):
+            key_table = pa.Table.from_pandas(dataset[key_columns], preserve_index=False)
+        elif HAS_POLARS and isinstance(dataset, pl.DataFrame):
+            key_table = dataset.select(key_columns).to_arrow()
+        else:
+            key_table = self._to_arrow_table(dataset).select(key_columns)
 
         # Check for duplicates using PyArrow group_by
         # Group by key columns and count occurrences
-        grouped = dataset.group_by(key_columns).aggregate(
+        grouped = key_table.group_by(key_columns).aggregate(
             [
                 # The aggregation tuple structure: ([], function_name, FunctionOptions)
                 ([], "count_all", pc.CountOptions(mode="all"))
@@ -1574,7 +1589,7 @@ class Engine:
         ):
             return dataframe.clone()
         if HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
-            return dataframe.copy()
+            return dataframe.copy(deep=False)
         raise ValueError(
             f"Dataframe type {type(dataframe)} not supported in the Python engine."
         )
