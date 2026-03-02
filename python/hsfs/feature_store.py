@@ -924,6 +924,8 @@ class FeatureStore:
                 The values should be booleans indicating the setting.
                 To fully turn off statistics computation pass `statistics_config=False`.
                 By default, it computes only descriptive statistics.
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             event_time:
                 Optionally, provide the name of the feature containing the event time for the features in this feature group.
                 If event_time is set the feature group can be used for point-in-time joins.
@@ -934,8 +936,6 @@ class FeatureStore:
             stream:
                 Optionally, define whether the feature group should support real time stream writing capabilities.
                 Stream enabled Feature Groups have unified single API for writing streaming features transparently to both online and offline store.
-            expectation_suite:
-                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             parents:
                 Optionally, define the parents of this feature group as the origin where the data is coming from.
             topic_name:
@@ -1116,14 +1116,14 @@ class FeatureStore:
                 Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
             notification_topic_name:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
-            expectation_suite:
-                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             data_source:
                 The data source specifying the location of the data.
                 Overrides the storage_connector, path and query arguments when specified.

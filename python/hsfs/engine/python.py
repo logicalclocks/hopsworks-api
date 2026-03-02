@@ -185,11 +185,21 @@ class Engine:
         primary_key: bool,
         request_parameters: pd.DataFrame | pl.DataFrame = None,
     ):
-        """Extracts the logging data from the passed dataframes and returns the expected batch dataframe with the logging metadata attached.
+        """Extract logging data and attach logging metadata to the returned dataframe.
 
         The logging metadata is created as a hidden attribute named `hopsworks_logging_metadata` of the returned dataframe.
 
         The return dataframe will only contain the features that the user requested (i.e. if the user requested to not include primary keys, event time or inference helpers, those features will be excluded).
+
+        Parameters:
+            untransformed_features: DataFrame containing the untransformed feature values.
+            transformed_features: DataFrame containing the transformed feature values.
+            feature_view: The feature view whose features are being logged.
+            transformed: Whether to include transformed features in the log.
+            inference_helpers: Whether to include inference helper columns.
+            event_time: Whether to include the event time column.
+            primary_key: Whether to include the primary key columns.
+            request_parameters: DataFrame containing request parameter values, if any.
         """
         # Get the fully qualified names for the event time and serving keys.
         # This required since the since Hopsworks returns primary keys and event time as fully qualified names, if they are not explicitly selected in the feature view query.
@@ -1145,6 +1155,9 @@ class Engine:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
+        Returns:
+            The training data as a DataFrame.
+
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
         """
@@ -1572,7 +1585,16 @@ class Engine:
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
-        """Apply a udf to a dataframe."""
+        """Apply a UDF to a dataframe.
+
+        Parameters:
+            udf: The UDF to apply.
+            dataframe: The dataframe to apply the UDF to.
+            online: Whether the UDF is being applied in online serving context.
+
+        Returns:
+            The dataframe with the UDF applied.
+        """
         if (
             udf.execution_mode.get_current_execution_mode(online=online)
             == UDFExecutionMode.PANDAS
@@ -2117,12 +2139,11 @@ class Engine:
             time_col_name: Name of the event time column.
             model_col_name: Name of the model column.
             training_dataset_version: Version of the training dataset.
-            hsml_model: Name of the model.
+            model_name: Name of the model.
+            model_version: Version of the model.
 
         Returns:
-            dataframe: A pandas dataframe with all the logging components.
-            additional: Names of additional logging features passed in the Logging Dataframe.
-            missing: Names of missing logging features passed in the Logging Dataframe.
+            A tuple of (dataframe, additional_feature_names, missing_feature_names).
         """
         if logging_data is not None:
             try:
@@ -2416,8 +2437,8 @@ class Engine:
             serving_keys: Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
             helper_columns: Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
             request_parameters: Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
-            event_time: Tuple of event time, event time column name and log component name (a constant named "event_time").
             request_id: Tuple of request id, request id column name and log component name (a constant named "request_id").
+            event_time: Tuple of event time, event time column name and log component name (a constant named "event_time").
             extra_logging_features: Tuple of extra logging features, extra logging feature names and log component name
             td_col_name: Name of the training dataset version column.
             time_col_name: Name of the event time column.

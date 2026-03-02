@@ -53,8 +53,8 @@ class StatisticsEngine:
             feature_view_obj: FeatureView. Metadata of the feature view, used when computing statistics for a Training Dataset.
 
         Returns:
-            Union[Statistics, Job]. If running on Spark, statistics metadata containing a list of single feature descriptive statistics.
-                                    Otherwise, Spark job metadata used to compute the statistics.
+            If running on Spark, statistics metadata containing a list of single feature descriptive statistics.
+            Otherwise, Spark job metadata used to compute the statistics.
         """
         if (
             engine.get_type().startswith("spark")

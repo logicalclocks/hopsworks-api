@@ -67,7 +67,11 @@ class ValidationReportApi:
         )
 
     def delete(self, validation_report_id: int) -> None:
-        """Delete the validation report attached to a featuregroup."""
+        """Delete the validation report attached to a featuregroup.
+
+        Parameters:
+            validation_report_id: ID of the validation report to delete.
+        """
         _client = client.get_instance()
         path_params = [
             "project",

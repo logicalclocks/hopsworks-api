@@ -1301,15 +1301,19 @@ class FeatureGroupBase:
 
         Parameters:
             expectation_suite: The expectation suite to attach to the Feature Group.
-            overwrite:
-                If an Expectation Suite is already attached, overwrite it.
-                The new suite will have its own validation history, but former reports are preserved.
             run_validation: Set whether the expectation_suite will run on ingestion.
             validation_ingestion_policy:
                 Set the policy for ingestion to the Feature Group.
 
                 - "STRICT" only allows DataFrame passing validation to be inserted into Feature Group.
                 - "ALWAYS" always insert the DataFrame to the Feature Group, irrespective of overall validation result.
+
+            overwrite:
+                If an Expectation Suite is already attached, overwrite it.
+                The new suite will have its own validation history, but former reports are preserved.
+
+        Returns:
+            The saved expectation suite.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -1483,6 +1487,9 @@ class FeatureGroupBase:
                 If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
                 Conversion can be performed via the `to_ge_type()` method on hopsworks type.
 
+        Returns:
+            The saved validation report.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
@@ -1541,7 +1548,6 @@ class FeatureGroupBase:
 
         Parameters:
             expectation_id: ID of the Expectation for which to fetch the validation history.
-            filter_by: List of ingestion_result category to keep.
             start_validation_time:
                 Fetch only validation result posterior to the provided time, inclusive.
                 Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
@@ -1550,6 +1556,7 @@ class FeatureGroupBase:
                 Fetch only validation result prior to the provided time, inclusive.
                 Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
                 See examples above.
+            filter_by: List of ingestion_result category to keep.
             ge_type:
                 If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
                 Conversion can be performed via the `to_ge_type()` method on hopsworks type.
@@ -1611,6 +1618,9 @@ class FeatureGroupBase:
                 Optionally provide an Expectation Suite to override the one that is possibly attached to the feature group.
                 This is useful for testing new Expectation suites.
                 When an extra suite is provided, the results will never be persisted.
+            save_report:
+                Whether to save the report to the backend.
+                This is only possible if the Expectation suite is initialised and attached to the Feature Group.
             validation_options:
                 Additional validation options as key-value pairs.
 
@@ -1621,9 +1631,6 @@ class FeatureGroupBase:
                 Specify the fate of the associated data.
                 Use `"INGESTED"` or `"REJECTED"` for validation of DataFrames to be inserted in the Feature Group.
                 Use `"EXPERIMENT"` for testing and development and `"FG_DATA"` when validating data already in the Feature Group.
-            save_report:
-                Whether to save the report to the backend.
-                This is only possible if the Expectation suite is initialised and attached to the Feature Group.
             ge_type: Whether to return a Great Expectations object or Hopsworks own abstraction.
 
         Returns:
@@ -2085,7 +2092,11 @@ class FeatureGroupBase:
 
     @public
     def get_fg_name(self) -> str:
-        """Returns the full feature group name, that is, its base name combined with its version."""
+        """Returns the full feature group name, that is, its base name combined with its version.
+
+        Returns:
+            The feature group name combined with its version, separated by an underscore.
+        """
         return f"{self.name}_{self.version}"
 
     @public
@@ -2516,6 +2527,9 @@ class FeatureGroupBase:
             ```python
             complex_dtype_features = fg.get_complex_features()
             ```
+
+        Returns:
+            A list of feature names that have complex data types.
         """
         return [f.name for f in self.features if f.is_complex()]
 
@@ -2608,9 +2622,7 @@ class FeatureGroupBase:
 
         The TTL determines how long features should be retained before being automatically removed.
         The value is always returned in seconds, regardless of how it was originally specified.
-
-        Returns:
-            The TTL value in seconds, or `None` if no TTL is set.
+        Returns `None` if no TTL is set.
         """
         return self._ttl
 
@@ -2642,8 +2654,7 @@ class FeatureGroupBase:
     def ttl_enabled(self) -> bool:
         """Get whether TTL (time-to-live) is enabled for this feature group.
 
-        Returns:
-            `True` if TTL is enabled, `False` otherwise
+        Returns `True` if TTL is enabled, `False` otherwise.
         """
         return self._ttl_enabled
 
@@ -3090,14 +3101,8 @@ class FeatureGroup(FeatureGroupBase):
                 - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
 
         Returns:
-            One of the following:
-
-            - `DataFrame`: The spark dataframe containing the feature data.
-            - `pyspark.DataFrame`: A Spark DataFrame.
-            - `pandas.DataFrame`: A Pandas DataFrame.
-            - `polars.DataFrame`: A Polars DataFrame.
-            - `numpy.ndarray`: A two-dimensional Numpy array.
-            - `list`: A two-dimensional Python list.
+            A dataframe in the requested format containing the feature group data.
+            Possible types are Spark DataFrame, Pandas DataFrame, Polars DataFrame, NumPy ndarray, or Python list.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: No data is available for feature group with this commit date, if time travel enabled.
@@ -3771,10 +3776,7 @@ class FeatureGroup(FeatureGroupBase):
                 In this case, all required on-demand features must already exist in the provided dataframe.
 
         Returns:
-            One of:
-
-            - A tuple with job information if python engine is used and the validation report if validation is enabled, or
-            - `FeatureGroupWriter` when used as a context manager with Python `with` statement.
+            A tuple of (Job, ValidationReport) when inserting directly, or a FeatureGroupWriter when used as a context manager.
         """
         self._multi_part_insert = True
         multi_part_writer = feature_group_writer.FeatureGroupWriter(self)
@@ -4131,11 +4133,11 @@ class FeatureGroup(FeatureGroupBase):
             ```
 
         Parameters:
-            to_commit_time:
-                Date and time of the last commit of the window.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             from_commit_time:
                 Date and time of the first commit of the window.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            to_commit_time:
+                Date and time of the last commit of the window.
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
 
@@ -4925,13 +4927,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             read_options: Additional options as key/value pairs to pass to the spark engine.
 
         Returns:
-            One of:
-
-            - `DataFrame`: The spark dataframe containing the feature data.
-            - `pyspark.DataFrame`: A Spark DataFrame.
-            - `pandas.DataFrame`: A Pandas DataFrame.
-            - `numpy.ndarray`: A two-dimensional Numpy array.
-            - `list`: A two-dimensional Python list.
+            A dataframe in the requested format containing the feature group data.
+            Possible types are Spark DataFrame, Pandas DataFrame, NumPy ndarray, or Python list.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -5325,7 +5322,11 @@ class SpineGroup(FeatureGroupBase):
             | None
         ),
     ) -> None:
-        """Update the spine dataframe contained in the spine group."""
+        """Update the spine dataframe contained in the spine group.
+
+        Parameters:
+            dataframe: The new spine dataframe to assign.
+        """
         if dataframe is None:
             warnings.warn(
                 "Spine group dataframe is not set, use `spine_fg.dataframe = df` to set it"

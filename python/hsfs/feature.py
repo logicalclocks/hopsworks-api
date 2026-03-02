@@ -92,6 +92,9 @@ class Feature:
             selected_feature = fg.get_feature("min_temp")
             selected_feature.to_dict()
             ```
+
+        Returns:
+            A dictionary representation of the feature.
         """
         return {
             "name": self._name,
@@ -168,6 +171,9 @@ class Feature:
             selected_feature = fg.get_feature("min_temp")
             selected_feature.is_complex()
             ```
+
+        Returns:
+            True if the feature type is a complex type, False otherwise.
         """
         return any(map(self._type.upper().startswith, self.COMPLEX_TYPES))
 
@@ -323,12 +329,26 @@ class Feature:
 
     @public
     def isin(self, other: str | list[Any]) -> filter.Filter:
-        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause."""
+        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause.
+
+        Parameters:
+            other: A single feature value or a list of feature values to match against.
+
+        Returns:
+            A filter that keeps only rows where the feature value is in `other`.
+        """
         return filter.Filter(self, filter.Filter.IN, json.dumps(other))
 
     @public
     def like(self, other: Any) -> filter.Filter:
-        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause."""
+        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause.
+
+        Parameters:
+            other: The pattern to match against.
+
+        Returns:
+            A filter that keeps only rows where the feature value matches `other`.
+        """
         return filter.Filter(self, filter.Filter.LK, other)
 
     def __str__(self) -> str:

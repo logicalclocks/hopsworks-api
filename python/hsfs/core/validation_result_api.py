@@ -38,10 +38,14 @@ class ValidationResultApi:
         list[ge_validation_result.ValidationResult]
         | ge_validation_result.ValidationResult
     ):
-        """Get the validation report attached to a featuregroup.
+        """Get the validation history for an expectation attached to a featuregroup.
+
+        Parameters:
+            expectation_id: ID of the expectation to retrieve history for.
+            query_params: Optional query parameters to filter the results.
 
         Returns:
-            validation report
+            A list of validation results, or a single validation result.
         """
         _client = client.get_instance()
         path_params = [

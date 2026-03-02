@@ -97,29 +97,17 @@ class OnlineIngestionResult:
     @public
     @property
     def online_ingestion_id(self) -> int:
-        """Get the unique identifier for the online ingestion batch.
-
-        Returns:
-            int: The online ingestion batch ID.
-        """
+        """Get the unique identifier for the online ingestion batch."""
         return self._online_ingestion_id
 
     @public
     @property
     def status(self) -> str:
-        """Get the status of the ingestion batch.
-
-        Returns:
-            str: The status of the batch (e.g., "UPSERTED", "FAILED").
-        """
+        """Get the status of the ingestion batch (e.g., "UPSERTED", "FAILED")."""
         return self._status
 
     @public
     @property
     def rows(self) -> int:
-        """Get the number of rows processed in this batch.
-
-        Returns:
-            int: The number of rows.
-        """
+        """Get the number of rows processed in this batch."""
         return self._rows

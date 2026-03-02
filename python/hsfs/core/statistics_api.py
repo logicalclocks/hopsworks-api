@@ -76,6 +76,9 @@ class StatisticsApi:
             row_percentage: Percentage of feature values used during statistics computation
             before_transformation: Whether the statistics were computed before transformations or not
             training_dataset_version: Version of the training dataset on which statistics were computed
+
+        Returns:
+            The statistics object, or `None` if not found.
         """
         # get statistics by entity + filters + sorts, including the feature descriptive statistics
         _client = client.get_instance()
@@ -130,6 +133,9 @@ class StatisticsApi:
             row_percentage: Percentage of feature values used during statistics computation
             before_transformation: Whether the statistics were computed before transformations or not
             training_dataset_version: Version of the training dataset on which statistics were computed
+
+        Returns:
+            A list of statistics objects, or `None` if not found.
         """
         # get all statistics by entity + filters + sorts, without the feature descriptive statistics
         _client = client.get_instance()
@@ -170,6 +176,9 @@ class StatisticsApi:
         Parameters:
             metadata_instance: metadata object of the instance to compute statistics for
             training_dataset_version: version of the training dataset metadata object
+
+        Returns:
+            The job metadata object for the statistics computation job.
         """
         _client = client.get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version) + [
@@ -189,6 +198,9 @@ class StatisticsApi:
         Parameters:
             metadata_instance: metadata object of the instance to compute statistics for
             training_dataset_version: version of the training dataset metadata object
+
+        Returns:
+            The API path as a list of path segments.
         """
         _client = client.get_instance()
         if isinstance(metadata_instance, feature_view.FeatureView):

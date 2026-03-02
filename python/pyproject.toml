@@ -256,3 +256,7 @@ disable = [
     "SIG305",
 ]
 ignore_kwargs = true
+
+[tool.pydoclint]
+allow-init-docstring = true
+style = "google"

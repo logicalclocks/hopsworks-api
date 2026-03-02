@@ -126,12 +126,12 @@ class OnlineStoreRestClientEngine:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
         Parameters:
+            metadata_options: Whether to include feature metadata in the response.
+                Keys are "featureName" and "featureType" and values are boolean.
             validate_passed_features: Whether to validate the passed features against
                 the feature view schema on the RonDB Server.
             include_detailed_status: Whether to include detailed status information in the response.
                 This is necessary to drop missing features from the feature vector.
-            metadata_options: Whether to include feature metadata in the response.
-                Keys are "featureName" and "featureType" and values are boolean.
 
         Returns:
             A payload dictionary containing metadata information to send to the RonDB REST Server Feature Store API.
@@ -276,7 +276,7 @@ class OnlineStoreRestClientEngine:
             metadata_options: Whether to include feature metadata in the response.
                 Keys are "featureName" and "featureType" and values are boolean.
             drop_missing: Whether to drop missing features from the feature vector. Requires including detailed status.
-            helpers_only: Whether to return only the inference helper columns.
+            inference_helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict", "feature_value_list" or "response_json".
 
         Returns:
@@ -360,8 +360,8 @@ class OnlineStoreRestClientEngine:
             drop_missing: Whether to drop missing features from the feature vector. Relies on detailed status.
             detailed_status: A list of dictionaries with detailed status information for each read operations.
                 Keys include operationId, featureGroupId, httpStatus and message.
-            helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict" or "feature_value_list".
+            inference_helpers_only: Whether to return only the inference helper columns.
 
         Returns:
             A dictionary with the feature names as keys and the feature values as values. Values types are not guaranteed to

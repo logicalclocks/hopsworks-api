@@ -115,7 +115,7 @@ class OnlineStoreRestClientApi:
 
         Parameters:
             payload: The payload to send to the RonDB REST Server Feature Store API.
-            The payload should contains the following fields:
+                The payload should contain the following fields:
                 - "featureStoreName": The name of the feature store in which the feature view is registered.
                 - "featureViewName": The name of the feature view from which to retrieve the feature vector.
                 - "featureViewVersion": The version of the feature view from which to retrieve the feature vector.
@@ -153,7 +153,11 @@ class OnlineStoreRestClientApi:
         )
 
     def ping_rondb_rest_server(self) -> int:
-        """Ping the RonDB Rest Server to check if it is alive."""
+        """Ping the RonDB Rest Server to check if it is alive.
+
+        Returns:
+            The HTTP response from the RonDB Rest Server ping endpoint.
+        """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Pinging RonDB Rest Server")
         ping_response = online_store_rest_client.get_instance().send_request(

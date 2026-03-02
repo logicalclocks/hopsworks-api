@@ -124,6 +124,9 @@ class TrainingDatasetApi:
         Parameters:
             training_dataset_instance: the metadata instance of the training dataset
             td_app_conf: the configuration for the training dataset job application.
+
+        Returns:
+            The job metadata object for the compute job.
         """
         _client = client.get_instance()
         path_params = [
@@ -196,6 +199,9 @@ class TrainingDatasetApi:
         Parameters:
             training_dataset_instance: the metadata instance of the training dataset
             batch: boolean. Weather to retrieve batch serving vector or not.
+
+        Returns:
+            The serving prepared statement metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -216,7 +222,11 @@ class TrainingDatasetApi:
     def delete(
         self, training_dataset_instance: training_dataset.TrainingDataset
     ) -> None:
-        """Delete the training dataset and materialized files in HopsFS."""
+        """Delete the training dataset and materialized files in HopsFS.
+
+        Parameters:
+            training_dataset_instance: The training dataset metadata object to delete.
+        """
         _client = client.get_instance()
         path_params = [
             "project",

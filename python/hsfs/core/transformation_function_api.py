@@ -35,6 +35,9 @@ class TransformationFunctionApi:
         Parameters:
             transformation_function_instance:
                 metadata object of transformation function.
+
+        Returns:
+            The registered transformation function metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -70,6 +73,9 @@ class TransformationFunctionApi:
                 name of transformation function.
             version:
                 version of transformation function.
+
+        Returns:
+            The transformation function metadata object, or a list of them, or None if not found.
         """
         _client = client.get_instance()
         path_params = [
@@ -97,8 +103,7 @@ class TransformationFunctionApi:
         """Delete a transformation function.
 
         Parameters:
-        transformation_function_instance: TransformationFunction, required
-            metadata object of transformation function.
+            transformation_function_instance: Metadata object of the transformation function to delete.
         """
         _client = client.get_instance()
         path_params = [

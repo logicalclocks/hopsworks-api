@@ -134,21 +134,13 @@ class OnlineIngestion:
     @public
     @property
     def id(self) -> int | None:
-        """Get the unique identifier for the ingestion operation.
-
-        Returns:
-            Optional[int]: The ingestion ID.
-        """
+        """Get the unique identifier for the ingestion operation."""
         return self._id
 
     @public
     @property
     def num_entries(self) -> int | None:
-        """Get the total number of entries to ingest.
-
-        Returns:
-            Optional[int]: The number of entries.
-        """
+        """Get the total number of entries to ingest."""
         return self._num_entries
 
     @num_entries.setter
@@ -165,21 +157,13 @@ class OnlineIngestion:
     def results(
         self,
     ) -> list[online_ingestion_result.OnlineIngestionResult]:
-        """Get the list of ingestion results.
-
-        Returns:
-            List of ingestion result objects.
-        """
+        """Get the list of ingestion results."""
         return self._results
 
     @public
     @property
     def feature_group(self) -> fg_mod.FeatureGroup:
-        """Get the feature group associated with this ingestion.
-
-        Returns:
-            FeatureGroup: The associated feature group.
-        """
+        """Get the feature group associated with this ingestion."""
         return self._feature_group
 
     @public

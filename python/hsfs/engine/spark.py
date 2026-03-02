@@ -1364,7 +1364,15 @@ class Engine:
         histograms,
         exact_uniqueness=True,
     ):
-        """Profile a dataframe with Deequ."""
+        """Profile a dataframe with Deequ.
+
+        Parameters:
+            dataframe: The Spark DataFrame to profile.
+            relevant_columns: List of column names to include in profiling.
+            correlations: Whether to compute feature correlations.
+            histograms: Whether to compute feature value frequency histograms.
+            exact_uniqueness: Whether to compute exact uniqueness metrics.
+        """
         return self._jvm.com.logicalclocks.hsfs.spark.engine.SparkEngine.getInstance().profile(
             dataframe._jdf,
             relevant_columns,
@@ -1722,6 +1730,16 @@ class Engine:
         The logging metadata is created as a hidden attribute named `hopsworks_logging_metadata` of the returned dataframe.
 
         The return dataframe will only contain the features that the user requested (i.e. if the user requested to not include primary keys, event time or inference helpers, those features will be excluded).
+
+        Parameters:
+            untransformed_features: DataFrame containing the untransformed feature values.
+            transformed_features: DataFrame containing the transformed feature values.
+            feature_view: The feature view whose features are being logged.
+            transformed: Whether to include transformed features in the log.
+            inference_helpers: Whether to include inference helper columns.
+            event_time: Whether to include the event time column.
+            primary_key: Whether to include the primary key columns.
+            request_parameters: DataFrame containing request parameter values, if any.
         """
         # Extract primary keys and event time from fully qualified names
         fully_qualified_root_fg_event_time = generate_fully_qualified_feature_name(
@@ -2066,11 +2084,10 @@ class Engine:
             model_col_name: The name of the model column.
             training_dataset_version: The version of the training dataset.
             model_name: The name of the model.
+            model_version: The version of the model.
 
         Returns:
-            dataframe: A spark dataframe with all the logging components.
-            additional: Names of additional logging features passed in the Logging Dataframe.
-            missing: Names of missing logging features passed in the Logging Dataframe.
+            A tuple of (dataframe, additional_feature_names, missing_feature_names).
         """
         TEMP_JOIN_KEY = "row_id"
 

@@ -521,8 +521,8 @@ class TransformationFunctionEngine:
         The function assigns the statistics computed to hopsworks UDF object so that the statistics can be used when UDF is executed.
 
         Parameters:
-            training_dataset_obj: The training dataset for which the statistics is to be computed.
-            feature_view: The feature view in which the training data is being created.
+            training_dataset: The training dataset for which the statistics is to be computed.
+            feature_view_obj: The feature view in which the training data is being created.
             training_dataset_version: The version of the training dataset for which the statistics is to be retrieved.
 
         Raises:

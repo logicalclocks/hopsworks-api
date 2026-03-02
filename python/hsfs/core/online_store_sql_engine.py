@@ -330,6 +330,14 @@ class OnlineStoreSqlClient:
         i.e. The fetched feature vector will also include inference helper columns.
         If `feature_vector_with_inference_helpers` is True, it will use the prepared statement that includes
         inference helper columns along with regular features in a single query.
+
+        Parameters:
+            entry: Primary key values used to look up the feature vector.
+            logging_data: Whether to include inference helper columns for logging.
+            feature_vector_with_inference_helpers: Whether to include inference helper columns with regular features.
+
+        Returns:
+            A dictionary mapping feature names to their values.
         """
         if logging_data:
             key = self.SINGLE_LOGGING_VECTOR_KEY
@@ -354,6 +362,14 @@ class OnlineStoreSqlClient:
         i.e. The fetched feature vector will also include inference helper columns.
         If `feature_vector_with_inference_helpers` is True, it will use the prepared statement that includes
         inference helper columns along with regular features in a single query.
+
+        Parameters:
+            entries: List of primary key value dicts used to look up each feature vector.
+            logging_data: Whether to include inference helper columns for logging.
+            feature_vector_with_inference_helpers: Whether to include inference helper columns with regular features.
+
+        Returns:
+            A list of dictionaries, each mapping feature names to their values.
         """
         if logging_data:
             key = self.BATCH_LOGGING_VECTOR_KEY
@@ -367,7 +383,14 @@ class OnlineStoreSqlClient:
         )
 
     def get_inference_helper_vector(self, entry: dict[str, Any]) -> dict[str, Any]:
-        """Retrieve single vector with parallel queries using aiomysql engine."""
+        """Retrieve single inference helper vector with parallel queries using aiomysql engine.
+
+        Parameters:
+            entry: Primary key values used to look up the inference helper vector.
+
+        Returns:
+            A dictionary mapping inference helper feature names to their values.
+        """
         return self._single_vector_result(
             entry, self.parametrised_prepared_statements[self.SINGLE_HELPER_KEY]
         )
@@ -375,7 +398,14 @@ class OnlineStoreSqlClient:
     def get_batch_inference_helper_vectors(
         self, entries: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """Retrieve batch vector with parallel queries using aiomysql engine."""
+        """Retrieve batch inference helper vectors with parallel queries using aiomysql engine.
+
+        Parameters:
+            entries: List of primary key value dicts used to look up each inference helper vector.
+
+        Returns:
+            A list of dictionaries, each mapping inference helper feature names to their values.
+        """
         return self._batch_vector_results(
             entries, self.parametrised_prepared_statements[self.BATCH_HELPER_KEY]
         )

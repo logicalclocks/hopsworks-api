@@ -322,10 +322,10 @@ class MonitoringWindowConfigEngine:
 
         Parameters:
             entity: Entity to monitor.
-            feature_name: Name of the feature to monitor.
             start_time: Window start commit or event time
             end_time: Window end commit or event time
             row_percentage: fraction of rows to include [0, 1.0]
+            feature_name: Name of the feature to monitor.
 
         Returns:
             A Spark DataFrame with the entity data

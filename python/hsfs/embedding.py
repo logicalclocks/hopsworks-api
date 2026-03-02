@@ -377,7 +377,11 @@ class EmbeddingIndex:
 
     @feature_group.setter
     def feature_group(self, feature_group: FeatureGroup | None) -> None:
-        """Setter for the feature group object."""
+        """Set the feature group object that contains the embedding feature.
+
+        Parameters:
+            feature_group: The feature group to associate with this embedding index.
+        """
         self._feature_group = feature_group
 
     @public

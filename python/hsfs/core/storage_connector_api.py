@@ -66,7 +66,14 @@ class StorageConnectorApi:
     def refetch(
         self, storage_connector_instance: storage_connector.StorageConnector
     ) -> storage_connector.StorageConnector:
-        """Refetches the storage connector from Hopsworks, in order to update temporary credentials."""
+        """Refetch the storage connector from Hopsworks, updating temporary credentials.
+
+        Parameters:
+            storage_connector_instance: The storage connector to refetch.
+
+        Returns:
+            The updated storage connector instance.
+        """
         return storage_connector_instance.update_from_response_json(
             self._get(
                 storage_connector_instance._featurestore_id,
