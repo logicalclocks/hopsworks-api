@@ -199,6 +199,22 @@ public class FeatureViewApi {
     hopsworksClient.handleRequest(request);
   }
 
+  public List<TransformationFunctionAttached> getTransformationFunctions(FeatureViewBase featureViewBase)
+      throws FeatureStoreException, IOException {
+    HopsworksClient hopsworksClient = HopsworksClient.getInstance();
+    String uri = UriTemplate.fromTemplate(TRANSFORMATION_PATH)
+        .set("projectId", hopsworksClient.getProject().getProjectId())
+        .set("fsId", featureViewBase.getFeatureStore().getId())
+        .set("fvName", featureViewBase.getName())
+        .set("fvVersion", featureViewBase.getVersion())
+        .expand();
+
+    LOGGER.info("Sending metadata request: " + uri);
+    TransformationFunctionAttached transformationFunctionAttached = hopsworksClient.handleRequest(new HttpGet(uri),
+        TransformationFunctionAttached.class);
+    return transformationFunctionAttached.getItems();
+  }
+
   public List<ServingPreparedStatement> getServingPreparedStatement(FeatureViewBase featureViewBase, boolean batch)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
