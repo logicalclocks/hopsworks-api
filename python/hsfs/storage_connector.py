@@ -2283,6 +2283,13 @@ class SqlConnector(StorageConnector):
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
+        if database_type is not None:
+            database_type = database_type.upper()
+            if database_type not in self._DRIVERS:
+                raise ValueError(
+                    f"Unsupported database_type '{database_type}'. "
+                    f"Supported values are: {sorted(self._DRIVERS)}."
+                )
         self._database_type = database_type
         self._host = host
         self._port = port
@@ -2326,6 +2333,7 @@ class SqlConnector(StorageConnector):
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {
+            **self._arguments,
             "user": self.user,
             "password": self.password,
             "driver": self._DRIVERS.get(self._database_type, self._DRIVERS[self.POSTGRESQL]),

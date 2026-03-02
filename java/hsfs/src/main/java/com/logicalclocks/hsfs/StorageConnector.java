@@ -38,6 +38,7 @@ import software.amazon.awssdk.utils.CollectionUtils;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -588,15 +589,20 @@ public abstract class StorageConnector {
     public static final String MYSQL = "MYSQL";
     public static final String POSTGRESQL = "POSTGRESQL";
 
-    private static final Map<String, String> DRIVERS = new HashMap<String, String>() {{
-        put(MYSQL, "com.mysql.cj.jdbc.Driver");
-        put(POSTGRESQL, "org.postgresql.Driver");
-      }};
+    private static final Map<String, String> DRIVERS;
+    private static final Map<String, String> JDBC_SCHEMES;
 
-    private static final Map<String, String> JDBC_SCHEMES = new HashMap<String, String>() {{
-        put(MYSQL, "mysql");
-        put(POSTGRESQL, "postgresql");
-      }};
+    static {
+      Map<String, String> drivers = new HashMap<>();
+      drivers.put(MYSQL, "com.mysql.cj.jdbc.Driver");
+      drivers.put(POSTGRESQL, "org.postgresql.Driver");
+      DRIVERS = Collections.unmodifiableMap(drivers);
+
+      Map<String, String> schemes = new HashMap<>();
+      schemes.put(MYSQL, "mysql");
+      schemes.put(POSTGRESQL, "postgresql");
+      JDBC_SCHEMES = Collections.unmodifiableMap(schemes);
+    }
 
     @Getter @Setter
     protected String databaseType;
@@ -620,10 +626,15 @@ public abstract class StorageConnector {
     protected List<Option> arguments;
 
     @Override
-    public Map<String, String> sparkOptions(DataSource dataSource) {
+    public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
+      String normalizedType = databaseType != null ? databaseType.toUpperCase() : null;
+      if (normalizedType == null || !DRIVERS.containsKey(normalizedType)) {
+        throw new FeatureStoreException("Unsupported database_type '" + databaseType
+            + "'. Supported values are: " + DRIVERS.keySet() + ".");
+      }
       String databaseName = dataSource == null ? database : dataSource.getDatabase();
-      String scheme = JDBC_SCHEMES.getOrDefault(databaseType, JDBC_SCHEMES.get(POSTGRESQL));
-      String driver = DRIVERS.getOrDefault(databaseType, DRIVERS.get(POSTGRESQL));
+      String scheme = JDBC_SCHEMES.get(normalizedType);
+      String driver = DRIVERS.get(normalizedType);
 
       Map<String, String> options = new HashMap<>();
       options.put(Constants.JDBC_URL, "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + "/" + databaseName);
