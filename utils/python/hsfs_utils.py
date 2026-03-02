@@ -306,7 +306,9 @@ def offline_fg_materialization(
 
     # validate and reconcile saved offsets against current topic state
     starting_offset_string = json.dumps(
-        _reconcile_offsets(starting_offset_string, low_offsets, entity._online_topic_name)
+        _reconcile_offsets(
+            starting_offset_string, low_offsets, entity._online_topic_name
+        )
     )
     print(f"startingOffsets: {starting_offset_string}")
 
