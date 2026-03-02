@@ -243,6 +243,8 @@ class Query:
         online: bool = False,
         dataframe_type: str = "default",
         read_options: dict[str, Any] | None = None,
+        start_time: str | int | date | datetime | None = None,
+        end_time: str | int | date | datetime | None = None,
     ) -> (
         pd.DataFrame
         | np.ndarray
@@ -263,6 +265,19 @@ class Query:
             however, you can use the Query API to create Feature Views/Training
             Data containing External Feature Groups.
 
+        Example: Reading with filters and time-based filtering:
+            ```python
+            fg = fs.get_feature_group(...)
+            # Using strings
+            fg.filter(fg.category == "A").read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.filter(fg.category == "A").read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.filter(fg.category == "A").read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
+            ```
+
         Parameters:
             online: Read from online storage. Defaults to `False`.
             dataframe_type: DataFrame type to return. Defaults to `"default"`.
@@ -271,10 +286,37 @@ class Query:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
                 Defaults to `{}`.
+            start_time:
+                Filter data to only include records where the event_time column of the
+                left feature group is greater than start_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string
+                formatted as `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
+                or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time:
+                Filter data to only include records where the event_time column of the
+                left feature group is less than end_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string
+                formatted as `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
+                or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             `DataFrame`: DataFrame depending on the chosen type.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time
+                is specified but no event_time column is defined for the left feature group.
         """
+        if start_time is not None or end_time is not None:
+            if self._left_feature_group.event_time is None:
+                raise FeatureStoreException(
+                    "Cannot filter by start_time/end_time: no event_time column is defined "
+                    "for the left feature group. Set event_time when creating the feature group "
+                    "to enable time-based filtering."
+                )
+            return self._read_with_time_filter(
+                online, dataframe_type, read_options, start_time, end_time
+            )
+
         if not isinstance(online, bool):
             warnings.warn(
                 f"Passed {online} as value to online kwarg for `read` method. The `online` parameter is expected to be a boolean"
@@ -313,6 +355,32 @@ class Query:
             dataframe_type,
             read_options,
             schema,
+        )
+
+    def _read_with_time_filter(
+        self,
+        online: bool,
+        dataframe_type: str,
+        read_options: dict[str, Any] | None,
+        start_time: str | int | date | datetime | None,
+        end_time: str | int | date | datetime | None,
+    ) -> (
+        pd.DataFrame
+        | np.ndarray
+        | list[list[Any]]
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+    ):
+        """Internal method to handle read with time-based filtering on event_time."""
+        event_time_feature = self._left_feature_group.get_feature(
+            self._left_feature_group.event_time
+        )
+        time_filter = util.build_time_filter(event_time_feature, start_time, end_time)
+        filtered_query = self.filter(time_filter)
+        return filtered_query.read(
+            online=online,
+            dataframe_type=dataframe_type,
+            read_options=read_options,
         )
 
     @public

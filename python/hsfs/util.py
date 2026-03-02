@@ -60,7 +60,7 @@ from hsfs.core import feature_group_api
 
 
 if TYPE_CHECKING:
-    from hsfs.constructor import serving_prepared_statement
+    from hsfs.constructor import filter, serving_prepared_statement
 
 
 FeatureStoreEncoder = Encoder
@@ -95,6 +95,35 @@ def parse_features(
     if isinstance(feature_names, list) and len(feature_names) > 0:
         return [validate_feature(feat) for feat in feature_names]
     return []
+
+
+def build_time_filter(
+    event_time_feature: feature.Feature,
+    start_time: Any,
+    end_time: Any,
+) -> filter.Filter | filter.Logic | None:
+    """Build a time filter from start_time and end_time parameters.
+
+    # Arguments
+        event_time_feature: The feature to filter on.
+        start_time: The start time for the filter (exclusive).
+        end_time: The end time for the filter (exclusive).
+
+    # Returns
+        A Filter, Logic, or None if both start_time and end_time are None.
+    """
+    time_filter = None
+    if start_time is not None:
+        time_filter = event_time_feature > start_time
+
+    if end_time is not None:
+        end_filter = event_time_feature < end_time
+        if time_filter is not None:
+            time_filter = time_filter & end_filter
+        else:
+            time_filter = end_filter
+
+    return time_filter
 
 
 def build_serving_keys_from_prepared_statements(
@@ -157,5 +186,6 @@ __all__ = [
     "verify_attribute_key_names",
     "validate_feature",
     "parse_features",
+    "build_time_filter",
     "build_serving_keys_from_prepared_statements",
 ]

@@ -743,3 +743,93 @@ class TestQuery:
         mock_fs_query.register_external.assert_called()
         mock_fs_query.register_delta_tables.assert_called()
         mock_fs_query.register_hudi_tables.assert_called()
+
+
+class TestQueryRead:
+    def test_read_with_start_time_no_event_time_raises(self):
+        # Arrange
+        from unittest import mock
+
+        fg_without_event_time = feature_group.FeatureGroup(
+            name="test_fg_no_event_time",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=12),
+                feature.Feature("value", feature_group_id=12),
+            ],
+            id=12,
+            stream=False,
+            event_time=None,
+        )
+
+        with mock.patch("hsfs.engine.get_type", return_value="python"):
+            q = query.Query(
+                left_feature_group=fg_without_event_time,
+                left_features=fg_without_event_time.features,
+            )
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                q.read(start_time="2024-01-01")
+
+    def test_read_with_end_time_no_event_time_raises(self):
+        # Arrange
+        from unittest import mock
+
+        fg_without_event_time = feature_group.FeatureGroup(
+            name="test_fg_no_event_time",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=12),
+                feature.Feature("value", feature_group_id=12),
+            ],
+            id=12,
+            stream=False,
+            event_time=None,
+        )
+
+        with mock.patch("hsfs.engine.get_type", return_value="python"):
+            q = query.Query(
+                left_feature_group=fg_without_event_time,
+                left_features=fg_without_event_time.features,
+            )
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                q.read(end_time="2024-01-31")
+
+    def test_filter_then_read_with_start_time_no_event_time_raises(self):
+        # Arrange
+        from unittest import mock
+
+        fg_without_event_time = feature_group.FeatureGroup(
+            name="test_fg_no_event_time",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=12),
+                feature.Feature("value", feature_group_id=12),
+            ],
+            id=12,
+            stream=False,
+            event_time=None,
+        )
+
+        with mock.patch("hsfs.engine.get_type", return_value="python"):
+            q = query.Query(
+                left_feature_group=fg_without_event_time,
+                left_features=fg_without_event_time.features,
+            )
+            filtered_q = q.filter(fg_without_event_time.get_feature("value") > 10)
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                filtered_q.read(start_time="2024-01-01")
