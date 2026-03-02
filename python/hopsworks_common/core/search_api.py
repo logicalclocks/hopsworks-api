@@ -20,6 +20,7 @@ import logging
 from typing import Literal, get_args
 from urllib.parse import quote
 
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client
 from hopsworks_common.search_results import (
     FeatureGroupSearchResult,
@@ -36,6 +37,7 @@ DOC_TYPE_ARG = Literal[
 ]
 
 
+@also_available_as("hopsworks.core.search_api.TagSearchFilter")
 class TagSearchFilter:
     """Filter for searching entities by tag.
 
@@ -124,6 +126,7 @@ class KeywordSearchFilter:
         return cls(value=keyword_dict["value"])
 
 
+@public("hopsworks.core.search_api.SearchApi")
 class SearchApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)

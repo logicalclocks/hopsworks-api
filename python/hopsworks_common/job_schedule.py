@@ -18,9 +18,13 @@ import json
 from datetime import datetime, timezone
 
 import humps
+from hopsworks_apigen import also_available_as
 from hopsworks_common import util
 
 
+@also_available_as(
+    "hopsworks.job_schedule.JobSchedule", "hsfs.core.job_schedule.JobSchedule"
+)
 class JobSchedule:
     def __init__(
         self,

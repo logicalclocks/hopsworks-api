@@ -21,12 +21,14 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+@public
 class FeatureTransformationStatistics:
     """Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function."""
 
@@ -80,11 +82,13 @@ class FeatureTransformationStatistics:
             self._kll = extended_statistics.get("kll", None)
             self._unique_values = extended_statistics.get("unique_values", None)
 
+    @public
     @property
     def feature_name(self) -> str:
         """Name of the feature."""
         return self._feature_name
 
+    @public
     @property
     def count(self) -> int | None:
         """Number of values."""
@@ -92,21 +96,25 @@ class FeatureTransformationStatistics:
 
     # for any feature type
 
+    @public
     @property
     def completeness(self) -> float | None:
         """Fraction of non-null values in a column."""
         return self._completeness
 
+    @public
     @property
     def num_non_null_values(self) -> int | None:
         """Number of non-null values."""
         return self._num_non_null_values
 
+    @public
     @property
     def num_null_values(self) -> int | None:
         """Number of null values."""
         return self._num_null_values
 
+    @public
     @property
     def approx_num_distinct_values(self) -> int | None:
         """Approximate number of distinct values."""
@@ -114,31 +122,37 @@ class FeatureTransformationStatistics:
 
     # for numerical features
 
+    @public
     @property
     def min(self) -> float | None:
         """Minimum value."""
         return self._min
 
+    @public
     @property
     def max(self) -> float | None:
         """Maximum value."""
         return self._max
 
+    @public
     @property
     def sum(self) -> float | None:
         """Sum of all feature values."""
         return self._sum
 
+    @public
     @property
     def mean(self) -> float | None:
         """Mean value."""
         return self._mean
 
+    @public
     @property
     def stddev(self) -> float | None:
         """Standard deviation of the feature values."""
         return self._stddev
 
+    @public
     @property
     def percentiles(self) -> Mapping[str, float] | None:
         """Percentiles."""
@@ -146,6 +160,7 @@ class FeatureTransformationStatistics:
 
     # with exact uniqueness
 
+    @public
     @property
     def distinctness(self) -> float | None:
         """Fraction of distinct values of a feature over the number of all its values. Distinct values occur at least once.
@@ -155,6 +170,7 @@ class FeatureTransformationStatistics:
         """
         return self._distinctness
 
+    @public
     @property
     def entropy(self) -> float | None:
         """Entropy is a measure of the level of information contained in an event (feature value) when considering all possible events (all feature values).
@@ -168,6 +184,7 @@ class FeatureTransformationStatistics:
         """
         return self._entropy
 
+    @public
     @property
     def uniqueness(self) -> float | None:
         """Fraction of unique values over the number of all values of a column. Unique values occur exactly once.
@@ -177,26 +194,31 @@ class FeatureTransformationStatistics:
         """
         return self._uniqueness
 
+    @public
     @property
     def exact_num_distinct_values(self) -> int | None:
         """Exact number of distinct values."""
         return self._exact_num_distinct_values
 
+    @public
     @property
     def correlations(self) -> dict | None:
         """Correlations of feature values."""
         return self._correlations
 
+    @public
     @property
     def histogram(self) -> dict | None:
         """Histogram of feature values."""
         return self._histogram
 
+    @public
     @property
     def kll(self) -> dict | None:
         """KLL of feature values."""
         return self._kll
 
+    @public
     @property
     def unique_values(self) -> dict | None:
         """Number of Unique Values."""
@@ -210,6 +232,7 @@ class FeatureTransformationStatistics:
         return cls(**json_decamelized)
 
 
+@public
 class TransformationStatistics:
     """Class that stores feature transformation statistics of all features that require training dataset statistics in a transformation function.
 

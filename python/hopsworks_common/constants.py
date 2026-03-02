@@ -28,7 +28,7 @@ class Default:
         return isinstance(other, Default)
 
 
-DEFAULT = Default()
+DEFAULT = Default()  # TODO: figure out what to do with it
 
 
 class JOBS:
@@ -292,4 +292,5 @@ class SCALING_CONFIG:
 
 class CLIENT:
     """Constants for Hopsworks client configuration."""
+
     CERT_FOLDER_DEFAULT = "/tmp"

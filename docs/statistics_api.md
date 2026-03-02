@@ -1,3 +1,0 @@
-# Statistics
-
-::: hsfs.statistics.Statistics

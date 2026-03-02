@@ -774,6 +774,61 @@ class TestDeployment:
         mock_util_get_hostname_replaced_url.assert_called_once_with(path)
         mock_client_get_instance.assert_called_once()
 
+    # get endpoint url
+
+    def test_get_endpoint_url_delegates_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_predictor_get_endpoint_url = mocker.patch.object(
+            p, "get_endpoint_url", return_value="https://example.com/v1/project/name"
+        )
+
+        # Act
+        url = d.get_endpoint_url()
+
+        # Assert
+        assert url == "https://example.com/v1/project/name"
+        mock_predictor_get_endpoint_url.assert_called_once()
+
+    # get openai url
+
+    def test_get_openai_url_delegates_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_predictor_get_openai_url = mocker.patch.object(
+            p,
+            "get_openai_url",
+            return_value="https://example.com/v1/project/name/v1",
+        )
+
+        # Act
+        url = d.get_openai_url()
+
+        # Assert
+        assert url == "https://example.com/v1/project/name/v1"
+        mock_predictor_get_openai_url.assert_called_once()
+
+    # get inference url
+
+    def test_get_inference_url_delegates_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_predictor_get_inference_url = mocker.patch.object(
+            p,
+            "get_inference_url",
+            return_value="https://example.com/v1/project/name/v1/models/name:predict",
+        )
+
+        # Act
+        url = d.get_inference_url()
+
+        # Assert
+        assert url == "https://example.com/v1/project/name/v1/models/name:predict"
+        mock_predictor_get_inference_url.assert_called_once()
+
     # auxiliary methods
 
     def _get_dummy_predictor(self, mocker, backend_fixtures):

@@ -24,6 +24,7 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
@@ -99,6 +100,10 @@ def _handle_opensearch_exception(func):
     return error_handler_wrapper
 
 
+@also_available_as(
+    "hopsworks.core.opensearch.OpensearchRequestOption",
+    "hsfs.core.opensearch.OpensearchRequestOption",
+)
 class OpensearchRequestOption:
     DEFAULT_OPTION_MAP = {
         "timeout": "30s",
@@ -290,6 +295,10 @@ class ProjectOpenSearchClient:
         return self._is_cluster_client
 
 
+@also_available_as(
+    "hopsworks.core.opensearch.OpenSearchClientSingleton",
+    "hsfs.core.opensearch.OpenSearchClientSingleton",
+)
 class OpenSearchClientSingleton:
     """Thread-safe singleton for OpenSearch client reuse.
 

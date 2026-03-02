@@ -545,36 +545,23 @@ class Engine:
                     "No duplicate records found. Proceeding with Delta write."
                 )
 
-            if (
-                isinstance(feature_group, fg_mod.ExternalFeatureGroup)
-                and feature_group.online_enabled
-            ) or feature_group.stream:
+            # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
+            # FeatureGroups with stream=True use the same batch insert logic as non-stream
+            # feature groups in spark; streaming ingestion is handled by save_stream_dataframe.
+            if not isinstance(
+                feature_group, fg_mod.ExternalFeatureGroup
+            ) and storage in [None, "offline"]:
+                self._save_offline_dataframe(
+                    feature_group,
+                    dataframe,
+                    operation,
+                    offline_write_options,
+                    validation_id,
+                )
+            if (storage in [None, "online"]) and online_enabled:
                 self._save_online_dataframe(
                     feature_group, dataframe, online_write_options
                 )
-            else:
-                if storage == "offline" or not online_enabled:
-                    self._save_offline_dataframe(
-                        feature_group,
-                        dataframe,
-                        operation,
-                        offline_write_options,
-                        validation_id,
-                    )
-                elif storage == "online":
-                    self._save_online_dataframe(
-                        feature_group, dataframe, online_write_options
-                    )
-                elif online_enabled and storage is None:
-                    self._save_offline_dataframe(
-                        feature_group,
-                        dataframe,
-                        operation,
-                        offline_write_options,
-                    )
-                    self._save_online_dataframe(
-                        feature_group, dataframe, online_write_options
-                    )
         except Exception as e:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
 
@@ -678,7 +665,13 @@ class Engine:
 
         (
             serialized_df.withColumn(
-                "headers", self._get_headers(feature_group, dataframe.count())
+                "headers",
+                self._get_headers(
+                    feature_group,
+                    None
+                    if write_options.get("disable_online_ingestion_count", False)
+                    else dataframe.count(),
+                ),
             )
             .write.format(self.KAFKA_FORMAT)
             .options(**write_options)

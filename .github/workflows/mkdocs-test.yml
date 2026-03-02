@@ -3,22 +3,22 @@ name: mkdocs-test
 on: pull_request
 
 jobs:
-  mkdocs:
+  test-docs-build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout the API repo
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@v21
+      - name: Checkout the docs repo
+        uses: actions/checkout@v4
         with:
-          globs: '**/*.md'
-
-      - name: set dev version
-        working-directory: java
-        run: echo "DEV_VERSION=$(mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version | grep -Ev 'Download|INFO|WARNING')" >> $GITHUB_ENV
+          repository: logicalclocks/logicalclocks.github.io
+          ref: ${{ github.base_ref }}
+          fetch-depth: 0
+          path: logicalclocks.github.io
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -36,7 +36,7 @@ jobs:
 
       - name: Build javadoc documentation
         working-directory: java
-        run: mvn clean install javadoc:javadoc javadoc:aggregate -DskipTests && cp -r target/site/apidocs ../docs/javadoc
+        run: mvn clean install javadoc:javadoc javadoc:aggregate -DskipTests && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
 
       - uses: actions/setup-python@v5
         with:
@@ -48,8 +48,35 @@ jobs:
           activate-environment: true
           working-directory: python
 
-      - name: Install dependencies
-        run: uv sync --extra dev --group docs --project python
+      - name: Install Python API dependencies
+        run: uv sync --extra dev --project python
+
+      - name: Install docs Python dependencies
+        run: uv pip install -r logicalclocks.github.io/requirements-docs.txt
+
+      - name: Install docs Ubuntu dependencies
+        run: sudo apt update && sudo apt-get install -y libxml2-dev libxslt-dev
+
+      - name: Check for broken links
+        working-directory: logicalclocks.github.io
+        run: |
+          # run the server
+          mkdocs serve -q &
+          SERVER_PID=$!
+          echo "mk server in PID $SERVER_PID"
+          # Give enough time for deployment (2min max)
+          for run in {1..120}; do
+            if curl --output /dev/null --silent --head --fail http://127.0.0.1:8000/; then
+              break
+            fi
+            sleep 1
+          done
+          echo "Launching linkchecker"
+          # Ignore dejavu.css for now, it is a JDK bug.
+          linkchecker --no-warnings --no-status http://127.0.0.1:8000/ --ignore-url http://127.0.0.1:8000/javadoc/resources/fonts/dejavu.css
+
+          # If ok just kill the server
+          kill -9 $SERVER_PID
 
       - name: Setup git for mike
         run: |
@@ -57,4 +84,5 @@ jobs:
           git config --global user.email mike@docs.hopsworks.ai
 
       - name: Generate the docs with mike
-        run: mike deploy ${{ env.DEV_VERSION }} dev -u
+        working-directory: logicalclocks.github.io
+        run: mike deploy test-version

@@ -1617,7 +1617,7 @@ class TestFeatureViewEngine:
         mock_drop_helper_columns = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._drop_helper_columns"
         )
-        mock_sc_read = mocker.patch("hsfs.storage_connector.StorageConnector.read")
+        mock_sc_read = mocker.patch("hsfs.storage_connector.HopsFSConnector.read")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -1659,7 +1659,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_sc_read = mocker.patch(
-            "hsfs.storage_connector.StorageConnector.read",
+            "hsfs.storage_connector.HopsFSConnector.read",
             side_effect=FileNotFoundError(),
         )
 

@@ -15,9 +15,11 @@
 #
 
 import humps
+from hopsworks_apigen import also_available_as
 from hopsworks_common import constants, git_repo
 
 
+@also_available_as("hopsworks.git_op_execution.GitOpExecution")
 class GitOpExecution:
     def __init__(
         self,

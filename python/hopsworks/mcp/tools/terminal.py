@@ -69,7 +69,9 @@ class TerminalTools:
             cwd=cwd,
             text=True,
             bufsize=1,
-            env={"PROMPT_COMMAND": f'python -c "import json, os; print(json.dumps(dict(os.environ)))" > {envdir}/env.json'},
+            env={
+                "PROMPT_COMMAND": f'python -c "import json, os; print(json.dumps(dict(os.environ)))" > {envdir}/env.json'
+            },
         )
 
         output_queue = Queue()
