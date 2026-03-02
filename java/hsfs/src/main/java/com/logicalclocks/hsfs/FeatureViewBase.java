@@ -1482,7 +1482,30 @@ public abstract class FeatureViewBase<T extends FeatureViewBase, T3 extends Feat
   public void delete() throws FeatureStoreException, IOException {
     LOGGER.warn("JobWarning: All jobs associated to feature view `" + name + "`, version `"
         + version + "` will be removed.");
-    featureViewApi.delete(this.featureStore, this.name, this.version);
+    featureViewApi.delete(this.featureStore, this.name, this.version, false);
+  }
+  
+  /**
+   * Delete current feature view, all associated metadata and training data.
+   *
+   * <pre>
+   * {@code
+   *        // get feature store handle
+   *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
+   *        // get feature view handle
+   *        FeatureView fv = fs.getFeatureView("fv_name", 1);
+   *        // delete feature view
+   *        fv.delete();
+   * }
+   * </pre>
+   *
+   * @throws FeatureStoreException In case client is not connected to Hopsworks.
+   * @throws IOException Generic IO exception.
+   */
+  public void delete(Boolean force) throws FeatureStoreException, IOException {
+    LOGGER.warn("JobWarning: All jobs associated to feature view `" + name + "`, version `"
+        + version + "` will be removed.");
+    featureViewApi.delete(this.featureStore, this.name, this.version, force);
   }
 
   /**
