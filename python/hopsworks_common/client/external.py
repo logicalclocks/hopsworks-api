@@ -20,6 +20,7 @@ import base64
 import contextlib
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import hopsworks_common.client
 import requests
@@ -27,6 +28,10 @@ from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import CLIENT
+
+
+if TYPE_CHECKING:
+    from urllib.parse import ParseResult
 
 
 with contextlib.suppress(ImportError):
@@ -388,8 +393,15 @@ class Client(base.Client):
         with contextlib.suppress(OSError):
             os.remove(file_path)
 
-    def replace_public_host(self, url):
-        """No need to replace as we are already in external client."""
+    def replace_public_host(self, url: ParseResult) -> ParseResult:
+        """No need to replace as we are already in external client.
+
+        Parameters:
+            url: The URL to replace the host in.
+
+        Returns:
+            The URL as is.
+        """
         return url
 
     def _is_external(self):

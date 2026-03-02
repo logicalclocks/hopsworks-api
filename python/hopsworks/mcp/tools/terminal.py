@@ -21,8 +21,13 @@ import tempfile
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
+from typing import TYPE_CHECKING
 
 from hopsworks.mcp.utils.tags import TAGS
+
+
+if TYPE_CHECKING:
+    from fastmcp import FastMCP
 
 
 def enqueue_output(out, queue):
@@ -35,7 +40,7 @@ def enqueue_output(out, queue):
 class TerminalTools:
     """Tools implementing shell and terminal access to Hopsworks."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         """Initialize the TerminalTools with the MCP server instance.
 
         Parameters:

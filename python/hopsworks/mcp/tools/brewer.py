@@ -19,13 +19,22 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from fastmcp import Context  # noqa: TC002
+from fastmcp import (
+    Context,  # noqa: TC002
+)
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.http import _current_http_request
 from filelock import AsyncFileLock
 from hopsworks.mcp.utils.tags import TAGS
 from pydantic import BaseModel
+
+
+if TYPE_CHECKING:
+    from fastmcp import (
+        FastMCP,
+    )
 
 
 class ExecutionResult(BaseModel):
@@ -34,7 +43,7 @@ class ExecutionResult(BaseModel):
 
 
 class BrewerTools:
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         """Initialize the BrewerTools with the MCP server instance.
 
         Parameters:

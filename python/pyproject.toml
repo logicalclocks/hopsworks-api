@@ -79,7 +79,8 @@ dev-no-opt = [
     "hopsworks[python]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
-    "ruff==0.14.8",
+    "ruff==0.15.4",
+    "docsig==0.79.0; python_version >= '3.10'",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas>=2.2.0",
@@ -90,7 +91,8 @@ dev-pandas1 = [
     "hopsworks[python]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
-    "ruff==0.14.8",
+    "ruff==0.15.4",
+    "docsig==0.79.0; python_version >= '3.10'",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas<=1.5.3; python_version < '3.12'",
@@ -206,6 +208,7 @@ select = [
     "D2",
     "D3",
     "D4",
+    "DOC",
     "INP",
     "UP",
     "FA",
@@ -243,3 +246,12 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+
+
+[tool.docsig]
+disable = [
+    "SIG101",
+    "SIG102",
+    "SIG501",
+]
+ignore_kwargs = true

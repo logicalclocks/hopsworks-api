@@ -124,7 +124,7 @@ class Connection:
             The directory to store retrieved HopsFS certificates.
             Only required when running without a Spark environment.
         api_key_file: Path to a file containing the API Key.
-        api_key_value
+        api_key_value:
             API Key as string.
             If provided, `api_key_file` is ignored; however, this should be used with care, especially if the used notebook or job script is accessible by multiple parties.
 

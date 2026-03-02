@@ -113,8 +113,15 @@ class ApiException(OpenApiException):
 
 
 @also_available_as("hsml.client.istio.grpc.exceptions.render_path")
-def render_path(path_to_item):
-    """Returns a string representation of a path."""
+def render_path(path_to_item: list) -> str:
+    """Returns a string representation of a path.
+
+    Parameters:
+        path_to_item: A list of path parts.
+
+    Returns:
+        A string representation of the path.
+    """
     result = ""
     for pth in path_to_item:
         if isinstance(pth, six.integer_types):

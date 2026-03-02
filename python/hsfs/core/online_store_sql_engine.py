@@ -253,10 +253,11 @@ class OnlineStoreSqlClient:
             if join_index in self._feature_name_order_by_psp:
                 self.serving_key_by_serving_index[join_index] = sorted(
                     self.serving_key_by_serving_index[join_index],
-                    key=lambda _sk,
-                    join_index=join_index: self.feature_name_order_by_psp[
-                        join_index
-                    ].get(_sk.feature_name, 0),
+                    key=lambda _sk, join_index=join_index: (
+                        self.feature_name_order_by_psp[join_index].get(
+                            _sk.feature_name, 0
+                        )
+                    ),
                 )
 
     def _parametrize_prepared_statements(

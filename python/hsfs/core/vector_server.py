@@ -1500,18 +1500,20 @@ class VectorServer:
             _logger.debug("Fast Avro not found, using avro for deserialization.")
         return {
             f_name: (
-                lambda feature_value, avro_schema=schema: avro_schema.read(
-                    BinaryDecoder(
-                        BytesIO(
-                            feature_value
-                            if isinstance(feature_value, bytes)
-                            else b64decode(feature_value)
+                lambda feature_value, avro_schema=schema: (
+                    avro_schema.read(
+                        BinaryDecoder(
+                            BytesIO(
+                                feature_value
+                                if isinstance(feature_value, bytes)
+                                else b64decode(feature_value)
+                            )
                         )
                     )
+                    # embedded features are deserialized already but not complex features stored in Opensearch
+                    if (isinstance(feature_value, (str, bytes)))
+                    else feature_value
                 )
-                # embedded features are deserialized already but not complex features stored in Opensearch
-                if (isinstance(feature_value, (str, bytes)))
-                else feature_value
             )
             for (f_name, schema) in complex_feature_schemas.items()
         }

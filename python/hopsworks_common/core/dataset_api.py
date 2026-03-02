@@ -878,7 +878,9 @@ class DatasetApi:
                 return False
 
     @public
-    def unzip(self, remote_path: str, block: bool = False, timeout: int | None = 120) -> bool:
+    def unzip(
+        self, remote_path: str, block: bool = False, timeout: int | None = 120
+    ) -> bool:
         """Unzip an archive in the dataset.
 
         Parameters:

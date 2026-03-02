@@ -15,17 +15,27 @@
 #
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import hopsworks
-from fastmcp import Context  # noqa: TC002
+from fastmcp import (
+    Context,  # noqa: TC002
+)
 from hopsworks.mcp.models.job import Jobs, to_base_model_job
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
 
 
+if TYPE_CHECKING:
+    from fastmcp import (
+        FastMCP,
+    )
+
+
 class JobTools:
     """Tools for managing jobs in Hopsworks."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         """Initialize the JobTools with the MCP server instance.
 
         Parameters:
@@ -37,11 +47,14 @@ class JobTools:
         )
         self.mcp.tool(tags=[TAGS.JOB, TAGS.READ, TAGS.STATELESS])(self.get_jobs)
 
-    async def get_jobs_in_current_project(self, ctx: Context = None):
+    async def get_jobs_in_current_project(self, ctx: Context = None) -> Jobs:
         """Get the jobs for the current project.
 
+        Parameters:
+            ctx: The MCP context, provided automatically.
+
         Returns:
-            Jobs: List of jobs in the current project.
+            List of jobs in the current project.
         """
         if ctx:
             await ctx.info("Retrieving jobs for the current project...")
@@ -55,7 +68,7 @@ class JobTools:
             total=jobs["count"] if "count" in jobs else len(jobs),
         )
 
-    async def get_jobs(self, project_name: str, ctx: Context | None = None):
+    async def get_jobs(self, project_name: str, ctx: Context | None = None) -> Jobs:
         """Get the jobs for a specific project.
 
         Parameters:
@@ -63,7 +76,7 @@ class JobTools:
             ctx: The MCP context, provided automatically.
 
         Returns:
-            Jobs: List of jobs in the specified project.
+            List of jobs in the specified project.
         """
         if ctx:
             await ctx.info(f"Retrieving jobs for project '{project_name}'...")

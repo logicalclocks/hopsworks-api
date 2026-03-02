@@ -326,15 +326,17 @@ def cast_pandas_column_to_offline_type(
         return pd.to_datetime(feature_column, utc=True).dt.date
     if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
         return feature_column.apply(
-            lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (
-                x is not None
-                and (
-                    isinstance(x, (list, dict, np.ndarray))
-                    or (not pd.isnull(x) and x != "")
+            lambda x: (
+                (ast.literal_eval(x) if isinstance(x, str) else x)
+                if (
+                    x is not None
+                    and (
+                        isinstance(x, (list, dict, np.ndarray))
+                        or (not pd.isnull(x) and x != "")
+                    )
                 )
+                else None
             )
-            else None
         )
     if offline_type == "string":
         return feature_column.apply(lambda x: str(x) if x is not None else None)
@@ -359,9 +361,11 @@ def cast_polars_column_to_offline_type(
         return feature_column.cast(pl.Date)
     if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
         return feature_column.map_elements(
-            lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (x is not None and x != "")
-            else None
+            lambda x: (
+                (ast.literal_eval(x) if isinstance(x, str) else x)
+                if (x is not None and x != "")
+                else None
+            )
         )
     if offline_type == "string":
         return feature_column.map_elements(lambda x: str(x) if x is not None else None)
@@ -397,9 +401,11 @@ def cast_column_to_online_type(
         return feature_column.apply(lambda x: str(x) if x is not None else None)
     if online_type == "boolean":
         return feature_column.apply(
-            lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (x is not None and x != "")
-            else None
+            lambda x: (
+                (ast.literal_eval(x) if isinstance(x, str) else x)
+                if (x is not None and x != "")
+                else None
+            )
         )
     if online_type.startswith("decimal"):
         return feature_column.apply(

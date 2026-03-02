@@ -39,8 +39,12 @@ class EmailConfig:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self):
-        """Return the email config as a dictionary."""
+    def to_dict(self) -> dict:
+        """Return the email config as a dictionary.
+
+        Returns:
+            A dictionary representation of the alert.
+        """
         return {
             "to": self._to,
             "sendResolved": self._send_resolved,
@@ -103,8 +107,12 @@ class SlackConfig:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self):
-        """Return the slack config as a dictionary."""
+    def to_dict(self) -> dict:
+        """Return the slack config as a dictionary.
+
+        Returns:
+            A dictionary representation of the alert.
+        """
         return {
             "channel": self._channel,
             "sendResolved": self._send_resolved,

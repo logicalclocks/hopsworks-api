@@ -265,7 +265,9 @@ class FlinkCluster:
 
     @public
     @usage.method_logger
-    def submit_job(self, jar_id: str, main_class: str, job_arguments: str | None = None) -> str:
+    def submit_job(
+        self, jar_id: str, main_class: str, job_arguments: str | None = None
+    ) -> str:
         """Submit job using the specific jar file uploaded to the flink cluster.
 
         ```python

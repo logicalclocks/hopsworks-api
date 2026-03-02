@@ -15,7 +15,7 @@
 #
 
 import hopsworks
-from fastmcp import Context
+from fastmcp import Context, FastMCP
 from hopsworks.mcp.models.project import Project, Projects
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
@@ -24,7 +24,7 @@ from hopsworks_common import client
 class ProjectResources:
     """Resources for Hopsworks projects."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         """Initialize project resources.
 
         Parameters:
@@ -50,6 +50,9 @@ class ProjectResources:
     async def list_projects(self, ctx: Context = None) -> Projects:
         """List all projects.
 
+        Parameters:
+            ctx: The MCP context, provided automatically.
+
         Returns:
             Projects: A list of projects accessible by the user or an error message.
         """
@@ -73,6 +76,9 @@ class ProjectResources:
 
     async def get_current_project_details(self, ctx: Context = None) -> Project:
         """Get details of the current project.
+
+        Parameters:
+            ctx: The MCP context, provided automatically.
 
         Returns:
             Project: The current project details or an error message.

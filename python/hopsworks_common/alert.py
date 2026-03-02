@@ -83,8 +83,12 @@ class Alert:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self):
-        """Return the alert as a dictionary."""
+    def to_dict(self) -> dict:
+        """Return the alert as a dictionary.
+
+        Returns:
+            A dictionary representation of the alert.
+        """
         return {
             "id": self._id,
             "status": self._status,

@@ -421,7 +421,11 @@ class FeaturestoreSearchResult:
         return self._features_total
 
     def json(self) -> dict:
-        """Convert to JSON-serializable dictionary."""
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            JSONDictionary representation of the object.
+        """
         return {
             "featuregroups": [fg.json() for fg in self._feature_groups],
             "featuregroupsFrom": self._feature_groups_offset,

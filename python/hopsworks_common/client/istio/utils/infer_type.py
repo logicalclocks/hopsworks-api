@@ -51,7 +51,7 @@ def raise_error(msg):
     raise InferenceServerException(msg=msg) from None
 
 
-def serialize_byte_tensor(input_tensor: np.array) -> np.array:
+def serialize_byte_tensor(input_tensor: np.ndarray) -> np.ndarray:
     """Serializes a bytes tensor into a flat numpy array of length prepended bytes.
 
     The numpy array should use dtype of np.object. For np.bytes,
@@ -59,8 +59,7 @@ def serialize_byte_tensor(input_tensor: np.array) -> np.array:
     of this it should be avoided.
 
     Parameters:
-        input_tensor : np.array
-            The bytes tensor to serialize.
+        input_tensor: The bytes tensor to serialize.
 
     Returns:
         The 1-D numpy array of type uint8 containing the serialized bytes in row-major form.
@@ -259,7 +258,7 @@ class InferInput:
         np_array = np.array(self._data, dtype=dtype)
         return np_array.reshape(self._shape)
 
-    def set_data_from_numpy(self, input_tensor, binary_data: bool = True):
+    def set_data_from_numpy(self, input_tensor: np.ndarray, binary_data: bool = True):
         """Set the tensor data from the specified numpy array for input associated with this object.
 
         Parameters:
@@ -275,7 +274,7 @@ class InferInput:
             InferenceServerException:
                 If failed to set data for the tensor.
         """
-        if not isinstance(input_tensor, (np.ndarray,)):
+        if not isinstance(input_tensor, np.ndarray):
             raise_error("input_tensor must be a numpy array")
 
         dtype = from_np_dtype(input_tensor.dtype)
@@ -449,9 +448,7 @@ class InferRequest:
                 if not isinstance(infer_input.data, list):
                     raise InvalidInput("input data is not a List")
                 infer_input_dict["contents"] = {}
-                data_key = GRPC_CONTENT_DATATYPE_MAPPINGS.get(
-                    infer_input.datatype, None
-                )
+                data_key = GRPC_CONTENT_DATATYPE_MAPPINGS.get(infer_input.datatype)
                 if data_key is not None:
                     infer_input._data = [
                         bytes(val, "utf-8") if isinstance(val, str) else val
@@ -583,12 +580,12 @@ class InferOutput:
         np_array = np.array(self._data, dtype=dtype)
         return np_array.reshape(self._shape)
 
-    def set_data_from_numpy(self, input_tensor, binary_data: bool = True):
+    def set_data_from_numpy(self, input_tensor: np.ndarray, binary_data: bool = True):
         """Set the tensor data from the specified numpy array for input associated with this object.
 
         Parameters:
             input_tensor: The tensor data in numpy array format
-            binary_data
+            binary_data:
                 Indicates whether to set data for the input in binary format
                 or explicit tensor within JSON. The default value is True,
                 which means the data will be delivered as binary data in the
@@ -597,7 +594,7 @@ class InferOutput:
         Raises:
             InferenceServerException: If failed to set data for the tensor.
         """
-        if not isinstance(input_tensor, (np.ndarray,)):
+        if not isinstance(input_tensor, np.ndarray):
             raise_error("input_tensor must be a numpy array")
 
         dtype = from_np_dtype(input_tensor.dtype)
@@ -773,9 +770,7 @@ class InferResponse:
                 if not isinstance(infer_output.data, list):
                     raise InvalidInput("output data is not a List")
                 infer_output_dict["contents"] = {}
-                data_key = GRPC_CONTENT_DATATYPE_MAPPINGS.get(
-                    infer_output.datatype, None
-                )
+                data_key = GRPC_CONTENT_DATATYPE_MAPPINGS.get(infer_output.datatype)
                 if data_key is not None:
                     infer_output._data = [
                         bytes(val, "utf-8") if isinstance(val, str) else val

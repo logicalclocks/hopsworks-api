@@ -17,16 +17,26 @@
 
 from __future__ import annotations
 
-from fastmcp import Context  # noqa: TC002
+from typing import TYPE_CHECKING
+
+from fastmcp import (
+    Context,  # noqa: TC002
+)
 from hopsworks.mcp.models.project import Project
 from hopsworks.mcp.utils.auth import login as hw_login
 from hopsworks.mcp.utils.tags import TAGS
 
 
+if TYPE_CHECKING:
+    from fastmcp import (
+        FastMCP,
+    )
+
+
 class AuthTools:
     """Tools for authenticating with Hopsworks."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         """Initialize auth tools.
 
         Parameters:

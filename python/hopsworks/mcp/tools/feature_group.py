@@ -15,16 +15,26 @@
 #
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import hopsworks
-from fastmcp import Context  # noqa: TC002
+from fastmcp import (
+    Context,  # noqa: TC002
+)
 from hopsworks.mcp.models.feature_group import Feature, FeatureGroup
 from hopsworks.mcp.utils.tags import TAGS
+
+
+if TYPE_CHECKING:
+    from fastmcp import (
+        FastMCP,
+    )
 
 
 class FeatureGroupTools:
     """Tools for managing feature groups in Hopsworks MCP."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         self.mcp = mcp
         self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
             self.get_feature_groups

@@ -30,28 +30,38 @@ jobs:
               - 'python/tests/**/*.py'
               - '!python/tests/test_helpers/transformation_test_helper.py'
 
-      - name: install deps
-        run: pip install ruff==0.14.8
+      - name: install ruff
+        run: pip install ruff==0.15.4
 
       - name: ruff on python files
         if: steps.get-changed-files.outputs.src_any_changed == 'true'
         env:
           SRC_ALL_CHANGED_FILES:
             ${{ steps.get-changed-files.outputs.src_all_changed_files }}
-        run: ruff check --output-format=github $SRC_ALL_CHANGED_FILES
+        run: ruff check --config python/pyproject.toml --output-format=github $SRC_ALL_CHANGED_FILES
 
       - name: ruff on test files
         if: steps.get-changed-files.outputs.test_any_changed == 'true'
         env:
           TEST_ALL_CHANGED_FILES:
             ${{ steps.get-changed-files.outputs.test_all_changed_files }}
-        run: ruff check --output-format=github $TEST_ALL_CHANGED_FILES
+        run: ruff check --config python/pyproject.toml --output-format=github $TEST_ALL_CHANGED_FILES
 
       - name: ruff format --check $ALL_CHANGED_FILES
         env:
           ALL_CHANGED_FILES:
             ${{ steps.get-changed-files.outputs.all_changed_files }}
-        run: ruff format $ALL_CHANGED_FILES
+        run: ruff format --config python/pyproject.toml --check $ALL_CHANGED_FILES
+
+      - name: install pydoclint
+        run: pip install pydoclint==0.8.3
+
+      - name: pydoclint
+        if: steps.get-changed-files.outputs.src_any_changed == 'true'
+        env:
+          SRC_ALL_CHANGED_FILES:
+            ${{ steps.get-changed-files.outputs.src_all_changed_files }}
+        run: pydoclint --config python/pyproject.toml -q $SRC_ALL_CHANGED_FILES
 
   unit_tests:
     name: Unit Tests

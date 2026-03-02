@@ -139,6 +139,7 @@ class Client:
             data: The payload as a python dictionary to be sent as json, defaults to None
             stream: Set if response should be a stream, defaults to False
             files: dictionary for multipart encoding upload
+            with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
 
         Returns:
             Response json
@@ -260,7 +261,7 @@ class Client:
         with Path(client_key_path).open("w") as f:
             f.write(client_key)
 
-    def _bytes_to_pem_str(self, der_bytes, pem_type):
+    def _bytes_to_pem_str(self, der_bytes: bytes, pem_type: str) -> str:
         """Utility function for creating PEM files.
 
         Parameters:

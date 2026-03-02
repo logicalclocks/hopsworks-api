@@ -1082,7 +1082,9 @@ class TrainingDataset(TrainingDatasetBase):
         self._vector_server.init_serving(self, batch, external)
 
     @public
-    def get_serving_vector(self, entry: dict[str, Any], external: bool | None = None) -> list:
+    def get_serving_vector(
+        self, entry: dict[str, Any], external: bool | None = None
+    ) -> list:
         """Returns assembled serving vector from online feature store.
 
         Parameters:
