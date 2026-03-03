@@ -1957,7 +1957,7 @@ class FeatureGroupBase:
             tf.hopsworks_udf
             for tf in self.__getattribute__("_transformation_functions")
             if tf.hopsworks_udf.function_name == name
-        ]
+        ] if hasattr(self, "_transformation_functions") else []
         if len(feature) == 1:
             return feature[0]
         if len(transformations) == 1:
