@@ -30,28 +30,36 @@ jobs:
               - 'python/tests/**/*.py'
               - '!python/tests/test_helpers/transformation_test_helper.py'
 
-      - name: install deps
-        run: pip install ruff==0.14.8
+      - name: install ruff
+        run: pip install ruff==0.15.4
 
       - name: ruff on python files
         if: steps.get-changed-files.outputs.src_any_changed == 'true'
         env:
           SRC_ALL_CHANGED_FILES:
             ${{ steps.get-changed-files.outputs.src_all_changed_files }}
-        run: ruff check --output-format=github $SRC_ALL_CHANGED_FILES
+        run: ruff check --config python/pyproject.toml --output-format=github $SRC_ALL_CHANGED_FILES
 
       - name: ruff on test files
         if: steps.get-changed-files.outputs.test_any_changed == 'true'
         env:
           TEST_ALL_CHANGED_FILES:
             ${{ steps.get-changed-files.outputs.test_all_changed_files }}
-        run: ruff check --output-format=github $TEST_ALL_CHANGED_FILES
+        run: ruff check --config python/pyproject.toml --output-format=github $TEST_ALL_CHANGED_FILES
 
       - name: ruff format --check $ALL_CHANGED_FILES
         env:
           ALL_CHANGED_FILES:
             ${{ steps.get-changed-files.outputs.all_changed_files }}
-        run: ruff format $ALL_CHANGED_FILES
+        run: ruff format --config python/pyproject.toml --check $ALL_CHANGED_FILES
+
+      - name: install docsig
+        run: pip install docsig==0.79.0
+
+      - name: docsig
+        if: steps.get-changed-files.outputs.src_any_changed == 'true'
+        working-directory: python
+        run: docsig hopsworks_common hopsworks hsfs hsml
 
   unit_tests:
     name: Unit Tests

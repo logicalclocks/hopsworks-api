@@ -15,13 +15,14 @@
 #
 
 import json
+from typing import Literal
 
 import humps
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@also_available_as("hopsworks.git_file_status.GitFileStatus")
+@public("hopsworks.git_file_status.GitFileStatus")
 class GitFileStatus:
     def __init__(
         self,
@@ -43,26 +44,31 @@ class GitFileStatus:
             return [cls(**file_status) for file_status in json_decamelized["items"]]
         return cls(**json_decamelized)
 
+    @public
     @property
-    def file(self):
+    def file(self) -> str:
         """Path to the file."""
         return self._file
 
+    @public
     @property
-    def status(self):
+    def status(self) -> Literal[" ", "?", "M", "A", "D", "R", "C", "U"]:
         """Status of the file.
 
-        Unmodified         | StatusCode = ' '
-        Untracked          | StatusCode = '?'
-        Modified           | StatusCode = 'M'
-        Added              | StatusCode = 'A'
-        Deleted            | StatusCode = 'D'
-        Renamed            | StatusCode = 'R'
-        Copied             | StatusCode = 'C'
-        UpdatedButUnmerged | StatusCode = 'U'
+        The status is represented by a single character, [according](https://git-scm.com/docs/git-status#_output) to `git status`:
+
+        | Unmodified           | `' '` |
+        | Untracked            | `'?'` |
+        | Modified             | `'M'` |
+        | Added                | `'A'` |
+        | Deleted              | `'D'` |
+        | Renamed              | `'R'` |
+        | Copied               | `'C'` |
+        | Updated but unmerged | `'U'` |
         """
         return self._status
 
+    @public
     @property
     def extra(self):
         """Extra contains additional information, such as the previous name in a rename."""

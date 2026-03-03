@@ -357,6 +357,9 @@ class KafkaApi:
         producer = Producer(kafka_conf)
         ```
 
+        Parameters:
+            internal_kafka: Whether to get the configuration for internal or external kafka brokers.
+
         Returns:
             The kafka configuration.
 

@@ -56,11 +56,11 @@ class OnlineIngestion:
         """Initialize an OnlineIngestion object.
 
         Parameters:
-            id (Optional[int]): The unique identifier for the ingestion operation.
-            num_entries (Optional[int]): The total number of entries to ingest.
-            results (Union[List[OnlineIngestionResult], List[Dict[str, Any]]], optional):
+            id: The unique identifier for the ingestion operation.
+            num_entries: The total number of entries to ingest.
+            results:
                 List of ingestion results or their JSON representations.
-            feature_group (FeatureGroup, optional): The feature group associated with this ingestion.
+            feature_group: The feature group associated with this ingestion.
         """
         self._id = id
         self._num_entries = num_entries  # specified when inserting (optional since might not be specified when using streaming)
@@ -87,8 +87,8 @@ class OnlineIngestion:
         """Create an OnlineIngestion object from a JSON response.
 
         Parameters:
-            json_dict (Dict[str, Any]): The JSON dictionary from the API response.
-            feature_group (FeatureGroup, optional): The feature group associated with this ingestion.
+            json_dict: The JSON dictionary from the API response.
+            feature_group: The feature group associated with this ingestion.
 
         Returns:
             OnlineIngestion: The created OnlineIngestion object, or a list of them if multiple items are present.
@@ -134,21 +134,13 @@ class OnlineIngestion:
     @public
     @property
     def id(self) -> int | None:
-        """Get the unique identifier for the ingestion operation.
-
-        Returns:
-            Optional[int]: The ingestion ID.
-        """
+        """Get the unique identifier for the ingestion operation."""
         return self._id
 
     @public
     @property
     def num_entries(self) -> int | None:
-        """Get the total number of entries to ingest.
-
-        Returns:
-            Optional[int]: The number of entries.
-        """
+        """Get the total number of entries to ingest."""
         return self._num_entries
 
     @num_entries.setter
@@ -156,7 +148,7 @@ class OnlineIngestion:
         """Set the total number of entries to ingest.
 
         Parameters:
-            num_entries (int): The number of entries.
+            num_entries: The number of entries.
         """
         self._num_entries = num_entries
 
@@ -165,21 +157,13 @@ class OnlineIngestion:
     def results(
         self,
     ) -> list[online_ingestion_result.OnlineIngestionResult]:
-        """Get the list of ingestion results.
-
-        Returns:
-            List[OnlineIngestionResult]: List of ingestion result objects.
-        """
+        """Get the list of ingestion results."""
         return self._results
 
     @public
     @property
     def feature_group(self) -> fg_mod.FeatureGroup:
-        """Get the feature group associated with this ingestion.
-
-        Returns:
-            FeatureGroup: The associated feature group.
-        """
+        """Get the feature group associated with this ingestion."""
         return self._feature_group
 
     @public
@@ -187,7 +171,7 @@ class OnlineIngestion:
         """Wait for the online ingestion operation to complete, displaying a progress bar.
 
         Parameters:
-            options (Dict[str, Any], optional): Options for waiting.
+            options: Options for waiting.
                 - "timeout" (int): Maximum time to wait in seconds (default: 60).
                 - "period" (int): Polling period in seconds (default: 1).
 
@@ -239,8 +223,8 @@ class OnlineIngestion:
         """Print logs related to the online ingestion operation from OpenSearch.
 
         Parameters:
-            priority (str, optional): Log priority to filter by (default: "error").
-            size (int, optional): Number of log entries to retrieve (default: 20).
+            priority: Log priority to filter by (default: "error").
+            size: Number of log entries to retrieve (default: 20).
         """
         open_search_client = OpenSearchClientSingleton()
 

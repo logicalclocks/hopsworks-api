@@ -13,13 +13,19 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import requests
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
 from hopsworks_common.client.istio import base as istio
+
+
+if TYPE_CHECKING:
+    from urllib.parse import ParseResult
 
 
 @also_available_as("hsml.client.istio.hopsworks.Client")
@@ -85,8 +91,15 @@ class Client(istio.Client):
             raise exceptions.InternalClientError("Serving API key not found")
         return os.environ[self.SERVING_API_KEY]
 
-    def replace_public_host(self, url):
-        """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST."""
+    def replace_public_host(self, url: ParseResult) -> ParseResult:
+        """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST.
+
+        Parameters:
+            url: The URL to replace the host in.
+
+        Returns:
+            The URL with the host replaced by the public hostname.
+        """
         return url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
 
     def _is_external(self):

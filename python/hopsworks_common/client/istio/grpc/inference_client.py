@@ -40,6 +40,7 @@ class _PathPrefixInterceptor(grpc.UnaryUnaryClientInterceptor):
         )
         return continuation(new_details, request)
 
+
 @also_available_as("hsml.client.istio.grpc.inference_client._ClientCallDetails")
 class _ClientCallDetails(
     grpc.ClientCallDetails,
@@ -55,6 +56,7 @@ class _ClientCallDetails(
         self.credentials = credentials
         self.wait_for_ready = wait_for_ready
         self.compression = compression
+
 
 @also_available_as("hsml.client.istio.grpc.inference_client.GRPCInferenceServerClient")
 class GRPCInferenceServerClient:

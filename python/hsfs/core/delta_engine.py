@@ -326,20 +326,14 @@ class DeltaEngine:
             return location
 
     def _write_delta_rs_dataset(
-        self, dataset, write_options: dict[str, Any] | None = None
+        self,
+        dataset: pa.Table | pl.DataFrame | pd.DataFrame,
+        write_options: dict[str, Any] | None = None,
     ):
         """Write a dataset to a Delta table using delta-rs.
 
-        Supports pyarrow.Table, polars.DataFrame, and pandas.DataFrame as input.
-
-        # Arguments
-
-            dataset: `pyarrow.Table` or `polars.DataFrame` or `pandas.DataFrame`.
-                Dataset to write to the Delta table.
-
-        # Returns
-
-            `None`. Writes the dataset to the Delta table.
+        Parameters:
+            dataset: Dataset to write to the Delta table.
         """
         try:
             from deltalake import DeltaTable as DeltaRsTable
@@ -500,11 +494,11 @@ class DeltaEngine:
         and creates an empty DataFrame with that schema, then writes it to the
         feature group location using Delta format.
 
-        # Arguments
-            write_options: Optional dictionary of write options for Delta.
-                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
-                disable cdf operations on the feature group delta table. Set to true by default on FG created
-                after 4.6
+        Parameters:
+            write_options:
+                Optional dictionary of write options for Delta.
+                - key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or disable cdf operations on the feature group delta table.
+                  Set to true by default on FG created after 4.6.
         """
         # Build DDL schema string from features
         ddl_fields = []
@@ -533,11 +527,11 @@ class DeltaEngine:
 
         Supports simple types, array types, and struct types.
 
-        # Arguments
-            write_options: Optional dictionary of write options for Delta.
-                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
-                disable cdf operations on the feature group delta table. Set to true by default on FG created
-                after 4.6
+        Parameters:
+            write_options:
+                Optional dictionary of write options for Delta.
+                - key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or disable cdf operations on the feature group delta table.
+                  Set to true by default on FG created after 4.6.
         """
         try:
             import pyarrow as pa

@@ -50,6 +50,7 @@ class EnvironmentApi:
 
         Parameters:
             name: Name of the environment.
+            description: Description of the environment.
             base_environment_name: The name of the environment to clone from.
             await_creation: Whether the method returns only when the creation is finished.
 
