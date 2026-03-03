@@ -2396,7 +2396,9 @@ class SqlConnector(StorageConnector):
             **self._arguments,
             "user": self.user,
             "password": self.password,
-            "driver": self._DRIVERS.get(self._database_type, self._DRIVERS[self.POSTGRESQL]),
+            "driver": self._DRIVERS.get(
+                self._database_type, self._DRIVERS[self.POSTGRESQL]
+            ),
         }
 
     def connector_options(self) -> dict[str, Any]:
@@ -2453,7 +2455,9 @@ class SqlConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        scheme = self._JDBC_SCHEMES.get(self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL])
+        scheme = self._JDBC_SCHEMES.get(
+            self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
+        )
         options["url"] = f"jdbc:{scheme}://{self.host}:{self.port}/{self.database}"
 
         return engine.get_instance().read(

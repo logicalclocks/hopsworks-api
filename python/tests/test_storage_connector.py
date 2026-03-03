@@ -1088,7 +1088,9 @@ class TestSqlConnector:
             ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
         ],
     )
-    def test_spark_options_driver(self, database_type, expected_driver, expected_scheme):
+    def test_spark_options_driver(
+        self, database_type, expected_driver, expected_scheme
+    ):
         # Arrange
         connector = self._make_connector(database_type)
 
@@ -1105,7 +1107,9 @@ class TestSqlConnector:
             ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
         ],
     )
-    def test_read_jdbc_url_scheme(self, mocker, database_type, expected_driver, expected_scheme):
+    def test_read_jdbc_url_scheme(
+        self, mocker, database_type, expected_driver, expected_scheme
+    ):
         # Arrange
         connector = self._make_connector(database_type)
         mock_read = mocker.patch("hsfs.engine.get_instance")
