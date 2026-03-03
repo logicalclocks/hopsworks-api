@@ -185,11 +185,21 @@ class Engine:
         primary_key: bool,
         request_parameters: pd.DataFrame | pl.DataFrame = None,
     ):
-        """Extracts the logging data from the passed dataframes and returns the expected batch dataframe with the logging metadata attached.
+        """Extract logging data and attach logging metadata to the returned dataframe.
 
         The logging metadata is created as a hidden attribute named `hopsworks_logging_metadata` of the returned dataframe.
 
         The return dataframe will only contain the features that the user requested (i.e. if the user requested to not include primary keys, event time or inference helpers, those features will be excluded).
+
+        Parameters:
+            untransformed_features: DataFrame containing the untransformed feature values.
+            transformed_features: DataFrame containing the transformed feature values.
+            feature_view: The feature view whose features are being logged.
+            transformed: Whether to include transformed features in the log.
+            inference_helpers: Whether to include inference helper columns.
+            event_time: Whether to include the event time column.
+            primary_key: Whether to include the primary key columns.
+            request_parameters: DataFrame containing request parameter values, if any.
         """
         # Get the fully qualified names for the event time and serving keys.
         # This required since the since Hopsworks returns primary keys and event time as fully qualified names, if they are not explicitly selected in the feature view query.
@@ -343,7 +353,9 @@ class Engine:
             raise FeatureStoreException("data_format is not specified")
 
         if storage_connector.type == storage_connector.HOPSFS:
-            df_list = self._read_hopsfs(location, data_format, read_options, dataframe_type)
+            df_list = self._read_hopsfs(
+                location, data_format, read_options, dataframe_type
+            )
         elif storage_connector.type == storage_connector.S3:
             df_list = self._read_s3(
                 storage_connector, location, data_format, dataframe_type
@@ -928,7 +940,7 @@ class Engine:
     def _to_arrow_table(self, dataframe: pd.DataFrame | pl.DataFrame):
         """Convert a pandas or polars DataFrame to a pyarrow.Table.
 
-        Args:
+        Parameters:
             dataframe: Union[pd.DataFrame, pl.DataFrame]
 
         Returns:
@@ -1133,14 +1145,18 @@ class Engine:
         """Function that creates or retrieves already created the training dataset.
 
         Parameters:
-            training_dataset_obj `TrainingDataset`: The training dataset metadata object.
-            feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
-            query_obj `Query`: The query object that contains the query used to create the feature view.
-            read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
-            dataframe_type `str`: The type of dataframe returned.
-            training_dataset_version `int`: Version of training data to be retrieved.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            training_dataset_obj: The training dataset metadata object.
+            feature_view_obj: The feature view object for the which the training data is being created.
+            query_obj: The query object that contains the query used to create the feature view.
+            read_options: Dictionary that can be used to specify extra parameters for reading data.
+            dataframe_type: The type of dataframe returned.
+            training_dataset_version: Version of training data to be retrieved.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+
+        Returns:
+            The training data as a DataFrame.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1214,13 +1230,14 @@ class Engine:
         """Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split and values are split ratios.
 
         Parameters:
-            query_obj `Query`: The query object that contains the query used to create the feature view.
-            training_dataset_obj `TrainingDataset`: The training dataset metadata object.
-            feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
-            read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
-            dataframe_type `str`: The type of dataframe returned.
-            training_dataset_version `int`: Version of training data to be retrieved.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            query_obj: The query object that contains the query used to create the feature view.
+            training_dataset_obj: The training dataset metadata object.
+            feature_view_obj: The feature view object for the which the training data is being created.
+            read_options: Dictionary that can be used to specify extra parameters for reading data.
+            dataframe_type: The type of dataframe returned.
+            training_dataset_version: Version of training data to be retrieved.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
@@ -1460,10 +1477,11 @@ class Engine:
         """Returns a dataframe of particular type.
 
         Parameters:
-            dataframe `Union[pd.DataFrame, pl.DataFrame]`: Input dataframe
-            dataframe_type `str`: Type of dataframe to be returned
+            dataframe: Input dataframe
+            dataframe_type: Type of dataframe to be returned
+
         Returns:
-            `Union[pd.DataFrame, pl.DataFrame, np.array, list]`: DataFrame of required type.
+            DataFrame of required type.
         """
         if dataframe_type.lower() in ["default", "pandas"]:
             return dataframe
@@ -1567,7 +1585,16 @@ class Engine:
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
-        """Apply a udf to a dataframe."""
+        """Apply a UDF to a dataframe.
+
+        Parameters:
+            udf: The UDF to apply.
+            dataframe: The dataframe to apply the UDF to.
+            online: Whether the UDF is being applied in online serving context.
+
+        Returns:
+            The dataframe with the UDF applied.
+        """
         if (
             udf.execution_mode.get_current_execution_mode(online=online)
             == UDFExecutionMode.PANDAS
@@ -1588,14 +1615,14 @@ class Engine:
         """Apply a python udf to a dataframe.
 
         Parameters:
-            transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
-            dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
+            transformation_functions: List of transformation functions.
+            dataset: A pandas or polars dataframe.
 
         Returns:
-            `DataFrame`: A pandas dataframe with the transformed data.
+            A pandas dataframe with the transformed data.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         udf = hopsworks_udf.get_udf(online=online)
         if isinstance(dataframe, pd.DataFrame):
@@ -1654,14 +1681,14 @@ class Engine:
         """Apply a pandas udf to a dataframe.
 
         Parameters:
-            transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
-            dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
+            transformation_functions: List of transformation functions.
+            dataset: A pandas or polars dataframe.
 
         Returns:
-            `DataFrame`: A pandas dataframe with the transformed data.
+            A pandas dataframe with the transformed data.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         # Cast to pandas if polars dataframe to avoid errors when applying the pandas UDF.
         if HAS_POLARS and (
@@ -1896,11 +1923,11 @@ class Engine:
         If the feature_log is `None` and cols are provided an empty dataframe with the provided columns is returned.
 
         Parameters:
-            feature_log `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame, List[Dict[str, Any]], Dict[str, Any]]`: Feature log provided by the user.
-            cols `List[str]`: List of expected features in the logging dataframe.
+            feature_log: Feature log provided by the user.
+            cols: List of expected features in the logging dataframe.
 
         Returns:
-            `pd.DataFrame`: A pandas dataframe with the feature log that contains the expected features.
+            A pandas dataframe with the feature log that contains the expected features.
         """
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
@@ -1936,8 +1963,8 @@ class Engine:
         If the feature_log provided is a list then it is considered as a single feature (column).
 
         Parameters:
-            feature_log `Union[List[List[Any]], List[Any]]`: List of features/labels provided for logging.
-            cols `List[str]`: List of expected features in the logging dataframe.
+            feature_log: List of features/labels provided for logging.
+            cols: List of expected features in the logging dataframe.
         """
         if isinstance(feature_log[0], list) or (
             HAS_NUMPY and isinstance(feature_log[0], np.ndarray)
@@ -2091,35 +2118,32 @@ class Engine:
         training_dataset_version: int | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, list[str], list[str]]:
         """Function that combines all the logging components into a single pandas dataframe that can be logged to the feature store.
 
-        The function
-
         Parameters:
-            logging_data : Feature log provided by the user.
-            logging_feature_group_features : List of features in the logging feature group.
-            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
-            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
+            logging_data: Feature log provided by the user.
+            logging_feature_group_features: List of features in the logging feature group.
+            logging_feature_group_feature_names: The names of the logging feature group features.
+            logging_features: The names of the logging features, this excludes the names of all metadata columns.
             transformed_features: Tuple of transformed features to be logged, transformed feature names and a log component name (a constant named "transformed_features").
-            untransformed_features : Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
-            predictions : Tuple of predictions, prediction names and log component name (a constant named "predictions").
-            serving_keys : Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
-            helper_columns : Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
-            request_parameters : Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
-            event_time : Tuple of event time, event time column name and log component name (a constant named "event_time").
-            request_id : Tuple of request id, request id column name and log component name (a constant named "request_id").
-            extra_logging_features : Tuple of extra logging features, extra logging feature names and log component name (a constant named "extra_logging_features").
-            td_col_name : Name of the training dataset version column.
-            time_col_name : Name of the event time column.
-            model_col_name : Name of the model column.
-            training_dataset_version : Version of the training dataset.
-            hsml_model : Name of the model.
+            untransformed_features: Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
+            predictions: Tuple of predictions, prediction names and log component name (a constant named "predictions").
+            serving_keys: Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
+            helper_columns: Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
+            request_parameters: Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
+            event_time: Tuple of event time, event time column name and log component name (a constant named "event_time").
+            request_id: Tuple of request id, request id column name and log component name (a constant named "request_id").
+            extra_logging_features: Tuple of extra logging features, extra logging feature names and log component name (a constant named "extra_logging_features").
+            td_col_name: Name of the training dataset version column.
+            time_col_name: Name of the event time column.
+            model_col_name: Name of the model column.
+            training_dataset_version: Version of the training dataset.
+            model_name: Name of the model.
+            model_version: Version of the model.
 
         Returns:
-            `pd.DataFrame`: A pandas dataframe with all the logging components.
-            `List[str]`: Names of additional logging features passed in the Logging Dataframe.
-            `List[str]`: Names of missing logging features passed in the Logging Dataframe.
+            A tuple of (dataframe, additional_feature_names, missing_feature_names).
         """
         if logging_data is not None:
             try:
@@ -2403,28 +2427,28 @@ class Engine:
         """Function that combines all the logging components into a single list of dictionaries that can be logged to send to the inference logger side cart for writing to the feature store.
 
         Parameters:
-            logging_data : Feature log provided by the user.
-            logging_feature_group_features : List of features in the logging feature group.
-            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
-            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
+            logging_data: Feature log provided by the user.
+            logging_feature_group_features: List of features in the logging feature group.
+            logging_feature_group_feature_names: The names of the logging feature group features.
+            logging_features: The names of the logging features, this excludes the names of all metadata columns.
             transformed_features: Tuple of transformed features to be logged, transformed feature names and a log component name (a constant named "transformed_features").
-            untransformed_features : Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
-            predictions : Tuple of predictions, prediction names and log component name (a constant named "predictions").
-            serving_keys : Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
-            helper_columns : Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
-            request_parameters : Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
-            event_time : Tuple of event time, event time column name and log component name (a constant named "event_time").
-            request_id : Tuple of request id, request id column name and log component name (a constant named "request_id").
-            extra_logging_features : Tuple of extra logging features, extra logging feature names and log component name
-            td_col_name : Name of the training dataset version column.
-            time_col_name : Name of the event time column.
-            model_col_name : Name of the model column.
-            training_dataset_version : Version of the training dataset.
-            model_name : Name of the model.
-            model_version : Version of the model.
+            untransformed_features: Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
+            predictions: Tuple of predictions, prediction names and log component name (a constant named "predictions").
+            serving_keys: Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
+            helper_columns: Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
+            request_parameters: Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
+            request_id: Tuple of request id, request id column name and log component name (a constant named "request_id").
+            event_time: Tuple of event time, event time column name and log component name (a constant named "event_time").
+            extra_logging_features: Tuple of extra logging features, extra logging feature names and log component name
+            td_col_name: Name of the training dataset version column.
+            time_col_name: Name of the event time column.
+            model_col_name: Name of the model column.
+            training_dataset_version: Version of the training dataset.
+            model_name: Name of the model.
+            model_version: Version of the model.
 
         Returns:
-            `List[Dict[str, Any]]`: A list of dictionaries with all the logging components
+            A list of dictionaries with all the logging components
         """
         _, label_columns, _ = predictions
         # If any of the logging components is a dataframe, we use the get_feature_logging_df function to get a dataframe and then convert it to a list of dictionaries.
@@ -2659,10 +2683,10 @@ class Engine:
         Both Pandas and Polars dataframes are supported in the Python Engine.
 
         Parameters:
-            dataframe `Any`: A dataframe to check.
+            dataframe: A dataframe to check.
 
         Returns:
-            `bool`: True if the dataframe is supported, False otherwise.
+            `True` if the dataframe is supported, `False` otherwise.
         """
         if (HAS_POLARS and isinstance(dataframe, pl.DataFrame)) or (
             HAS_PANDAS and isinstance(dataframe, pd.DataFrame)

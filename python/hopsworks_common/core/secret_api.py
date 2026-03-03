@@ -40,7 +40,8 @@ class SecretsApi:
         """Get all secrets.
 
         Returns:
-            `List[Secret]`: List of all accessible secrets
+            List of all accessible secrets.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
@@ -55,7 +56,7 @@ class SecretsApi:
 
     @public
     @decorators.catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
-    def get_secret(self, name: str, owner: str = None) -> secret.Secret | None:
+    def get_secret(self, name: str, owner: str | None = None) -> secret.Secret | None:
         """Get a secret.
 
         Parameters:
@@ -91,7 +92,7 @@ class SecretsApi:
         )[0]
 
     @public
-    def get(self, name: str, owner: str = None) -> str:
+    def get(self, name: str, owner: str | None = None) -> str:
         """Get the secret's value.
 
         If the secret does not exist, it prompts the user to create the secret if the application is running interactively.
@@ -116,7 +117,7 @@ class SecretsApi:
 
     @public
     def create_secret(
-        self, name: str, value: str, project: str = None
+        self, name: str, value: str, project: str | None = None
     ) -> secret.Secret:
         """Create a new secret.
 

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client
@@ -120,8 +121,22 @@ class VariableApi:
         """
         return self.get_variable("enable_flyingduck") == "true"
 
-    def get_loadbalancer_external_domain(self, service: str) -> str:
+    def get_loadbalancer_external_domain(
+        self,
+        service: Literal[
+            "mysqld",
+            "online_store_rest_server",
+            "opensearch",
+            "kafka",
+            "feature_query",
+            "datanode",
+            "namenode",
+        ],
+    ) -> str:
         """Get domain loadbalancer for a service.
+
+        Parameters:
+            service: Name of the service.
 
         Returns:
             The domain of external loadbalancer for a service, if it is set up.
