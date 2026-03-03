@@ -2304,7 +2304,7 @@ class Engine:
     def get_spark_version(self):
         return self._spark_session.version
 
-    def check_supported_dataframe(self, dataframe: Any) -> bool:
+    def check_supported_dataframe(self, dataframe: Any) -> bool | None:
         """Check if a dataframe is supported by the engine.
 
         Both Pandas and Spark dataframes are supported in the Spark Engine.
@@ -2315,7 +2315,9 @@ class Engine:
         Returns:
             `True` if the dataframe is supported, `False` otherwise.
         """
-        return isinstance(dataframe, (DataFrame, pd.DataFrame))
+        if isinstance(dataframe, (DataFrame, pd.DataFrame)):
+            return True
+        return None
 
 
 class SchemaError(Exception):
