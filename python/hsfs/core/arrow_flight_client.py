@@ -178,7 +178,7 @@ class ArrowFlightClient:
         StorageConnector.SNOWFLAKE,
         StorageConnector.BIGQUERY,
         StorageConnector.REDSHIFT,
-        StorageConnector.RDS,
+        StorageConnector.SQL,
         StorageConnector.GCS,
     ]
     READ_ERROR = "Could not read data using Hopsworks Query Service."

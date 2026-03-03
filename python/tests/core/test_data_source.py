@@ -70,14 +70,14 @@ class TestDataSource:
         assert sc._dataset == ds.group
         assert sc._query_table == ds.table
 
-    def test_update_storage_connector_rds(self):
+    def test_update_storage_connector_sql(self):
         # Arrange
         ds = data_source.DataSource()
         ds.database = "test_database"
         ds.group = "test_group"
         ds.table = "test_table"
 
-        sc = storage_connector.RdsConnector(1, "test", 100)
+        sc = storage_connector.SqlConnector(1, "test", 100)
 
         # Act
         ds._update_storage_connector(sc)
