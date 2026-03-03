@@ -3362,7 +3362,11 @@ class FeatureGroup(FeatureGroupBase):
         # - python engine: only compute if FG is offline only (no backfill job)
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             self._statistics_engine.compute_and_save_statistics(self, feature_dataframe)
-        elif engine.get_type() == "python" and not self.stream:
+        elif (
+            self.statistics_config.enabled
+            and engine.get_type() == "python"
+            and not self.stream
+        ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
                 metadata_instance=self,
@@ -3568,7 +3572,11 @@ class FeatureGroup(FeatureGroupBase):
         # - python engine: only compute if FG is offline only (no backfill job)
         if engine.get_type().startswith("spark") and not self.stream:
             self.compute_statistics()
-        elif engine.get_type() == "python" and not self.stream:
+        elif (
+            self.statistics_config.enabled
+            and engine.get_type() == "python"
+            and not self.stream
+        ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
                 metadata_instance=self,

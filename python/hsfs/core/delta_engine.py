@@ -47,6 +47,7 @@ class DeltaEngine:
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
     DELTA_DOT_PREFIX = "delta."
+    APPEND = "append"
 
     def __init__(
         self,
@@ -363,6 +364,11 @@ class DeltaEngine:
         if not is_polars_df:
             dataset = self._prepare_df_for_delta(dataset)
 
+        append_requested = (
+            isinstance(write_options, dict)
+            and str(write_options.get("mode", "")).lower() == self.APPEND
+        )
+
         try:
             fg_source_table = DeltaRsTable(location)
             is_delta_table = True
@@ -399,6 +405,12 @@ class DeltaEngine:
                         )
                     }
                 )
+            if append_requested:
+                deltars_write(location, dataset, mode=self.APPEND)
+                _logger.debug(
+                    f"Explicit append mode requested for {location}. Skipping merge operation."
+                )
+                return self._get_last_commit_metadata(self._spark_session, location)
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
             )

@@ -110,6 +110,23 @@ def _force_missing_deltalake(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
 
+def _patch_deltalake_modules(mocker, monkeypatch, table_factory):
+    table_not_found_error = type("TableNotFoundError", (Exception,), {})
+    fake_deltalake = types.ModuleType("deltalake")
+    fake_deltalake.__path__ = []
+    fake_deltalake.DeltaTable = table_factory
+    fake_deltalake.write_deltalake = mocker.Mock()
+
+    fake_exceptions = types.ModuleType("deltalake.exceptions")
+    fake_exceptions.TableNotFoundError = table_not_found_error
+    fake_deltalake.exceptions = fake_exceptions
+
+    monkeypatch.setitem(sys.modules, "deltalake", fake_deltalake)
+    monkeypatch.setitem(sys.modules, "deltalake.exceptions", fake_exceptions)
+
+    return fake_deltalake, table_not_found_error
+
+
 class TestDeltaEngine:
     def test_setup_delta_rs_internal_noop(self, mocker, monkeypatch):
         # Arrange
@@ -483,6 +500,82 @@ class TestDeltaEngine:
         with pytest.raises(ImportError) as e:
             engine._write_delta_rs_dataset(dataset=mock.Mock())
         assert "hops-deltalake" in str(e.value)
+
+    def test_write_delta_rs_dataset_append_mode_skips_merge(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = []
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        delta_table = mocker.MagicMock()
+        fake_deltalake, _ = _patch_deltalake_modules(
+            mocker, monkeypatch, mocker.MagicMock(return_value=delta_table)
+        )
+        dataset = mocker.Mock()
+        mocker.patch.object(engine, "_prepare_df_for_delta", return_value=dataset)
+        mock_commit = mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value="commit"
+        )
+
+        # Act
+        result = engine._write_delta_rs_dataset(
+            dataset=mocker.Mock(), write_options={"mode": "append"}
+        )
+
+        # Assert
+        assert result == "commit"
+        fake_deltalake.write_deltalake.assert_called_once_with(
+            "hdfs://nn:8020/p", dataset, mode="append"
+        )
+        delta_table.merge.assert_not_called()
+        mock_commit.assert_called_once_with(None, "hdfs://nn:8020/p")
+
+    def test_write_delta_rs_dataset_existing_table_uses_merge_by_default(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = []
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        delta_table = mocker.MagicMock()
+        merge_builder = delta_table.merge.return_value
+        fake_deltalake, _ = _patch_deltalake_modules(
+            mocker, monkeypatch, mocker.MagicMock(return_value=delta_table)
+        )
+        dataset = mocker.Mock()
+        mocker.patch.object(engine, "_prepare_df_for_delta", return_value=dataset)
+        mock_commit = mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value="commit"
+        )
+
+        # Act
+        result = engine._write_delta_rs_dataset(
+            dataset=mocker.Mock(), write_options={"mode": "overwrite"}
+        )
+
+        # Assert
+        assert result == "commit"
+        delta_table.merge.assert_called_once_with(
+            source=dataset,
+            predicate="fg_1_source.id == fg_1_updates.id",
+            source_alias="fg_1_updates",
+            target_alias="fg_1_source",
+        )
+        merge_builder.when_matched_update_all.assert_called_once()
+        insert_builder = (
+            merge_builder.when_matched_update_all.return_value.when_not_matched_insert_all
+        )
+        insert_builder.assert_called_once()
+        insert_builder.return_value.execute.assert_called_once()
+        fake_deltalake.write_deltalake.assert_not_called()
+        mock_commit.assert_called_once_with(None, "hdfs://nn:8020/p")
 
     def test_prepare_df_for_delta_importerror(self, monkeypatch):
         # Arrange
