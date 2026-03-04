@@ -1005,6 +1005,35 @@ class TestSpark:
         assert original_schema == original_df.schema
         assert result_schema == result_df.schema
 
+    def test_shallow_copy_dataframe_is_shallow(self):
+        # Arrange
+        spark_engine = spark.Engine()
+        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+
+        # Act
+        copy = spark_engine.shallow_copy_dataframe(df)
+
+        # Assert - separate object but shares underlying arrays
+        assert copy is not df
+        assert copy["a"].values.base is df["a"].values.base or (
+            copy["a"].values is df["a"].values
+        )
+
+    def test_shallow_copy_dataframe_column_assign_does_not_mutate_original(self):
+        # Arrange - column assignment on the copy must not affect the original
+        spark_engine = spark.Engine()
+        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        original_columns = list(df.columns)
+
+        # Act
+        copy = spark_engine.shallow_copy_dataframe(df)
+        copy["c"] = [5, 6]
+        copy["a"] = [99, 99]
+
+        # Assert
+        assert list(df.columns) == original_columns
+        assert list(df["a"]) == [1, 2]
+
     @pytest.mark.parametrize(
         "online_enabled, storage, stream, expected_online_calls, expected_offline_calls",
         [
