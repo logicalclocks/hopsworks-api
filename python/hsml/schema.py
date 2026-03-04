@@ -34,9 +34,6 @@ class Schema:
 
     Parameters:
         object: The object to construct the schema from.
-
-    Returns:
-        `Schema`. The schema object.
     """
 
     def __init__(

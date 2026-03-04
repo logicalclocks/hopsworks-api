@@ -22,6 +22,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hopsworks_common.job_schedule import JobSchedule
@@ -44,7 +45,7 @@ class WriteMode(Enum):
     APPEND = "APPEND"
     MERGE = "MERGE"
 
-
+@public("hopsworks.core.FeatureColumnMapping")
 class FeatureColumnMapping:
     def __init__(self, source_column: str, feature_name: str):
         self.source_column = source_column
@@ -64,6 +65,7 @@ class FeatureColumnMapping:
     def to_json(self):
         return humps.decamelize(self.to_dict())
 
+    @public
     @property
     def source_column(self) -> str:
         return self._source_column
@@ -72,6 +74,7 @@ class FeatureColumnMapping:
     def source_column(self, source_column: str) -> None:
         self._source_column = source_column
 
+    @public
     @property
     def feature_name(self) -> str:
         return self._feature_name
@@ -80,7 +83,7 @@ class FeatureColumnMapping:
     def feature_name(self, feature_name: str) -> None:
         self._feature_name = feature_name
 
-
+@public("hopsworks.core.FullLoadConfig")
 class FullLoadConfig:
     def __init__(
         self,
@@ -120,7 +123,7 @@ class FullLoadConfig:
     def initial_value(self, initial_value: str | None) -> None:
         self._initial_value = initial_value
 
-
+@public("hopsworks.core.IncrementalLoadingConfig")
 class IncrementalLoadingConfig:
     def __init__(
         self,
@@ -172,7 +175,7 @@ class IncrementalLoadingConfig:
     def initial_ingestion_date(self, initial_ingestion_date: int | None) -> None:
         self._initial_ingestion_date = initial_ingestion_date
 
-
+@public("hopsworks.core.LoadingConfig")
 class LoadingConfig:
     def __init__(
         self,
@@ -286,6 +289,7 @@ class LoadingConfig:
         return humps.decamelize(self.to_dict())
 
 
+@public("hopsworks.core.SinkJobConfiguration")
 class SinkJobConfiguration:
     DTO_TYPE = "ingestionJobConfiguration"
 
@@ -451,6 +455,7 @@ class SinkJobConfiguration:
             self._endpoint_config = endpoint_config
         self._name = kwargs.get("name", self._name)
 
+    @public
     @property
     def batch_size(self) -> int | None:
         return self._batch_size
@@ -459,6 +464,7 @@ class SinkJobConfiguration:
     def batch_size(self, batch_size: int | None) -> None:
         self._batch_size = batch_size
 
+    @public
     @property
     def sql_source_fetch_chunk_size(self) -> int | None:
         return self._sql_source_fetch_chunk_size
@@ -509,6 +515,7 @@ class SinkJobConfiguration:
     def loading_config(self, loading_config: LoadingConfig | dict | None) -> None:
         self._loading_config = loading_config
 
+    @public
     @property
     def column_mappings(self) -> list[FeatureColumnMapping] | list[dict] | None:
         return self._column_mappings
@@ -519,6 +526,7 @@ class SinkJobConfiguration:
     ) -> None:
         self._column_mappings = column_mappings
 
+    @public
     @property
     def name(self) -> str | None:
         return self._name
@@ -527,6 +535,7 @@ class SinkJobConfiguration:
     def name(self, name: str | None) -> None:
         self._name = name
 
+    @public
     @property
     def write_mode(self) -> WriteMode:
         return self._write_mode

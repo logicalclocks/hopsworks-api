@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Strings;
 import com.logicalclocks.hsfs.StorageConnector.BigqueryConnector;
-import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+import com.logicalclocks.hsfs.StorageConnector.SqlConnector;
 import com.logicalclocks.hsfs.StorageConnector.RedshiftConnector;
 import com.logicalclocks.hsfs.StorageConnector.SnowflakeConnector;
 import com.logicalclocks.hsfs.metadata.RestDto;
@@ -103,10 +103,10 @@ public class DataSource extends RestDto<DataSource> {
           bigqueryConnector.setQueryTable(table);
         }
         break;
-      case RDS:
-        RdsConnector rdsConnector = (RdsConnector) storageConnector;
+      case SQL:
+        SqlConnector sqlConnector = (SqlConnector) storageConnector;
         if (!Strings.isNullOrEmpty(database)) {
-          rdsConnector.setDatabase(database);
+          sqlConnector.setDatabase(database);
         }
         break;
       default:

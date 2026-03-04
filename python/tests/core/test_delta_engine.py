@@ -19,6 +19,7 @@ import types
 from unittest import mock
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
@@ -359,6 +360,42 @@ class TestDeltaEngine:
         # Assert
         assert q == "s.id == u.id AND s.ts == u.ts AND s.p1 == u.p1 AND s.p2 == u.p2"
 
+    def test_generate_merge_query_with_partition_values_adds_in_clause(self, mocker):
+        # Arrange - verify Option A: literal IN filters are appended so DataFusion
+        # can prune Parquet files to only the overlapping partitions.
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = ["month"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        partition_values = {"month": ["2024-01", "2024-02"]}
+
+        # Act
+        q = engine._generate_merge_query("src", "upd", partition_values)
+
+        # Assert - join predicates first, then IN filter for partition pruning
+        assert "src.id == upd.id" in q
+        assert "src.month == upd.month" in q
+        assert "src.month IN ('2024-01', '2024-02')" in q
+
+    def test_generate_merge_query_no_partition_values_unchanged(self, mocker):
+        # Arrange - when partition_values is None (e.g. no partition key or
+        # unpartitioned table), the query must match the baseline without IN clauses.
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = ["month"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        q_no_pv = engine._generate_merge_query("s", "u", partition_values=None)
+        q_baseline = engine._generate_merge_query("s", "u")
+
+        assert q_no_pv == q_baseline
+        assert "IN" not in q_no_pv
+
     def test_register_temporary_table_calls_spark_read(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=False)
@@ -629,6 +666,27 @@ class TestDeltaEngine:
                 assert field.type.unit == target_precision
         # Other columns should remain unchanged
         assert len(table.columns) == df.shape[1]
+
+    def test_prepare_df_for_delta_does_not_mutate_shallow_copy_input(self):
+        # Arrange
+        # Simulate the real call path: convert_to_default_dataframe produces a
+        # shallow copy (deep=False), which is then passed to _prepare_df_for_delta.
+        # Column assignment inside the function must only update the copy's column
+        # reference and must never propagate back to the original via shared arrays.
+        df = pd.DataFrame(
+            {
+                "ts": pd.to_datetime(["2024-01-01", "2024-01-02"]).tz_localize("UTC"),
+                "value": [1.0, 2.0],
+            }
+        )
+        shallow = df.copy(deep=False)
+        original_tz = df["ts"].dt.tz
+
+        # Act
+        DeltaEngine._prepare_df_for_delta(shallow)
+
+        # Assert - the original df's tz-aware column must be untouched
+        assert df["ts"].dt.tz == original_tz
 
     def test_vacuum_executes_sql(self, mocker):
         # Arrange
@@ -1039,3 +1097,159 @@ class TestDeltaEngine:
         assert fg_commit.rows_updated == 0
         assert fg_commit.rows_deleted == 0
         assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
+
+    # ------------------------------------------------------------------
+    # _can_use_append
+    # ------------------------------------------------------------------
+
+    def test_can_use_append_no_partition_key_returns_false(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = []
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        fg_source_table = mock.Mock()
+
+        # Act
+        result = engine._can_use_append(fg_source_table, mock.Mock())
+
+        # Assert
+        assert result is False
+        fg_source_table.file_uris.assert_not_called()
+
+    def test_can_use_append_no_overlap_returns_true(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        dataset = pa.table(
+            {"month": ["2024-01", "2024-01", "2024-02"], "val": [1, 2, 3]}
+        )
+        fg_source_table = mock.Mock()
+        fg_source_table.file_uris.return_value = []
+
+        # Act
+        result = engine._can_use_append(fg_source_table, dataset)
+
+        # Assert
+        assert result is True
+        fg_source_table.file_uris.assert_called_once_with(
+            partition_filters=[("month", "in", ["2024-01", "2024-02"])]
+        )
+
+    def test_can_use_append_overlap_returns_false(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        dataset = pa.table({"month": ["2024-01"], "val": [1]})
+        fg_source_table = mock.Mock()
+        fg_source_table.file_uris.return_value = [
+            "hdfs://nn/p/month=2024-01/part-0.parquet"
+        ]
+
+        # Act
+        result = engine._can_use_append(fg_source_table, dataset)
+
+        # Assert
+        assert result is False
+
+    def test_can_use_append_exception_falls_back_to_false(self, mocker):
+        # Arrange - any error in the overlap check must not crash the write path
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        dataset = pa.table({"month": ["2024-01"], "val": [1]})
+        fg_source_table = mock.Mock()
+        fg_source_table.file_uris.side_effect = RuntimeError("HDFS unavailable")
+
+        # Act
+        result = engine._can_use_append(fg_source_table, dataset)
+
+        # Assert
+        assert result is False
+
+    # ------------------------------------------------------------------
+    # _write_delta_rs_dataset routing: append vs merge
+    # ------------------------------------------------------------------
+
+    def _setup_fake_deltalake(self, mocker):
+        """Inject a fake deltalake module and return the key mocks."""
+        fake_write = mocker.Mock()
+        fake_delta_table = mocker.Mock()
+        fake_delta_table.merge.return_value.when_matched_update_all.return_value.when_not_matched_insert_all.return_value.execute = mocker.Mock()
+
+        class _FakeTableNotFoundError(Exception):
+            pass
+
+        fake_deltalake = types.SimpleNamespace(
+            DeltaTable=mocker.Mock(return_value=fake_delta_table),
+            write_deltalake=fake_write,
+        )
+        fake_exceptions = types.SimpleNamespace(
+            TableNotFoundError=_FakeTableNotFoundError,
+        )
+        mocker.patch.dict(
+            sys.modules,
+            {"deltalake": fake_deltalake, "deltalake.exceptions": fake_exceptions},
+        )
+        return fake_write, fake_delta_table
+
+    def test_write_delta_rs_uses_append_when_no_overlap(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        fake_write, _ = self._setup_fake_deltalake(mocker)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hdfs://nn/p"
+        )
+        mocker.patch.object(engine, "_can_use_append", return_value=True)
+        mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value=mock.Mock()
+        )
+
+        dataset = pa.table({"month": ["2024-01"], "id": [1]})
+
+        # Act
+        engine._write_delta_rs_dataset(dataset)
+
+        # Assert - plain append used, merge chain never invoked
+        fake_write.assert_called_once()
+        assert fake_write.call_args.kwargs.get("mode") == "append"
+
+    def test_write_delta_rs_uses_merge_when_overlap(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        fg.partition_key = ["month"]
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        fake_write, fake_delta_table = self._setup_fake_deltalake(mocker)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hdfs://nn/p"
+        )
+        mocker.patch.object(engine, "_can_use_append", return_value=False)
+        mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value=mock.Mock()
+        )
+
+        dataset = pa.table({"month": ["2024-01"], "id": [1]})
+
+        # Act
+        engine._write_delta_rs_dataset(dataset)
+
+        # Assert - merge executed, plain append not called
+        fake_delta_table.merge.assert_called_once()
+        fake_delta_table.merge.return_value.when_matched_update_all.return_value.when_not_matched_insert_all.return_value.execute.assert_called_once()
+        fake_write.assert_not_called()

@@ -1636,6 +1636,76 @@ class TestPython:
             == "The ingested dataframe contains upper case letters in feature names: `['Col1', 'Date']`. Feature names are sanitized to lower case in the feature store."
         )
 
+    def test_shallow_copy_dataframe_is_shallow(self):
+        # Arrange
+        python_engine = python.Engine()
+        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+
+        # Act
+        copy = python_engine.shallow_copy_dataframe(df)
+
+        # Assert - separate object but shares underlying arrays
+        assert copy is not df
+        assert copy["a"].values.base is df["a"].values.base or (
+            copy["a"].values is df["a"].values
+        )
+
+    def test_shallow_copy_dataframe_column_assign_does_not_mutate_original(self):
+        # Arrange - column assignment on the copy must not affect the original
+        python_engine = python.Engine()
+        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        original_columns = list(df.columns)
+
+        # Act
+        copy = python_engine.shallow_copy_dataframe(df)
+        copy["c"] = [5, 6]
+        copy["a"] = [99, 99]
+
+        # Assert
+        assert list(df.columns) == original_columns
+        assert list(df["a"]) == [1, 2]
+
+    def test_convert_to_default_dataframe_does_not_mutate_column_names(self, mocker):
+        # Arrange - uppercase column names will be lowercased in the returned copy
+        mocker.patch("warnings.warn")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"MyFeature": [1, 2], "Other": [3, 4]})
+        original_columns = list(df.columns)
+
+        # Act
+        python_engine.convert_to_default_dataframe(dataframe=df)
+
+        # Assert - original column names must be unchanged
+        assert list(df.columns) == original_columns
+
+    def test_convert_to_default_dataframe_does_not_mutate_tz_column(self, mocker):
+        # Arrange - timezone-aware column will be stripped of tz info in the returned copy
+        mocker.patch("warnings.warn")
+        python_engine = python.Engine()
+        df = pd.DataFrame(
+            {"ts": pd.to_datetime(["2024-01-01", "2024-01-02"]).tz_localize("UTC")}
+        )
+
+        # Act
+        python_engine.convert_to_default_dataframe(dataframe=df)
+
+        # Assert - original column must still be tz-aware
+        assert df["ts"].dt.tz is not None
+
+    def test_convert_to_default_dataframe_does_not_mutate_values(self, mocker):
+        # Arrange - verifies that underlying array data is not modified in-place,
+        # which would otherwise silently corrupt the caller via a shallow copy.
+        mocker.patch("warnings.warn")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col1": [10, 20], "col2": [30, 40]})
+        original_values = df.to_numpy().copy()
+
+        # Act
+        python_engine.convert_to_default_dataframe(dataframe=df)
+
+        # Assert
+        assert (df.to_numpy() == original_values).all()
+
     def test_parse_schema_feature_group_pandas(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.type_systems.convert_pandas_dtype_to_offline_type")
@@ -2111,6 +2181,69 @@ class TestPython:
         )
 
         # Assert - no exception should be raised
+
+    def test_check_duplicate_records_converts_only_key_columns(self, mocker):
+        # Arrange - DataFrame with many feature columns; only key columns should
+        # be passed to pa.Table.from_pandas for the duplicate check.
+        #
+        # pa.Table is a C extension type whose attributes are immutable, so we
+        # cannot patch from_pandas directly.  Instead we inject a fake pyarrow
+        # module (via sys.modules) whose Table.from_pandas records its arguments
+        # and delegates to the real implementation.
+        import sys
+        import types
+
+        import pyarrow as real_pa
+
+        captured_columns = []
+
+        def _spy_from_pandas(df, **kwargs):
+            captured_columns.append(list(df.columns))
+            return real_pa.Table.from_pandas(df, **kwargs)
+
+        class _FakeTable:
+            from_pandas = staticmethod(_spy_from_pandas)
+
+        class _FakePa(types.ModuleType):
+            Table = _FakeTable
+
+            def __getattr__(self, name):
+                return getattr(real_pa, name)
+
+        mocker.patch.dict(sys.modules, {"pyarrow": _FakePa("pyarrow")})
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="purchases",
+            version=1,
+            featurestore_id=99,
+            primary_key=["purchase_id"],
+            partition_key=["purchase_month"],
+            event_time="ts",
+            stream=False,
+            time_travel_format="DELTA",
+        )
+
+        df = pd.DataFrame(
+            {
+                "purchase_id": [1, 2, 3],
+                "ts": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+                "purchase_month": ["2024-01", "2024-01", "2024-01"],
+                "amount": [9.99, 19.99, 4.99],
+                "payment_method": ["card", "cash", "card"],
+                "device_type": ["mobile", "desktop", "mobile"],
+                "description": ["item_a", "item_b", "item_c"],
+            }
+        )
+
+        # Act
+        python_engine._check_duplicate_records(df, fg)
+
+        # Assert - from_pandas called exactly once, with only the 3 key columns
+        assert len(captured_columns) == 1
+        assert captured_columns[0] == ["purchase_id", "ts", "purchase_month"]
 
     def test_legacy_save_dataframe(self, mocker):
         # Arrange

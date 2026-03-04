@@ -14,10 +14,18 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import requests
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth
 from hopsworks_common.client.istio import base as istio
+
+
+if TYPE_CHECKING:
+    from urllib.parse import ParseResult
 
 
 @also_available_as("hsml.client.istio.external.Client")
@@ -50,8 +58,15 @@ class Client(istio.Client):
         """Closes a client."""
         self._connected = False
 
-    def replace_public_host(self, url):
-        """No need to replace as we are already in external client."""
+    def replace_public_host(self, url: ParseResult) -> ParseResult:
+        """No need to replace as we are already in external client.
+
+        Parameters:
+            url: The URL to replace the host in.
+
+        Returns:
+            The URL as is.
+        """
         return url
 
     def _is_external(self):

@@ -18,8 +18,10 @@ from __future__ import annotations
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 
 
+@public
 class OnlineConfig:
     """Metadata object used to provide online Feature Store configuration information for a feature group."""
 
@@ -46,6 +48,7 @@ class OnlineConfig:
             "tableSpace": self._table_space,
         }
 
+    @public
     @property
     def online_comments(self) -> list[str]:
         """List of comments applied to online feature store table."""
@@ -55,6 +58,7 @@ class OnlineConfig:
     def online_comments(self, online_comments: list[str]) -> None:
         self._online_comments = online_comments
 
+    @public
     @property
     def table_space(self) -> str:
         """Table space of online feature store table for storing data on disk."""

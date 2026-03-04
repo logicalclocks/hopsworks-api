@@ -120,21 +120,26 @@ def login(
     Parameters:
         host: The hostname of the Hopsworks instance.
         port: The port on which the Hopsworks instance can be reached.
-        project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.
-        api_key_value: Value of the API Key
-        api_key_file: Path to file wih API Key
-        hostname_verification: Whether to verify Hopsworks' certificate
-        trust_store_path: Path on the file system containing the Hopsworks certificates
-        cert_folder: The directory to store downloaded certificates. Defaults to the system temp directory.
+        project:
+            Name of the project to access.
+            If used inside a Hopsworks environment it always gets the current project.
+            If not provided you will be prompted to enter it.
+        api_key_value: Value of the API Key.
+        api_key_file: Path to file wih API Key.
+        hostname_verification: Whether to verify Hopsworks' certificate.
+        trust_store_path: Path on the file system containing the Hopsworks certificates.
+        cert_folder:
+            The directory to store downloaded certificates.
+            Defaults to the system temp directory.
         engine:
             Specifies the engine to use.
             The default value is `None`, which automatically selects the engine based on the environment:
 
-            - `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
-            - `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
-            - `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
-            - `spark-no-metastore`: Functions like `spark` but does not rely on the Hive metastore.
-            - `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
+            * `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
+            * `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
+            * `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+            * `spark-no-metastore`: Functions like `spark` but does not rely on the Hive metastore.
+            * `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
 
     Returns:
         The Project object to perform operations on.

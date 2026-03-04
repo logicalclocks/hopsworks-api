@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import hsfs
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hsfs import util
 from hsfs.constructor import filter
 from hsfs.decorators import typechecked
@@ -92,6 +92,9 @@ class Feature:
             selected_feature = fg.get_feature("min_temp")
             selected_feature.to_dict()
             ```
+
+        Returns:
+            A dictionary representation of the feature.
         """
         return {
             "name": self._name,
@@ -118,8 +121,8 @@ class Feature:
         - If neither condition applies, it returns the feature's original name.
 
         Parameters:
-            feature_group (FeatureGroup, optional): The feature group context in which the name is being used.
-            prefix (str, optional): A prefix to prepend to the feature name if applicable.
+            feature_group: The feature group context in which the name is being used.
+            prefix: A prefix to prepend to the feature name if applicable.
 
         Returns:
             str: The fully qualified feature name.
@@ -168,6 +171,9 @@ class Feature:
             selected_feature = fg.get_feature("min_temp")
             selected_feature.is_complex()
             ```
+
+        Returns:
+            True if the feature type is a complex type, False otherwise.
         """
         return any(map(self._type.upper().startswith, self.COMPLEX_TYPES))
 
@@ -308,13 +314,10 @@ class Feature:
     def __gt__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
 
+    @deprecated("hsfs.feature.Feature.isin")
     @public
     def contains(self, other: str | list[Any]) -> filter.Filter:
         """Construct a filter similar to SQL's `IN` operator.
-
-        Warning: Deprecated
-            `contains` method is deprecated.
-            Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
 
         Parameters:
             other: A single feature value or a list of feature values.
@@ -326,12 +329,26 @@ class Feature:
 
     @public
     def isin(self, other: str | list[Any]) -> filter.Filter:
-        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause."""
+        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause.
+
+        Parameters:
+            other: A single feature value or a list of feature values to match against.
+
+        Returns:
+            A filter that keeps only rows where the feature value is in `other`.
+        """
         return filter.Filter(self, filter.Filter.IN, json.dumps(other))
 
     @public
     def like(self, other: Any) -> filter.Filter:
-        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause."""
+        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause.
+
+        Parameters:
+            other: The pattern to match against.
+
+        Returns:
+            A filter that keeps only rows where the feature value matches `other`.
+        """
         return filter.Filter(self, filter.Filter.LK, other)
 
     def __str__(self) -> str:

@@ -15,16 +15,17 @@
 #
 
 
+from fastmcp import FastMCP
 from hopsworks.mcp.utils.tags import TAGS
 
 
 class SystemPrompts:
     """Prompts for Hopsworks system operations."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         """Initialize system prompts.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp

@@ -18,13 +18,11 @@ import json
 from datetime import datetime, timezone
 
 import humps
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
-@also_available_as(
-    "hopsworks.job_schedule.JobSchedule", "hsfs.core.job_schedule.JobSchedule"
-)
+@public("hopsworks.job_schedule.JobSchedule", "hsfs.core.job_schedule.JobSchedule")
 class JobSchedule:
     def __init__(
         self,
@@ -78,31 +76,37 @@ class JobSchedule:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def id(self):
         """Return the schedule id."""
         return self._id
 
+    @public
     @property
     def start_date_time(self):
         """Return the schedule start time."""
         return self._start_date_time
 
+    @public
     @property
     def end_date_time(self):
         """Return the schedule end time."""
         return self._end_date_time
 
+    @public
     @property
     def enabled(self):
         """Return whether the schedule is enabled or not."""
         return self._enabled
 
+    @public
     @property
     def cron_expression(self):
         """Return the schedule cron expression."""
         return self._cron_expression
 
+    @public
     @property
     def next_execution_date_time(self):
         """Return the next execution time."""

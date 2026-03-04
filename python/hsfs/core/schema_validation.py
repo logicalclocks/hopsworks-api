@@ -13,7 +13,11 @@ class DataFrameValidator:
 
     @staticmethod
     def get_validator(df):
-        """Method to get the appropriate implementation of validator for the DataFrame type."""
+        """Get the appropriate validator implementation for the DataFrame type.
+
+        Parameters:
+            df: The DataFrame to validate.
+        """
         if isinstance(df, pd.DataFrame):
             return PandasValidator()
 
@@ -59,7 +63,13 @@ class DataFrameValidator:
         raise ValueError(f"{base_message}{formatted_errors}")
 
     def validate_schema(self, feature_group, df, df_features):
-        """Common validation rules."""
+        """Apply common schema validation rules to the DataFrame.
+
+        Parameters:
+            feature_group: The feature group whose schema is validated against.
+            df: The DataFrame to validate.
+            df_features: The list of feature metadata objects for the feature group.
+        """
         validator = self.get_validator(df)
         if validator is None:
             # If no validator is found for this type, skip validation and return df_features

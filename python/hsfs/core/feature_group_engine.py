@@ -36,6 +36,7 @@ from hsfs.storage_connector import StorageConnector
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
+    from hsfs.feature import Feature
     from hsfs.transformation_function import TransformationFunction
 
 
@@ -419,14 +420,30 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_features(self, feature_group, updated_features):
-        """Updates features safely."""
+    def update_features(
+        self, feature_group: fg.FeatureGroup, updated_features: list[Feature]
+    ) -> None:
+        """Updates features safely.
+
+        Parameters:
+            feature_group: The feature group to update.
+            updated_features:
+                The new list of features to set on the feature group.
+                This will replace the existing list of features.
+        """
         self._update_features_metadata(
             feature_group, self.new_feature_list(feature_group, updated_features)
         )
 
-    def append_features(self, feature_group, new_features):
-        """Appends features to a feature group."""
+    def append_features(
+        self, feature_group: fg.FeatureGroup, new_features: list[Feature]
+    ) -> None:
+        """Appends features to a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            new_features: The new list of features to append to the feature group.
+        """
         self._update_features_metadata(
             feature_group,
             feature_group.features + new_features,  # todo allows for duplicates
@@ -435,32 +452,60 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # write empty dataframe to update parquet schema
         engine.get_instance().update_table_schema(feature_group)
 
-    def update_description(self, feature_group, description):
-        """Updates the description of a feature group."""
+    def update_description(
+        self, feature_group: fg.FeatureGroup, description: str
+    ) -> None:
+        """Updates the description of a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            description: The new description to set on the feature group.
+        """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.description = description
         self._feature_group_api.update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_topic_name(self, feature_group, topic_name):
-        """Updates the topic_name of a feature group."""
+    def update_topic_name(
+        self, feature_group: fg.FeatureGroup, topic_name: str
+    ) -> None:
+        """Updates the topic_name of a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            topic_name: The new topic name to set on the feature group.
+        """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.topic_name = topic_name
         self._feature_group_api.update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_notification_topic_name(self, feature_group, notification_topic_name):
-        """Updates the notification_topic_name of a feature group."""
+    def update_notification_topic_name(
+        self, feature_group: fg.FeatureGroup, notification_topic_name: str
+    ) -> None:
+        """Updates the notification_topic_name of a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            notification_topic_name: The new notification topic name to set on the feature group.
+        """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.notification_topic_name = notification_topic_name
         self._feature_group_api.update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_deprecated(self, feature_group, deprecate):
-        """Updates the deprecation status of a feature group."""
+    def update_deprecated(
+        self, feature_group: fg.FeatureGroup, deprecate: bool
+    ) -> None:
+        """Updates the deprecation status of a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            deprecate: The new deprecation status to set on the feature group.
+        """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         self._feature_group_api.update_metadata(
             feature_group, copy_feature_group, "deprecate", deprecate
@@ -656,8 +701,19 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         )
 
-    def update_ttl(self, feature_group, ttl, enabled):
-        """Updates the TTL configuration of a feature group."""
+    def update_ttl(
+        self,
+        feature_group: fg.FeatureGroup,
+        ttl: int | None = None,
+        enabled: bool | None = None,
+    ):
+        """Updates the TTL configuration of a feature group.
+
+        Parameters:
+            feature_group: The feature group to update.
+            ttl: The new TTL value to set on the feature group, in seconds.
+            enabled: The new TTL enabled status to set on the feature group.
+        """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
 
         if ttl is not None:

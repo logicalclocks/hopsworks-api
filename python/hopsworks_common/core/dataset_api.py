@@ -24,13 +24,18 @@ import os
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
+
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from hsfs.feature_group import FeatureGroup
 
 
 @also_available_as("hopsworks.core.dataset_api.Chunk", "hsml.core.dataset_api.Chunk")
@@ -193,8 +198,8 @@ class DatasetApi:
             upload_path: Path to directory where to upload the file in Hopsworks Filesystem.
             overwrite: Overwrite file or directory if exists.
             chunk_size: Upload chunk size in bytes, defaults to 10 MB.
-            simultaneous_chunks: Number of simultaneous chunks to upload for each file upload.
             simultaneous_uploads: Number of simultaneous files to be uploaded for directories.
+            simultaneous_chunks: Number of simultaneous chunks to upload for each file upload.
             max_chunk_retries: Maximum retry for a chunk.
             chunk_retry_interval: Chunk retry interval in seconds.
 
@@ -624,11 +629,18 @@ class DatasetApi:
 
     @public
     @usage.method_logger
-    def upload_feature_group(self, feature_group, path, dataframe):
+    def upload_feature_group(
+        self, feature_group: FeatureGroup, path: str, dataframe: pd.DataFrame
+    ):
         """Upload a dataframe to a path in Parquet format using a feature group metadata.
 
-        !!! Note
+        Warning:
             This method is a legacy method kept for backwards-compatibility; do not use it in new code.
+
+        Parameters:
+            feature_group: The feature group metadata to use for the upload.
+            path: The path to upload the dataframe to.
+            dataframe: The dataframe to upload.
         """
         # Convert the dataframe into PARQUET for upload
         df_parquet = dataframe.to_parquet(index=False)
@@ -747,7 +759,7 @@ class DatasetApi:
 
     @public
     @usage.method_logger
-    def read_content(self, path: str, dataset_type: str = "DATASET"):
+    def read_content(self, path: str, dataset_type: str = "DATASET") -> dict | None:
         """Read the content of a file.
 
         Parameters:
@@ -878,13 +890,15 @@ class DatasetApi:
                 return False
 
     @public
-    def unzip(self, remote_path: str, block: bool = False, timeout: int | None = 120):
+    def unzip(
+        self, remote_path: str, block: bool = False, timeout: int | None = 120
+    ) -> bool:
         """Unzip an archive in the dataset.
 
         Parameters:
-            remote_path: path to file or directory to unzip.
-            block: if the operation should be blocking until complete.
-            timeout: timeout in seconds for the blocking, defaults to 120; if `None`, the blocking is unbounded.
+            remote_path: Path to file or directory to unzip.
+            block: Whether the operation should be blocking until complete.
+            timeout: Timeout in seconds for the blocking, defaults to 120; if `None`, the blocking is unbounded.
 
         Returns:
             Whether the operation completed in the specified timeout; if non-blocking, always returns `True`.
