@@ -40,6 +40,11 @@ class LoadingStrategy(Enum):
     INCREMENTAL_DATE = "INCREMENTAL_DATE"
 
 
+class WriteMode(Enum):
+    APPEND = "APPEND"
+    MERGE = "MERGE"
+
+
 class FeatureColumnMapping:
     def __init__(self, source_column: str, feature_name: str):
         self.source_column = source_column
@@ -287,6 +292,7 @@ class SinkJobConfiguration:
     def __init__(
         self,
         name: str | None = None,
+        write_mode: WriteMode | str | None = WriteMode.APPEND,
         batch_size: int | None = 100000,
         sql_source_fetch_chunk_size: int | None = 50000,
         source_read_workers: int | None = 1,
@@ -299,6 +305,7 @@ class SinkJobConfiguration:
         schedule_config: JobSchedule | dict | None = None,
     ):
         self._name = name
+        self.write_mode = write_mode
         self._batch_size = batch_size
         self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
         self._source_read_workers = source_read_workers
@@ -340,6 +347,7 @@ class SinkJobConfiguration:
         return {
             "type": self.DTO_TYPE,
             "name": self._name,
+            "writeMode": self._write_mode.value,
             "batchSize": self._batch_size,
             "sqlSourceFetchChunkSize": self._sql_source_fetch_chunk_size,
             "sourceReadWorkers": self._source_read_workers,
@@ -404,6 +412,7 @@ class SinkJobConfiguration:
         job_schedule = json_decamelized.get("job_schedule", None)
         endpoint_config = json_dict.get("endpointConfig", None)
         return SinkJobConfiguration(
+            write_mode=json_decamelized.get("write_mode", WriteMode.APPEND.value),
             batch_size=json_decamelized.get("batch_size", 100000),
             sql_source_fetch_chunk_size=json_decamelized.get(
                 "sql_source_fetch_chunk_size", 50000
@@ -517,6 +526,31 @@ class SinkJobConfiguration:
     @name.setter
     def name(self, name: str | None) -> None:
         self._name = name
+
+    @property
+    def write_mode(self) -> WriteMode:
+        return self._write_mode
+
+    @write_mode.setter
+    def write_mode(self, write_mode: WriteMode | str | None) -> None:
+        if write_mode is None:
+            self._write_mode = WriteMode.APPEND
+        elif isinstance(write_mode, WriteMode):
+            self._write_mode = write_mode
+        elif isinstance(write_mode, str):
+            try:
+                self._write_mode = WriteMode(write_mode.upper())
+            except ValueError as exc:
+                valid_values = ", ".join(mode.value for mode in WriteMode)
+                raise ValueError(
+                    f"Invalid write_mode '{write_mode}'. "
+                    f"Valid values: {valid_values}."
+                ) from exc
+        else:
+            raise TypeError(
+                "write_mode must be a WriteMode or str, "
+                f"got {type(write_mode).__name__}."
+            )
 
     @property
     def schedule_config(self) -> JobSchedule | None:
