@@ -359,9 +359,7 @@ class TestLoginUnit:
         assert api_key_path.read_text() == "prompted-key"
         assert result is mock_project
 
-    def test_login_saas_invalid_cached_key_falls_back_to_prompt(
-        self, mocker, tmp_path
-    ):
+    def test_login_saas_invalid_cached_key_falls_back_to_prompt(self, mocker, tmp_path):
         # Arrange — cached key exists but the server rejects it; login must delete
         # the stale file and prompt for a fresh key.
         api_key_path = tmp_path / ".hw_api_key"
@@ -448,9 +446,7 @@ class TestLoginUnit:
         self._patch_side_effects(mocker, mock_project)
 
         # Act
-        result = hopsworks.login(
-            host="my.hopsworks.server", api_key_file=str(key_file)
-        )
+        result = hopsworks.login(host="my.hopsworks.server", api_key_file=str(key_file))
 
         # Assert — the file content is read and passed as api_key_value.
         mock_conn_factory.assert_called_once()
