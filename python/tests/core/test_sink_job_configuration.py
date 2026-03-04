@@ -15,7 +15,6 @@
 #
 
 import pytest
-
 from hopsworks_common.core import sink_job_configuration
 from hopsworks_common.job_schedule import JobSchedule
 
