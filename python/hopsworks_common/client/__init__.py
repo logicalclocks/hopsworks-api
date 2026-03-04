@@ -80,7 +80,7 @@ def stop() -> None:
 
 @also_available_as("hopsworks.client.is_saas_connection")
 def is_saas_connection() -> bool:
-    return get_instance()._host == HOSTS.APP_HOST
+    return get_instance()._host == HOSTS.SAAS_HOST
 
 
 _kserve_installed = None
