@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import pytest
+
 from hopsworks_common.core import sink_job_configuration
 from hopsworks_common.job_schedule import JobSchedule
 
@@ -25,6 +27,7 @@ class TestSinkJobConfiguration:
         assert config.to_dict() == {
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": None,
+            "writeMode": sink_job_configuration.WriteMode.APPEND.value,
             "batchSize": 100000,
             "sqlSourceFetchChunkSize": 50000,
             "sourceReadWorkers": 1,
@@ -78,6 +81,7 @@ class TestSinkJobConfiguration:
         assert config.to_dict() == {
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": "sink_job",
+            "writeMode": sink_job_configuration.WriteMode.APPEND.value,
             "batchSize": 500,
             "sqlSourceFetchChunkSize": 600,
             "sourceReadWorkers": 2,
@@ -111,6 +115,7 @@ class TestSinkJobConfiguration:
     def test_from_response_json(self):
         json_dict = {
             "name": "sink_job",
+            "writeMode": "merge",
             "batchSize": 123,
             "sqlSourceFetchChunkSize": 456,
             "sourceReadWorkers": 7,
@@ -140,6 +145,7 @@ class TestSinkJobConfiguration:
         )
 
         assert config.name == "sink_job"
+        assert config.write_mode == sink_job_configuration.WriteMode.MERGE
         assert config.batch_size == 123
         assert config.sql_source_fetch_chunk_size == 456
         assert config.source_read_workers == 7
@@ -183,3 +189,15 @@ class TestSinkJobConfiguration:
         assert config.to_dict()["storageConnectorId"] == 3
         assert config.to_dict()["endpointConfig"] == {"relativeUrl": "/example"}
         assert config.to_dict()["name"] == "new_name"
+
+    def test_write_mode_validation(self):
+        config = sink_job_configuration.SinkJobConfiguration(write_mode="merge")
+
+        assert config.write_mode == sink_job_configuration.WriteMode.MERGE
+        assert (
+            config.to_dict()["writeMode"]
+            == sink_job_configuration.WriteMode.MERGE.value
+        )
+
+        with pytest.raises(ValueError, match="Invalid write_mode"):
+            sink_job_configuration.SinkJobConfiguration(write_mode="invalid")
