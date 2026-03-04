@@ -25,6 +25,8 @@ from unittest import TestCase, mock, skip
 import hopsworks
 from hopsworks.client import exceptions
 from hopsworks.project import Project
+from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.constants import HOSTS
 
 
 @contextmanager
@@ -258,3 +260,227 @@ class TestLogin(TestCase):
             hopsworks.login(api_key_value=imaginaryApiKey)
         except Exception as e:
             self.assertNotIn(imaginaryApiKey.strip(), str(e))
+
+
+class TestLoginUnit:
+    """Unit tests for hopsworks.login() — all network I/O is mocked."""
+
+    def setup_method(self):
+        # Arrange — reset module globals so tests are isolated.
+        hopsworks._connected_project = None
+        hopsworks._hw_connection = hopsworks.Connection.connection
+
+    def teardown_method(self):
+        hopsworks._connected_project = None
+        hopsworks._hw_connection = hopsworks.Connection.connection
+
+    def _mock_conn_factory(self, mocker, mock_project):
+        """Patch Connection.connection to return a mock connection instance."""
+        mock_conn_instance = mocker.MagicMock()
+        mock_conn_instance.get_project.return_value = mock_project
+        mock_conn_factory = mocker.patch.object(
+            hopsworks.Connection, "connection", return_value=mock_conn_instance
+        )
+        return mock_conn_factory, mock_conn_instance
+
+    def _patch_side_effects(self, mocker, mock_project):
+        """Suppress helpers that are not under test."""
+        # hopsworks.client gets overridden to the hopsworks/client/ subpackage
+        # (which lacks stop()) once `from hopsworks.client import exceptions` runs.
+        # create=True injects stop() into that subpackage namespace.
+        mocker.patch("hopsworks.client.stop", create=True)
+        mocker.patch("hopsworks._prompt_project", return_value=mock_project)
+        mocker.patch("hopsworks._set_active_project")
+        mocker.patch("hopsworks._initialize_module_apis")
+
+    # ── SaaS paths ────────────────────────────────────────────────────────────
+
+    def test_login_saas_with_api_key_value(self, mocker):
+        # Arrange
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+
+        # Act
+        result = hopsworks.login(api_key_value="test-api-key")
+
+        # Assert
+        mock_conn_factory.assert_called_once()
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["host"] == HOSTS.SAAS_HOST
+        assert call_kwargs["api_key_value"] == "test-api-key"
+        assert result is mock_project
+
+    def test_login_saas_with_cached_key_file(self, mocker, tmp_path):
+        # Arrange — a cached .hw_api_key file already exists on disk.
+        api_key_path = tmp_path / ".hw_api_key"
+        api_key_path.write_text("cached-key")
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+        mocker.patch(
+            "hopsworks._get_cached_api_key_path", return_value=str(api_key_path)
+        )
+
+        # Act
+        result = hopsworks.login()
+
+        # Assert — connection must be opened with the cached key file, not a value.
+        mock_conn_factory.assert_called_once()
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["api_key_file"] == str(api_key_path)
+        assert result is mock_project
+
+    def test_login_saas_prompts_and_saves_key_when_no_cached_file(
+        self, mocker, tmp_path
+    ):
+        # Arrange — no cached key; login must prompt the user and persist the result.
+        api_key_path = tmp_path / "subdir" / ".hw_api_key"  # parent does not exist yet
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+        mocker.patch(
+            "hopsworks._get_cached_api_key_path", return_value=str(api_key_path)
+        )
+        mock_getpass = mocker.patch("getpass.getpass", return_value="prompted-key")
+
+        # Act
+        result = hopsworks.login()
+
+        # Assert
+        mock_getpass.assert_called_once()
+        mock_conn_factory.assert_called_once()
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["api_key_value"] == "prompted-key"
+        assert api_key_path.exists(), "prompted key must be persisted to disk"
+        assert api_key_path.read_text() == "prompted-key"
+        assert result is mock_project
+
+    def test_login_saas_invalid_cached_key_falls_back_to_prompt(
+        self, mocker, tmp_path
+    ):
+        # Arrange — cached key exists but the server rejects it; login must delete
+        # the stale file and prompt for a fresh key.
+        api_key_path = tmp_path / ".hw_api_key"
+        api_key_path.write_text("expired-key")
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_conn_instance = mocker.MagicMock()
+        mock_conn_instance.get_project.return_value = mock_project
+        mock_response = mocker.MagicMock()
+        mock_response.json.return_value = {}
+        mock_response.status_code = 401
+        mock_response.reason = "Unauthorized"
+        mock_response.content = b""
+        mock_conn_factory = mocker.patch.object(
+            hopsworks.Connection,
+            "connection",
+            side_effect=[
+                RestAPIError("https://c.app.hopsworks.ai", mock_response),
+                mock_conn_instance,
+            ],
+        )
+        self._patch_side_effects(mocker, mock_project)
+        mocker.patch(
+            "hopsworks._get_cached_api_key_path", return_value=str(api_key_path)
+        )
+        mock_getpass = mocker.patch("getpass.getpass", return_value="new-key")
+
+        # Act
+        result = hopsworks.login()
+
+        # Assert
+        assert mock_conn_factory.call_count == 2
+        mock_getpass.assert_called_once()
+        # The stale file is deleted then re-created with the fresh key.
+        assert api_key_path.exists()
+        assert api_key_path.read_text() == "new-key"
+        assert result is mock_project
+
+    # ── Non-SaaS paths ────────────────────────────────────────────────────────
+
+    def test_login_non_saas_with_api_key_value(self, mocker):
+        # Arrange
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://my.hopsworks.server/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+
+        # Act
+        result = hopsworks.login(
+            host="my.hopsworks.server", api_key_value="non-saas-key"
+        )
+
+        # Assert
+        mock_conn_factory.assert_called_once()
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["host"] == "my.hopsworks.server"
+        assert call_kwargs["api_key_value"] == "non-saas-key"
+        assert result is mock_project
+
+    def test_login_non_saas_uses_hopsworks_api_key_env_var(self, mocker, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("HOPSWORKS_API_KEY", "env-key")
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://my.hopsworks.server/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+
+        # Act
+        result = hopsworks.login(host="my.hopsworks.server")
+
+        # Assert
+        mock_conn_factory.assert_called_once()
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["api_key_value"] == "env-key"
+        assert result is mock_project
+
+    def test_login_non_saas_with_api_key_file(self, mocker, tmp_path):
+        # Arrange
+        key_file = tmp_path / "my_key.txt"
+        key_file.write_text("file-key")
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "https://my.hopsworks.server/p/1"
+        mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
+        self._patch_side_effects(mocker, mock_project)
+
+        # Act
+        result = hopsworks.login(
+            host="my.hopsworks.server", api_key_file=str(key_file)
+        )
+
+        # Assert — the file content is read and passed as api_key_value.
+        mock_conn_factory.assert_called_once()
+        call_kwargs = mock_conn_factory.call_args.kwargs
+        assert call_kwargs["api_key_value"] == "file-key"
+        assert result is mock_project
+
+    # ── Inside Hopsworks (REST_ENDPOINT) path ─────────────────────────────────
+
+    def test_login_inside_hopsworks_uses_rest_endpoint(self, mocker, monkeypatch):
+        # Arrange — REST_ENDPOINT env var signals an on-cluster client; the
+        # connection factory is called without host/api-key and project is
+        # retrieved directly from the connection, not via _prompt_project.
+        monkeypatch.setenv("REST_ENDPOINT", "http://localhost:8181")
+        mock_project = mocker.MagicMock()
+        mock_project.get_url.return_value = "http://localhost:8181/p/1"
+        mock_conn_instance = mocker.MagicMock()
+        mock_conn_instance.get_project.return_value = mock_project
+        mock_conn_factory = mocker.patch.object(
+            hopsworks.Connection, "connection", return_value=mock_conn_instance
+        )
+        mocker.patch("hopsworks.client.stop", create=True)
+        mocker.patch("hopsworks._initialize_module_apis")
+        mock_prompt_project = mocker.patch("hopsworks._prompt_project")
+
+        # Act
+        result = hopsworks.login()
+
+        # Assert
+        mock_conn_factory.assert_called_once()
+        mock_conn_instance.get_project.assert_called_once()
+        mock_prompt_project.assert_not_called()
+        assert result is mock_project
