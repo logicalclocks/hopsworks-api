@@ -1953,11 +1953,14 @@ class FeatureGroupBase:
                 "Features and transformations are accessible by name."
             )
         feature = [f for f in self.__getattribute__("_features") if f.name == name]
-        transformations = [
-            tf.hopsworks_udf
-            for tf in self.__getattribute__("_transformation_functions")
-            if tf.hopsworks_udf.function_name == name
-        ]
+        try:
+            transformations = [
+                tf.hopsworks_udf
+                for tf in self.__getattribute__("_transformation_functions")
+                if tf.hopsworks_udf.function_name == name
+            ]
+        except AttributeError:
+            transformations = []
         if len(feature) == 1:
             return feature[0]
         if len(transformations) == 1:
