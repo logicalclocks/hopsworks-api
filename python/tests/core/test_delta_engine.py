@@ -538,9 +538,7 @@ class TestDeltaEngine:
             engine._write_delta_rs_dataset(dataset=mock.Mock())
         assert "hops-deltalake" in str(e.value)
 
-    def test_write_delta_rs_dataset_append_mode_skips_merge(
-        self, mocker, monkeypatch
-    ):
+    def test_write_delta_rs_dataset_append_mode_skips_merge(self, mocker, monkeypatch):
         # Arrange
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
@@ -606,9 +604,7 @@ class TestDeltaEngine:
             target_alias="fg_1_source",
         )
         merge_builder.when_matched_update_all.assert_called_once()
-        insert_builder = (
-            merge_builder.when_matched_update_all.return_value.when_not_matched_insert_all
-        )
+        insert_builder = merge_builder.when_matched_update_all.return_value.when_not_matched_insert_all
         insert_builder.assert_called_once()
         insert_builder.return_value.execute.assert_called_once()
         fake_deltalake.write_deltalake.assert_not_called()

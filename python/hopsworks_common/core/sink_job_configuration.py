@@ -556,8 +556,7 @@ class SinkJobConfiguration:
             except ValueError as exc:
                 valid_values = ", ".join(mode.value for mode in WriteMode)
                 raise ValueError(
-                    f"Invalid write_mode '{write_mode}'. "
-                    f"Valid values: {valid_values}."
+                    f"Invalid write_mode '{write_mode}'. Valid values: {valid_values}."
                 ) from exc
         else:
             raise TypeError(
