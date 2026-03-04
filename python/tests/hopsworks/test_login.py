@@ -298,7 +298,7 @@ class TestLoginUnit:
     def test_login_saas_with_api_key_value(self, mocker):
         # Arrange
         mock_project = mocker.MagicMock()
-        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_project.get_url.return_value = "https://eu-west.cloud.hopsworks.ai/p/1"
         mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
         self._patch_side_effects(mocker, mock_project)
 
@@ -317,7 +317,7 @@ class TestLoginUnit:
         api_key_path = tmp_path / ".hw_api_key"
         api_key_path.write_text("cached-key")
         mock_project = mocker.MagicMock()
-        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_project.get_url.return_value = "https://eu-west.cloud.hopsworks.ai/p/1"
         mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
         self._patch_side_effects(mocker, mock_project)
         mocker.patch(
@@ -339,7 +339,7 @@ class TestLoginUnit:
         # Arrange — no cached key; login must prompt the user and persist the result.
         api_key_path = tmp_path / "subdir" / ".hw_api_key"  # parent does not exist yet
         mock_project = mocker.MagicMock()
-        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_project.get_url.return_value = "https://eu-west.cloud.hopsworks.ai/p/1"
         mock_conn_factory, _ = self._mock_conn_factory(mocker, mock_project)
         self._patch_side_effects(mocker, mock_project)
         mocker.patch(
@@ -367,7 +367,7 @@ class TestLoginUnit:
         api_key_path = tmp_path / ".hw_api_key"
         api_key_path.write_text("expired-key")
         mock_project = mocker.MagicMock()
-        mock_project.get_url.return_value = "https://c.app.hopsworks.ai/p/1"
+        mock_project.get_url.return_value = "https://eu-west.cloud.hopsworks.ai/p/1"
         mock_conn_instance = mocker.MagicMock()
         mock_conn_instance.get_project.return_value = mock_project
         mock_response = mocker.MagicMock()
@@ -379,7 +379,7 @@ class TestLoginUnit:
             hopsworks.Connection,
             "connection",
             side_effect=[
-                RestAPIError("https://c.app.hopsworks.ai", mock_response),
+                RestAPIError("https://eu-west.cloud.hopsworks.ai", mock_response),
                 mock_conn_instance,
             ],
         )
