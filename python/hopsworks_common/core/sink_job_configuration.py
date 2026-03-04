@@ -45,6 +45,7 @@ class WriteMode(Enum):
     APPEND = "APPEND"
     MERGE = "MERGE"
 
+
 @public("hopsworks.core.FeatureColumnMapping")
 class FeatureColumnMapping:
     def __init__(self, source_column: str, feature_name: str):
@@ -82,6 +83,7 @@ class FeatureColumnMapping:
     @feature_name.setter
     def feature_name(self, feature_name: str) -> None:
         self._feature_name = feature_name
+
 
 @public("hopsworks.core.FullLoadConfig")
 class FullLoadConfig:
@@ -122,6 +124,7 @@ class FullLoadConfig:
     @initial_value.setter
     def initial_value(self, initial_value: str | None) -> None:
         self._initial_value = initial_value
+
 
 @public("hopsworks.core.IncrementalLoadingConfig")
 class IncrementalLoadingConfig:
@@ -174,6 +177,7 @@ class IncrementalLoadingConfig:
     @initial_ingestion_date.setter
     def initial_ingestion_date(self, initial_ingestion_date: int | None) -> None:
         self._initial_ingestion_date = initial_ingestion_date
+
 
 @public("hopsworks.core.LoadingConfig")
 class LoadingConfig:

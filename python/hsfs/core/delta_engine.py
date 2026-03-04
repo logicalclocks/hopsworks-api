@@ -124,7 +124,9 @@ class DeltaEngine:
                 **delta_options
             ).load(location).filter(
                 col("_change_type").isin("update_postimage", "insert")
-            ).createOrReplaceTempView(delta_fg_alias.alias)
+            ).createOrReplaceTempView(
+                delta_fg_alias.alias
+            )
 
     def _setup_delta_read_opts(
         self,

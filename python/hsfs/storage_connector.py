@@ -405,7 +405,7 @@ class StorageConnector(ABC):
         return self._data_source_api.get_tables(self, database)
 
     @public
-    def get_data(self, data_source: ds.DataSource) -> DataSourceData:
+    def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
         """Retrieve the data from the data source.
 
         Example:
