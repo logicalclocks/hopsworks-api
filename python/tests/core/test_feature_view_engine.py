@@ -2414,6 +2414,15 @@ class TestFeatureViewEngine:
             transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
+        # Build DAG before mocking TransformationFunctionEngine
+        from hsfs.core.transformation_function_engine import (
+            TransformationFunctionEngine as RealTFEngine,
+        )
+
+        execution_graph = RealTFEngine.build_transformation_function_execution_graph(
+            [tf_value]
+        )
+
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
@@ -2436,15 +2445,17 @@ class TestFeatureViewEngine:
             start_time=None,
             end_time=None,
             training_dataset_version=None,
-            transformation_functions=[tf_value],
+            execution_graph=execution_graph,
             read_options=None,
         )
 
         # Assert
         assert (
             tf_engine_patch.apply_transformation_functions.call_args[1][
-                "transformation_functions"
-            ][0].hopsworks_udf.function_name
+                "execution_graph"
+            ]
+            .nodes[0]
+            .hopsworks_udf.function_name
             == tf_value.hopsworks_udf.function_name
         )
         assert tf_engine_patch.apply_transformation_functions.call_count == 1

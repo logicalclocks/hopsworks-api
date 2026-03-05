@@ -1982,6 +1982,54 @@ class TestFeatureGroupEngine:
         assert result[0].name == "col1"
         assert result[1].name == "test"
 
+    def test_update_feature_group_schema_on_demand_transformations_chained_drop(
+        self, mocker
+    ):
+        """Test that intermediate features produced by one TF and dropped by a downstream TF are excluded from the schema."""
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        @udf(int, drop="feature")
+        def tf_a(feature):
+            return feature + 1
+
+        @udf(int, drop="tf_a")
+        def tf_b(tf_a):
+            return tf_a * 2
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            transformation_functions=[tf_a("col1"), tf_b("tf_a")],
+        )
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="str")
+
+        # Act
+        result = fg_engine._update_feature_group_schema_on_demand_transformations(
+            feature_group=fg, features=[f, f1]
+        )
+
+        # Assert — col1 dropped by tf_a, tf_a dropped by tf_b, only col2 and tf_b remain
+        result_names = [feat.name for feat in result]
+        assert result_names == ["col2", "tf_b"]
+
     def test_update_feature_group_schema_on_demand_transformations_duplicate_feature_name(
         self, mocker
     ):

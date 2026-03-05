@@ -155,6 +155,12 @@ class VectorServer:
         self._on_demand_transformation_functions: list[
             transformation_function.TransformationFunction
         ] = []
+        self._on_demand_transformation_functions_execution_graph: (
+            tf_engine_mod.TransformationExecutionDAG | None
+        ) = None
+        self._model_dependent_transformation_functions_execution_graph: (
+            tf_engine_mod.TransformationExecutionDAG | None
+        ) = None
         self._sql_client = None
 
         self._rest_client_engine = None
@@ -295,6 +301,14 @@ class VectorServer:
         self._fetch_inference_helpers_for_transformations = (
             self._requires_inference_helpers_for_transformations()
         )
+        # Rebuild the transformation DAG for on-demand and model-dependent transformation functions.
+        # This is necessary because the transformation functions will be updated with required statistics.
+        self._on_demand_transformation_functions_execution_graph = tf_engine_mod.TransformationFunctionEngine.build_transformation_function_execution_graph(
+            self._on_demand_transformation_functions
+        )
+        self._model_dependent_transformation_functions_execution_graph = tf_engine_mod.TransformationFunctionEngine.build_transformation_function_execution_graph(
+            self._model_dependent_transformation_functions
+        )
 
     def _requires_inference_helpers_for_transformations(self) -> bool:
         """Check if any on-demand transformation requires inference helper columns.
@@ -378,6 +392,13 @@ class VectorServer:
         available_parameters = set((features | request_parameters).keys())
         missing_request_parameters_features = {}
 
+        # Intermediate features: outputs of one TF that are inputs to another.
+        # These are computed by the transformation chain and should not be
+        # expected as request parameters.
+        all_output_cols: set[str] = set()
+        for tf in self._on_demand_transformation_functions:
+            all_output_cols.update(tf.hopsworks_udf.output_column_names)
+
         for on_demand_transformation in self._on_demand_transformation_functions:
             feature_name_prefix = (
                 on_demand_transformation.hopsworks_udf.feature_name_prefix
@@ -401,8 +422,11 @@ class VectorServer:
             prefixed_missing_features = transformation_features - available_parameters
 
             # Get Missing request parameters: These are will include request parameters that are not provided in their unprefixed or prefixed form.
-            missing_request_parameter = prefixed_missing_features.intersection(
-                unprefixed_missing_features
+            # Exclude intermediate features that are outputs of other TFs —
+            # they will be computed by the transformation chain.
+            missing_request_parameter = (
+                prefixed_missing_features.intersection(unprefixed_missing_features)
+                - all_output_cols
             )
 
             if missing_request_parameter:
@@ -445,6 +469,7 @@ class VectorServer:
         request_parameters: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | dict[str, Any]:
         """Assemble a single serving vector from the online feature store.
 
@@ -461,6 +486,7 @@ class VectorServer:
             request_parameters: Parameters required by on-demand transformation functions.
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vector in the requested format.
@@ -528,6 +554,7 @@ class VectorServer:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             logging_meta_data=logging_meta_data,
+            n_processes=n_processes,
         )
         if logging_meta_data is not None:
             logging_meta_data.serving_keys.append(entry)
@@ -570,6 +597,7 @@ class VectorServer:
         on_demand_features: bool | None = True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
         """Assemble a batch of serving vectors from the online feature store.
 
@@ -586,6 +614,7 @@ class VectorServer:
             on_demand_features: Whether to compute on-demand features.
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vectors in the requested format.
@@ -751,6 +780,7 @@ class VectorServer:
                 request_parameters=request_parameter,
                 transformation_context=transformation_context,
                 logging_meta_data=logging_meta_data,
+                n_processes=n_processes,
             )
 
             if logging_meta_data is not None:
@@ -793,6 +823,7 @@ class VectorServer:
         request_parameters: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_meta_data: LoggingMetaData = None,
+        n_processes: int = None,
     ) -> list[Any] | None:
         """Assemble a single serving vector from fetched and passed feature values.
 
@@ -807,6 +838,7 @@ class VectorServer:
             request_parameters: Parameters required by on-demand transformation functions.
             transformation_context: Contextual objects passed to transformation functions.
             logging_meta_data: Metadata object for logging, if logging is enabled.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vector as a list, or None if the result was null.
@@ -866,6 +898,7 @@ class VectorServer:
                 transform=transform,
                 on_demand_features=on_demand_features,
                 logging_meta_data=logging_meta_data,
+                n_processes=n_processes,
             )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -984,6 +1017,7 @@ class VectorServer:
         feature_vectors: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
+        n_processes: int = None,
     ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Applies model dependent transformation on the provided feature vector.
 
@@ -992,6 +1026,9 @@ class VectorServer:
             transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: Defaults to the same type as the input feature vector.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             The transformed feature vector.
@@ -1014,10 +1051,11 @@ class VectorServer:
         transformed_feature_vectors = []
         for feature_vector in feature_vectors:
             transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                execution_graph=self._model_dependent_transformation_functions_execution_graph,
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
-                transformation_functions=self.model_dependent_transformation_functions,
+                n_processes=n_processes,
                 expected_features=set(self.transformed_feature_vector_col_name),
             )
             transformed_feature_vectors.append(
@@ -1051,6 +1089,7 @@ class VectorServer:
         request_parameters: list[dict[str, Any]] | dict[str, Any] = None,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
+        n_processes: int = None,
     ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Function computes on-demand features present in the feature view.
 
@@ -1061,6 +1100,9 @@ class VectorServer:
             transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: Defaults to the same type as the input feature vector.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             The feature vector that contains all on-demand features in the feature view.
@@ -1097,12 +1139,13 @@ class VectorServer:
             feature_vectors, request_parameters
         ):
             on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                execution_graph=self._on_demand_transformation_functions_execution_graph,
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
                 request_parameters=request_parameter,
-                transformation_functions=self.on_demand_transformation_functions,
                 expected_features=set(self._on_demand_feature_vector_col_name),
+                n_processes=n_processes,
             )
             on_demand_feature_vectors.append(
                 [
@@ -1448,6 +1491,7 @@ class VectorServer:
         transform: bool = True,
         on_demand_features: bool = True,
         logging_meta_data: LoggingMetaData = None,
+        n_processes: int = None,
     ):
         """Apply both on-demand and model-dependent transformations to the input dictionary.
 
@@ -1458,6 +1502,7 @@ class VectorServer:
             transform: Whether to apply model-dependent transformations.
             on_demand_features: Whether to compute on-demand features.
             logging_meta_data: Metadata object for logging, if logging is enabled.
+            n_processes: Number of processes for parallel transformation execution.
         """
         feature_dict = row_dict
         encoded_feature_dict = None
@@ -1474,8 +1519,9 @@ class VectorServer:
                 online=True,
                 transformation_context=transformation_context,
                 request_parameters=request_parameter,
-                transformation_functions=self.on_demand_transformation_functions,
+                execution_graph=self._on_demand_transformation_functions_execution_graph,
                 expected_features=set(self._on_demand_feature_vector_col_name),
+                n_processes=n_processes,
             )
             if logging_meta_data:
                 logging_meta_data.untransformed_features.append(
@@ -1488,11 +1534,12 @@ class VectorServer:
         if transform or logging_meta_data:
             # Apply model dependent transformations
             encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                execution_graph=self._model_dependent_transformation_functions_execution_graph,
                 data=feature_dict,
                 online=True,
                 transformation_context=transformation_context,
-                transformation_functions=self.model_dependent_transformation_functions,
                 expected_features=set(self.transformed_feature_vector_col_name),
+                n_processes=n_processes,
             )
             if logging_meta_data:
                 logging_meta_data.transformed_features.append(
