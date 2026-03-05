@@ -737,7 +737,7 @@ def test_function():
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         assert test_func._dropped_features == ["col1"]
         assert test_func.dropped_features == ["prefix_col1"]
@@ -758,7 +758,7 @@ def test_function():
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         assert test_func._dropped_features == ["col1", "col2"]
         assert test_func.dropped_features == ["prefix_col1", "prefix_col2"]
@@ -823,7 +823,7 @@ def test_function():
             return col1 + 1
 
         test_func.output_column_names = ["test_func_col1_"]
-        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+        renaming_wrapper_function, _ = test_func.pandas_udf_wrapper()
 
         result = renaming_wrapper_function(test_dataframe["col1"])
 
@@ -836,7 +836,7 @@ def test_function():
             return pd.DataFrame({"out1": col1 + 1})
 
         test_func.output_column_names = ["test_func_col1_"]
-        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+        renaming_wrapper_function, _ = test_func.pandas_udf_wrapper()
 
         test_dataframe = pd.DataFrame({"column1": [1, 2, 3, 4]})
         result = renaming_wrapper_function(test_dataframe["column1"])
@@ -853,7 +853,7 @@ def test_function():
 
         test_func.output_column_names = ["test_func_col1_"]
         test_func.transformation_context = {"test_value": 200}
-        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+        renaming_wrapper_function, _ = test_func.pandas_udf_wrapper()
 
         result = renaming_wrapper_function(test_dataframe["col1"])
 
@@ -868,7 +868,7 @@ def test_function():
             return col1 + 1
 
         test_func.output_column_names = ["test_func_col1_"]
-        wrapper_function = test_func.python_udf_wrapper(rename_outputs=False)
+        wrapper_function, _ = test_func.python_udf_wrapper(rename_outputs=False)
 
         result = test_dataframe.apply(
             lambda x: wrapper_function(x["col1"]), axis=1, result_type="expand"
@@ -885,7 +885,7 @@ def test_function():
 
         test_func.transformation_context = {"test_value": 100}
         test_func.output_column_names = ["test_func_col1_"]
-        wrapper_function = test_func.python_udf_wrapper(rename_outputs=False)
+        wrapper_function, _ = test_func.python_udf_wrapper(rename_outputs=False)
 
         result = test_dataframe.apply(
             lambda x: wrapper_function(x["col1"]), axis=1, result_type="expand"
@@ -902,7 +902,7 @@ def test_function():
             "test_func_col1_col2_0",
             "test_func_col1_col2_1",
         ]
-        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+        renaming_wrapper_function, _ = test_func.pandas_udf_wrapper()
 
         test_dataframe = pd.DataFrame(
             {"column1": [1, 2, 3, 4], "column2": [10, 20, 30, 40]}
@@ -924,7 +924,7 @@ def test_function():
             "test_func_col1_col2_0",
             "test_func_col1_col2_1",
         ]
-        wrapper_function = test_func.python_udf_wrapper(rename_outputs=False)
+        wrapper_function, _ = test_func.python_udf_wrapper(rename_outputs=False)
 
         test_dataframe = pd.DataFrame(
             {"column1": [1, 2, 3, 4], "column2": [10, 20, 30, 40]}
@@ -938,7 +938,7 @@ def test_function():
 
         assert result.values.tolist() == [[2, 12], [3, 22], [4, 32], [5, 42]]
 
-        renaming_wrapper_function = test_func.python_udf_wrapper(rename_outputs=True)
+        renaming_wrapper_function, _ = test_func.python_udf_wrapper(rename_outputs=True)
 
         result = test_dataframe.apply(
             lambda x: renaming_wrapper_function(x["column1"], x["column2"]),
@@ -958,8 +958,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=False)
 
@@ -977,8 +982,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=True)
 
@@ -996,8 +1006,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=False)
 
@@ -1015,8 +1030,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=True)
 
@@ -1034,8 +1054,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=False)
 
@@ -1053,8 +1078,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=True)
 
@@ -1072,8 +1102,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=False)
 
@@ -1091,8 +1126,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=True)
 
@@ -1110,8 +1150,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=False)
 
@@ -1129,8 +1174,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=True)
 
@@ -1148,8 +1198,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=False)
 
@@ -1167,8 +1222,13 @@ def test_function():
 
         pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
         python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
-        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
-        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+        mock_wrapper_fn = mocker.MagicMock()
+        pandas_wrapper_mocker = mocker.patch.object(
+            test, "pandas_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
+        python_wrapper_mocker = mocker.patch.object(
+            test, "python_udf_wrapper", return_value=(mock_wrapper_fn, {})
+        )
 
         _ = test.get_udf(online=True)
 
@@ -1189,7 +1249,7 @@ def test_function():
         assert test_func("new_feature").statistics_features == []
 
         # Test with prefix
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
         assert test_func.transformation_features == ["prefix_col1"]
         assert test_func.statistics_features == []
 
@@ -1216,7 +1276,7 @@ def test_function():
         assert test_func("new_feature")._statistics_argument_names == ["col1"]
 
         # Test with prefix
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
         assert test_func.transformation_features == ["prefix_col1"]
         assert test_func.statistics_features == ["col1"]
         assert test_func._statistics_argument_names == ["col1"]

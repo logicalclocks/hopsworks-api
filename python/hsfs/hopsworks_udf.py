@@ -32,6 +32,7 @@ from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
+from hopsworks_common.version import __version__ as current_version
 from hsfs import engine, util
 from hsfs.decorators import typechecked
 from hsfs.transformation_statistics import TransformationStatistics
@@ -213,6 +214,12 @@ class HopsworksUdf:
         # Output column names are only stored in the backend when a model dependent or on demand transformation function is created using the defined UDF.
         self._output_column_names: list[str] = []
 
+        # Lazily initialized property caches — computed on first access, invalidated by setters.
+        self._cached_output_column_names: list[str] | None = None
+        self._cached_transformation_features: list[str] | None = None
+        self._cached_unprefixed_transformation_features: list[str] | None = None
+        self._cached_dropped_features: list[str] | None = None
+
         if not transformation_features:
             # New transformation function being declared so extract source code from function
             self._transformation_features: list[TransformationFeature] = (
@@ -257,9 +264,27 @@ class HopsworksUdf:
 
         self._transformation_context: dict[str, Any] = {}
 
+        # Cache for compiled UDF wrapper functions: (execution_mode, engine_type, online, return_types) -> (wrapper_fn, scope)
+        self._udf_cache: dict[tuple, tuple[Callable, dict]] = {}
+        self._return_types_tuple: tuple | None = None
+
         # Denote if the output feature names have to be generated.
         # Set to `False` if the output column names are saved in the backend and the udf is constructed from it using `from_response_json` function or if user has specified the output feature names using the `alias`` function.
         self._generate_output_col_name: bool = generate_output_col_names
+
+    def __getstate__(self):
+        """Exclude _udf_cache and property caches from pickling.
+
+        Cached wrapper functions are dynamically exec'd and not picklable by reference.
+        """
+        state = self.__dict__.copy()
+        state["_udf_cache"] = {}
+        state["_cached_output_column_names"] = None
+        state["_cached_transformation_features"] = None
+        state["_cached_unprefixed_transformation_features"] = None
+        state["_cached_dropped_features"] = None
+        state["_return_types_tuple"] = None
+        return state
 
     @staticmethod
     def _validate_and_convert_drop_features(
@@ -528,8 +553,10 @@ class HopsworksUdf:
         By default the output column names, transformation statistics and transformation context are injected into the scope if they are required by the transformation function.
         Any additional arguments can be passed as kwargs.
         """
-        # Shallow copy of scope performed because updating statistics argument of scope must not affect other instances.
-        scope = __import__("__main__").__dict__.copy()
+        # Build a minimal scope with only builtins. The generated wrapper code
+        # already contains its own imports via self._module_imports, so
+        # copying the entire __main__.__dict__ is unnecessary overhead.
+        scope = {"__builtins__": __builtins__}
 
         # Adding variables required to be injected into the scope.
         vaariable_to_inject = {
@@ -544,7 +571,7 @@ class HopsworksUdf:
 
         return scope
 
-    def python_udf_wrapper(self, rename_outputs) -> Callable:
+    def python_udf_wrapper(self, rename_outputs) -> tuple[Callable, dict]:
         """Function that creates a dynamic wrapper function for the defined udf.
 
         The wrapper function would be used to specify column names, in spark engines and to localize timezones.
@@ -558,7 +585,8 @@ class HopsworksUdf:
                 This should be set to `True` when the udf is executed in spark engine.
 
         Returns:
-            A wrapper function that renames outputs of the User defined function into specified output column names.
+            A tuple of (wrapper_function, scope_dict) where scope_dict can be updated
+            to inject new runtime values (statistics, context, output_col_names).
         """
         # Check if any output is of date time type.
         date_time_output_index = [
@@ -616,20 +644,18 @@ class HopsworksUdf:
             _date_time_output_index=date_time_output_index
         )
 
-        # executing code
         exec(code, scope)
+        return scope["wrapper"], scope
 
-        # returning executed function object
-        return eval("wrapper", scope)
-
-    def pandas_udf_wrapper(self) -> Callable:
+    def pandas_udf_wrapper(self) -> tuple[Callable, dict]:
         """Function that creates a dynamic wrapper function for the defined udf that renames the columns output by the UDF into specified column names.
 
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a pandas udf.
         The wrapper function would be available in the main scope of the program.
 
         Returns:
-            A wrapper function that renames outputs of the User defined function into specified output column names.
+            A tuple of (wrapper_function, scope_dict) where scope_dict can be updated
+            to inject new runtime values (statistics, context, output_col_names).
         """
         date_time_output_columns = [
             self.output_column_names[ind]
@@ -692,9 +718,7 @@ def renaming_wrapper(*args):
         )
 
         exec(code, scope)
-
-        # returning executed function object
-        return eval("renaming_wrapper", scope)
+        return scope["renaming_wrapper"], scope
 
     def __call__(self, *features: list[str]) -> HopsworksUdf:
         """Set features to be passed as arguments to the user defined functions.
@@ -741,6 +765,9 @@ def renaming_wrapper(*args):
                 self._transformation_features, features
             )
         ]
+        # Invalidate lazily cached feature lists since _transformation_features changed.
+        udf._cached_transformation_features = None
+        udf._cached_unprefixed_transformation_features = None
         udf.dropped_features = updated_dropped_features
         return udf
 
@@ -805,56 +832,107 @@ def renaming_wrapper(*args):
             self._return_types[0]
             for _ in range(len(self.transformation_statistics.feature.unique_values))
         ]
+        self._clear_udf_cache()
 
-    def get_udf(self, online: bool = False) -> Callable:
-        """Function that checks the current engine type, execution type and returns the appropriate UDF.
+    def _clear_udf_cache(self) -> None:
+        """Clear the cached UDF wrapper functions.
+
+        Should be called when state that affects wrapper compilation changes
+        (e.g., return types modified by update_return_type_one_hot).
+        """
+        self._udf_cache.clear()
+        self._return_types_tuple = None
+
+    def get_udf(self, online: bool = False, engine_type: str | None = None) -> Callable:
+        """Return a callable wrapper matching the current engine and execution mode.
+
+        The wrapper is selected based on the `execution_mode` of this UDF, the active
+        engine (spark / python / training), and whether online inference is requested.
 
         If the execution mode is `"default"`:
 
-        - In the `spark` engine: During inference a spark udf is returned otherwise a spark pandas_udf is returned.
-        - In the `python` engine: During inference a python udf is returned otherwise a pandas udf is returned.
+        - In the `spark` engine: during online inference a spark UDF is returned,
+          otherwise a spark pandas UDF is returned.
+        - In the `python` engine: during online inference a python UDF is returned,
+          otherwise a pandas UDF is returned.
 
         If the execution mode is `"pandas"`:
 
-        - In the `spark` engine: Always returns a spark pandas udf.
-        - In the `python` engine: Always returns a pandas udf.
+        - In the `spark` engine: always returns a spark pandas UDF.
+        - In the `python` engine: always returns a pandas UDF.
 
         If the execution mode is `"python"`:
 
-        - In the `spark` engine: Always returns a spark udf.
-        - In the `python` engine: Always returns a python udf.
+        - In the `spark` engine: always returns a spark UDF.
+        - In the `python` engine: always returns a python UDF.
+
+        !!! note "Caching"
+            Wrappers are cached and reused across calls with the same
+            `(execution_mode, engine_type, online, return_types)` key.
+            Statistics, context, and output column names are injected into the
+            cached wrapper's scope at runtime, so the wrapper does not need to
+            be regenerated when only those values change.
 
         Parameters:
             online: Specify if udf required for online inference.
+            engine_type: Override the engine type instead of auto-detecting it.
+                Accepted values are `"spark"`, `"python"`, and `"training"`.
+                When `None`, the engine type is resolved via `engine.get_type()`.
 
         Returns:
-            Pandas UDF in the spark engine otherwise returns a python function for the UDF.
+            A callable that applies this UDF to a dataframe or row input,
+            matching the conventions of the resolved engine and execution mode.
         """
-        if (
-            self.execution_mode.get_current_execution_mode(online)
-            == UDFExecutionMode.PANDAS
-        ):
-            if engine.get_type() in ["python", "training"] or online:
-                return self.pandas_udf_wrapper()
+        engine_type = engine_type or engine.get_type()
+        execution_mode = self.execution_mode.get_current_execution_mode(online)
+
+        # For python/training engines (and online), use cached wrappers to avoid
+        # repeated exec()/eval() overhead. The wrapper reads statistics, context,
+        # and output_col_names from its scope dict at runtime, so we just update
+        # the scope on cache hits.
+        # Use cached tuple to avoid tuple() allocation on every lookup
+        if self._return_types_tuple is None:
+            self._return_types_tuple = tuple(self.return_types)
+        cache_key = (execution_mode, engine_type, online, self._return_types_tuple)
+        cached = self._udf_cache.get(cache_key)
+        if cached is not None:
+            wrapper_fn, scope = cached
+            scope["_output_col_names"] = self.output_column_names
+            if self.transformation_statistics is not None:
+                scope[UDFKeyWords.STATISTICS.value] = self.transformation_statistics
+            if self.transformation_context:
+                scope[UDFKeyWords.CONTEXT.value] = self.transformation_context
+            return wrapper_fn
+
+        # Cache miss — generate wrapper
+        if execution_mode == UDFExecutionMode.PANDAS:
+            if engine_type in ["python", "training"] or online:
+                wrapper_fn, scope = self.pandas_udf_wrapper()
+                self._udf_cache[cache_key] = (wrapper_fn, scope)
+                return wrapper_fn
             from pyspark.sql.functions import pandas_udf
 
-            return pandas_udf(
-                f=self.pandas_udf_wrapper(),
+            wrapper_fn, scope = self.pandas_udf_wrapper()
+            spark_udf = pandas_udf(
+                f=wrapper_fn,
                 returnType=self._create_pandas_udf_return_schema_from_list(),
             )
-        if (
-            self.execution_mode.get_current_execution_mode(online)
-            == UDFExecutionMode.PYTHON
-        ):
-            if engine.get_type() in ["python", "training"] or online:
-                # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
-                return self.python_udf_wrapper(rename_outputs=False)
+            self._udf_cache[cache_key] = (spark_udf, scope)
+            return spark_udf
+        if execution_mode == UDFExecutionMode.PYTHON:
+            if engine_type in ["python", "training"] or online:
+                wrapper_fn, scope = self.python_udf_wrapper(rename_outputs=False)
+                self._udf_cache[cache_key] = (wrapper_fn, scope)
+                return wrapper_fn
             from pyspark.sql.functions import udf as pyspark_udf
 
-            return pyspark_udf(
-                f=self.python_udf_wrapper(rename_outputs=True),
+            wrapper_fn, scope = self.python_udf_wrapper(rename_outputs=True)
+            spark_udf = pyspark_udf(
+                f=wrapper_fn,
                 returnType=self._create_pandas_udf_return_schema_from_list(),
             )
+            self._udf_cache[cache_key] = (spark_udf, scope)
+            return spark_udf
         raise ValueError(
             f"Invalid execution mode '{self.execution_mode}' for UDF '{self.function_name}'."
         )
@@ -1056,7 +1134,11 @@ def renaming_wrapper(*args):
         Returns:
             Dictionary that contains all data required to json serialize the object.
         """
-        backend_version = client.get_connection().backend_version
+        backend_version = (
+            client.get_connection().backend_version
+            if client.get_connection()
+            else current_version
+        )
 
         return {
             "sourceCode": self._function_source,
@@ -1226,42 +1308,57 @@ def renaming_wrapper(*args):
     @property
     def output_column_names(self) -> list[str]:
         """Output columns names of the transformation function."""
-        if self._feature_name_prefix:
-            return [
-                self._feature_name_prefix + output_col_name
-                for output_col_name in self._output_column_names
-            ]
-        return self._output_column_names
+        if self._cached_output_column_names is None:
+            if self._feature_name_prefix:
+                self._cached_output_column_names = [
+                    self._feature_name_prefix + output_col_name
+                    for output_col_name in self._output_column_names
+                ]
+            else:
+                self._cached_output_column_names = self._output_column_names
+        return self._cached_output_column_names
 
     @public
     @property
     def transformation_features(self) -> list[str]:
         """List of feature names to be used in the User Defined Function."""
-        if self._feature_name_prefix:
-            return [
-                self._feature_name_prefix + transformation_feature.feature_name
-                for transformation_feature in self._transformation_features
-            ]
-
-        return [
-            transformation_feature.feature_name
-            for transformation_feature in self._transformation_features
-        ]
+        if self._cached_transformation_features is None:
+            if self._feature_name_prefix:
+                self._cached_transformation_features = [
+                    self._feature_name_prefix + transformation_feature.feature_name
+                    for transformation_feature in self._transformation_features
+                ]
+            else:
+                self._cached_transformation_features = [
+                    transformation_feature.feature_name
+                    for transformation_feature in self._transformation_features
+                ]
+        return self._cached_transformation_features
 
     @public
     @property
     def unprefixed_transformation_features(self) -> list[str]:
         """List of feature name used in the transformation function without the feature name prefix."""
-        return [
-            transformation_feature.feature_name
-            for transformation_feature in self._transformation_features
-        ]
+        if self._cached_unprefixed_transformation_features is None:
+            self._cached_unprefixed_transformation_features = [
+                transformation_feature.feature_name
+                for transformation_feature in self._transformation_features
+            ]
+        return self._cached_unprefixed_transformation_features
 
     @public
     @property
     def feature_name_prefix(self) -> str | None:
         """The feature name prefix that needs to be added to the feature names."""
         return self._feature_name_prefix
+
+    @feature_name_prefix.setter
+    def feature_name_prefix(self, prefix: str | None) -> None:
+        self._feature_name_prefix = prefix
+        self._cached_output_column_names = None
+        self._cached_transformation_features = None
+        self._cached_unprefixed_transformation_features = None
+        self._cached_dropped_features = None
 
     @public
     @property
@@ -1294,12 +1391,15 @@ def renaming_wrapper(*args):
     @property
     def dropped_features(self) -> list[str]:
         """List of features that will be dropped after the UDF is applied."""
-        if self._feature_name_prefix and self._dropped_features:
-            return [
-                self._feature_name_prefix + dropped_feature
-                for dropped_feature in self._dropped_features
-            ]
-        return self._dropped_features
+        if self._cached_dropped_features is None:
+            if self._feature_name_prefix and self._dropped_features:
+                self._cached_dropped_features = [
+                    self._feature_name_prefix + dropped_feature
+                    for dropped_feature in self._dropped_features
+                ]
+            else:
+                self._cached_dropped_features = self._dropped_features
+        return self._cached_dropped_features
 
     @public
     @property
@@ -1328,6 +1428,7 @@ def renaming_wrapper(*args):
         self._dropped_features = HopsworksUdf._validate_and_convert_drop_features(
             features, self.transformation_features, self._feature_name_prefix
         )
+        self._cached_dropped_features = None
 
     @transformation_statistics.setter
     def transformation_statistics(
@@ -1359,6 +1460,7 @@ def renaming_wrapper(*args):
             output_col_names = [output_col_names]
         self._validate_output_col_name(output_col_names)
         self._output_column_names = output_col_names
+        self._cached_output_column_names = None  # invalidate cache
 
     def __repr__(self):
         return f"{self.function_name}({', '.join(self.transformation_features)})"
