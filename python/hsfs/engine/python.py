@@ -1620,7 +1620,14 @@ class Engine:
     def concat_dataframes(
         self, dataframes: list[pd.DataFrame | pl.DataFrame]
     ) -> pd.DataFrame | pl.DataFrame:
-        """Horizontally concatenate a list of dataframes."""
+        """Horizontally concatenate a list of dataframes.
+
+        Parameters:
+            dataframes: List of dataframes to concatenate.
+
+        Returns:
+            The concatenated dataframe.
+        """
         if HAS_POLARS and isinstance(dataframes[0], pl.DataFrame):
             return pl.concat(dataframes, how="horizontal")
         return pd.concat(dataframes, axis=1)

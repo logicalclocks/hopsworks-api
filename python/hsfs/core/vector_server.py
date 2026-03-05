@@ -486,6 +486,7 @@ class VectorServer:
             request_parameters: Parameters required by on-demand transformation functions.
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vector in the requested format.
@@ -613,6 +614,7 @@ class VectorServer:
             on_demand_features: Whether to compute on-demand features.
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vectors in the requested format.
@@ -836,6 +838,7 @@ class VectorServer:
             request_parameters: Parameters required by on-demand transformation functions.
             transformation_context: Contextual objects passed to transformation functions.
             logging_meta_data: Metadata object for logging, if logging is enabled.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vector as a list, or None if the result was null.
@@ -1499,6 +1502,7 @@ class VectorServer:
             transform: Whether to apply model-dependent transformations.
             on_demand_features: Whether to compute on-demand features.
             logging_meta_data: Metadata object for logging, if logging is enabled.
+            n_processes: Number of processes for parallel transformation execution.
         """
         feature_dict = row_dict
         encoded_feature_dict = None
