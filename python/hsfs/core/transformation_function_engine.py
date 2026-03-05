@@ -723,11 +723,12 @@ class TransformationFunctionEngine:
             future_to_tf = {}
 
             use_shm = HAS_PYARROW
-            shm_name = shm_size = is_polars = None
+            shm_ref = shm_name = shm_size = is_polars = None
             if use_shm:
-                shm_name, shm_size, is_polars = (
+                shm_ref, shm_size, is_polars = (
                     TransformationFunctionEngine._write_to_shared_memory(data)
                 )
+                shm_name = shm_ref.name
 
             try:
                 while ready_queue or future_to_tf:
@@ -773,10 +774,9 @@ class TransformationFunctionEngine:
                             if remaining_deps[id(dep_tf)] == 0:
                                 ready_queue.append(dep_tf)
             finally:
-                if shm_name is not None:
-                    shm = shared_memory.SharedMemory(name=shm_name, create=False)
-                    shm.close()
-                    shm.unlink()
+                if shm_ref is not None:
+                    shm_ref.close()
+                    shm_ref.unlink()
 
         # --- Merge column_store into original DataFrame ---
         if column_store:
@@ -827,18 +827,21 @@ class TransformationFunctionEngine:
     @staticmethod
     def _write_to_shared_memory(
         dataframe: pd.DataFrame,
-    ) -> tuple[str, int, bool]:
+    ) -> tuple[shared_memory.SharedMemory, int, bool]:
         """Serialize a DataFrame to Arrow IPC format and write it to shared memory.
 
-        The shared memory block is created by this function and must be cleaned up
-        by the caller via `shm.close()` and `shm.unlink()` after all workers are done.
+        The returned SharedMemory object is intentionally left open so that the
+        mapping stays alive on Windows (where the mapping is destroyed when the
+        last handle is closed).
+        The caller must call `shm.close()` and `shm.unlink()` after all workers
+        are done.
 
         Parameters:
             dataframe: A pandas or polars DataFrame to serialize.
 
         Returns:
-            A tuple of (shared_memory_name, buffer_size, is_polars) that can be
-            safely pickled and sent to worker processes.
+            A tuple of (shared_memory_object, buffer_size, is_polars).
+            Use `shm.name` to get the name for passing to worker processes.
         """
         is_polars = HAS_POLARS and isinstance(dataframe, pl.DataFrame)
         if is_polars:
@@ -854,8 +857,10 @@ class TransformationFunctionEngine:
 
         shm = shared_memory.SharedMemory(create=True, size=buf.size)
         shm.buf[: buf.size] = memoryview(buf).cast("B")  # single C-level memcpy
-        shm.close()
-        return shm.name, buf.size, is_polars
+        # Do NOT close here — on Windows the mapping is destroyed when the
+        # last handle is closed.  The caller must keep this object alive and
+        # call close()/unlink() after all workers are done.
+        return shm, buf.size, is_polars
 
     @staticmethod
     def _read_from_shared_memory(
