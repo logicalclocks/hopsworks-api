@@ -35,6 +35,7 @@ def create_mysql_engine(
     online_conn: Any, external: bool, options: dict[str, Any] | None = None
 ) -> Any:
     online_options = online_conn.spark_options()
+    print(online_options)
     # Here we are replacing the first part of the string returned by Hopsworks,
     # jdbc:mysql:// with the sqlalchemy one + username and password
     # useSSL and allowPublicKeyRetrieval are not valid properties for the pymysql driver
