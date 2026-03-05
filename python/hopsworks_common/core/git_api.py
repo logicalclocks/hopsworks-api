@@ -66,12 +66,15 @@ class GitApi:
 
         git_api = project.get_git_api()
 
-        git_repo = git_api.clone("https://github.com/logicalclocks/hops-examples.git", "Resources", "GitHub")
+        # Clone into the current user's home directory (recommended)
+        git_repo = git_api.clone("https://github.com/logicalclocks/hops-examples.git", project.home_path, "GitHub")
         ```
 
         Parameters:
             url: URL to the git repository.
-            path: Path in Hopsworks Filesystem to clone the repo to.
+            path: Path in Hopsworks Filesystem to clone the repo to. Use
+                `project.home_path` to clone into your personal home directory
+                (e.g. ``/Projects/<project>/Users/<username>``).
             provider: The git provider where the repo is currently hosted.
             branch: The branch to clone, defaults to the configured default branch.
 

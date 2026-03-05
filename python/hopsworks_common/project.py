@@ -137,6 +137,26 @@ class Project:
         return self._project_namespace
 
     @public
+    @property
+    def home_path(self) -> str:
+        """Path to the current user's home directory within this project.
+
+        The home directory is located at `/Projects/<project_name>/Users/<username>`
+        and is created automatically when a user joins a project.
+
+        Returns:
+            The absolute HopsFS path to the current user's home directory.
+        """
+        _client = client.get_instance()
+        if hasattr(_client, "_username") and _client._username:
+            # External client stores the username directly
+            username = _client._username
+        else:
+            # Internal client: HDFS user is formatted as <project_name>__<username>
+            username = _client._project_user().split("__", 1)[1]
+        return f"/Projects/{self._name}/Users/{username}"
+
+    @public
     def get_feature_store(self, name: str | None = None) -> FeatureStore:
         """Connect to Project's Feature Store.
 
