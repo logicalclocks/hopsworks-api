@@ -14,6 +14,7 @@
 #
 from __future__ import annotations
 
+import threading
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -46,6 +47,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         # cache online feature store connector
         self._online_conn = None
+        self._online_conn_lock = threading.Lock()
         self._job_api = job_api.JobApi()
 
     def _update_feature_group_schema_on_demand_transformations(
@@ -400,9 +402,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def sql(self, query, feature_store_name, dataframe_type, online, read_options):
         if online and self._online_conn is None:
-            self._online_conn = self._storage_connector_api.get_online_connector(
-                self._feature_store_id
-            )
+            with self._online_conn_lock:
+                if self._online_conn is None:
+                    self._online_conn = self._storage_connector_api.get_online_connector(
+                        self._feature_store_id
+                    )
         return engine.get_instance().sql(
             query,
             feature_store_name,

@@ -387,6 +387,10 @@ def logout():
 
     if _is_connection_active():
         _hw_connection.close()
+    else:
+        from hsfs import engine
+
+        engine.stop()
 
     client.stop()
     _project_api = None
