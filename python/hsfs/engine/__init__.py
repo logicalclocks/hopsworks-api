@@ -84,5 +84,8 @@ def stop() -> None:
     global _engine
     from hsfs.core import arrow_flight_client
 
+    if _engine is not None and hasattr(_engine, "_mysql_online_fs_engine"):
+        if _engine._mysql_online_fs_engine is not None:
+            _engine._mysql_online_fs_engine.dispose()
     _engine = None
     arrow_flight_client.close()
