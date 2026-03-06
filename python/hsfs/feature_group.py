@@ -238,9 +238,9 @@ class FeatureGroupBase:
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
         )
-        self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
-            featurestore_id
-        )
+        self._great_expectation_engine: (
+            great_expectation_engine.GreatExpectationEngine
+        ) = great_expectation_engine.GreatExpectationEngine(featurestore_id)
         if self._id is not None:
             if expectation_suite:
                 self._expectation_suite._init_expectation_engine(
@@ -267,7 +267,9 @@ class FeatureGroupBase:
                 feature_store_id=featurestore_id,
                 feature_group_id=self._id,
             )
-            self._feature_monitoring_result_engine: feature_monitoring_result_engine.FeatureMonitoringResultEngine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            self._feature_monitoring_result_engine: (
+                feature_monitoring_result_engine.FeatureMonitoringResultEngine
+            ) = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._id,
             )
@@ -2985,8 +2987,23 @@ class FeatureGroup(FeatureGroupBase):
             and self.storage_connector.type == sc.StorageConnector.HOPSFS
         )
 
-    def _resolve_sink_enabled(self):
-        """Check if sink enabled must enabled based on storage connector."""
+    def _resolve_sink_enabled(self, validate_requested_sink: bool = False):
+        """Resolve sink enabled based on storage connector type.
+
+        If `validate_requested_sink` is True and sink was explicitly requested,
+        require that data source carries a storage connector.
+        """
+        if (
+            validate_requested_sink
+            and self._sink_enabled
+            and (
+                self._data_source is None or self._data_source.storage_connector is None
+            )
+        ):
+            raise FeatureStoreException(
+                "Sink cannot be enabled for the feature group when the data source has no storage connector."
+            )
+
         self._sink_enabled = (
             self.storage_connector is not None
             and self.storage_connector.type
@@ -3360,7 +3377,7 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._resolve_sink_enabled()
+        self._resolve_sink_enabled(validate_requested_sink=True)
         if self._sink_enabled and self.storage_connector is None:
             raise FeatureStoreException(
                 "Sink cannot be enabled for the feature group without a storage connector."
@@ -3405,9 +3422,7 @@ class FeatureGroup(FeatureGroupBase):
             self._features = (
                 self._features
                 if len(self._features) > 0
-                else features
-                if features
-                else []
+                else features if features else []
             )
 
             self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
@@ -4724,9 +4739,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
             for feat in (features or [])
         ]
 
-        self._feature_group_engine: external_feature_group_engine.ExternalFeatureGroupEngine = external_feature_group_engine.ExternalFeatureGroupEngine(
-            featurestore_id
-        )
+        self._feature_group_engine: (
+            external_feature_group_engine.ExternalFeatureGroupEngine
+        ) = external_feature_group_engine.ExternalFeatureGroupEngine(featurestore_id)
 
         if self._id:
             # Got from Hopsworks, deserialize features and storage connector
