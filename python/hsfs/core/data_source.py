@@ -264,7 +264,7 @@ class DataSource:
         return self._storage_connector.get_tables(database)
 
     @public
-    def get_data(self, use_cached=True) -> dsd.DataSourceData:
+    def get_data(self, use_cached: bool = True) -> dsd.DataSourceData:
         """Retrieve the data from the data source.
 
         Example:
