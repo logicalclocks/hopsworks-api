@@ -2999,7 +2999,13 @@ class FeatureGroup(FeatureGroupBase):
         supported_sink_connector = (
             self.storage_connector is not None
             and self.storage_connector.type
-            in [sc.StorageConnector.CRM, sc.StorageConnector.REST, sc.StorageConnector.SNOWFLAKE, sc.StorageConnector.BIGQUERY, sc.StorageConnector.REDSHIFT]
+            in [
+                sc.StorageConnector.CRM,
+                sc.StorageConnector.REST,
+                sc.StorageConnector.SNOWFLAKE,
+                sc.StorageConnector.BIGQUERY,
+                sc.StorageConnector.REDSHIFT,
+            ]
         )
 
         if (
