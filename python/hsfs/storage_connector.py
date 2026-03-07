@@ -429,7 +429,7 @@ class StorageConnector(ABC):
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             if not data_source.table:
                 raise ValueError(
-                    f"{self.type} data source require a table name in data_source.table."
+                    f"{self.type} data sources require a table name in data_source.table."
                 )
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
