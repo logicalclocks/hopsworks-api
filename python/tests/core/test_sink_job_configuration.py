@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import pytest
 from hopsworks_common.core import sink_job_configuration
 from hopsworks_common.job_schedule import JobSchedule
 
@@ -25,12 +26,17 @@ class TestSinkJobConfiguration:
         assert config.to_dict() == {
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": None,
+            "writeMode": sink_job_configuration.WriteMode.APPEND.value,
             "batchSize": 100000,
+            "sqlSourceFetchChunkSize": 50000,
+            "sourceReadWorkers": 1,
+            "dataProcessingWorkers": 1,
+            "maxUploadBatchSizeMB": 128,
+            "sqlTableNumPartitions": 2,
             "loadingConfig": {
                 "loadingStrategy": sink_job_configuration.LoadingStrategy.FULL_LOAD.value,
-                "sourceCursorField": None,
-                "initialValue": None,
-                "initialValueDate": None,
+                "incrementalLoadingConfig": None,
+                "fullLoadConfig": None,
             },
             "columnMappings": [],
             "featuregroupId": None,
@@ -61,6 +67,11 @@ class TestSinkJobConfiguration:
         config = sink_job_configuration.SinkJobConfiguration(
             name="sink_job",
             batch_size=500,
+            sql_source_fetch_chunk_size=600,
+            source_read_workers=2,
+            data_processing_workers=3,
+            max_upload_batch_size_mb=256,
+            sql_table_num_partitions=8,
             loading_config=loading_config,
             column_mappings=column_mappings,
             schedule_config=schedule,
@@ -69,12 +80,20 @@ class TestSinkJobConfiguration:
         assert config.to_dict() == {
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": "sink_job",
+            "writeMode": sink_job_configuration.WriteMode.APPEND.value,
             "batchSize": 500,
+            "sqlSourceFetchChunkSize": 600,
+            "sourceReadWorkers": 2,
+            "dataProcessingWorkers": 3,
+            "maxUploadBatchSizeMB": 256,
+            "sqlTableNumPartitions": 8,
             "loadingConfig": {
                 "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_DATE.value,
-                "sourceCursorField": "updated_at",
-                "initialValue": None,
-                "initialValueDate": "2023-01-01",
+                "incrementalLoadingConfig": {
+                    "sourceCursorField": "updated_at",
+                    "initialIngestionDate": 1672531200000,
+                },
+                "fullLoadConfig": None,
             },
             "columnMappings": [
                 {"sourceColumn": "source_1", "featureName": "feature_1"}
@@ -95,11 +114,19 @@ class TestSinkJobConfiguration:
     def test_from_response_json(self):
         json_dict = {
             "name": "sink_job",
+            "writeMode": "merge",
             "batchSize": 123,
+            "sqlSourceFetchChunkSize": 456,
+            "sourceReadWorkers": 7,
+            "dataProcessingWorkers": 8,
+            "maxUploadBatchSizeMB": 512,
+            "sqlTableNumPartitions": 9,
             "loadingConfig": {
                 "loadingStrategy": "INCREMENTAL_ID",
-                "sourceCursorField": "id",
-                "initialValue": "10",
+                "incrementalLoadingConfig": {
+                    "sourceCursorField": "id",
+                    "initialValue": "10",
+                },
             },
             "columnMappings": [
                 {"sourceColumn": "source_a", "featureName": "feature_a"}
@@ -117,13 +144,21 @@ class TestSinkJobConfiguration:
         )
 
         assert config.name == "sink_job"
+        assert config.write_mode == sink_job_configuration.WriteMode.MERGE
         assert config.batch_size == 123
+        assert config.sql_source_fetch_chunk_size == 456
+        assert config.source_read_workers == 7
+        assert config.data_processing_workers == 8
+        assert config.max_upload_batch_size_mb == 512
+        assert config.sql_table_num_partitions == 9
         assert isinstance(config.loading_config, sink_job_configuration.LoadingConfig)
         assert config.loading_config.to_dict() == {
             "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_ID.value,
-            "sourceCursorField": "id",
-            "initialValue": "10",
-            "initialValueDate": None,
+            "incrementalLoadingConfig": {
+                "sourceCursorField": "id",
+                "initialValue": "10",
+            },
+            "fullLoadConfig": None,
         }
         assert len(config.column_mappings) == 1
         assert config.column_mappings[0].source_column == "source_a"
@@ -144,12 +179,24 @@ class TestSinkJobConfiguration:
             featuregroup_id=1,
             featurestore_id=2,
             storage_connector_id=3,
-            endpoint_config={"url": "http://example"},
+            endpoint_config={"relativeUrl": "/example"},
             name="new_name",
         )
 
         assert config.to_dict()["featuregroupId"] == 1
         assert config.to_dict()["featurestoreId"] == 2
         assert config.to_dict()["storageConnectorId"] == 3
-        assert config.to_dict()["endpointConfig"] == {"url": "http://example"}
+        assert config.to_dict()["endpointConfig"] == {"relativeUrl": "/example"}
         assert config.to_dict()["name"] == "new_name"
+
+    def test_write_mode_validation(self):
+        config = sink_job_configuration.SinkJobConfiguration(write_mode="merge")
+
+        assert config.write_mode == sink_job_configuration.WriteMode.MERGE
+        assert (
+            config.to_dict()["writeMode"]
+            == sink_job_configuration.WriteMode.MERGE.value
+        )
+
+        with pytest.raises(ValueError, match="Invalid write_mode"):
+            sink_job_configuration.SinkJobConfiguration(write_mode="invalid")
