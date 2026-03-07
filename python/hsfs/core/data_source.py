@@ -277,6 +277,12 @@ class DataSource:
             data = table.get_data()
             ```
 
+        Parameters:
+            use_cached:
+                Whether to use cached data if available.
+                Only supported for CRM and REST connectors.
+                Defaults to `True`.
+
         Returns:
             An object containing the data retrieved from the data source.
         """
