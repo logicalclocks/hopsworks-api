@@ -3003,8 +3003,8 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.CRM,
                 sc.StorageConnector.REST,
                 sc.StorageConnector.SNOWFLAKE,
-                sc.StorageConnector.BIGQUERY,
                 sc.StorageConnector.REDSHIFT,
+                sc.StorageConnector.BIGQUERY,
             ]
         )
 
@@ -3027,12 +3027,17 @@ class FeatureGroup(FeatureGroupBase):
             )
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
-                "Supported connector types: CRM, REST."
+                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY."
             )
 
-        # Keep explicit user intent. For unspecified/false values, auto-enable sink
-        # for supported connector types.
-        self._sink_enabled = requested_sink or supported_sink_connector
+        # CRM/REST connectors always have sink enabled.
+        if self.storage_connector is not None and self.storage_connector.type in [
+            sc.StorageConnector.CRM,
+            sc.StorageConnector.REST,
+        ]:
+            self._sink_enabled = True
+        else:
+            self._sink_enabled = requested_sink and supported_sink_connector
 
     @staticmethod
     def _resolve_stream_python(

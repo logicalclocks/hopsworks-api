@@ -21,10 +21,78 @@ from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
 from hsfs.core.data_source import DataSource
 from hsfs.hopsworks_udf import udf
-from hsfs.storage_connector import CRMAndAnalyticsConnector, CRMSource
+from hsfs.storage_connector import (
+    BigQueryConnector,
+    CRMAndAnalyticsConnector,
+    CRMSource,
+    RedshiftConnector,
+    RestConnector,
+    SnowflakeConnector,
+)
 
 
 class TestFeatureGroupEngine:
+    @pytest.mark.parametrize(
+        "connector,sink_enabled,expected_sink_enabled",
+        [
+            (
+                CRMAndAnalyticsConnector(
+                    id=1, name="crm", featurestore_id=1, crm_type=CRMSource.HUBSPOT
+                ),
+                False,
+                True,
+            ),
+            (RestConnector(id=1, name="rest", featurestore_id=1), False, True),
+            (
+                SnowflakeConnector(id=1, name="snowflake", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                RedshiftConnector(id=1, name="redshift", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                BigQueryConnector(id=1, name="bigquery", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                SnowflakeConnector(id=1, name="snowflake", featurestore_id=1),
+                False,
+                False,
+            ),
+            (
+                RedshiftConnector(id=1, name="redshift", featurestore_id=1),
+                False,
+                False,
+            ),
+            (
+                BigQueryConnector(id=1, name="bigquery", featurestore_id=1),
+                False,
+                False,
+            ),
+        ],
+    )
+    def test_sink_enabled_resolution_for_supported_connectors(
+        self, mocker, connector, sink_enabled, expected_sink_enabled
+    ):
+        mocker.patch("hsfs.engine.get_type")
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=sink_enabled,
+            data_source=DataSource(storage_connector=connector),
+        )
+
+        assert fg.sink_enabled is expected_sink_enabled
+
     def test_save(self, mocker):
         # Arrange
         feature_store_id = 99
