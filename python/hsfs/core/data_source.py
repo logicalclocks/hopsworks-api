@@ -264,7 +264,7 @@ class DataSource:
         return self._storage_connector.get_tables(database)
 
     @public
-    def get_data(self) -> dsd.DataSourceData:
+    def get_data(self, use_cached=True) -> dsd.DataSourceData:
         """Retrieve the data from the data source.
 
         Example:
@@ -280,7 +280,7 @@ class DataSource:
         Returns:
             An object containing the data retrieved from the data source.
         """
-        return self._storage_connector.get_data(self)
+        return self._storage_connector.get_data(self, use_cached=use_cached)
 
     @public
     def get_metadata(self) -> dict:

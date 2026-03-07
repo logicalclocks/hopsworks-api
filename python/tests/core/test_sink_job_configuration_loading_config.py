@@ -19,6 +19,38 @@ from hopsworks_common.core import sink_job_configuration
 
 
 class TestLoadingConfig:
+    def test_loading_config_incremental_with_rest_filter_param(self):
+        config = sink_job_configuration.LoadingConfig(
+            loading_strategy="INCREMENTAL_ID",
+            source_cursor_field="id",
+            initial_value=42,
+            rest_filter_param="id_gt",
+        )
+
+        assert config.to_dict() == {
+            "loadingStrategy": sink_job_configuration.LoadingStrategy.INCREMENTAL_ID.value,
+            "incrementalLoadingConfig": {
+                "sourceCursorField": "id",
+                "restFilterParam": "id_gt",
+                "initialValue": 42,
+            },
+            "fullLoadConfig": None,
+        }
+
+        parsed = sink_job_configuration.LoadingConfig.from_response_json(
+            {
+                "loadingStrategy": "INCREMENTAL_ID",
+                "incrementalLoadingConfig": {
+                    "sourceCursorField": "id",
+                    "restFilterParam": "id_gt",
+                    "initialValue": 42,
+                },
+            }
+        )
+        assert (
+            parsed.to_dict()["incrementalLoadingConfig"]["restFilterParam"] == "id_gt"
+        )
+
     def test_to_dict_full_load_defaults(self):
         config = sink_job_configuration.LoadingConfig()
 

@@ -398,7 +398,7 @@ class StorageConnector(ABC):
         if self.type == StorageConnector.CRM:
             data: DataSourceData = self._data_source_api.get_crm_resources(self)
             return [
-                ds.DataSource(table=resource)
+                ds.DataSource(table=resource, storage_connector=self)
                 for resource in (data.supported_resources or [])
             ]
 

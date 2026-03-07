@@ -50,3 +50,23 @@ class TestStorageConnectorGetData:
 
         with pytest.raises(ValueError, match="CRM data sources require a table name"):
             connector.get_data(source)
+
+    def test_crm_get_tables_sets_storage_connector(self, mocker):
+        connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=1,
+            crm_type=CRMSource.HUBSPOT,
+        )
+        mocker.patch.object(
+            connector._data_source_api,
+            "get_crm_resources",
+            return_value=type(
+                "CRMResources", (), {"supported_resources": ["contacts", "deals"]}
+            )(),
+        )
+
+        tables = connector.get_tables()
+
+        assert [table.table for table in tables] == ["contacts", "deals"]
+        assert all(table.storage_connector is connector for table in tables)

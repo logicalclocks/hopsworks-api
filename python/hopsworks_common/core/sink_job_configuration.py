@@ -126,59 +126,6 @@ class FullLoadConfig:
         self._initial_value = initial_value
 
 
-@public("hopsworks.core.IncrementalLoadingConfig")
-class IncrementalLoadingConfig:
-    def __init__(
-        self,
-        source_cursor_field: str | None = None,
-        initial_value: int | None = None,
-        initial_ingestion_date: int | None = None,
-    ):
-        self._source_cursor_field = source_cursor_field
-        self._initial_value = initial_value
-        self._initial_ingestion_date = initial_ingestion_date
-
-    def to_dict(self):
-        return {
-            "sourceCursorField": self._source_cursor_field,
-            "initialValue": self._initial_value,
-            "initialIngestionDate": self._initial_ingestion_date,
-        }
-
-    @classmethod
-    def from_response_json(cls, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        return cls(
-            source_cursor_field=json_decamelized.get("source_cursor_field"),
-            initial_value=json_decamelized.get("initial_value"),
-            initial_ingestion_date=json_decamelized.get("initial_ingestion_date"),
-        )
-
-    @property
-    def source_cursor_field(self) -> str | None:
-        return self._source_cursor_field
-
-    @source_cursor_field.setter
-    def source_cursor_field(self, source_cursor_field: str | None) -> None:
-        self._source_cursor_field = source_cursor_field
-
-    @property
-    def initial_value(self) -> int | None:
-        return self._initial_value
-
-    @initial_value.setter
-    def initial_value(self, initial_value: int | None) -> None:
-        self._initial_value = initial_value
-
-    @property
-    def initial_ingestion_date(self) -> int | None:
-        return self._initial_ingestion_date
-
-    @initial_ingestion_date.setter
-    def initial_ingestion_date(self, initial_ingestion_date: int | None) -> None:
-        self._initial_ingestion_date = initial_ingestion_date
-
-
 @public("hopsworks.core.LoadingConfig")
 class LoadingConfig:
     def __init__(
@@ -186,6 +133,7 @@ class LoadingConfig:
         loading_strategy: LoadingStrategy | str = LoadingStrategy.FULL_LOAD,
         source_cursor_field: str | None = None,
         initial_value: str | None = None,
+        rest_filter_param: str | None = None,
     ):
         if isinstance(loading_strategy, LoadingStrategy):
             self._loading_strategy = loading_strategy
@@ -205,6 +153,7 @@ class LoadingConfig:
             )
         self._source_cursor_field = source_cursor_field
         self._initial_value = initial_value
+        self._rest_filter_param = rest_filter_param
 
     def to_dict(self):
         incremental_config = None
@@ -216,6 +165,8 @@ class LoadingConfig:
             LoadingStrategy.INCREMENTAL_DATE,
         ]:
             incremental_config = {"sourceCursorField": self._source_cursor_field}
+            if self._rest_filter_param is not None:
+                incremental_config["restFilterParam"] = self._rest_filter_param
             if self._loading_strategy in [
                 LoadingStrategy.INCREMENTAL_ID,
                 LoadingStrategy.INCREMENTAL_TIMESTAMP,
@@ -271,8 +222,10 @@ class LoadingConfig:
 
         source_cursor_field = None
         initial_value = None
+        rest_filter_param = None
         if incremental_config:
             source_cursor_field = incremental_config.get("source_cursor_field")
+            rest_filter_param = incremental_config.get("rest_filter_param")
             if "initial_value" in incremental_config:
                 initial_value = incremental_config.get("initial_value")
             elif "initial_ingestion_date" in incremental_config:
@@ -287,6 +240,7 @@ class LoadingConfig:
             ),
             source_cursor_field=source_cursor_field,
             initial_value=initial_value,
+            rest_filter_param=rest_filter_param,
         )
 
     def to_json(self):
