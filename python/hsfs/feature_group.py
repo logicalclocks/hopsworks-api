@@ -2992,11 +2992,19 @@ class FeatureGroup(FeatureGroupBase):
         """Resolve sink enabled based on storage connector type.
 
         If `validate_requested_sink` is True and sink was explicitly requested,
-        require that data source carries a storage connector.
+        require that data source carries a storage connector and that connector
+        type supports sink.
         """
+        requested_sink = self._sink_enabled
+        supported_sink_connector = (
+            self.storage_connector is not None
+            and self.storage_connector.type
+            in [sc.StorageConnector.CRM, sc.StorageConnector.REST, sc.StorageConnector.SNOWFLAKE, sc.StorageConnector.BIGQUERY, sc.StorageConnector.REDSHIFT]
+        )
+
         if (
             validate_requested_sink
-            and self._sink_enabled
+            and requested_sink
             and (
                 self._data_source is None or self._data_source.storage_connector is None
             )
@@ -3005,11 +3013,20 @@ class FeatureGroup(FeatureGroupBase):
                 "Sink cannot be enabled for the feature group when the data source has no storage connector."
             )
 
-        self._sink_enabled = (
-            self.storage_connector is not None
-            and self.storage_connector.type
-            in [sc.StorageConnector.CRM, sc.StorageConnector.REST]
-        )
+        if validate_requested_sink and requested_sink and not supported_sink_connector:
+            connector_type = (
+                self.storage_connector.type
+                if self.storage_connector is not None
+                else "UNKNOWN"
+            )
+            raise FeatureStoreException(
+                f"Sink cannot be enabled for storage connector type '{connector_type}'. "
+                "Supported connector types: CRM, REST."
+            )
+
+        # Keep explicit user intent. For unspecified/false values, auto-enable sink
+        # for supported connector types.
+        self._sink_enabled = requested_sink or supported_sink_connector
 
     @staticmethod
     def _resolve_stream_python(

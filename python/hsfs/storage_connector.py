@@ -434,9 +434,7 @@ class StorageConnector(ABC):
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
-        return self._data_source_api.get_data(
-            self._featurestore_id, self._name, data_source
-        )
+        return self._data_source_api.get_data(data_source)
 
     @public
     def get_metadata(self, data_source: ds.DataSource) -> dict:
