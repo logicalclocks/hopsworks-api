@@ -35,7 +35,6 @@ def create_mysql_engine(
     online_conn: Any, external: bool, options: dict[str, Any] | None = None
 ) -> Any:
     online_options = online_conn.spark_options()
-    print(online_options)
     # Here we are replacing the first part of the string returned by Hopsworks,
     # jdbc:mysql:// with the sqlalchemy one + username and password
     # useSSL and allowPublicKeyRetrieval are not valid properties for the pymysql driver
@@ -68,13 +67,10 @@ def create_mysql_engine(
     if options is not None and not isinstance(options, dict):
         raise TypeError("`options` should be a `dict` type.")
     if not options:
-        options = {"pool_recycle": 3600, "pool_pre_ping": True}
+        options = {"pool_recycle": 3600}
     else:
         if "pool_recycle" not in options:
             options["pool_recycle"] = 3600
-        if "pool_pre_ping" not in options:
-            options["pool_pre_ping"] = True
-    print(sql_alchemy_conn_str)
     # default connection pool size kept by engine is 5
     return create_engine(sql_alchemy_conn_str, **options)
 
