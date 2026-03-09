@@ -18,9 +18,9 @@ from __future__ import annotations
 import atexit
 import multiprocessing
 import sys
-from collections import deque
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
+from graphlib import CycleError, TopologicalSorter
 from multiprocessing import shared_memory
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -60,30 +60,26 @@ class TransformationExecutionDAG:
     dependencies: dict[int, list[transformation_function.TransformationFunction]] = (
         field(default_factory=dict)
     )
-    dependents: dict[int, list[transformation_function.TransformationFunction]] = field(
-        default_factory=dict
-    )
-    roots: list[transformation_function.TransformationFunction] = field(
-        default_factory=list
-    )
+
+    def _compute_depths(self) -> dict[int, int]:
+        """Compute the depth (longest path from any root) for each node."""
+        depths: dict[int, int] = {}
+        for tf in self.nodes:
+            deps = self.dependencies.get(id(tf), [])
+            depths[id(tf)] = max(depths[id(dep)] for dep in deps) + 1 if deps else 0
+        return depths
 
     @property
     def max_parallelism(self) -> int:
         """Maximum number of transformations that can execute concurrently.
 
-        Computes the depth (longest path from any root) for each node and
-        returns the largest number of nodes sharing the same depth level.
-        This equals the maximum width of the DAG schedule.
+        Returns the largest number of nodes sharing the same depth level,
+        which equals the maximum width of the DAG schedule.
         """
         if not self.nodes:
             return 1
-        # Nodes are topologically sorted, so all deps are visited first.
-        depths: dict[int, int] = {}
-        for tf in self.nodes:
-            deps = self.dependencies.get(id(tf), [])
-            depths[id(tf)] = max(depths[id(dep)] for dep in deps) + 1 if deps else 0
         level_counts: dict[int, int] = {}
-        for d in depths.values():
+        for d in self._compute_depths().values():
             level_counts[d] = level_counts.get(d, 0) + 1
         return max(level_counts.values())
 
@@ -108,73 +104,44 @@ class TransformationExecutionDAG:
     ) -> tuple[
         dict[str, transformation_function.TransformationFunction],
         set[str],
-        set[str],
         dict[int, list[str]],
         list[str],
     ]:
-        """Build shared lookups used by both visualize() and __str__().
+        """Build shared lookups for visualization.
 
         Returns:
-            A tuple of (output_to_tf, consumed_columns, raw_inputs,
-            tf_outputs, pass_through_features).
+            A tuple of (output_to_tf, raw_inputs, tf_outputs, pass_through_features).
         """
+        # Pass 1: map output columns to producing TFs and collect dropped features.
         output_to_tf: dict[str, transformation_function.TransformationFunction] = {}
-        for tf in self.nodes:
-            for col in tf.hopsworks_udf.output_column_names:
-                output_to_tf[col] = tf
-
-        consumed_columns: set[str] = set()
-        for tf in self.nodes:
-            for feat in tf.hopsworks_udf.transformation_features:
-                if feat in output_to_tf:
-                    consumed_columns.add(feat)
-
-        raw_inputs: set[str] = set()
-        for tf in self.nodes:
-            for feat in tf.hopsworks_udf.transformation_features:
-                if feat not in output_to_tf:
-                    raw_inputs.add(feat)
-
-        # Collect all explicitly dropped features first
         all_dropped: set[str] = set()
         for tf in self.nodes:
-            if tf.hopsworks_udf.dropped_features:
-                all_dropped.update(tf.hopsworks_udf.dropped_features)
+            udf = tf.hopsworks_udf
+            for col in udf.output_column_names:
+                output_to_tf[col] = tf
+            if udf.dropped_features:
+                all_dropped.update(udf.dropped_features)
 
-        # TF output columns that are not dropped go to the output
+        # Pass 2: identify raw inputs and non-dropped TF outputs.
+        raw_inputs: set[str] = set()
         tf_outputs: dict[int, list[str]] = {}
         for tf in self.nodes:
-            cols = [
-                col
-                for col in tf.hopsworks_udf.output_column_names
-                if col not in all_dropped
-            ]
+            udf = tf.hopsworks_udf
+            for feat in udf.transformation_features:
+                if feat not in output_to_tf:
+                    raw_inputs.add(feat)
+            cols = [c for c in udf.output_column_names if c not in all_dropped]
             if cols:
                 tf_outputs[id(tf)] = cols
 
-        # Pass-through: raw input features not explicitly dropped by any TF
-        pass_through_features = sorted(raw_inputs - all_dropped)
-
-        return (
-            output_to_tf,
-            consumed_columns,
-            raw_inputs,
-            tf_outputs,
-            pass_through_features,
-        )
+        return output_to_tf, raw_inputs, tf_outputs, sorted(raw_inputs - all_dropped)
 
     def __str__(self) -> str:
         """Text representation of the DAG for terminal display."""
         if not self.nodes:
             return "Transformation Execution DAG (empty)"
 
-        (
-            output_to_tf,
-            consumed_columns,
-            raw_inputs,
-            tf_outputs,
-            pass_through_features,
-        ) = self._build_lookups()
+        _, raw_inputs, tf_outputs, pass_through_features = self._build_lookups()
 
         lines = [
             "Transformation Execution DAG",
@@ -187,11 +154,7 @@ class TransformationExecutionDAG:
             lines.append("       \u2502")
             lines.append("       \u25bc")
 
-        # Compute depths for level grouping
-        depths: dict[int, int] = {}
-        for tf in self.nodes:
-            deps = self.dependencies.get(id(tf), [])
-            depths[id(tf)] = max(depths[id(dep)] for dep in deps) + 1 if deps else 0
+        depths = self._compute_depths()
 
         # Group TFs by depth level
         levels: dict[int, list] = {}
@@ -283,13 +246,9 @@ class TransformationExecutionDAG:
                 "Install it with: pip install graphviz"
             ) from e
 
-        (
-            output_to_tf,
-            consumed_columns,
-            raw_inputs,
-            tf_outputs,
-            pass_through_features,
-        ) = self._build_lookups()
+        output_to_tf, raw_inputs, tf_outputs, pass_through_features = (
+            self._build_lookups()
+        )
 
         dot = graphviz.Digraph(
             comment="Transformation Function Execution DAG",
@@ -465,16 +424,7 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def _init_worker(engine_type: str):
-        """Initialize the engine in a worker process.
-
-        Required for spawn-based multiprocessing (Windows) where child processes
-        start fresh without the parent's global state. Sets up the engine type
-        and initializes the engine singleton so that `engine.get_instance()`
-        works in worker processes.
-
-        Parameters:
-            engine_type: The engine type to initialize (e.g., "python", "spark").
-        """
+        """Initialize the engine singleton in a worker process (needed for spawn)."""
         import hopsworks_common.connection
 
         hopsworks_common.connection._hsfs_engine_type = engine_type
@@ -482,15 +432,7 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def create_process_pool(n_processes: int = None):
-        """Create a process pool for parallel execution of transformation functions.
-
-        If a process pool already exists, it is shut down before creating a new one.
-        Uses `fork` on Unix-based systems and `spawn` on Windows.
-
-        Parameters:
-            n_processes: Number of worker processes for executing transformation functions.
-                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
-        """
+        """Create (or replace) a process pool for parallel TF execution."""
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.shutdown_process_pool()
         mp_context = multiprocessing.get_context(
@@ -715,11 +657,16 @@ class TransformationFunctionEngine:
                 TransformationFunctionEngine.create_process_pool(n_processes)
             pool = TransformationFunctionEngine.__process_pool
 
-            remaining_deps = {
-                id(tf): len(execution_graph.dependencies[id(tf)])
-                for tf in execution_graph.nodes
-            }
-            ready_queue = deque(execution_graph.roots)
+            # Build a TopologicalSorter from the execution graph for scheduling.
+            # Nodes are id(tf) ints since TF objects are not hashable.
+            id_to_tf = {id(tf): tf for tf in execution_graph.nodes}
+            ts = TopologicalSorter(
+                {
+                    id(tf): [id(dep) for dep in execution_graph.dependencies[id(tf)]]
+                    for tf in execution_graph.nodes
+                }
+            )
+            ts.prepare()
             future_to_tf = {}
 
             use_shm = HAS_PYARROW
@@ -731,48 +678,43 @@ class TransformationFunctionEngine:
                 shm_name = shm_ref.name
 
             try:
-                while ready_queue or future_to_tf:
+                while ts.is_active():
                     # Submit ALL currently-ready TFs to pool (they run in parallel)
-                    while ready_queue:
-                        tf = ready_queue.popleft()
+                    for tf_id in ts.get_ready():
+                        tf = id_to_tf[tf_id]
                         needed = tf.hopsworks_udf.transformation_features
-                        predecessor_cols = {
-                            c: column_store[c] for c in needed if c in column_store
+                        udf_kwargs: dict[str, Any] = {
+                            "udf": tf.hopsworks_udf,
+                            "online": online,
+                            "engine_type": engine.get_type(),
                         }
                         if use_shm:
-                            future = pool.submit(
-                                TransformationFunctionEngine.execute_udf,
-                                udf=tf.hopsworks_udf,
+                            predecessor_cols = {
+                                c: column_store[c] for c in needed if c in column_store
+                            }
+                            udf_kwargs.update(
                                 shm_name=shm_name,
                                 shm_size=shm_size,
                                 is_polars=is_polars,
                                 columns=needed,
                                 predecessor_columns=predecessor_cols or None,
-                                online=online,
-                                engine_type=engine.get_type(),
                             )
                         else:
-                            future = pool.submit(
-                                TransformationFunctionEngine.execute_udf,
-                                udf=tf.hopsworks_udf,
-                                data=data,
-                                online=online,
-                                engine_type=engine.get_type(),
-                            )
-                        future_to_tf[future] = tf
+                            udf_kwargs["data"] = data
+                        future = pool.submit(
+                            TransformationFunctionEngine.execute_udf,
+                            **udf_kwargs,
+                        )
+                        future_to_tf[future] = tf_id
 
-                    # Wait for ANY one to finish (not all — this is the key)
+                    # Wait for ANY one to finish, then unblock dependents via ts.done()
                     done, _ = wait(future_to_tf.keys(), return_when=FIRST_COMPLETED)
                     for future in done:
-                        tf = future_to_tf.pop(future)
+                        tf_id = future_to_tf.pop(future)
                         result = future.result()
                         for col in result.columns:
                             column_store[col] = result[col]
-                        # Unblock dependents — if all deps done, add to ready queue
-                        for dep_tf in execution_graph.dependents.get(id(tf), []):
-                            remaining_deps[id(dep_tf)] -= 1
-                            if remaining_deps[id(dep_tf)] == 0:
-                                ready_queue.append(dep_tf)
+                        ts.done(tf_id)
             finally:
                 if shm_ref is not None:
                     shm_ref.close()
@@ -828,20 +770,10 @@ class TransformationFunctionEngine:
     def _write_to_shared_memory(
         dataframe: pd.DataFrame,
     ) -> tuple[shared_memory.SharedMemory, int, bool]:
-        """Serialize a DataFrame to Arrow IPC format and write it to shared memory.
+        """Serialize a DataFrame to Arrow IPC in shared memory.
 
-        The returned SharedMemory object is intentionally left open so that the
-        mapping stays alive on Windows (where the mapping is destroyed when the
-        last handle is closed).
-        The caller must call `shm.close()` and `shm.unlink()` after all workers
-        are done.
-
-        Parameters:
-            dataframe: A pandas or polars DataFrame to serialize.
-
-        Returns:
-            A tuple of (shared_memory_object, buffer_size, is_polars).
-            Use `shm.name` to get the name for passing to worker processes.
+        Returns (shm, buffer_size, is_polars). Caller must call
+        shm.close() and shm.unlink() after all workers are done.
         """
         is_polars = HAS_POLARS and isinstance(dataframe, pl.DataFrame)
         if is_polars:
@@ -868,19 +800,7 @@ class TransformationFunctionEngine:
         shm_size: int,
         as_polars: bool = False,
     ) -> pd.DataFrame:
-        """Read a DataFrame from an Arrow IPC stream stored in shared memory.
-
-        The shared memory block is opened read-only (create=False) and closed
-        after reading. The caller (master process) is responsible for unlinking.
-
-        Parameters:
-            shm_name: Name of the shared memory block.
-            shm_size: Size of the serialized Arrow IPC data in bytes.
-            as_polars: If True, return a polars DataFrame; otherwise pandas.
-
-        Returns:
-            The deserialized DataFrame (pandas or polars).
-        """
+        """Deserialize a DataFrame from Arrow IPC in shared memory."""
         shm = shared_memory.SharedMemory(name=shm_name, create=False)
         try:
             if as_polars:
@@ -916,31 +836,10 @@ class TransformationFunctionEngine:
         columns: list[str] | None = None,
         predecessor_columns: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
-        """Function to execute the UDF used to defined a transformation function on passed data.
+        """Execute a single UDF on the given data.
 
-        The functions pushes the execution of Pandas and Python Dataframes to the Python Engine and handles the execution dictionaries.
-
-        When `shm_name` is provided, the DataFrame is read from Arrow shared memory
-        instead of being deserialized via pickle. Only the columns required by the UDF
-        are selected, reducing memory usage in each worker.
-
-        Parameters:
-            udf: The transformation function to execute.
-            data: The dataframe, dictionary, or list of dictionaries to execute the transformation function on.
-                Can be None when shared memory parameters are provided instead.
-            engine_type: The engine type to use for execution.
-                When set to `"spark"`, offline dictionary execution is not supported.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
-            shm_name: Name of the shared memory block containing the Arrow IPC data.
-            shm_size: Size in bytes of the Arrow IPC data in shared memory.
-            is_polars: Whether to deserialize the Arrow data as a polars DataFrame.
-            columns: Column names to select from the shared memory DataFrame.
-            predecessor_columns: Columns from predecessor TFs to override base data columns.
-                Used in DAG parallel execution where predecessor results must be
-                passed to dependent TFs.
-
-        Returns:
-            The updated dataframe or list of dictionaries with the transformations applied.
+        When `shm_name` is provided the DataFrame is read from Arrow shared
+        memory instead of being deserialized via pickle.
         """
         if shm_name is not None:
             data = TransformationFunctionEngine._read_from_shared_memory(
@@ -1214,88 +1113,58 @@ class TransformationFunctionEngine:
         """Build a DAG (Directed Acyclic Graph) to determine the execution order of transformation functions.
 
         Analyzes the dependencies between transformation functions by inspecting their input and output features.
-        The resulting DAG contains topologically sorted nodes with per-node dependency and dependent tracking,
-        enabling true parallel execution where each transformation starts as soon as its direct dependencies complete.
-
         Parameters:
             transformation_functions: Flat list of transformation functions to organize into a DAG.
 
-        Returns:
-            A `TransformationExecutionDAG` containing topo-sorted nodes, dependency/dependent maps, and root nodes.
-
         Raises:
-            TransformationFunctionException: If a cyclic dependency is detected among the transformation functions.
+            TransformationFunctionException: If a cyclic dependency is detected.
         """
-        funcs = {
-            output_column_name: tf
+        # Map each output column name to the TF that produces it.
+        output_col_to_tf: dict[str, Any] = {
+            col: tf
             for tf in transformation_functions
-            for output_column_name in tf.hopsworks_udf.output_column_names
+            for col in tf.hopsworks_udf.output_column_names
         }
-        # Build adjacency: edges[u] = set of v where u -> v (u must complete before v)
-        all_nodes = set(funcs.keys())
-        edges: dict[str, set[str]] = {n: set() for n in all_nodes}
-        in_degree: dict[str, int] = dict.fromkeys(all_nodes, 0)
 
-        for name, tf in funcs.items():
+        # Build per-TF predecessor set keyed by id (int), since TF objects
+        # are not hashable. Values are sets of predecessor id(tf).
+        id_to_tf: dict[int, Any] = {id(tf): tf for tf in transformation_functions}
+        tf_pred_ids: dict[int, set[int]] = {
+            id(tf): set() for tf in transformation_functions
+        }
+        for tf in transformation_functions:
             transformation_features = tf.hopsworks_udf.transformation_features
             # Skip self-overwrite edges (would create false cycles)
-            if not any(
+            if any(
                 f == tf.hopsworks_udf.function_name for f in transformation_features
             ):
-                for feat in transformation_features:
-                    if feat in funcs:
-                        edges[feat].add(name)
-                        in_degree[name] += 1
+                continue
+            for feat in transformation_features:
+                producer = output_col_to_tf.get(feat)
+                if producer is not None and producer is not tf:
+                    tf_pred_ids[id(tf)].add(id(producer))
 
-        # Kahn's algorithm: topological sort + cycle detection in one pass
-        queue = deque(n for n in all_nodes if in_degree[n] == 0)
-        topo_node_names: list[str] = []
-        while queue:
-            node = queue.popleft()
-            topo_node_names.append(node)
-            for neighbor in edges[node]:
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
-                    queue.append(neighbor)
+        # Use graphlib.TopologicalSorter for topo sort + cycle detection.
+        # static_order() internally calls prepare() which raises CycleError
+        # if a cycle exists. Each id(tf) appears exactly once — no dedup needed.
+        ts = TopologicalSorter()
+        for tf in transformation_functions:
+            ts.add(id(tf), *tf_pred_ids[id(tf)])
 
-        if len(topo_node_names) != len(all_nodes):
+        try:
+            topo_tfs = [id_to_tf[tf_id] for tf_id in ts.static_order()]
+        except CycleError:
             raise exceptions.TransformationFunctionException(
                 "Cyclic dependency detected in transformation functions."
-            )
-
-        # Deduplicate TFs (multiple output columns map to same TF), preserving topological order
-        seen: set[int] = set()
-        topo_tfs: list = []
-        for node_name in topo_node_names:
-            tf = funcs[node_name]
-            if id(tf) not in seen:
-                seen.add(id(tf))
-                topo_tfs.append(tf)
-
-        # Build per-TF dependency/dependent maps
-        id_to_tf: dict[int, Any] = {id(tf): tf for tf in topo_tfs}
-        dep_ids: dict[int, set[int]] = {id(tf): set() for tf in topo_tfs}
-        dept_ids: dict[int, set[int]] = {id(tf): set() for tf in topo_tfs}
-
-        for u_name, neighbors in edges.items():
-            for v_name in neighbors:
-                tf_u, tf_v = funcs[u_name], funcs[v_name]
-                dep_ids[id(tf_v)].add(id(tf_u))
-                dept_ids[id(tf_u)].add(id(tf_v))
+            ) from None
 
         dependencies: dict[int, list] = {
-            tid: [id_to_tf[d] for d in deps] for tid, deps in dep_ids.items()
+            id(tf): [id_to_tf[d] for d in tf_pred_ids[id(tf)]] for tf in topo_tfs
         }
-        dependents: dict[int, list] = {
-            tid: [id_to_tf[d] for d in deps] for tid, deps in dept_ids.items()
-        }
-        roots = [tf for tf in topo_tfs if not dependencies[id(tf)]]
 
         return TransformationExecutionDAG(
             nodes=topo_tfs,
             dependencies=dependencies,
-            dependents=dependents,
-            roots=roots,
         )
 
     @staticmethod

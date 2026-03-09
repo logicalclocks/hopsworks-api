@@ -187,7 +187,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
         n_processes: int = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
-        """Apply on-demand transformations to the passed dataframe or list of dictionaries.
+        """Function to apply on demand transformations to the passed dataframe or list of dictionaries.
 
         Parameters:
             execution_graph: The transformation DAG containing on-demand transformation functions with dependency tracking.

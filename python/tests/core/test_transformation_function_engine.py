@@ -2553,8 +2553,6 @@ class TestTransformationFunctionEngine:
 
         assert tf1 in execution_graph.nodes and tf2 in execution_graph.nodes
         assert len(execution_graph.nodes) == 2
-        assert tf1 in execution_graph.roots and tf2 in execution_graph.roots
-        assert len(execution_graph.roots) == 2
         assert execution_graph.dependencies[id(tf1)] == []
         assert execution_graph.dependencies[id(tf2)] == []
 
@@ -2599,8 +2597,8 @@ class TestTransformationFunctionEngine:
 
         assert len(execution_graph.nodes) == 3
         assert all(tf in execution_graph.nodes for tf in [tf1, tf2, tf3])
-        assert tf1 in execution_graph.roots and tf2 in execution_graph.roots
-        assert len(execution_graph.roots) == 2
+        assert execution_graph.dependencies[id(tf1)] == []
+        assert execution_graph.dependencies[id(tf2)] == []
         assert tf1 in execution_graph.dependencies[id(tf3)]
         assert tf2 in execution_graph.dependencies[id(tf3)]
         assert len(execution_graph.dependencies[id(tf3)]) == 2
@@ -2651,7 +2649,7 @@ class TestTransformationFunctionEngine:
             [tf1, tf2, tf3]
         )
 
-        assert execution_graph.roots == [tf1]
+        assert execution_graph.dependencies[id(tf1)] == []
         assert execution_graph.dependencies[id(tf2)] == [tf1]
         assert tf1 in execution_graph.dependencies[id(tf3)]
         assert tf2 in execution_graph.dependencies[id(tf3)]
@@ -2699,8 +2697,8 @@ class TestTransformationFunctionEngine:
             [tf1, tf2, tf3]
         )
 
-        assert tf1 in execution_graph.roots and tf2 in execution_graph.roots
-        assert len(execution_graph.roots) == 2
+        assert execution_graph.dependencies[id(tf1)] == []
+        assert execution_graph.dependencies[id(tf2)] == []
         assert tf1 in execution_graph.dependencies[id(tf3)]
         assert tf2 in execution_graph.dependencies[id(tf3)]
         assert len(execution_graph.dependencies[id(tf3)]) == 2

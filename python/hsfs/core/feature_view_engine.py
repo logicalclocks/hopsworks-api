@@ -907,8 +907,7 @@ class FeatureViewEngine:
         Parameters:
             execution_graph: The transformation DAG containing transformation functions with dependency tracking.
             data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline use case.
-                This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
             n_processes: Number of worker processes for executing transformation functions.
