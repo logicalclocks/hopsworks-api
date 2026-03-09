@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import json
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client, decorators, tag, usage
 
 
+@also_available_as("hopsworks.core.tags_api.TagsApi", "hsfs.core.tags_api.TagsApi")
 class TagsApi:
     def __init__(self, feature_store_id, entity_type):
         """Tags endpoint for `trainingdatasets` and `featuregroups` resource.
@@ -77,7 +79,9 @@ class TagsApi:
 
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def get(self, metadata_instance, name: str = None, training_dataset_version=None):
+    def get(
+        self, metadata_instance, name: str | None = None, training_dataset_version=None
+    ):
         """Get the tags of a training dataset or feature group.
 
         Gets all tags if no tag name is specified.

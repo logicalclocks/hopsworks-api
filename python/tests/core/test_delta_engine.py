@@ -62,7 +62,7 @@ def _patch_apis(
         proj_api.get_user_info.return_value = {"username": username}
     else:
         proj_api.get_user_info.return_value = {}
-    mocker.patch("hopsworks.core.project_api.ProjectApi", return_value=proj_api)
+    mocker.patch("hopsworks_common.core.project_api.ProjectApi", return_value=proj_api)
 
     return var_api, proj_api
 

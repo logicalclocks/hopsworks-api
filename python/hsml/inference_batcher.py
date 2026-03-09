@@ -17,10 +17,12 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.constants import INFERENCE_BATCHER
 
 
+@public
 class InferenceBatcher:
     """Configuration of an inference batcher for a predictor.
 
@@ -47,6 +49,7 @@ class InferenceBatcher:
         self._max_latency = max_latency if max_latency is not None else None
         self._timeout = timeout if timeout is not None else None
 
+    @public
     def describe(self):
         """Print a JSON description of the inference batcher."""
         util.pretty_print(self)
@@ -97,6 +100,7 @@ class InferenceBatcher:
             json["timeout"] = self._timeout
         return {"batchingConfiguration": json}
 
+    @public
     @property
     def enabled(self):
         """Whether the inference batcher is enabled or not."""
@@ -106,6 +110,7 @@ class InferenceBatcher:
     def enabled(self, enabled: bool):
         self._enabled = enabled
 
+    @public
     @property
     def max_batch_size(self):
         """Maximum requests batch size."""
@@ -115,6 +120,7 @@ class InferenceBatcher:
     def max_batch_size(self, max_batch_size: int):
         self._max_batch_size = max_batch_size
 
+    @public
     @property
     def max_latency(self):
         """Maximum latency."""
@@ -124,6 +130,7 @@ class InferenceBatcher:
     def max_latency(self, max_latency: int):
         self._max_latency = max_latency
 
+    @public
     @property
     def timeout(self):
         """Maximum timeout."""

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, util
 from hopsworks_common.constants import (
     INFERENCE_ENDPOINTS,
@@ -38,6 +39,7 @@ from hsml.scaling_config import (
 from hsml.transformer import Transformer
 
 
+@public
 class Predictor(DeployableComponent):
     """Metadata object representing a predictor in Model Serving."""
 
@@ -123,6 +125,7 @@ class Predictor(DeployableComponent):
         self._project_namespace = project_namespace
         self._project_name = None
 
+    @public
     def deploy(self):
         """Create a deployment for this predictor and persists it in the Model Serving.
 
@@ -158,6 +161,7 @@ class Predictor(DeployableComponent):
 
         return _deployment
 
+    @public
     def describe(self):
         """Print a JSON description of the predictor."""
         util.pretty_print(self)
@@ -243,6 +247,7 @@ class Predictor(DeployableComponent):
         # get predictor for specific model, includes model type-related validations
         return util.get_predictor_for_model(model=model, **kwargs)
 
+    @public
     @classmethod
     def for_server(cls, name: str, script_file: str, **kwargs):
         # get predictor for a HTTP server without model
@@ -367,11 +372,13 @@ class Predictor(DeployableComponent):
             json = {**json, **self._scaling_configuration.to_dict()}
         return json
 
+    @public
     @property
     def id(self):
         """Id of the predictor."""
         return self._id
 
+    @public
     @property
     def name(self):
         """Name of the predictor."""
@@ -381,11 +388,13 @@ class Predictor(DeployableComponent):
     def name(self, name: str):
         self._name = name
 
+    @public
     @property
     def version(self):
         """Version of the predictor."""
         return self._version
 
+    @public
     @property
     def description(self):
         """Description of the predictor."""
@@ -395,6 +404,7 @@ class Predictor(DeployableComponent):
     def description(self, description: str):
         self._description = description
 
+    @public
     @property
     def model_name(self):
         """Name of the model deployed by the predictor."""
@@ -404,6 +414,7 @@ class Predictor(DeployableComponent):
     def model_name(self, model_name: str):
         self._model_name = model_name
 
+    @public
     @property
     def model_path(self):
         """Model path deployed by the predictor."""
@@ -413,6 +424,7 @@ class Predictor(DeployableComponent):
     def model_path(self, model_path: str):
         self._model_path = model_path
 
+    @public
     @property
     def model_version(self):
         """Model version deployed by the predictor."""
@@ -422,6 +434,7 @@ class Predictor(DeployableComponent):
     def model_version(self, model_version: int):
         self._model_version = model_version
 
+    @public
     @property
     def model_framework(self):
         """Model framework of the model to be deployed by the predictor."""
@@ -432,6 +445,7 @@ class Predictor(DeployableComponent):
         self._model_framework = model_framework
         self._model_server = self._infer_model_server(model_framework)
 
+    @public
     @property
     def artifact_version(self):
         """Artifact version deployed by the predictor.
@@ -445,6 +459,7 @@ class Predictor(DeployableComponent):
     def artifact_version(self, artifact_version: int | str):
         pass  # do nothing, kept for backward compatibility
 
+    @public
     @property
     def artifact_files_path(self):
         """Path of the artifact files deployed by the predictor."""
@@ -457,6 +472,7 @@ class Predictor(DeployableComponent):
             str(self._version),
         )
 
+    @public
     @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip."""
@@ -464,11 +480,13 @@ class Predictor(DeployableComponent):
         artifact_name = f"{self._model_name}_{str(self._model_version)}_{str(self._artifact_version)}.zip"
         return f"{self._model_path}/{str(self._model_version)}/Artifacts/{str(self._artifact_version)}/{artifact_name}"
 
+    @public
     @property
     def model_server(self):
         """Model server used by the predictor."""
         return self._model_server
 
+    @public
     @property
     def serving_tool(self):
         """Serving tool used to run the model server."""
@@ -478,6 +496,7 @@ class Predictor(DeployableComponent):
     def serving_tool(self, serving_tool: str):
         self._serving_tool = serving_tool
 
+    @public
     @property
     def script_file(self):
         """Script file used to load and run the model."""
@@ -487,6 +506,7 @@ class Predictor(DeployableComponent):
     def script_file(self, script_file: str):
         self._script_file = script_file
 
+    @public
     @property
     def config_file(self):
         """Model server configuration file passed to the model deployment.
@@ -500,6 +520,7 @@ class Predictor(DeployableComponent):
     def config_file(self, config_file: str):
         self._config_file = config_file
 
+    @public
     @property
     def inference_logger(self):
         """Configuration of the inference logger attached to this predictor."""
@@ -509,6 +530,7 @@ class Predictor(DeployableComponent):
     def inference_logger(self, inference_logger: InferenceLogger):
         self._inference_logger = inference_logger
 
+    @public
     @property
     def transformer(self):
         """Transformer configuration attached to the predictor."""
@@ -518,16 +540,19 @@ class Predictor(DeployableComponent):
     def transformer(self, transformer: Transformer):
         self._transformer = transformer
 
+    @public
     @property
     def created_at(self):
         """Created at date of the predictor."""
         return self._created_at
 
+    @public
     @property
     def creator(self):
         """Creator of the predictor."""
         return self._creator
 
+    @public
     @property
     def requested_instances(self):
         """Total number of requested instances in the predictor."""
@@ -536,6 +561,7 @@ class Predictor(DeployableComponent):
             num_instances += self._get_raw_num_instances(self._transformer.resources)
         return num_instances
 
+    @public
     @property
     def api_protocol(self):
         """API protocol enabled in the predictor (e.g., HTTP or GRPC)."""
@@ -545,6 +571,7 @@ class Predictor(DeployableComponent):
     def api_protocol(self, api_protocol):
         self._api_protocol = api_protocol
 
+    @public
     @property
     def environment(self):
         """Name of the inference environment."""
@@ -554,6 +581,7 @@ class Predictor(DeployableComponent):
     def environment(self, environment):
         self._environment = environment
 
+    @public
     @property
     def project_namespace(self):
         """Kubernetes project namespace."""
@@ -563,6 +591,7 @@ class Predictor(DeployableComponent):
     def project_namespace(self, project_namespace):
         self._project_namespace = project_namespace
 
+    @public
     @property
     def project_name(self):
         """Name of the project the deployment belongs to."""

@@ -26,12 +26,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Literal
 
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
 
 
+@also_available_as("hopsworks.core.dataset_api.Chunk", "hsml.core.dataset_api.Chunk")
 class Chunk:
     def __init__(self, content, number, status):
         self.content = content
@@ -40,6 +42,11 @@ class Chunk:
         self.retries = 0
 
 
+@public(
+    "hopsworks.core.dataset_api.DatasetApi",
+    "hsfs.core.dataset_api.DatasetApi",
+    "hsml.core.dataset_api.DatasetApi",
+)
 class DatasetApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)
@@ -55,6 +62,7 @@ class DatasetApi:
     # alias for backwards-compatibility:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
 
+    @public
     @usage.method_logger
     def download(
         self,
@@ -151,6 +159,7 @@ class DatasetApi:
 
         return local_path
 
+    @public
     @usage.method_logger
     def upload(
         self,
@@ -431,6 +440,7 @@ class DatasetApi:
         """
         return self._get(path)
 
+    @public
     def exists(self, path: str) -> bool:
         """Check if a file exists in the Hopsworks Filesystem.
 
@@ -459,6 +469,7 @@ class DatasetApi:
         """
         return self.exists(remote_path)
 
+    @public
     @usage.method_logger
     def remove(self, path: str):
         """Remove a path in the Hopsworks Filesystem.
@@ -486,6 +497,7 @@ class DatasetApi:
         """
         return self.remove(remote_path)
 
+    @public
     @usage.method_logger
     def mkdir(self, path: str) -> str:
         """Create a directory in the Hopsworks Filesystem.
@@ -522,6 +534,7 @@ class DatasetApi:
             "POST", path_params, headers=headers, query_params=query_params
         )["attributes"]["path"]
 
+    @public
     @usage.method_logger
     def copy(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Copy a file or directory in the Hopsworks Filesystem.
@@ -565,6 +578,7 @@ class DatasetApi:
         }
         _client._send_request("POST", path_params, query_params=query_params)
 
+    @public
     @usage.method_logger
     def move(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Move a file or directory in the Hopsworks Filesystem.
@@ -608,6 +622,7 @@ class DatasetApi:
         }
         _client._send_request("POST", path_params, query_params=query_params)
 
+    @public
     @usage.method_logger
     def upload_feature_group(self, feature_group, path, dataframe):
         """Upload a dataframe to a path in Parquet format using a feature group metadata.
@@ -641,6 +656,7 @@ class DatasetApi:
 
             chunk_number += 1
 
+    @public
     @usage.method_logger
     def list(self, path: str, offset: int = 0, limit: int = 1000) -> list[str]:
         """List the files and directories from a path in the Hopsworks Filesystem.
@@ -729,6 +745,7 @@ class DatasetApi:
 
         return items["count"], cls.from_response_json(items)
 
+    @public
     @usage.method_logger
     def read_content(self, path: str, dataset_type: str = "DATASET"):
         """Read the content of a file.
@@ -759,6 +776,7 @@ class DatasetApi:
 
         return _client._send_request("GET", path_params, query_params, stream=True)
 
+    @public
     def chmod(self, remote_path: str, permissions: str) -> dict:
         """Change permissions of a file or a directory in the Hopsworks Filesystem.
 
@@ -859,6 +877,7 @@ class DatasetApi:
                 )
                 return False
 
+    @public
     def unzip(self, remote_path: str, block: bool = False, timeout: int | None = 120):
         """Unzip an archive in the dataset.
 
@@ -875,6 +894,7 @@ class DatasetApi:
         """
         return self._archive(remote_path, block=block, timeout=timeout, action="unzip")
 
+    @public
     def zip(
         self,
         remote_path: str,

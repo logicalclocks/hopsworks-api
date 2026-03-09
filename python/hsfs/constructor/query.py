@@ -21,6 +21,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import engine, storage_connector, util
@@ -47,6 +48,7 @@ if HAS_NUMPY:
     pass
 
 
+@public
 @typechecked
 class Query:
     ERROR_MESSAGE_FEATURE_AMBIGUOUS = (
@@ -142,6 +144,7 @@ class Query:
 
         return sql_query, online_conn
 
+    @public
     def check_and_warn_ambiguous_features(self) -> None:
         """Function that fetches ambiguous features from a query and displays a warning."""
         self._ambiguous_features_in_query = self.get_ambiguous_features()
@@ -203,6 +206,7 @@ class Query:
 
         return ambiguous_feature_feature_group_mapping
 
+    @public
     def get_ambiguous_features(self: Query) -> dict[str, set[str]]:
         """Function to check ambiguous features in the query. The function will return a dictionary with feature name of the ambiguous features as key and list feature groups they are in as value.
 
@@ -233,6 +237,7 @@ class Query:
 
         return ambiguous_feature_feature_group_mapping
 
+    @public
     def read(
         self,
         online: bool = False,
@@ -308,6 +313,7 @@ class Query:
             schema,
         )
 
+    @public
     def show(self, n: int, online: bool = False) -> list[list[Any]]:
         """Show the first N rows of the Query.
 
@@ -334,6 +340,7 @@ class Query:
             sql_query, self._feature_store_name, n, online_conn, read_options
         )
 
+    @public
     def join(
         self,
         sub_query: Query,
@@ -398,6 +405,7 @@ class Query:
 
         return self
 
+    @public
     def as_of(
         self,
         wallclock_time: str | int | datetime | date | None = None,
@@ -493,6 +501,7 @@ class Query:
         self.left_feature_group_start_time = exclude_until_timestamp
         return self
 
+    @public
     def pull_changes(
         self,
         wallclock_start_time: str | int | date | datetime,
@@ -512,6 +521,7 @@ class Query:
         )
         return self
 
+    @public
     def filter(self, f: Filter | Logic) -> Query:
         """Apply filter to the feature group.
 
@@ -680,6 +690,7 @@ class Query:
         new._joins = humps.camelize(new._joins)
         return new
 
+    @public
     def to_string(self, online: bool = False, arrow_flight: bool = False) -> str:
         """Convert the Query to its string representation.
 
@@ -720,6 +731,7 @@ class Query:
 
         return fs_query.query_signature
 
+    @public
     @property
     def left_feature_group_start_time(
         self,
@@ -727,6 +739,7 @@ class Query:
         """Start time of time travel for the left feature group."""
         return self._left_feature_group_start_time
 
+    @public
     @property
     def left_feature_group_end_time(self) -> str | int | date | datetime | None:
         """End time of time travel for the left feature group."""
@@ -744,6 +757,7 @@ class Query:
     ) -> None:
         self._left_feature_group_end_time = left_feature_group_end_time
 
+    @public
     def append_feature(self, feature: str | Feature) -> Query:
         """Append a feature to the query.
 
@@ -756,6 +770,7 @@ class Query:
 
         return self
 
+    @public
     def is_time_travel(self) -> bool:
         """Query contains time travel."""
         return (
@@ -764,6 +779,7 @@ class Query:
             or any(_join.query.is_time_travel() for _join in self._joins)
         )
 
+    @public
     def is_cache_feature_group_only(self) -> bool:
         """Query contains only cached feature groups."""
         return all(isinstance(fg, fg_mod.FeatureGroup) for fg in self.featuregroups)
@@ -858,11 +874,13 @@ class Query:
             Query.ERROR_MESSAGE_FEATURE_AMBIGUOUS.format(feature_name)
         )
 
+    @public
     @property
     def joins(self) -> list[join.Join]:
         """List of joins in the query."""
         return self._joins
 
+    @public
     @property
     def featuregroups(
         self,
@@ -873,6 +891,7 @@ class Query:
             self._fg_rec_add(join_obj, featuregroups)
         return list(featuregroups)
 
+    @public
     @property
     def filters(self) -> Logic | None:
         """All filters used in the query."""
@@ -885,6 +904,7 @@ class Query:
 
         return filters
 
+    @public
     @property
     def features(self) -> list[Feature]:
         """List of all features in the query."""
@@ -898,6 +918,7 @@ class Query:
 
         return features
 
+    @public
     def get_feature(self, feature_name: str) -> Feature:
         """Get a feature by name.
 

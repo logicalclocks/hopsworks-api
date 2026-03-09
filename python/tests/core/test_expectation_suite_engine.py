@@ -48,9 +48,7 @@ class TestExpectationSuiteEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Attached expectation suite to Feature Group, edit it at {}".format(
-            expectation_suite_url
-        )
+        ] == f"Attached expectation suite to Feature Group, edit it at {expectation_suite_url}"
 
     def test_update(self, mocker):
         # Arrange
@@ -81,9 +79,7 @@ class TestExpectationSuiteEngine:
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
-            == "Updated expectation suite attached to Feature Group, edit it at {}".format(
-                expectation_suite_url
-            )
+            == f"Updated expectation suite attached to Feature Group, edit it at {expectation_suite_url}"
         )
 
     def test_save(self, mocker):
@@ -117,9 +113,7 @@ class TestExpectationSuiteEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Attached expectation suite to Feature Group, edit it at {}".format(
-            expectation_suite_url
-        )
+        ] == f"Attached expectation suite to Feature Group, edit it at {expectation_suite_url}"
 
     def test_get(self, mocker):
         # Arrange

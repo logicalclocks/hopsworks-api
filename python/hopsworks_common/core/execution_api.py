@@ -14,9 +14,11 @@
 #   limitations under the License.
 #
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client, execution
 
 
+@also_available_as("hopsworks.core.execution_api.ExecutionApi")
 class ExecutionApi:
     def _start(self, job, args: str = None):
         _client = client.get_instance()

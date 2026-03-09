@@ -1407,9 +1407,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_features(self, mocker):
@@ -1461,9 +1459,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
     def test_save_feature_group_metadata_primary_partition_precombine(self, mocker):
@@ -1515,9 +1511,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_primary_partition_precombine_event_error(
@@ -1677,9 +1671,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_write_options(self, mocker):
@@ -1732,9 +1724,7 @@ class TestFeatureGroupEngine:
         assert mock_print.call_count == 1
         assert mock_print.call_args[0][
             0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
-        )
+        ] == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         mock_save_empty_table.assert_not_called()
 
     def test_update_feature_group_schema_on_demand_transformations(self, mocker):

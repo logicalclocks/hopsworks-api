@@ -18,16 +18,24 @@ from __future__ import annotations
 import getpass
 import json
 
+from hopsworks_apigen import public
 from hopsworks_common import client, decorators, secret
 from hopsworks_common.core import project_api
 
 
+@public("hopsworks.core.secret_api.SecretsApi")
 class SecretsApi:
+    """API for managing secrets in Hopsworks.
+
+    You can get an instance of this class with [`hopsworks.get_secrets_api`][hopsworks.get_secrets_api].
+    """
+
     def __init__(
         self,
     ):
         self._project_api = project_api.ProjectApi()
 
+    @public
     def get_secrets(self) -> list[secret.Secret]:
         """Get all secrets.
 
@@ -45,6 +53,7 @@ class SecretsApi:
             _client._send_request("GET", path_params)
         )
 
+    @public
     @decorators.catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
     def get_secret(self, name: str, owner: str = None) -> secret.Secret | None:
         """Get a secret.
@@ -81,6 +90,7 @@ class SecretsApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )[0]
 
+    @public
     def get(self, name: str, owner: str = None) -> str:
         """Get the secret's value.
 
@@ -104,6 +114,7 @@ class SecretsApi:
         )
         return self.create_secret(name, secret_input).value
 
+    @public
     def create_secret(
         self, name: str, value: str, project: str = None
     ) -> secret.Secret:

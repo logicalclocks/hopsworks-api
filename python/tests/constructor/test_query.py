@@ -451,7 +451,7 @@ class TestQuery:
             expected_ambiguous_features.keys()
         )
 
-        for fg_name in ambiguous_features.keys():
+        for fg_name in ambiguous_features:
             assert sorted(ambiguous_features[fg_name]) == sorted(
                 expected_ambiguous_features[fg_name]
             )
@@ -485,7 +485,7 @@ class TestQuery:
             expected_ambiguous_features.keys()
         )
 
-        for fg_name in ambiguous_features.keys():
+        for fg_name in ambiguous_features:
             assert sorted(ambiguous_features[fg_name]) == sorted(
                 expected_ambiguous_features[fg_name]
             )
@@ -545,7 +545,7 @@ class TestQuery:
             expected_feature_to_feature_group_mapping.keys()
         )
 
-        for fg_name in feature_to_feature_group_mapping.keys():
+        for fg_name in feature_to_feature_group_mapping:
             assert sorted(feature_to_feature_group_mapping[fg_name]) == sorted(
                 expected_feature_to_feature_group_mapping[fg_name]
             )
@@ -594,7 +594,7 @@ class TestQuery:
             expected_feature_to_feature_group_mapping.keys()
         )
 
-        for fg_name in feature_to_feature_group_mapping.keys():
+        for fg_name in feature_to_feature_group_mapping:
             assert sorted(feature_to_feature_group_mapping[fg_name]) == sorted(
                 expected_feature_to_feature_group_mapping[fg_name]
             )
@@ -635,7 +635,7 @@ class TestQuery:
             expected_feature_to_feature_group_mapping.keys()
         )
 
-        for fg_name in feature_to_feature_group_mapping.keys():
+        for fg_name in feature_to_feature_group_mapping:
             assert sorted(feature_to_feature_group_mapping[fg_name]) == sorted(
                 expected_feature_to_feature_group_mapping[fg_name]
             )

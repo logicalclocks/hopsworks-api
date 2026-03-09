@@ -19,6 +19,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import engine, tag, training_dataset_feature, util
@@ -524,6 +525,7 @@ class TrainingDatasetBase:
         self._extra_filter = extra_filter
 
 
+@public
 class TrainingDataset(TrainingDatasetBase):
     # TODO: Add docstring
     def __init__(
@@ -618,6 +620,7 @@ class TrainingDataset(TrainingDatasetBase):
             featurestore_id, features=self._features
         )
 
+    @public
     def save(
         self,
         features: query.Query
@@ -677,6 +680,7 @@ class TrainingDataset(TrainingDatasetBase):
 
         return td_job
 
+    @public
     def insert(
         self,
         features: query.Query
@@ -728,6 +732,7 @@ class TrainingDataset(TrainingDatasetBase):
 
         return td_job
 
+    @public
     def read(self, split=None, read_options=None):
         """Read the training dataset into a dataframe.
 
@@ -750,6 +755,7 @@ class TrainingDataset(TrainingDatasetBase):
 
         return self._training_dataset_engine.read(self, split, read_options or {})
 
+    @public
     def compute_statistics(self):
         """Compute the statistics for the training dataset and save them to the feature store."""
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
@@ -775,6 +781,7 @@ class TrainingDataset(TrainingDatasetBase):
             )
         return None
 
+    @public
     def show(self, n: int, split: str = None):
         """Show the first `n` rows of the training dataset.
 
@@ -787,6 +794,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         self.read(split).show(n)
 
+    @public
     def add_tag(self, name: str, value):
         """Attach a tag to a training dataset.
 
@@ -802,6 +810,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         self._training_dataset_engine.add_tag(self, name, value)
 
+    @public
     def delete_tag(self, name: str):
         """Delete a tag attached to a training dataset.
 
@@ -813,6 +822,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         self._training_dataset_engine.delete_tag(self, name)
 
+    @public
     def get_tag(self, name):
         """Get the tags of a training dataset.
 
@@ -827,6 +837,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         return self._training_dataset_engine.get_tag(self, name)
 
+    @public
     def get_tags(self):
         """Returns all tags attached to a training dataset.
 
@@ -838,6 +849,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         return self._training_dataset_engine.get_tags(self)
 
+    @public
     def update_statistics_config(self):
         """Update the statistics configuration of the training dataset.
 
@@ -853,6 +865,7 @@ class TrainingDataset(TrainingDatasetBase):
         self._training_dataset_engine.update_statistics_config(self)
         return self
 
+    @public
     def delete(self):
         """Delete training dataset and all associated metadata.
 
@@ -962,6 +975,7 @@ class TrainingDataset(TrainingDatasetBase):
             td_dict["tags"] = tags_dict
         return td_dict
 
+    @public
     @property
     def id(self):
         """Training dataset id."""
@@ -971,6 +985,7 @@ class TrainingDataset(TrainingDatasetBase):
     def id(self, id):
         self._id = id
 
+    @public
     @property
     def write_options(self):
         """User provided options to write training dataset."""
@@ -980,6 +995,7 @@ class TrainingDataset(TrainingDatasetBase):
     def write_options(self, write_options):
         self._write_options = write_options
 
+    @public
     @property
     def schema(self):
         """Training dataset schema."""
@@ -990,6 +1006,7 @@ class TrainingDataset(TrainingDatasetBase):
         """Training dataset schema."""
         self._features = features
 
+    @public
     @property
     def statistics(self):
         """Get computed statistics for the training dataset.
@@ -999,11 +1016,13 @@ class TrainingDataset(TrainingDatasetBase):
         """
         return self._statistics_engine.get(self, before_transformation=False)
 
+    @public
     @property
     def query(self):
         """Query to generate this training dataset from online feature store."""
         return self._training_dataset_engine.query(self, True, True, False)
 
+    @public
     def get_query(self, online: bool = True, with_label: bool = False):
         """Returns the query used to generate this training dataset.
 
@@ -1022,6 +1041,7 @@ class TrainingDataset(TrainingDatasetBase):
             self, online, with_label, engine.get_type() == "python"
         )
 
+    @public
     def init_prepared_statement(
         self, batch: bool | None = None, external: bool | None = None
     ):
@@ -1032,13 +1052,14 @@ class TrainingDataset(TrainingDatasetBase):
                 initialised for retrieving serving vectors as a batch.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
         """
         self._vector_server.init_serving(self, batch, external)
 
+    @public
     def get_serving_vector(self, entry: dict[str, Any], external: bool | None = None):
         """Returns assembled serving vector from online feature store.
 
@@ -1047,7 +1068,7 @@ class TrainingDataset(TrainingDatasetBase):
                 serving application.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -1060,6 +1081,7 @@ class TrainingDataset(TrainingDatasetBase):
             self.init_prepared_statement(None, external)
         return self._vector_server.get_feature_vector(entry)
 
+    @public
     def get_serving_vectors(
         self, entry: dict[str, list[Any]], external: bool | None = None
     ):
@@ -1070,7 +1092,7 @@ class TrainingDataset(TrainingDatasetBase):
                 serving application.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
+                for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -1083,6 +1105,7 @@ class TrainingDataset(TrainingDatasetBase):
             self.init_prepared_statement(None, external)
         return self._vector_server.get_feature_vectors(entry)
 
+    @public
     @property
     def label(self) -> str | list[str]:
         """The label/prediction feature of the training dataset.
@@ -1095,16 +1118,19 @@ class TrainingDataset(TrainingDatasetBase):
     def label(self, label: str) -> None:
         self._label = [util.autofix_feature_name(lb) for lb in label]
 
+    @public
     @property
     def feature_store_id(self) -> int:
         """ID of the feature store to which this training dataset belongs."""
         return self._feature_store_id
 
+    @public
     @property
     def feature_store_name(self) -> str:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
 
+    @public
     @property
     def serving_keys(self) -> set[str]:
         """Set of primary key names that is used as keys in input dict object for `get_serving_vector` method."""

@@ -36,8 +36,16 @@ if TYPE_CHECKING:
         job_configuration,
     )
 
+from hopsworks_apigen import public
 
+
+@public(
+    "hopsworks.core.job_api.JobApi",
+    "hopsworks.core.job_api.JobsApi",
+    "hsfs.core.job_api.JobApi",
+)
 class JobApi:
+    @public
     @usage.method_logger
     def create_job(self, name: str, config: dict) -> job.Job:
         """Create a new job or update an existing one.
@@ -81,6 +89,7 @@ class JobApi:
         print(f"Job created successfully, explore it at {created_job.get_url()}")
         return created_job
 
+    @public
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.job.Job", fallback_return=None)
     def get_job(self, name: str) -> job.Job | None:
@@ -107,6 +116,7 @@ class JobApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
+    @public
     @usage.method_logger
     def get_jobs(self) -> list[job.Job]:
         """Get all jobs.
@@ -144,6 +154,7 @@ class JobApi:
         job = self.get_job(name)
         return job is not None
 
+    @public
     @usage.method_logger
     def get_configuration(
         self, type: Literal["SPARK", "PYSPARK", "PYTHON", "DOCKER", "FLINK"]

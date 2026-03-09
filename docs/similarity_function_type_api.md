@@ -1,3 +1,0 @@
-# SimilarityFunctionType
-
-::: hsfs.embedding.SimilarityFunctionType
