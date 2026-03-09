@@ -23,7 +23,6 @@ import os
 import random
 import re
 import sys
-import threading
 import uuid
 import warnings
 from datetime import datetime, timedelta, timezone
@@ -134,7 +133,6 @@ class Engine:
 
         # cache the sql engine which contains the connection pool
         self._mysql_online_fs_engine = None
-        self._mysql_online_fs_engine_lock = threading.Lock()
         _logger.info("Python Engine initialized.")
 
     def sql(
@@ -312,16 +310,14 @@ class Engine:
     ) -> pd.DataFrame | pl.DataFrame:
         self._validate_dataframe_type(dataframe_type)
         if self._mysql_online_fs_engine is None:
-            with self._mysql_online_fs_engine_lock:
-                if self._mysql_online_fs_engine is None:
-                    self._mysql_online_fs_engine = util_sql.create_mysql_engine(
-                        connector,
-                        (
-                            client._is_external()
-                            if "external" not in read_options
-                            else read_options["external"]
-                        ),
-                    )
+            self._mysql_online_fs_engine = util_sql.create_mysql_engine(
+                connector,
+                (
+                    client._is_external()
+                    if "external" not in read_options
+                    else read_options["external"]
+                ),
+            )
         with self._mysql_online_fs_engine.connect() as mysql_conn:
             if "sqlalchemy" in str(type(mysql_conn)):
                 sql_query = sql.text(sql_query)
