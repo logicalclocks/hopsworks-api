@@ -141,44 +141,36 @@ class TransformationExecutionDAG:
         if not self.nodes:
             return "Transformation Execution DAG (empty)"
 
+        arrow = "       \u2502\n       \u25bc"
         _, raw_inputs, tf_outputs, pass_through_features = self._build_lookups()
 
-        lines = [
-            "Transformation Execution DAG",
-            "\u2550" * 35,
-            "",
-        ]
+        lines = ["Transformation Execution DAG", "\u2550" * 35, ""]
 
         if raw_inputs:
             lines.append(f"Input Features: {', '.join(sorted(raw_inputs))}")
-            lines.append("       \u2502")
-            lines.append("       \u25bc")
+            lines.append(arrow)
 
         depths = self._compute_depths()
-
-        # Group TFs by depth level
         levels: dict[int, list] = {}
         for tf in self.nodes:
             levels.setdefault(depths[id(tf)], []).append(tf)
 
-        for level_idx in sorted(levels.keys()):
+        max_level = max(levels)
+        for level_idx in sorted(levels):
             for tf in levels[level_idx]:
                 udf = tf.hopsworks_udf
                 header = f"  {udf.function_name} (mode: {udf.execution_mode.value})"
                 if udf.dropped_features:
                     header += f"  [drops: {', '.join(udf.dropped_features)}]"
                 lines.append(header)
+            if level_idx < max_level:
+                lines.append(arrow)
 
-            if level_idx < max(levels.keys()):
-                lines.append("       \u2502")
-                lines.append("       \u25bc")
-
-        # Output features = all TF outputs + pass-through input features
-        tf_output_cols = [col for cols in tf_outputs.values() for col in cols]
-        all_output_cols = pass_through_features + tf_output_cols
+        all_output_cols = pass_through_features + [
+            col for cols in tf_outputs.values() for col in cols
+        ]
         if all_output_cols:
-            lines.append("       \u2502")
-            lines.append("       \u25bc")
+            lines.append(arrow)
             lines.append(f"Output Features: {', '.join(all_output_cols)}")
 
         return "\n".join(lines)
@@ -266,39 +258,22 @@ class TransformationExecutionDAG:
             edge_attr={"fontname": "Helvetica", "fontsize": "9"},
         )
 
+        io_style = {"shape": "rectangle", "style": "filled", "margin": "0.2"}
         if raw_inputs:
             dot.node(
-                "input",
-                "<<b>Input Features</b>>",
-                shape="rectangle",
-                style="filled",
-                fillcolor="#E8F4FD",
-                margin="0.2",
+                "input", "<<b>Input Features</b>>", fillcolor="#E8F4FD", **io_style
             )
 
-        # TF nodes
         for tf in self.nodes:
             udf = tf.hopsworks_udf
-            label = (
-                f"<<b>{udf.function_name}</b>"
-                f"<br/><i>mode: {udf.execution_mode.value}</i>"
-            )
+            label = f"<<b>{udf.function_name}</b><br/><i>mode: {udf.execution_mode.value}</i>"
             if udf.dropped_features:
-                dropped = ", ".join(udf.dropped_features)
-                label += f'<br/><font color="#EA5556">drops: {dropped}</font>'
-            label += ">"
-            dot.node(str(id(tf)), label)
+                label += f'<br/><font color="#EA5556">drops: {", ".join(udf.dropped_features)}</font>'
+            dot.node(str(id(tf)), label + ">")
 
-        # Output node: shown if there are TF outputs or pass-through features
-        has_outputs = tf_outputs or pass_through_features
-        if has_outputs:
+        if tf_outputs or pass_through_features:
             dot.node(
-                "output",
-                "<<b>Output Features</b>>",
-                shape="rectangle",
-                style="filled",
-                fillcolor="#D4EDDA",
-                margin="0.2",
+                "output", "<<b>Output Features</b>>", fillcolor="#D4EDDA", **io_style
             )
 
         # Edges: Input -> TF
@@ -307,8 +282,8 @@ class TransformationExecutionDAG:
             for feat in tf.hopsworks_udf.transformation_features:
                 if feat not in output_to_tf:
                     input_edges.setdefault(id(tf), []).append(feat)
-        for tf_id, features in input_edges.items():
-            dot.edge("input", str(tf_id), label=", ".join(features))
+        for tf_id, feats in input_edges.items():
+            dot.edge("input", str(tf_id), label=", ".join(feats))
 
         # Edges: Input -> Output (pass-through features not dropped by any TF)
         if pass_through_features:
@@ -570,8 +545,9 @@ class TransformationFunctionEngine:
         # PYTHON PATH — pre-compute metadata
         # ============================================================
         dropped_features: set[str] = set()
-        if is_dataframe:
-            column_order = list(data.columns)
+        # Collect all TF output columns in topo order for final column ordering.
+        tf_output_cols: list[str] = []
+        tf_output_set: set[str] = set()
 
         for tf in execution_graph.nodes:
             udf = tf.hopsworks_udf
@@ -582,11 +558,15 @@ class TransformationFunctionEngine:
                     if expected_features
                     else udf.dropped_features
                 )
-            if is_dataframe:
-                for col in udf.output_column_names:
-                    if col in column_order:
-                        column_order.remove(col)
-                    column_order.append(col)
+            for col in udf.output_column_names:
+                tf_output_set.add(col)
+                tf_output_cols.append(col)
+
+        if is_dataframe:
+            # Original columns (minus those overwritten by TFs) + TF outputs in topo order
+            column_order = [
+                c for c in data.columns if c not in tf_output_set
+            ] + tf_output_cols
         if request_parameters:
             data = TransformationFunctionEngine._update_request_parameter_data(
                 data, request_parameters
@@ -594,33 +574,27 @@ class TransformationFunctionEngine:
 
         # --- Dict/list: sequential, topo order, in-place update ---
         if isinstance(data, (dict, list)):
-            if isinstance(data, list):
-                transformed_data = [row.copy() for row in data]
-                for tf in execution_graph.nodes:
-                    for row in transformed_data:
-                        result = TransformationFunctionEngine.execute_udf(
+            rows = (
+                [row.copy() for row in data]
+                if isinstance(data, list)
+                else [data.copy()]
+            )
+            eng_type = engine.get_type()
+            for tf in execution_graph.nodes:
+                for row in rows:
+                    row.update(
+                        TransformationFunctionEngine.execute_udf(
                             udf=tf.hopsworks_udf,
                             data=row,
                             online=online,
-                            engine_type=engine.get_type(),
+                            engine_type=eng_type,
                         )
-                        row.update(result)
-                return [
-                    {k: v for k, v in row.items() if k not in dropped_features}
-                    for row in transformed_data
-                ]
-            transformed_data = data.copy()
-            for tf in execution_graph.nodes:
-                result = TransformationFunctionEngine.execute_udf(
-                    udf=tf.hopsworks_udf,
-                    data=transformed_data,
-                    online=online,
-                    engine_type=engine.get_type(),
-                )
-                transformed_data.update(result)
-            return {
-                k: v for k, v in transformed_data.items() if k not in dropped_features
-            }
+                    )
+            cleaned = [
+                {k: v for k, v in row.items() if k not in dropped_features}
+                for row in rows
+            ]
+            return cleaned if isinstance(data, list) else cleaned[0]
 
         # --- DataFrame: sequential (n_processes==1) or parallel DAG ---
         column_store = {}  # col_name -> Series (accumulated results from completed TFs)
@@ -869,20 +843,13 @@ class TransformationFunctionEngine:
                 shm_name, shm_size, is_polars
             )
             if columns:
-                if predecessor_columns:
-                    # Build input: base columns overridden by predecessor results
-                    col_data = {}
-                    for col in columns:
-                        col_data[col] = (
-                            predecessor_columns[col]
-                            if col in predecessor_columns
-                            else data[col]
-                        )
-                    data = (
-                        pl.DataFrame(col_data) if is_polars else pd.DataFrame(col_data)
-                    )
-                else:
-                    data = data[columns]
+                col_data = {
+                    c: predecessor_columns[c]
+                    if predecessor_columns and c in predecessor_columns
+                    else data[c]
+                    for c in columns
+                }
+                data = pl.DataFrame(col_data) if is_polars else pd.DataFrame(col_data)
 
         # Check dict/list first — these are the dominant types on the online
         # serving hot path and avoid the multiple isinstance() checks inside
@@ -938,23 +905,12 @@ class TransformationFunctionEngine:
             == UDFExecutionMode.PANDAS
         )
 
-        # Pre-compute prefix and feature list once to avoid repeated property
-        # access and string concatenation inside the loop.
         prefix = udf.feature_name_prefix
-
-        if is_pandas_mode:
-            features = []
-            for feat in udf.unprefixed_transformation_features:
-                feature_name = prefix + feat if prefix else feat
-                val = data[feature_name] if feature_name in data else data[feat]
-                features.append(pd.Series([val], name=feat))
-        else:
-            features = []
-            for feat in udf.unprefixed_transformation_features:
-                feature_name = prefix + feat if prefix else feat
-                features.append(
-                    data[feature_name] if feature_name in data else data[feat]
-                )
+        features = []
+        for feat in udf.unprefixed_transformation_features:
+            feature_name = prefix + feat if prefix else feat
+            val = data[feature_name] if feature_name in data else data[feat]
+            features.append(pd.Series([val], name=feat) if is_pandas_mode else val)
 
         transformed_result = udf.get_udf(online=online, engine_type=engine_type)(
             *features
