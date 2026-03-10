@@ -43,19 +43,11 @@
 ### Python API Reference Documentation
 
 The [`hopsworks-api`](https://github.com/logicalclocks/hopsworks-api) repository contains the code of our Python API, and its reference documentation is built from the docstrings in the code.
+[`hopsworks-apigen`](https://github.com/logicalclocks/hopsworks-apigen) is used to mark the public entities with its `@public` (see more in its [`README.md`](https://github.com/logicalclocks/hopsworks-apigen/blob/main/README.md)).
 The rest of the documentation is located in [`logicalclocks.github.io`](https://github.com/logicalclocks/logicalclocks.github.io) repository.
 To build the full docs, `hopsworks-api` is cloned into `logicalclocks.github.io` as a subdirectory and then the whole docs are built as a single website.
 For the details of the building process, see [`README.md`](https://github.com/logicalclocks/logicalclocks.github.io/blob/main/README.md) of `logicalclocks.github.io`.
 The whole building process is automated and is triggered on a releasing push to the release branches of `hopsworks-api` via `.github/workflows/mkdocs-release.yml` GitHub Action.
-
-For development purposes, you can build and serve the Python API reference documentation locally (assuming you have activated the virtual environment):
-
-```bash
-mkdocs serve
-```
-
-Note that the visuals and the structure of the website are different when building only the `hopsworks-api` documentation, as the full website uses a custom theme and additional plugins.
-You can use local serving for checking that the docstrings are provided in correct format and the individual entity documentation is correct, but not to ensure how the full docs look.
 
 #### Docstring Guidelines
 
@@ -134,6 +126,7 @@ Returns:
 
 Raises:
     SomeError: If something goes wrong.
+"""
 ```
 
 You should use `Yields` instead of `Returns` for generator functions.
@@ -169,12 +162,11 @@ def delete(self, path: str, missing_ok: bool = False) -> None:
 Or this:
 
 ```python
+@deprecated("hsfs.feature.Feature.isin")
+# ^ Adds deprecation warning telling to use isin instead.
+# See https://github.com/logicalclocks/hopsworks-apigen/blob/main/README.md
 def contains(self, other: str | list) -> filter.Filter:
     """Construct a filter similar to SQL's `IN` operator.
-
-    Warning: Deprecated
-        `contains` method is deprecated.
-        Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
 
     Parameters:
         other: A single feature value or a list of feature values.
@@ -182,6 +174,38 @@ def contains(self, other: str | list) -> filter.Filter:
     Returns:
         A filter that leaves only the feature values also contained in `other`.
     """
+    ...
+```
+
+In case you want to deprecate an alias or an attribute, you have to use admonitions.
+Always place the aliases warning last in the docstring, and parameters one before the parameters.
+Hopsworks version should be specified as `major.minor`, also always say what to use instead.
+
+```python
+@public("", "hsfs.function", "hsml.function")
+def function(
+    *,
+    old_param: str,
+    new_param: str,
+):
+    """...
+
+    ...
+
+    Warning: Deprecated Parameters
+        Parameter `old_param` is deprecated, and will be removed in Hopsworks v5.0.
+        Use `new_param` instead.
+
+    Parameters:
+        old_param: Deprecated, use `new_param` instead.
+        new param: ...
+
+    ...
+
+    Warning: Deprecated Aliases
+        Aliases [`hsfs.function`][hsfs.function] and [`hsml.function`][hsml.function] are deprecated, and will be removed in a future release of Hopsworks.
+    """
+    ...
 ```
 
 ##### Linking

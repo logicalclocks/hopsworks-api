@@ -141,8 +141,8 @@ class Links:
 
     @public
     @property
-    def deleted(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+    def deleted(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
 
         These entities have been removed from the feature store/model registry.
         """
@@ -150,8 +150,8 @@ class Links:
 
     @public
     @property
-    def inaccessible(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+    def inaccessible(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
 
         These entities exist in the feature store/model registry, however the user
         does not have access to them anymore.
@@ -160,8 +160,14 @@ class Links:
 
     @public
     @property
-    def accessible(self):
-        """List of [StorageConnectors|FeatureGroups|FeatureViews|Models] objects which are part of the provenance graph requested.
+    def accessible(
+        self,
+    ) -> list[
+        storage_connector.StorageConnector
+        | feature_group.FeatureGroup
+        | feature_view.FeatureView
+    ]:
+        """List of objects which are part of the provenance graph requested.
 
         These entities
         exist in the feature store/model registry and the user has access to them.
@@ -170,8 +176,8 @@ class Links:
 
     @public
     @property
-    def faulty(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+    def faulty(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
 
         These entities exist in the feature store/model registry, however they are corrupted.
         """

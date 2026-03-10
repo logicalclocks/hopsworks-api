@@ -19,7 +19,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import also_available_as, public
 from requests.exceptions import SSLError
 
 
@@ -27,9 +27,8 @@ if TYPE_CHECKING:
     import requests
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.RestAPIError", "hsml.client.exceptions.RestAPIError"
-)
+@public("hopsworks.client.exceptions.RestAPIError")
+@also_available_as("hsml.client.exceptions.RestAPIError")
 class RestAPIError(Exception):
     """REST Exception encapsulating the response object and url."""
 
@@ -86,10 +85,8 @@ class UnknownSecretStorageError(Exception):
     """This exception will be raised if an unused secrets storage is passed as a parameter."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.FeatureStoreException",
-    "hsml.client.exceptions.FeatureStoreException",
-)
+@public("hopsworks.client.exceptions.FeatureStoreException")
+@also_available_as("hsml.client.exceptions.FeatureStoreException")
 class FeatureStoreException(Exception):
     """Generic feature store exception."""
 
@@ -144,10 +141,8 @@ class VectorDatabaseException(Exception):
         return self._info
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.DataValidationException",
-    "hsml.client.exceptions.DataValidationException",
-)
+@public("hopsworks.client.exceptions.DataValidationException")
+@also_available_as("hsml.client.exceptions.DataValidationException")
 class DataValidationException(FeatureStoreException):
     """Raised when data validation fails only when using "STRICT" validation ingestion policy."""
 
@@ -178,12 +173,13 @@ class InternalClientError(TypeError):
         super().__init__(message)
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.HopsworksSSLClientError",
-    "hsml.client.exceptions.HopsworksSSLClientError",
-)
+@public("hopsworks.client.exceptions.HopsworksSSLClientError")
+@also_available_as("hsml.client.exceptions.HopsworksSSLClientError")
 class HopsworksSSLClientError(SSLError):
-    """Raised when the client connection fails with SSL related errors."""
+    """Raised when the client connection fails with SSL related errors.
+
+    `SSLError` inherits from [`requests.exceptions.ConnectionError`][requests.exceptions.ConnectionError].
+    """
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
@@ -219,10 +215,8 @@ class KafkaException(Exception):
     """Generic kafka exception."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.DatasetException",
-    "hsml.client.exceptions.DatasetException",
-)
+@public("hopsworks.client.exceptions.DatasetException")
+@also_available_as("hsml.client.exceptions.DatasetException")
 class DatasetException(Exception):
     """Generic dataset exception."""
 

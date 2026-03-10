@@ -83,7 +83,7 @@ class FeatureMonitoringResultEngine:
     ) -> FeatureMonitoringResult:
         """Build feature monitoring result.
 
-        Args:
+        Parameters:
             config_id: ID of the feature monitoring configuration.
             feature_name: Name of the feature being monitored.
             detection_statistics: Statistics computed from the detection data.
@@ -147,7 +147,7 @@ class FeatureMonitoringResultEngine:
     ) -> FeatureMonitoringResult:
         """Save feature monitoring result.
 
-        Args:
+        Parameters:
             result: Feature monitoring result to be saved.
 
         Returns:
@@ -166,17 +166,14 @@ class FeatureMonitoringResultEngine:
     ) -> list[FeatureMonitoringResult]:
         """Fetch all feature monitoring results by config id.
 
-        Args:
-            config_id: int. Id of the feature monitoring configuration.
-            start_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time greater than or equal to start_time.
-            end_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time less than or equal to end_time.
-            with_statistics: bool.
-                Whether to include the statistics attached to the results or not
+        Parameters:
+            config_id: Id of the feature monitoring configuration.
+            start_time: Query results with monitoring time greater than or equal to start_time.
+            end_time: Query results with monitoring time less than or equal to end_time.
+            with_statistics: Whether to include the statistics attached to the results or not.
 
         Returns:
-            List[FeatureMonitoringResult]. List of feature monitoring results.
+            List of feature monitoring results.
         """
         query_params = self._build_query_params(
             start_time=start_time,
@@ -199,20 +196,21 @@ class FeatureMonitoringResultEngine:
     ) -> list[FeatureMonitoringResult]:
         """Convenience method to fetch feature monitoring results from an entity.
 
-        Args:
-            config_id: Optional[int]. Id of the feature monitoring configuration.
-                Defaults to None if config_name is provided.
-            config_name: Optional[str]. Name of the feature monitoring configuration.
-                Defaults to None if config_id is provided.
-            start_time: Optional[Union[str, int, datetime, date]].
-                Query results with monitoring time greater than or equal to start_time.
-            end_time: Optional[Union[str, int, datetime, date]].
-                Query results with monitoring time less than or equal to end_time.
-            with_statistics: bool. Whether to include the statistics attached to the results.
-                Defaults to True. Set to False to fetch only monitoring metadata.
+        Parameters:
+            config_id:
+                ID of the feature monitoring configuration.
+                Defaults to `None` if config_name is provided.
+            config_name:
+                Name of the feature monitoring configuration.
+                Defaults to `None` if config_id is provided.
+            start_time: Query results with monitoring time greater than or equal to start_time.
+            end_time: Query results with monitoring time less than or equal to end_time.
+            with_statistics:
+                Whether to include the statistics attached to the results.
+                Set to `False` to fetch only monitoring metadata.
 
         Returns:
-            List[FeatureMonitoringResult]. List of feature monitoring results.
+            List of feature monitoring results.
         """
         if all([config_id is None, config_name is None]):
             raise ValueError(
@@ -249,16 +247,13 @@ class FeatureMonitoringResultEngine:
     ) -> dict[str, str | list[str]]:
         """Build query parameters for feature monitoring result API calls.
 
-        Args:
-            start_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time greater than or equal to start_time.
-            end_time: Union[str, int, datetime, date, None].
-                Query results with monitoring time less than or equal to end_time.
-            with_statistics: bool.
-                Whether to include the statistics attached to the results or not
+        Parameters:
+            start_time: Query results with monitoring time greater than or equal to start_time.
+            end_time: Query results with monitoring time less than or equal to end_time.
+            with_statistics: Whether to include the statistics attached to the results or not.
 
         Returns:
-            Dict[str, Union[str, List[str]]]. Query parameters.
+            Query parameters.
         """
         query_params = {"sort_by": "monitoring_time:desc"}
 
@@ -286,14 +281,14 @@ class FeatureMonitoringResultEngine:
     ) -> list[FeatureMonitoringResult]:
         """Run and upload statistics comparison between detection and reference stats.
 
-        Args:
-            fm_config: FeatureMonitoringConfig. Feature monitoring configuration.
-            detection_statistics: List[FeatureDescriptiveStatistics]. Computed statistics from detection data.
-            reference_statistics: Optional[List[FeatureDescriptiveStatistics]]]. Computed statistics from reference data.
-            specific_value: Optional[Union[int, float]]. A specific value to use as reference.
+        Parameters:
+            fm_config: Feature monitoring configuration.
+            detection_statistics: Computed statistics from detection data.
+            reference_statistics: Computed statistics from reference data.
+            specific_value: A specific value to use as reference.
 
         Returns:
-            Union[FeatureMonitoringResult, List[FeatureMonitoringResult]]. Feature monitoring result
+            Feature monitoring result.
         """
         if specific_value:
             # compare detection statistics against a specific value
@@ -411,7 +406,7 @@ class FeatureMonitoringResultEngine:
     ) -> tuple[float | None, bool]:
         """Compute the difference and detect shift between the reference and detection statistics.
 
-        Args:
+        Parameters:
             fm_config: Feature monitoring configuration.
             detection_statistics: Computed statistics from detection data.
             reference_statistics: Computed statistics from reference data, or a specific value to use as reference.
@@ -450,17 +445,15 @@ class FeatureMonitoringResultEngine:
     ) -> float | None:
         """Compute the difference between the reference and detection statistics.
 
-        Args:
-            detection_statistics: `FeatureDescriptiveStatistics`. Computed statistics from detection data.
-            reference_statistics: `Optional[FeatureDescriptiveStatistics]`.
-                Computed statistics from reference data, or a specific value to use as reference
-            metric: `str`. The metric to compute the difference for.
-            relative: `bool`. Whether to compute the relative difference or not.
-            specific_value: `Optional[Union[int, float]]`. A specific value to use as reference.
+        Parameters:
+            detection_statistics: Computed statistics from detection data.
+            metric: The metric to compute the difference for.
+            relative: Whether to compute the relative difference or not.
+            reference_statistics: Computed statistics from reference data, or a specific value to use as reference.
+            specific_value: A specific value to use as reference.
 
         Returns:
-            `Optional[float]`. The difference between the reference and detection statistics, or None if there
-                               are no values to compare
+            The difference between the reference and detection statistics, or `None` if there are no values to compare.
         """
         if (detection_statistics.count == 0) or (
             specific_value is None and reference_statistics.count == 0
@@ -487,13 +480,13 @@ class FeatureMonitoringResultEngine:
     ) -> float:
         """Compute the difference between a reference and detection value.
 
-        Args:
-            detection_value: Union[int, float]. The detection value.
-            reference_value: Union[int, float]. The reference value
-            relative: `bool`. Whether to compute the relative difference or not.
+        Parameters:
+            detection_value: The detection value.
+            reference_value: The reference value
+            relative: Whether to compute the relative difference or not.
 
         Returns:
-            `float`. The difference between the reference and detection values.
+            The difference between the reference and detection values.
         """
         diff = abs(detection_value - reference_value)
         if relative:
@@ -511,12 +504,12 @@ class FeatureMonitoringResultEngine:
         The last execution is assumed to be the current execution.
         The id defaults to 0 if no execution is found.
 
-        Args:
-            job_name: str. Name of the monitoring job.
+        Parameters:
+            job_name: Name of the monitoring job.
 
         Returns:
-            int. Id of the last execution of the monitoring job.
-                It is assumed to be the current execution.
+            Id of the last execution of the monitoring job.
+            It is assumed to be the current execution.
         """
         execution = self._job_api.last_execution(self._job_api.get(name=job_name))
         return (
@@ -531,11 +524,11 @@ class FeatureMonitoringResultEngine:
     ) -> bool:
         """Check if the monitoring window is empty.
 
-        Args:
-            monitoring_window_statistics: FeatureDescriptiveStatistics. Statistics computed for the monitoring window.
+        Parameters:
+            monitoring_window_statistics: Statistics computed for the monitoring window.
 
         Returns:
-            bool. Whether the monitoring window is empty or not.
+            Whether the monitoring window is empty or not.
         """
         return bool(
             monitoring_window_statistics is None
@@ -550,13 +543,13 @@ class FeatureMonitoringResultEngine:
     ) -> FeatureMonitoringResult:
         """Save feature monitoring result with raised_exception flag.
 
-        Args:
+        Parameters:
             config_id: Id of the feature monitoring configuration.
             job_name: Name of the monitoring job.
             feature_name: Name of the feature being monitored.
 
         Returns:
-            FeatureMonitoringResult. Saved Feature monitoring result.
+            Saved Feature monitoring result.
         """
         return self.save_feature_monitoring_result(
             result=self.build_feature_monitoring_result(

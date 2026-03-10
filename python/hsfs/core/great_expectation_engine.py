@@ -33,10 +33,13 @@ class GreatExpectationEngine:
     def __init__(self, feature_store_id: int):
         """Engine to run validation using Great Expectations.
 
-        :param feature_store_id: id of the respective Feature Store
         :type `int`
-        :return: The engine for Great Expectation objects
-        :rtype: `GreatExpectationEngine`
+
+        Parameters:
+            feature_store_id: id of the respective Feature Store
+
+        Returns:
+            The engine for Great Expectation objects
         """
         self._feature_store_id = feature_store_id
 
@@ -113,7 +116,16 @@ class GreatExpectationEngine:
         | None = None,
         validation_options: dict[str, Any] | None = None,
     ) -> es.ExpectationSuite | None:
-        """Convert provided expectation suite or fetch the one attached to the Feature Group from backend."""
+        """Convert provided expectation suite or fetch the one attached to the Feature Group from backend.
+
+        Parameters:
+            feature_group: The feature group for which the validation is run.
+            expectation_suite: The expectation suite to use for validation.
+            validation_options: The validation options provided for the validation.
+
+        Returns:
+            The expectation suite to use for validation, or `None` if no expectation suite is provided and attached to the Feature Group.
+        """
         if expectation_suite is not None:
             if isinstance(expectation_suite, es.ExpectationSuite):
                 return expectation_suite

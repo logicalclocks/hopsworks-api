@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hsml.inference_batcher import InferenceBatcher
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from hsml.scaling_config import ComponentScalingConfig
 
 
+@public
 class DeployableComponent(ABC):
     """Configuration of a deployable component (predictor or transformer)."""
 
@@ -51,10 +53,19 @@ class DeployableComponent(ABC):
     @classmethod
     @abstractmethod
     def from_json(cls, json_decamelized):
-        """To be implemented by the component type."""
+        """To be implemented by the component type.
+
+        Parameters:
+            json_decamelized: the decamelized JSON dict to parse
+        """
 
     @classmethod
     def from_response_json(cls, json_dict):
+        """Parse a JSON response into a component instance.
+
+        Parameters:
+            json_dict: the JSON response to parse
+        """
         json_decamelized = humps.decamelize(json_dict)
         return cls.from_json(json_decamelized)
 
@@ -63,12 +74,17 @@ class DeployableComponent(ABC):
 
     @abstractmethod
     def update_from_response_json(self, json_dict):
-        """To be implemented by the component type."""
+        """Update the component instance from a JSON response.
+
+        Parameters:
+            json_dict: the JSON response to update from
+        """
 
     @abstractmethod
     def to_dict(self):
         """To be implemented by the component type."""
 
+    @public
     @property
     def script_file(self):
         """Script file ran by the deployment component (i.e., predictor or transformer)."""
@@ -78,6 +94,7 @@ class DeployableComponent(ABC):
     def script_file(self, script_file: str):
         self._script_file = script_file
 
+    @public
     @property
     def resources(self):
         """Resource configuration for the deployment component (i.e., predictor or transformer)."""
@@ -87,6 +104,7 @@ class DeployableComponent(ABC):
     def resources(self, resources: Resources):
         self._resources = resources
 
+    @public
     @property
     def inference_batcher(self):
         """Configuration of the inference batcher attached to the deployment component (i.e., predictor or transformer)."""
@@ -96,6 +114,7 @@ class DeployableComponent(ABC):
     def inference_batcher(self, inference_batcher: InferenceBatcher):
         self._inference_batcher = inference_batcher
 
+    @public
     @property
     def scaling_configuration(self):
         """Scaling configuration for the deployment component (i.e., predictor or transformer)."""

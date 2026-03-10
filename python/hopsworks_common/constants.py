@@ -143,7 +143,7 @@ class SSL_CONFIG:
 
 
 class HOSTS:
-    APP_HOST = "c.app.hopsworks.ai"
+    SAAS_HOST = "eu-west.cloud.hopsworks.ai"
 
 
 class MODEL:

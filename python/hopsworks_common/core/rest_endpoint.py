@@ -20,6 +20,7 @@ from enum import Enum
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
@@ -34,6 +35,7 @@ class PaginationType(str, Enum):
     AUTO = "auto"
 
 
+@public("hopsworks.core.rest_endpoint.QueryParams")
 class QueryParams:
     """Represents an arbitrary name/value pair used by REST endpoint configurations."""
 
@@ -55,11 +57,12 @@ class QueryParams:
         }
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.Encoder)
+        return json.dumps(humps.decamelize(self.to_dict()), cls=util.Encoder)
 
     def __repr__(self) -> str:
         return f"QueryParams({self._name!r}, {self._value!r})"
 
+    @public
     @property
     def name(self) -> str:
         return self._name
@@ -68,11 +71,13 @@ class QueryParams:
     def key(self) -> str:
         return self._name
 
+    @public
     @property
     def value(self) -> Any:
         return self._value
 
 
+@public("hopsworks.core.rest_endpoint.PaginationConfig")
 class PaginationConfig:
     """Base pagination configuration that specific strategies inherit from."""
 
@@ -94,7 +99,15 @@ class PaginationConfig:
         if pagination_type is None:
             return None
 
-        pagination_enum = PaginationType(pagination_type)
+        if isinstance(pagination_type, PaginationType):
+            pagination_enum = pagination_type
+        elif isinstance(pagination_type, str):
+            pagination_enum = PaginationType(pagination_type.lower())
+        else:
+            raise TypeError(
+                "pagination_type must be a PaginationType or str, "
+                f"got {type(pagination_type).__name__}."
+            )
         pagination_class = _PAGINATION_CLASS_MAP.get(pagination_enum)
         if pagination_class is None:
             raise ValueError(
@@ -119,11 +132,11 @@ class PaginationConfig:
         payload_camelized = humps.camelize(payload) if payload else {}
 
         if self.pagination_type is not None:
-            payload_camelized["type"] = self.pagination_type.value
+            payload_camelized["type"] = self.pagination_type.value.upper()
         return payload_camelized
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.Encoder)
+        return json.dumps(humps.decamelize(self.to_dict()), cls=util.Encoder)
 
     def __repr__(self) -> str:
         payload = self._merge_payload(self._payload())
@@ -143,6 +156,7 @@ class PaginationConfig:
         return merged
 
 
+@public("hopsworks.core.rest_endpoint.JsonLinkPaginationConfig")
 class JsonLinkPaginationConfig(PaginationConfig):
     pagination_type = PaginationType.JSON_LINK
 
@@ -158,6 +172,7 @@ class JsonLinkPaginationConfig(PaginationConfig):
         }
 
 
+@public("hopsworks.core.rest_endpoint.HeaderLinkPaginationConfig")
 class HeaderLinkPaginationConfig(PaginationConfig):
     pagination_type = PaginationType.HEADER_LINK
 
@@ -171,6 +186,7 @@ class HeaderLinkPaginationConfig(PaginationConfig):
         }
 
 
+@public("hopsworks.core.rest_endpoint.HeaderCursorPaginationConfig")
 class HeaderCursorPaginationConfig(PaginationConfig):
     pagination_type = PaginationType.HEADER_CURSOR
 
@@ -191,6 +207,7 @@ class HeaderCursorPaginationConfig(PaginationConfig):
         }
 
 
+@public("hopsworks.core.rest_endpoint.OffsetPaginationConfig")
 class OffsetPaginationConfig(PaginationConfig):
     pagination_type = PaginationType.OFFSET
 
@@ -235,6 +252,7 @@ class OffsetPaginationConfig(PaginationConfig):
         }
 
 
+@public("hopsworks.core.rest_endpoint.PageNumberPaginationConfig")
 class PageNumberPaginationConfig(PaginationConfig):
     pagination_type = PaginationType.PAGE_NUMBER
 
@@ -267,6 +285,7 @@ class PageNumberPaginationConfig(PaginationConfig):
         }
 
 
+@public("hopsworks.core.rest_endpoint.CursorPaginationConfig")
 class CursorPaginationConfig(PaginationConfig):
     pagination_type = PaginationType.CURSOR
 
@@ -296,6 +315,7 @@ class CursorPaginationConfig(PaginationConfig):
         }
 
 
+@public("hopsworks.core.rest_endpoint.SinglePagePaginationConfig")
 class SinglePagePaginationConfig(PaginationConfig):
     pagination_type = PaginationType.SINGLE_PAGE
 
@@ -303,6 +323,7 @@ class SinglePagePaginationConfig(PaginationConfig):
         super().__init__(**kwargs)
 
 
+@public("hopsworks.core.rest_endpoint.AutoPaginationConfig")
 class AutoPaginationConfig(PaginationConfig):
     pagination_type = PaginationType.AUTO
 
@@ -322,6 +343,7 @@ _PAGINATION_CLASS_MAP: dict[PaginationType, type[PaginationConfig]] = {
 }
 
 
+@public("hopsworks.core.rest_endpoint.RestEndpointConfig")
 class RestEndpointConfig:
     """Configuration describing how a REST resource should be accessed."""
 
@@ -355,7 +377,7 @@ class RestEndpointConfig:
         return payload
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.Encoder)
+        return json.dumps(humps.decamelize(self.to_dict()), cls=util.Encoder)
 
     def __repr__(self) -> str:
         return (
@@ -410,14 +432,17 @@ class RestEndpointConfig:
             "pagination_config must be a PaginationConfig or a dictionary representation."
         )
 
+    @public
     @property
     def relative_url(self) -> str | None:
         return self._relative_url
 
+    @public
     @property
     def query_params(self) -> list[QueryParams]:
         return self._query_params
 
+    @public
     @property
     def pagination_config(self) -> PaginationConfig | None:
         return self._pagination_config

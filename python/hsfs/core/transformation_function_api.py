@@ -32,9 +32,12 @@ class TransformationFunctionApi:
     ) -> transformation_function.TransformationFunction:
         """Register transformation function in backend.
 
-        Args:
+        Parameters:
             transformation_function_instance:
                 metadata object of transformation function.
+
+        Returns:
+            The registered transformation function metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -65,11 +68,14 @@ class TransformationFunctionApi:
     ):
         """Retrieve transformation function from backend.
 
-        Args:
+        Parameters:
             name:
                 name of transformation function.
             version:
                 version of transformation function.
+
+        Returns:
+            The transformation function metadata object, or a list of them, or None if not found.
         """
         _client = client.get_instance()
         path_params = [
@@ -96,9 +102,8 @@ class TransformationFunctionApi:
     ) -> None:
         """Delete a transformation function.
 
-        Args:
-        transformation_function_instance: TransformationFunction, required
-            metadata object of transformation function.
+        Parameters:
+            transformation_function_instance: Metadata object of the transformation function to delete.
         """
         _client = client.get_instance()
         path_params = [

@@ -266,7 +266,7 @@ class TestVectorDbClient:
                 ],
             ),
             (
-                lambda f1, f2: ((f1 > 10) & ((f2 < 20) | ((f1 > 30) & (f2 < 40)))),
+                lambda f1, f2: (f1 > 10) & ((f2 < 20) | ((f1 > 30) & (f2 < 40))),
                 [
                     {
                         "bool": {
@@ -391,7 +391,7 @@ class TestVectorDbClient:
                 ],
             ),
             (
-                lambda f1, f2: ((f1 > 10) & ((f2 < 20) | ((f1 > 30) & (f2 < 40)))),
+                lambda f1, f2: (f1 > 10) & ((f2 < 20) | ((f1 > 30) & (f2 < 40))),
                 "46_",
                 [
                     {
