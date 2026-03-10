@@ -32,7 +32,10 @@ import humps
 import pandas as pd
 from hopsworks_apigen import public
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    TransformationFunctionException,
+)
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
@@ -252,6 +255,19 @@ class FeatureView:
         self.__required_serving_key_names = None
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
+
+        self._on_demand_transformation_execution_graph: (
+            transformation_function_engine.TransformationExecutionDAG | None
+        ) = None  # Initialized when the features are retrieved from the backend.
+
+        try:
+            self._model_dependent_transformation_execution_graph: transformation_function_engine.TransformationExecutionDAG = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+                self.transformation_functions
+            )
+        except TransformationFunctionException as e:
+            raise FeatureStoreException(
+                "Cyclic dependency detected in model-dependent transformation functions, attached to the feature view. Please verify that the transformation functions do not have cyclic dependencies."
+            ) from e
 
     @public
     def get_last_accessed_training_dataset(self):
@@ -622,6 +638,7 @@ class FeatureView:
         request_parameters: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
     ) -> (
         list[Any]
         | pd.DataFrame
@@ -742,6 +759,9 @@ class FeatureView:
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object.
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vector along with all the logging metadata.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             Returned `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (the exact type dependends on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -768,6 +788,7 @@ class FeatureView:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             logging_data=logging_data,
+            n_processes=n_processes,
         )
 
     @public
@@ -785,6 +806,7 @@ class FeatureView:
         request_parameters: list[dict[str, Any]] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
     ) -> (
         list[list[Any]]
         | pd.DataFrame
@@ -902,6 +924,9 @@ class FeatureView:
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object.
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             Returned `list[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (depending on the `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -930,6 +955,7 @@ class FeatureView:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             logging_data=logging_data,
+            n_processes=n_processes,
         )
 
     @public
@@ -1182,6 +1208,7 @@ class FeatureView:
         transformed: bool | None = True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes | HopsworksLoggingMetadataType:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1280,6 +1307,10 @@ class FeatureView:
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object.
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The batch data object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
+                In the Spark engine, the transformations are pushed down to Spark.
 
         Returns:
             DataFrame: The spark dataframe containing the feature data.
@@ -1297,7 +1328,7 @@ class FeatureView:
             start_time,
             end_time,
             self._batch_scoring_server.training_dataset_version,
-            self._batch_scoring_server._model_dependent_transformation_functions,
+            self._batch_scoring_server._model_dependent_transformation_functions_execution_graph,
             read_options,
             spine,
             kwargs.get("primary_keys") or primary_key,
@@ -1307,6 +1338,7 @@ class FeatureView:
             transformed=transformed,
             transformation_context=transformation_context,
             logging_data=logging_data,
+            n_processes=n_processes,
         )
 
     @public
@@ -2427,6 +2459,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2528,6 +2561,9 @@ class FeatureView:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
@@ -2556,6 +2592,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         warnings.warn(
             f"Incremented version to `{td.version}`.",
@@ -2584,6 +2621,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2697,6 +2735,9 @@ class FeatureView:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -2734,6 +2775,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         warnings.warn(
             f"Incremented version to `{td.version}`.",
@@ -2778,6 +2820,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2906,6 +2949,9 @@ class FeatureView:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -2955,6 +3001,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         warnings.warn(
             f"Incremented version to `{td.version}`.",
@@ -2996,6 +3043,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3044,6 +3092,9 @@ class FeatureView:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
                 If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels
@@ -3057,6 +3108,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         self.update_last_accessed_training_dataset(td.version)
         util.check_missing_mandatory_tags(td.missing_mandatory_tags)
@@ -3073,6 +3125,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3117,6 +3170,9 @@ class FeatureView:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -3132,6 +3188,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -3147,6 +3204,7 @@ class FeatureView:
         training_helper_columns: bool = False,
         dataframe_type: str = "default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3193,6 +3251,9 @@ class FeatureView:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3212,6 +3273,7 @@ class FeatureView:
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
+            n_processes=n_processes,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -3532,6 +3594,121 @@ class FeatureView:
         if self._last_accessed_training_dataset is not None:
             self.update_last_accessed_training_dataset(None)
         self._feature_view_engine.delete_training_data(self)
+
+    @public
+    def visualize_transformations(
+        self,
+        kind: str = "all",
+        mode: str = "auto",
+        orient: str = "TB",
+    ) -> None:
+        """Visualize transformation function execution DAGs attached to this feature view.
+
+        Renders the transformation pipeline as a directed graph showing input features,
+        transformation functions with their execution mode, dependency edges with linking
+        column names, and output features.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get feature view instance
+            fv = fs.get_feature_view(...)
+
+            # visualize all transformations (renders inline in Jupyter)
+            fv.visualize_transformations()
+
+            # visualize only model-dependent transformations
+            fv.visualize_transformations(kind="model_dependent")
+
+            # force text output
+            fv.visualize_transformations(mode="text")
+            ```
+
+        Parameters:
+            kind: Which transformations to visualize. One of:
+                `"all"` (default) - both on-demand and model-dependent transformations,
+                `"on_demand"` - only on-demand transformations,
+                `"model_dependent"` - only model-dependent transformations.
+            mode: Display mode. One of `"auto"` (default), `"text"`, `"graph"`.
+            orient: Layout direction for the graphviz graph. One of:
+                `"TB"` (top-to-bottom, default), `"LR"` (left-to-right),
+                `"BT"` (bottom-to-top), `"RL"` (right-to-left).
+
+        Raises:
+            `ImportError`: If the `graphviz` package is not installed.
+            `ValueError`: If `kind` is not one of `"all"`, `"on_demand"`, `"model_dependent"`.
+            `FeatureStoreException`: If the requested DAG is not available.
+        """
+        valid_kinds = ("all", "on_demand", "model_dependent")
+        if kind not in valid_kinds:
+            raise ValueError(f"Invalid kind '{kind}'. Must be one of {valid_kinds}.")
+
+        if kind == "on_demand":
+            if self._on_demand_transformation_execution_graph is None:
+                raise FeatureStoreException(
+                    "On-demand transformation execution graph is not available. "
+                    "Ensure features have been retrieved from the backend."
+                )
+            self._on_demand_transformation_execution_graph.visualize(
+                mode=mode, orient=orient
+            )
+            return
+
+        if kind == "model_dependent":
+            self._model_dependent_transformation_execution_graph.visualize(
+                mode=mode, orient=orient
+            )
+            return
+
+        # kind == "all": render both DAGs
+        if mode == "text" or (
+            mode == "auto"
+            and not transformation_function_engine.TransformationExecutionDAG._in_jupyter()
+        ):
+            print("Model-Dependent Transformations")
+            print(self._model_dependent_transformation_execution_graph)
+            if self._on_demand_transformation_execution_graph is not None:
+                print()
+                print("On-Demand Transformations")
+                print(self._on_demand_transformation_execution_graph)
+            return
+
+        # Graphviz: render both as subgraphs
+        try:
+            import graphviz
+        except ImportError as e:
+            raise ImportError(
+                "The 'graphviz' package is required for visualization. "
+                "Install it with: pip install graphviz"
+            ) from e
+
+        from IPython.display import display
+
+        dot = graphviz.Digraph(
+            comment="Feature View Transformations",
+            graph_attr={"rankdir": orient, "compound": "true"},
+        )
+
+        md_graph = self._model_dependent_transformation_execution_graph._to_graphviz(
+            orient=orient
+        )
+        md_sub = graphviz.Digraph(name="cluster_model_dependent")
+        md_sub.attr(label="Model-Dependent Transformations", style="dashed")
+        md_sub.body.extend(md_graph.body)
+        dot.subgraph(md_sub)
+
+        if self._on_demand_transformation_execution_graph is not None:
+            od_graph = self._on_demand_transformation_execution_graph._to_graphviz(
+                orient=orient
+            )
+            od_sub = graphviz.Digraph(name="cluster_on_demand")
+            od_sub.attr(label="On-Demand Transformations", style="dashed")
+            od_sub.body.extend(od_graph.body)
+            dot.subgraph(od_sub)
+
+        display(dot)
 
     @public
     def get_feature_monitoring_configs(
@@ -3928,6 +4105,16 @@ class FeatureView:
                 )
                 features[feature_index] = feature
         fv.schema = features
+
+        try:
+            fv._on_demand_transformation_execution_graph = transformation_function_engine.TransformationFunctionEngine.build_transformation_function_execution_graph(
+                fv._on_demand_transformation_functions
+            )
+        except TransformationFunctionException as e:
+            raise FeatureStoreException(
+                "Cyclic dependency detected in on-demand transformation functions, present in the feature view. Please verify that the on-demand features present in the feature view do not have cyclic dependencies."
+            ) from e
+
         fv.labels = [feature.name for feature in features if feature.label]
         fv.inference_helper_columns = [
             feature.name for feature in features if feature.inference_helper_column
@@ -3977,6 +4164,7 @@ class FeatureView:
         request_parameters: list[dict[str, Any]] | dict[str, Any] | None = None,
         transformation_context: dict[str, Any] | None = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
+        n_processes: int = None,
     ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Function computes on-demand features present in the feature view.
 
@@ -3987,6 +4175,9 @@ class FeatureView:
             transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             return_type: Defaults to the same type as the input feature vector.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             The feature vector that contains all on-demand features in the feature view.
@@ -3996,6 +4187,7 @@ class FeatureView:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             return_type=return_type,
+            n_processes=n_processes,
         )
 
     @public
@@ -4005,6 +4197,7 @@ class FeatureView:
         external: bool | None = None,
         transformation_context: dict[str, Any] | None = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
+        n_processes: int = None,
     ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
 
@@ -4022,6 +4215,9 @@ class FeatureView:
             transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
             return_type: Defaults to the same type as the input feature vector.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             The transformed feature vector obtained by applying Model-Dependent Transformations.
@@ -4033,6 +4229,7 @@ class FeatureView:
             feature_vectors=feature_vector,
             transformation_context=transformation_context,
             return_type=return_type,
+            n_processes=n_processes,
         )
 
     @public
@@ -4510,6 +4707,7 @@ class FeatureView:
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> dict[str, Any] | pd.DataFrame:
         """Apply on-demand transformations attached to the feature view on the provided data.
 
@@ -4554,6 +4752,9 @@ class FeatureView:
                 Request parameters passed to the transformation functions.
                 For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values -- if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4562,11 +4763,12 @@ class FeatureView:
         """
         if self._on_demand_transformation_functions:
             data = self._feature_view_engine.apply_transformations(
-                transformation_functions=self._on_demand_transformation_functions,
+                execution_graph=self._on_demand_transformation_execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         else:
             _logger.info(
@@ -4581,6 +4783,7 @@ class FeatureView:
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int = None,
     ) -> dict[str, Any] | pd.DataFrame:
         """Apply model-dependent transformations attached to the feature view on the provided data.
 
@@ -4628,6 +4831,9 @@ class FeatureView:
                 Request parameters passed to the transformation functions.
                 For batch processing with different parameters per row, provide a list of dictionaries.
                 These parameters take **highest priority** when resolving feature values -- if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            n_processes: Number of worker processes for executing transformation functions.
+                If not provided, it is set to the maximum number of transformation functions that can run concurrently from the transfromation function execution DAG.
+                This parameter is only applicable when using the Python engine.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4636,11 +4842,12 @@ class FeatureView:
         """
         if self.transformation_functions:
             data = self._feature_view_engine.apply_transformations(
-                transformation_functions=self.transformation_functions,
+                execution_graph=self._model_dependent_transformation_execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         else:
             _logger.info(
@@ -4918,12 +5125,19 @@ class FeatureView:
         """Get request parameters required for the for on-demand transformations atatched to the feature view."""
         if self._request_parameters is None:
             feature_names = [feature.name for feature in self.features]
+            # Intermediate features: outputs of one TF that are inputs to
+            # another.  These are computed by the transformation chain and
+            # should not be listed as required request parameters.
+            all_output_cols: set[str] = set()
+            for tf in self._on_demand_transformation_functions:
+                all_output_cols.update(tf.hopsworks_udf.output_column_names)
             self._request_parameters = []
             for tf in self._on_demand_transformation_functions:
                 for feature_name in tf.hopsworks_udf.transformation_features:
                     if (
                         feature_name not in feature_names
                         and feature_name not in self._request_parameters
+                        and feature_name not in all_output_cols
                     ):
                         self._request_parameters.append(feature_name)
 
