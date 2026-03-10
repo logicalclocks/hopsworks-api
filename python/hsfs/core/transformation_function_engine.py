@@ -432,7 +432,12 @@ class TransformationFunctionEngine:
 
     @staticmethod
     def create_process_pool(n_processes: int = None):
-        """Create (or replace) a process pool for parallel TF execution."""
+        """Create (or replace) a process pool for parallel TF execution.
+
+        Parameters:
+            n_processes: Maximum number of worker processes.
+                Defaults to the number of CPUs when `None`.
+        """
         if TransformationFunctionEngine.__process_pool:
             TransformationFunctionEngine.shutdown_process_pool()
         mp_context = multiprocessing.get_context(
@@ -840,6 +845,24 @@ class TransformationFunctionEngine:
 
         When `shm_name` is provided the DataFrame is read from Arrow shared
         memory instead of being deserialized via pickle.
+
+        Parameters:
+            udf: The transformation function to execute.
+            data: Input data to transform.
+                Can be a DataFrame, a single dict, or a list of dicts.
+            engine_type: Engine type override (`"python"` or `"spark"`).
+            online: Whether to apply online-mode transformations.
+            shm_name: Name of the shared-memory block holding an Arrow IPC stream.
+                When set, `data` is ignored and the DataFrame is read from shared memory.
+            shm_size: Size in bytes of the shared-memory payload.
+            is_polars: If `True`, deserialize the shared-memory payload as a Polars DataFrame.
+            columns: Subset of columns to select from the shared-memory DataFrame.
+            predecessor_columns: Column values produced by predecessor UDFs that override
+                columns read from shared memory.
+
+        Returns:
+            The transformed data in the same container type as the input
+            (dict, list of dicts, or DataFrame).
         """
         if shm_name is not None:
             data = TransformationFunctionEngine._read_from_shared_memory(
@@ -1113,8 +1136,12 @@ class TransformationFunctionEngine:
         """Build a DAG (Directed Acyclic Graph) to determine the execution order of transformation functions.
 
         Analyzes the dependencies between transformation functions by inspecting their input and output features.
+
         Parameters:
             transformation_functions: Flat list of transformation functions to organize into a DAG.
+
+        Returns:
+            A `TransformationExecutionDAG` with nodes in topological order and their dependencies.
 
         Raises:
             TransformationFunctionException: If a cyclic dependency is detected.
