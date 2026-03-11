@@ -44,7 +44,7 @@ def create_model(
     model_schema: ModelSchema | None = None,
     feature_view=None,
     training_dataset_version: int | None = None,
-):
+) -> Model:
     """Create a Torch model metadata object.
 
     Note: Lazy
@@ -66,7 +66,7 @@ def create_model(
         training_dataset_version: Optionally a training dataset version. If training dataset version is not provided, but the feature view is provided, the training dataset version used will be the last accessed training dataset of the feature view, within the code/notebook that reads the feature view and training dataset and then creates the model.
 
     Returns:
-        `Model`. The model metadata object.
+        The model metadata object.
     """
     model = Model(
         id=None,

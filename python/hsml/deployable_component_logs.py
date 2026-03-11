@@ -24,9 +24,7 @@ class DeployableComponentLogs:
 
     Parameters:
         name: Deployment instance name.
-        content: actual logs
-    Returns:
-        `DeployableComponentLogs`. Server logs of a deployable component
+        content: Actual logs.
     """
 
     def __init__(self, instance_name: str, content: str, **kwargs):

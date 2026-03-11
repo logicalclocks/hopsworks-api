@@ -35,6 +35,7 @@ from hsml.schema import Schema
 
 
 if TYPE_CHECKING:
+    from hsfs import feature_view
     from hsml import deployment, tag
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -109,11 +110,11 @@ class Model:
     @usage.method_logger
     def save(
         self,
-        model_path,
-        await_registration=480,
-        keep_original_files=False,
+        model_path: str,
+        await_registration: int = 480,
+        keep_original_files: bool = False,
         upload_configuration: dict[str, Any] | None = None,
-    ):
+    ) -> Model:
         """Persist this model including model files and metadata to the model registry.
 
         Parameters:
@@ -128,7 +129,7 @@ class Model:
                 * key `max_chunk_retries`: number of times to retry the upload of a chunk in case of failure. Default 1.
 
         Returns:
-            `Model`: The model metadata object.
+            The model metadata object.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -176,13 +177,14 @@ class Model:
 
     @public
     @usage.method_logger
-    def download(self, local_path=None) -> str:
+    def download(self, local_path: str | None = None) -> str:
         """Download the model files.
 
         Parameters:
             local_path: path where to download the model files in the local filesystem
+
         Returns:
-            `str`: Absolute path to local folder containing the model files.
+            Absolute path to local folder containing the model files.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -255,11 +257,11 @@ class Model:
             inference_batcher: Inference batcher configuration.
             scaling_configuration: Scaling configuration for the predictor.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The inference environment to use.
 
         Returns:
-            `Deployment`: The deployment metadata object of a new or existing deployment.
+            The deployment metadata object of a new or existing deployment.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -305,7 +307,12 @@ class Model:
     @public
     @usage.method_logger
     def set_tag(self, name: str, value: str | dict):
-        """Deprecated: Use add_tag instead."""
+        """Deprecated: Use add_tag instead.
+
+        Parameters:
+            name: name of the tag
+            value: value of the tag
+        """
         warnings.warn(
             "The set_tag method is deprecated. Please use add_tag instead.",
             DeprecationWarning,
@@ -346,7 +353,7 @@ class Model:
         """Retrieves all tags attached to a model.
 
         Returns:
-            `Dict[str, obj]` of tags.
+            Dictionary of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
@@ -367,18 +374,20 @@ class Model:
         return util.get_hostname_replaced_url(sub_path=path)
 
     @public
-    def get_feature_view(self, init: bool = True, online: bool = False):
+    def get_feature_view(
+        self, init: bool = True, online: bool = False
+    ) -> feature_view.FeatureView | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
-         Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
-         For more details, call the base method - get_feature_view_provenance
+        Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
+        For more details, call the base method - get_feature_view_provenance
 
-         Parameters:
+        Parameters:
             init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
 
         Returns:
-            `FeatureView`: Feature View Object or `None` if it does not exist.
+            Feature View Object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view.
@@ -410,7 +419,7 @@ class Model:
         For deleted and inaccessible feature views, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view provenance.
@@ -425,7 +434,7 @@ class Model:
         For deleted and inaccessible training datasets, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the training dataset provenance.

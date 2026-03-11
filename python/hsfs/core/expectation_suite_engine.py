@@ -31,10 +31,9 @@ class ExpectationSuiteEngine:
     def __init__(self, feature_store_id: int, feature_group_id: int) -> None:
         """Expectation Suite engine.
 
-        :param feature_store_id: id of the respective featurestore
-        :type feature_store_id: int
-        :param feature_group_id: id of the respective featuregroup
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: id of the respective featurestore
+            feature_group_id: id of the respective featuregroup
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id

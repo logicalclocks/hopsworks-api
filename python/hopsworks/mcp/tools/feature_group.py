@@ -15,16 +15,26 @@
 #
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import hopsworks
-from fastmcp import Context  # noqa: TC002
+from fastmcp import (
+    Context,  # noqa: TC002
+)
 from hopsworks.mcp.models.feature_group import Feature, FeatureGroup
 from hopsworks.mcp.utils.tags import TAGS
+
+
+if TYPE_CHECKING:
+    from fastmcp import (
+        FastMCP,
+    )
 
 
 class FeatureGroupTools:
     """Tools for managing feature groups in Hopsworks MCP."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         self.mcp = mcp
         self.mcp.tool(tags=[TAGS.FEATURE_GROUP, TAGS.READ, TAGS.STATEFUL])(
             self.get_feature_groups
@@ -70,7 +80,9 @@ class FeatureGroupTools:
         except IndexError:
             raise RuntimeError(f"Feature group {name} not found.") from None
 
-    async def get_feature_groups(self, ctx: Context) -> list[FeatureGroup]:
+    async def get_feature_groups(  # docsig: disable
+        self, ctx: Context
+    ) -> list[FeatureGroup]:
         """Get the latest versions of all feature groups in the project."""
         await ctx.info("Retrieving feature groups...")
 
@@ -89,14 +101,16 @@ class FeatureGroupTools:
             key=lambda fg: (fg.name, fg.version),
         )
 
-    async def get_feature_group_versions(self, ctx: Context, name: str) -> list[int]:
+    async def get_feature_group_versions(  # docsig: disable
+        self, ctx: Context, name: str
+    ) -> list[int]:
         """Get all versions of a feature group with the specified name."""
         await ctx.info("Retrieving feature groups...")
 
         fgs = self._get_feature_group_versions(name)
         return sorted([fg.version for fg in fgs])
 
-    async def get_feature_group_details(
+    async def get_feature_group_details(  # docsig: disable
         self,
         ctx: Context,
         name: str,
@@ -121,7 +135,7 @@ class FeatureGroupTools:
             deprecated=fg.deprecated,
         )
 
-    async def preview_feature_group(
+    async def preview_feature_group(  # docsig: disable
         self,
         ctx: Context,
         name: str,
@@ -166,7 +180,7 @@ class FeatureGroupTools:
             f"Unable to convert preview to dictionary. Here's the raw preview:\n{preview}"
         )
 
-    async def get_features(
+    async def get_features(  # docsig: disable
         self,
         ctx: Context,
         name: str,
