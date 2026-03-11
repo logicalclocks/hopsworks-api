@@ -90,9 +90,9 @@ def login(
     engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
     | None = None,
 ) -> project.Project:
-    """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
+    """Connect to [Hopsworks SaaS](https://run.hopsworks.ai/) by calling the `hopsworks.login()` function with no arguments.
 
-    Example: Connect to Serverless
+    Example: Connect to Hopsworks SaaS
         ```python
         import hopsworks
 
@@ -185,10 +185,10 @@ def login(
     # If host argument not defined, get HOPSWORKS_HOST environment variable
     if host is None and "HOPSWORKS_HOST" in os.environ:
         host = os.environ["HOPSWORKS_HOST"]
-    elif host is None:  # Always do a fallback to Serverless Hopsworks if not defined
-        host = constants.HOSTS.APP_HOST
+    elif host is None:  # Always do a fallback to Hopsworks SaaS if not defined
+        host = constants.HOSTS.SAAS_HOST
 
-    is_app = host == constants.HOSTS.APP_HOST
+    is_saas = host == constants.HOSTS.SAAS_HOST
 
     # If port same as default, get HOPSWORKS_HOST environment variable
     if port == 443 and "HOPSWORKS_PORT" in os.environ:
@@ -204,8 +204,8 @@ def login(
     if cert_folder is None:
         cert_folder = os.getenv("HOPSWORKS_CERT_FOLDER", CLIENT.CERT_FOLDER_DEFAULT)
 
-    # This .hw_api_key is created when a user logs into Serverless Hopsworks the first time.
-    # It is then used only for future login calls to Serverless. For other Hopsworks installations it's ignored.
+    # This .hw_api_key is created when a user logs into Hopsworks SaaS the first time.
+    # It is then used only for future login calls to SaaS. For other Hopsworks installations it's ignored.
     api_key_path = _get_cached_api_key_path()
 
     # Conditions for getting the api_key
@@ -218,8 +218,8 @@ def login(
             api_key = Path(api_key_file).read_text()
         else:
             raise OSError(f"Could not find api key file on path: {api_key_file}")
-    # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
-    elif os.path.exists(api_key_path) and is_app:
+    # If user connected to Hopsworks SaaS, and the cached .hw_api_key exists, then use it.
+    elif os.path.exists(api_key_path) and is_saas:
         try:
             _hw_connection = _hw_connection(
                 host=host,
@@ -230,7 +230,7 @@ def login(
                 trust_store_path=trust_store_path,
                 cert_folder=cert_folder,
             )
-            _connected_project = _prompt_project(_hw_connection, project, is_app)
+            _connected_project = _prompt_project(_hw_connection, project, is_saas)
             if _connected_project:
                 _set_active_project(_connected_project)
             print(
@@ -247,10 +247,8 @@ def login(
             logout()
             _handle_ssl_errors(ssl_e)
 
-    if api_key is None and is_app:
-        print(
-            "Copy your API Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
-        )
+    if api_key is None and is_saas:
+        print("Copy your API Key (first register/login at https://run.hopsworks.ai)")
         api_key = getpass.getpass(prompt="\nPaste it here: ")
 
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
@@ -271,7 +269,7 @@ def login(
             trust_store_path=trust_store_path,
             cert_folder=cert_folder,
         )
-        _connected_project = _prompt_project(_hw_connection, project, is_app)
+        _connected_project = _prompt_project(_hw_connection, project, is_saas)
         if _connected_project:
             _set_active_project(_connected_project)
     except RestAPIError as hw_e:
@@ -300,7 +298,7 @@ def _handle_ssl_errors(ssl_e):
 
 
 def _get_cached_api_key_path():
-    """This function is used to get an appropriate path to store the user supplied API Key for Serverless Hopsworks.
+    """This function is used to get an appropriate path to store the user supplied API Key for Hopsworks SaaS.
 
     First it will search for .hw_api_key in the current working directory, if it exists it will use it (this is default in 3.0 client)
     Otherwise, falls back to storing the API key in HOME
@@ -334,16 +332,11 @@ def _get_cached_api_key_path():
     return api_key_path
 
 
-def _prompt_project(valid_connection, project, is_app):
+def _prompt_project(valid_connection, project, is_saas):
     if project is None:
-        if is_app:
-            # On Serverless we filter out projects owned by other users to make sure automatic login
-            # without a prompt still happens when users add showcase projects created by other users
-            saas_projects = valid_connection._project_api._get_owned_projects()
-        else:
-            saas_projects = valid_connection._project_api._get_projects()
+        saas_projects = valid_connection._project_api._get_projects()
         if len(saas_projects) == 0:
-            if is_app:
+            if is_saas:
                 raise ProjectException("Could not find any project")
             return None
         if len(saas_projects) == 1:
@@ -435,9 +428,6 @@ def create_project(
     name: str, description: str | None = None, feature_store_topic: str | None = None
 ) -> project.Project | None:
     """Create a new project.
-
-    Warning: Not supported
-        The function does not work if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai).
 
     Example: Example for creating a new project
         ```python

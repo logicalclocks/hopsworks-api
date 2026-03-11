@@ -29,7 +29,7 @@ class TestConnection:
         # The purpose of this test is to ensure that (1) we don't make undesired changes to contant values
         # that might break things somewhere else, and (2) we remember to update the pytests accordingly by
         # adding / removing / updating tests, if necessary.
-        assert HOSTS.APP_HOST == "c.app.hopsworks.ai"
+        assert HOSTS.SAAS_HOST == "eu-west.cloud.hopsworks.ai"
         assert HOPSWORKS_PORT_DEFAULT == 443
         assert HOSTNAME_VERIFICATION_DEFAULT is False
 
