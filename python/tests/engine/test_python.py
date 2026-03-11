@@ -2018,6 +2018,44 @@ class TestPython:
                     "text": ["a_t1", "a_t1_dup", "b_t2"],
                 },
             ),
+            (
+                "duplicate_event_time_in_primary_key",
+                ["id", "event_time"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                    ],
+                    "text": ["a_t1", "a_t1_dup", "b_t2"],
+                },
+            ),
+            (
+                "duplicate_partition_key_in_primary_key",
+                ["id", "p"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 0, 0], "text": ["a", "a_dup", "b"]},
+            ),
+            (
+                "duplicate_all_overlapping",
+                ["id", "event_time", "p"],
+                ["p"],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                    ],
+                    "p": [0, 0, 0],
+                    "text": ["a", "a_dup", "b"],
+                },
+            ),
         ],
     )
     def test_save_dataframe_delta_duplicate_should_fail(
@@ -2131,6 +2169,44 @@ class TestPython:
                 [],
                 None,
                 {"id": [1, 1, 2], "text": ["a", "a_dup", "b"]},
+            ),
+            (
+                "event_time_in_primary_key_no_duplicate",
+                ["id", "event_time"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "text": ["a_t1", "a_t2", "b_t1"],
+                },
+            ),
+            (
+                "partition_key_in_primary_key_no_duplicate",
+                ["id", "p"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 1, 0], "text": ["a_p0", "a_p1", "b_p0"]},
+            ),
+            (
+                "all_overlapping_no_duplicate",
+                ["id", "event_time", "p"],
+                ["p"],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "p": [0, 0, 0],
+                    "text": ["a", "b", "c"],
+                },
             ),
         ],
     )

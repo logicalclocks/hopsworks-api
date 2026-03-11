@@ -975,18 +975,18 @@ class Engine:
         feature_group_instance : FeatureGroup
             The feature group instance containing primary_key, event_time and partition_key
         """
-        # Get the key columns to check (primary_key + partition_key)
-        key_columns = list(feature_group_instance.primary_key)
+        # Get the unique key columns to check (primary_key + event_time + partition_key)
+        key_columns = set(feature_group_instance.primary_key)
 
         if not key_columns:
             # No keys to check, skip validation
             return
 
         if feature_group_instance.event_time:
-            key_columns.append(feature_group_instance.event_time)
+            key_columns.add(feature_group_instance.event_time)
 
         if feature_group_instance.partition_key:
-            key_columns.extend(feature_group_instance.partition_key)
+            key_columns.update(feature_group_instance.partition_key)
 
         # Verify all key columns exist against the original dataframe — no conversion needed.
         if isinstance(dataset, pd.DataFrame) or (
@@ -1009,7 +1009,7 @@ class Engine:
         # Convert only the key columns to Arrow — avoids transcoding all feature columns
         # (including costly numpy-U → UTF-8 re-encoding) for a check that only needs keys.
         if isinstance(dataset, pd.DataFrame):
-            key_table = pa.Table.from_pandas(dataset[key_columns], preserve_index=False)
+            key_table = pa.Table.from_pandas(dataset[list(key_columns)], preserve_index=False)
         elif HAS_POLARS and isinstance(dataset, pl.DataFrame):
             key_table = dataset.select(key_columns).to_arrow()
         else:
