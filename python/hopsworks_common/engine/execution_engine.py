@@ -45,14 +45,14 @@ class ExecutionEngine:
         """Download execution logs to current directory.
 
         Parameters:
-            execution: execution to download logs for
-            path: path to download the logs
+            execution: Execution to download logs for.
+            path: Path to download the logs.
 
         Returns:
-            downloaded stdout and stderr log path
+            Downloaded stdout and stderr log path.
 
         Raises:
-            JobExecutionException: if path is provided but does not exist.
+            JobExecutionException: If path is provided but does not exist.
         """
         if path is not None and not os.path.exists(path):
             raise JobExecutionException(f"Path {path} does not exist")

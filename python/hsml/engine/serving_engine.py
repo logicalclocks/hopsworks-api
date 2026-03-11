@@ -756,7 +756,7 @@ class ServingEngine:
                         data = {"instances": [inputs]}
                         break
         else:  # gRPC protocol
-            if isinstance(inputs, dict):  # Dict
+            if isinstance(inputs, dict):  # dict
                 data = InferInput(
                     name=inputs["name"],
                     shape=inputs["shape"],
@@ -765,10 +765,10 @@ class ServingEngine:
                     parameters=(inputs.get("parameters", None)),
                 )
                 if not recursive_call:
-                    # if inputs is of type Dict, return a singleton
+                    # if inputs is of type dict, return a singleton
                     data = [data]
 
-            else:  # List[Dict]
+            else:  # list[dict]
                 data = inputs
                 for index, inputs_item in enumerate(inputs):
                     data[index] = self._parse_inference_inputs(

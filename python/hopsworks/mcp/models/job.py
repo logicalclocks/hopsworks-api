@@ -65,7 +65,14 @@ class Jobs(BaseModel):
 
 
 def to_base_model_job(job: BaseJob) -> Job:
-    """Convert a Job instance to a BaseModel."""
+    """Convert a Job instance to a BaseModel.
+
+    Parameters:
+        job: The Job instance to convert.
+
+    Returns:
+        A Job instance as a BaseModel.
+    """
     return Job(
         id=job["id"],
         name=job["name"],

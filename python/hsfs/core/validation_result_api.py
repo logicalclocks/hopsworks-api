@@ -23,10 +23,9 @@ class ValidationResultApi:
     def __init__(self, feature_store_id: int, feature_group_id: int) -> None:
         """Validation Result endpoints for the featuregroup resource.
 
-        :param feature_store_id: id of the respective featurestore
-        :type feature_store_id: int
-        :param feature_group_id: id of the respective featuregroup
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: id of the respective featurestore
+            feature_group_id: id of the respective featuregroup
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
@@ -39,10 +38,14 @@ class ValidationResultApi:
         list[ge_validation_result.ValidationResult]
         | ge_validation_result.ValidationResult
     ):
-        """Get the validation report attached to a featuregroup.
+        """Get the validation history for an expectation attached to a featuregroup.
 
-        :return: validation report
-        :rtype: Union[List[ValidationResult], ValidationResult]
+        Parameters:
+            expectation_id: ID of the expectation to retrieve history for.
+            query_params: Optional query parameters to filter the results.
+
+        Returns:
+            A list of validation results, or a single validation result.
         """
         _client = client.get_instance()
         path_params = [

@@ -35,7 +35,7 @@
   /></a>
 </p>
 
-*hopsworks* is the python API for interacting with a Hopsworks cluster. Don't have a Hopsworks cluster just yet? Register an account on [Hopsworks Serverless](https://app.hopsworks.ai/) and get started for free. Once connected to your project, you can:
+*hopsworks* is the python API for interacting with a Hopsworks cluster. Don't have a Hopsworks cluster just yet? Register an account on [Hopsworks SaaS](https://run.hopsworks.ai) and get started. Once connected to your project, you can:
 
 - Insert dataframes into the online or offline Store, create training datasets or *serve real-time* feature vectors in the Feature Store via the Feature Store API. Already have data somewhere you want to import, checkout our [Storage Connectors](https://docs.hopsworks.ai/latest/user_guides/fs/storage_connector/) documentation.
 - register ML models in the model registry and *deploy* them via model serving via the Machine Learning API.
@@ -45,7 +45,7 @@ Our [tutorials](https://github.com/logicalclocks/hopsworks-tutorials) cover a wi
 
 ## Getting Started On Hopsworks
 
-Once you created a project on [Hopsworks Serverless](https://app.hopsworks.ai) and created a new [Api Key](https://docs.hopsworks.ai/latest/user_guides/projects/api_key/create_api_key/), just use your favourite virtualenv and package manager to install the library:
+Once you created a project on [Hopsworks SaaS](https://run.hopsworks.ai/) and created a new [Api Key](https://docs.hopsworks.ai/latest/user_guides/projects/api_key/create_api_key/), just use your favourite virtualenv and package manager to install the library:
 
 ```bash
 pip install "hopsworks[python]"
@@ -167,7 +167,7 @@ predictions = deployment.predict(data)
 ## Usage
 
 Usage data is collected for improving quality of the library.
-It is turned on by default if the backend is [Hopsworks Serverless](https://c.app.hopsworks.ai).
+It is turned on by default if the backend is [Hopsworks SaaS](https://run.hopsworks.ai/).
 To turn it off, use one of the following ways:
 
 ```python

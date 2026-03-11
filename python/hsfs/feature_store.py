@@ -20,7 +20,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hsfs import (
     expectation_suite,
     feature,
@@ -431,6 +431,7 @@ class FeatureStore:
         """
         return self._training_dataset_api.get(name, None)
 
+    @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
     @public
     @usage.method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
@@ -440,9 +441,6 @@ class FeatureStore:
         This storage can be S3, a JDBC compliant database or the distributed filesystem HOPSFS.
 
         If you want to connect to the online feature store, see the `get_online_storage_connector` method to get the JDBC connector for the Online Feature Store.
-
-        !!! warning "Deprecated"
-            `get_storage_connector` method is deprecated. Use `get_data_source` instead.
 
         Example:
             ```python
@@ -460,6 +458,7 @@ class FeatureStore:
         """
         return self.get_data_source(name).storage_connector
 
+    @public
     @usage.method_logger
     def get_data_source(self, name: str) -> ds.DataSource:
         """Get a data source from the feature store.
@@ -479,7 +478,7 @@ class FeatureStore:
             data_source = fs.get_data_source("test_data_source")
             ```
 
-        Arguments:
+        Parameters:
             name: Name of the data source to retrieve.
 
         Returns:
@@ -768,7 +767,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the feature group after it is saved. Defaults to None.
+                Tags will be attached to the feature group after it is saved.
 
         Returns:
             The feature group metadata object.
@@ -925,6 +924,8 @@ class FeatureStore:
                 The values should be booleans indicating the setting.
                 To fully turn off statistics computation pass `statistics_config=False`.
                 By default, it computes only descriptive statistics.
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             event_time:
                 Optionally, provide the name of the feature containing the event time for the features in this feature group.
                 If event_time is set the feature group can be used for point-in-time joins.
@@ -935,8 +936,6 @@ class FeatureStore:
             stream:
                 Optionally, define whether the feature group should support real time stream writing capabilities.
                 Stream enabled Feature Groups have unified single API for writing streaming features transparently to both online and offline store.
-            expectation_suite:
-                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             parents:
                 Optionally, define the parents of this feature group as the origin where the data is coming from.
             topic_name:
@@ -1117,14 +1116,14 @@ class FeatureStore:
                 Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
             notification_topic_name:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
-            expectation_suite:
-                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             data_source:
                 The data source specifying the location of the data.
                 Overrides the storage_connector, path and query arguments when specified.
@@ -1156,7 +1155,9 @@ class FeatureStore:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
             )
-        elif storage_connector is not None or query is not None or path not in (None, ""):
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
             warnings.warn(
                 "When `data_source` is provided, `storage_connector`, `query` and "
                 "`path` parameters are ignored. Use `data_source` only.",
@@ -1291,6 +1292,8 @@ class FeatureStore:
                 A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
+            embedding_index:
+                If an embedding index is provided, vector database is used as online feature store.
             features:
                 Optionally, define the schema of the external feature group manually as a list of `Feature` objects.
                 Defaults to empty list `[]` and will use the schema information of the DataFrame resulting by executing the provided query against the data source.
@@ -1312,10 +1315,10 @@ class FeatureStore:
                 Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-            online_enabled:
-                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             expectation_suite:
                 Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
+            online_enabled:
+                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
@@ -1358,7 +1361,9 @@ class FeatureStore:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, query=query, path=path
             )
-        elif storage_connector is not None or query is not None or path not in (None, ""):
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
             warnings.warn(
                 "When `data_source` is provided, `storage_connector`, `query` and "
                 "`path` parameters are ignored. Use `data_source` only.",
@@ -1609,7 +1614,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the training dataset after it is saved. Defaults to None.
+                Tags will be attached to the training dataset after it is saved.
 
         Returns:
             The training dataset metadata object.
@@ -1655,9 +1660,9 @@ class FeatureStore:
 
             # create transformation function
             plus_one_meta = fs.create_transformation_function(
-                    transformation_function=plus_one,
-                    version=1
-                )
+                transformation_function=plus_one,
+                version=1,
+            )
 
             # persist transformation function in backend
             plus_one_meta.save()
@@ -1669,6 +1674,7 @@ class FeatureStore:
 
         Parameters:
             transformation_function: Hopsworks UDF.
+            version: Version of the transformation function to create.
 
         Returns:
             The TransformationFunction metadata object.
@@ -1912,7 +1918,7 @@ class FeatureStore:
                 - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
-                Tags will be attached to the feature view after it is saved. Defaults to None.
+                Tags will be attached to the feature view after it is saved.
 
         Returns:
             The feature view metadata object.
@@ -2139,7 +2145,7 @@ class FeatureStore:
             )
             ```
 
-        Arguments:
+        Parameters:
             title: Title of the chart.
             description: Description of the chart.
             url: URL where the chart is hosted or can be accessed.
@@ -2188,7 +2194,7 @@ class FeatureStore:
             chart = fs.get_chart(chart_id=123)
             ```
 
-        Arguments:
+        Parameters:
             chart_id: ID of the chart to retrieve.
 
         Returns:
@@ -2220,7 +2226,7 @@ class FeatureStore:
             )
             ```
 
-        Arguments:
+        Parameters:
             name: Name of the dashboard.
             charts: List of charts to include in the dashboard.
 
@@ -2265,7 +2271,7 @@ class FeatureStore:
             dashboard = fs.get_dashboard(dashboard_id=123)
             ```
 
-        Arguments:
+        Parameters:
             dashboard_id: ID of the dashboard to retrieve.
 
         Returns:

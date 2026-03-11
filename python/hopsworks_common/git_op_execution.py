@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import humps
 from hopsworks_apigen import also_available_as
@@ -101,13 +102,8 @@ class GitOpExecution:
         return self._repository
 
     @property
-    def success(self):
-        """Boolean to indicate if execution ran successfully or failed.
-
-        ```
-        Returns:
-            `bool`. True if execution ran successfully. False if execution failed.
-        """
+    def success(self) -> bool | None:
+        """Boolean indicating that the execution ran successfully."""
         if self.state is not None and self.state.upper() in constants.GIT.ERROR_STATES:
             return False
         if (

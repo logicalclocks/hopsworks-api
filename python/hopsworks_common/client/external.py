@@ -20,6 +20,7 @@ import base64
 import contextlib
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import hopsworks_common.client
 import requests
@@ -27,6 +28,10 @@ from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import CLIENT
+
+
+if TYPE_CHECKING:
+    from urllib.parse import ParseResult
 
 
 with contextlib.suppress(ImportError):
@@ -348,22 +353,23 @@ class Client(base.Client):
             if not os.path.exists(self._cert_folder):
                 os.makedirs(self._cert_folder, mode=0o700, exist_ok=True)
 
-    def _get_project_info(self, project_name):
+    def _get_project_info(self, project_name: str) -> dict:
         """Makes a REST call to hopsworks to get all metadata of a project for the provided project.
 
-        :param project_name: the name of the project
-        :type project_name: str
-        :return: JSON response with project info
-        :rtype: dict
+        Parameters:
+            project_name: the name of the project
+
+        Returns:
+            JSON response with project info
         """
         _logger.debug("Getting project info for project: %s", project_name)
         return self._send_request("GET", ["project", "getProjectInfo", project_name])
 
-    def _get_username(self):
+    def _get_username(self) -> str:
         """Get the username of the logged in user.
 
-        :return: the username of the logged in user
-        :rtype: str
+        Returns:
+            the username of the logged in user
         """
         _logger.debug("Getting username of logged in user")
         project_teams = self._send_request("GET", ["project"])
@@ -371,13 +377,12 @@ class Client(base.Client):
             return project_teams[0]["user"]["username"]
         return None
 
-    def _write_b64_cert_to_bytes(self, b64_string, path):
+    def _write_b64_cert_to_bytes(self, b64_string: str, path: str) -> None:
         """Converts b64 encoded certificate to bytes file .
 
-        :param b64_string:  b64 encoded string of certificate
-        :type b64_string: str
-        :param path: path where file is saved, including file name. e.g. /path/key-store.jks
-        :type path: str
+        Parameters:
+            b64_string: b64 encoded string of certificate
+            path: path where file is saved, including file name. e.g. /path/key-store.jks
         """
         _logger.debug(f"Writing b64 encoded certificate to {path}")
         self._write_pem_file(base64.b64decode(b64_string), path, mode="wb")
@@ -388,8 +393,15 @@ class Client(base.Client):
         with contextlib.suppress(OSError):
             os.remove(file_path)
 
-    def replace_public_host(self, url):
-        """No need to replace as we are already in external client."""
+    def replace_public_host(self, url: ParseResult) -> ParseResult:
+        """No need to replace as we are already in external client.
+
+        Parameters:
+            url: The URL to replace the host in.
+
+        Returns:
+            The URL as is.
+        """
         return url
 
     def _is_external(self):

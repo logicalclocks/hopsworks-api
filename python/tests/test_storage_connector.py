@@ -1064,3 +1064,109 @@ class TestBigQueryConnector:
 
         # Assert
         assert options["project_id"] == "test_parent_project"
+
+
+class TestSqlConnector:
+    def _make_connector(self, database_type):
+        return storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type=database_type,
+            host="localhost",
+            port=3306,
+            database="testdb",
+            user="user",
+            password="pass",
+        )
+
+    @pytest.mark.parametrize(
+        "database_type, expected_driver, expected_scheme",
+        [
+            ("MYSQL", "com.mysql.cj.jdbc.Driver", "mysql"),
+            ("mysql", "com.mysql.cj.jdbc.Driver", "mysql"),  # normalised to uppercase
+            ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
+        ],
+    )
+    def test_spark_options_driver(
+        self, database_type, expected_driver, expected_scheme
+    ):
+        # Arrange
+        connector = self._make_connector(database_type)
+
+        # Act
+        options = connector.spark_options()
+
+        # Assert
+        assert options["driver"] == expected_driver
+
+    @pytest.mark.parametrize(
+        "database_type, expected_driver, expected_scheme",
+        [
+            ("MYSQL", "com.mysql.cj.jdbc.Driver", "mysql"),
+            ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
+        ],
+    )
+    def test_read_jdbc_url_scheme(
+        self, mocker, database_type, expected_driver, expected_scheme
+    ):
+        # Arrange
+        connector = self._make_connector(database_type)
+        mock_read = mocker.patch("hsfs.engine.get_instance")
+        mocker.patch.object(connector, "refetch")
+
+        # Act
+        connector.read(query="SELECT 1")
+
+        # Assert
+        call_options = mock_read.return_value.read.call_args[0][2]
+        assert call_options["url"] == f"jdbc:{expected_scheme}://localhost:3306/testdb"
+
+    def test_unsupported_database_type_raises(self):
+        with pytest.raises(ValueError, match="Unsupported database_type"):
+            self._make_connector("ORACLE")
+
+    def test_spark_options_includes_arguments(self):
+        # Arrange
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="MYSQL",
+            host="localhost",
+            port=3306,
+            database="testdb",
+            user="user",
+            password="pass",
+            arguments=[{"name": "connectTimeout", "value": "5000"}],
+        )
+
+        # Act
+        options = connector.spark_options()
+
+        # Assert
+        assert options["connectTimeout"] == "5000"
+        # explicit fields take precedence over arguments
+        assert options["user"] == "user"
+        assert options["driver"] == "com.mysql.cj.jdbc.Driver"
+
+    def test_spark_options_arguments_do_not_override_explicit_fields(self):
+        # Arrange: argument tries to override driver
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="MYSQL",
+            host="localhost",
+            port=3306,
+            database="testdb",
+            user="user",
+            password="pass",
+            arguments=[{"name": "driver", "value": "com.other.Driver"}],
+        )
+
+        # Act
+        options = connector.spark_options()
+
+        # Assert: the explicit driver wins
+        assert options["driver"] == "com.mysql.cj.jdbc.Driver"
