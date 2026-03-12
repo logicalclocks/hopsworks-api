@@ -60,6 +60,7 @@ def connect(
     max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
     request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
     isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
+    verify: bool | str = False,
     http_session: Any = None,
     client_tags: list[str] | None = None,
     legacy_primitive_types: bool = False,
@@ -76,10 +77,6 @@ def connect(
     Hopsworks automatically handles authentication using project credentials from the secrets storage.
     The connection is configured to use HTTPS with self-signed certificates.
 
-    Note: SSL Verification Disabled
-        SSL certificate verification is disabled for Trino connections.
-        This is required because Hopsworks uses self-signed certificates by default.
-
     Parameters:
         source: Source identifier for Trino queries.
         catalog: Trino catalog to connect to.
@@ -89,6 +86,7 @@ def connect(
         max_attempts: Maximum number of retry attempts for failed requests.
         request_timeout: Timeout in seconds for each HTTP request.
         isolation_level: Transaction isolation level.
+        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
         http_session: Custom HTTP session for connection pooling.
         client_tags: Tags to identify the client in Trino query logs.
         legacy_primitive_types: Whether to use legacy primitive type handling.
@@ -127,6 +125,7 @@ def connect(
         max_attempts=max_attempts,
         request_timeout=request_timeout,
         isolation_level=isolation_level,
+        verify=verify,
         http_session=http_session,
         client_tags=client_tags,
         legacy_primitive_types=legacy_primitive_types,
@@ -154,6 +153,7 @@ def create_engine(
     legacy_primitive_types: bool = False,
     legacy_prepared_statements: bool | None = None,
     roles: dict | None = None,
+    verify: bool = False,
     timezone: str | None = None,
     encoding: str | list[str] | None = None,
 ) -> Engine:
@@ -164,10 +164,6 @@ def create_engine(
 
     Hopsworks automatically handles authentication using project credentials from the secrets storage.
     The connection is configured to use HTTPS with self-signed certificates.
-
-    Note: SSL Verification Disabled
-        SSL certificate verification is disabled for Trino connections.
-        This is required because Hopsworks uses self-signed certificates by default.
 
     Parameters:
         source: Source identifier for Trino queries.
@@ -183,6 +179,7 @@ def create_engine(
         legacy_primitive_types: Whether to use legacy primitive type handling.
         legacy_prepared_statements: Whether to use legacy prepared statement handling.
         roles: Dictionary mapping catalog names to role names.
+        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
         timezone: Timezone for the session.
         encoding: Character encoding for the connection.
 
@@ -221,6 +218,7 @@ def create_engine(
         client_tags=client_tags,
         legacy_primitive_types=legacy_primitive_types,
         legacy_prepared_statements=legacy_prepared_statements,
+        verify=verify,
         roles=roles,
         timezone=timezone,
         encoding=encoding,
@@ -242,10 +240,6 @@ class _TrinoApi:
     Note: Private API
         This class is internal and should not be used directly.
         Use the `connect()` or `create_engine()` functions instead.
-
-    Note: SSL Verification Disabled
-        SSL certificate verification is disabled for Trino connections.
-        This is required because Hopsworks uses self-signed certificates by default.
     """
 
     def __init__(
@@ -258,6 +252,7 @@ class _TrinoApi:
         max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
         request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
         isolation_level=IsolationLevel.AUTOCOMMIT,
+        verify=False,
         http_session=None,
         client_tags=None,
         legacy_primitive_types=False,
@@ -274,6 +269,7 @@ class _TrinoApi:
         self.max_attempts = max_attempts
         self.request_timeout = request_timeout
         self.isolation_level = isolation_level
+        self.verify = verify
         self.http_session = http_session
         self.client_tags = client_tags
         self.legacy_primitive_types = legacy_primitive_types
@@ -368,7 +364,7 @@ class _TrinoApi:
             source=self.source,
             auth=BasicAuthentication(user, password),
             http_scheme=constants.HTTPS,
-            verify=False,
+            verify=self.verify,
             session_properties=self.session_properties,
             http_headers=self.http_headers,
             max_attempts=self.max_attempts,
@@ -410,19 +406,23 @@ class _TrinoApi:
             user=user,
             catalog=self.catalog,
             schema=self.schema,
-            source=self.source,
-            session_properties=self.session_properties,
-            http_headers=self.http_headers,
-            client_tags=self.client_tags,
-            legacy_primitive_types=self.legacy_primitive_types,
-            legacy_prepared_statements=self.legacy_prepared_statements,
-            roles=self.roles,
         )
         connect_args = {
             "auth": BasicAuthentication(user, password),
             "http_scheme": constants.HTTPS,
-            "verify": False,
+            "verify": self.verify,
+            "source": self.source,
+            "session_properties": self.session_properties,
+            "http_headers": self.http_headers,
+            "client_tags": self.client_tags,
+            "legacy_primitive_types": self.legacy_primitive_types,
+            "legacy_prepared_statements": self.legacy_prepared_statements,
+            "roles": self.roles,
             "timezone": self.timezone,
             "encoding": self.encoding,
+            "max_attempts": self.max_attempts,
+            "request_timeout": self.request_timeout,
+            "isolation_level": self.isolation_level,
+            "http_session": self.http_session,
         }
         return create_engine(connection_url, connect_args=connect_args)
