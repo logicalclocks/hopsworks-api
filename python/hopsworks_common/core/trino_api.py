@@ -49,7 +49,7 @@ TRINO_SERVICE_NAME = "coordinator.trino.service"
 TRINO_PORT = 8443
 
 
-@public
+@public("hopsworks.core.trino_api.connect")
 @usage.method_logger
 def connect(
     source: str = constants.DEFAULT_SOURCE,
@@ -105,7 +105,7 @@ def connect(
     Example:
         ```python
         import hopsworks
-        from hopsworks_common.core.trino_api import connect
+        from hopsworks.core.trino_api import connect
 
         project = hopsworks.login()
         conn = connect(catalog="iceberg", schema="my_db")
@@ -137,7 +137,7 @@ def connect(
     return trino_api.trino_connect()
 
 
-@public
+@public("hopsworks.core.trino_api.create_engine")
 @usage.method_logger
 def create_engine(
     source: str = constants.DEFAULT_SOURCE,
@@ -193,7 +193,7 @@ def create_engine(
     Example:
         ```python
         import hopsworks
-        from hopsworks_common.core.trino_api import create_engine
+        from hopsworks.core.trino_api import create_engine
         from sqlalchemy.sql.expression import text
 
         project = hopsworks.login()
