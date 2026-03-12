@@ -5,5 +5,6 @@ import hopsworks_common.core.sink_job_configuration
 
 
 FeatureColumnMapping = hopsworks_common.core.sink_job_configuration.FeatureColumnMapping
+FullLoadConfig = hopsworks_common.core.sink_job_configuration.FullLoadConfig
 LoadingConfig = hopsworks_common.core.sink_job_configuration.LoadingConfig
 SinkJobConfiguration = hopsworks_common.core.sink_job_configuration.SinkJobConfiguration
