@@ -264,7 +264,7 @@ class DataSource:
         return self._storage_connector.get_tables(database)
 
     @public
-    def get_data(self) -> dsd.DataSourceData:
+    def get_data(self, use_cached: bool = True) -> dsd.DataSourceData:
         """Retrieve the data from the data source.
 
         Example:
@@ -277,10 +277,16 @@ class DataSource:
             data = table.get_data()
             ```
 
+        Parameters:
+            use_cached:
+                Whether to use cached data if available.
+                Only supported for CRM and REST connectors.
+                Defaults to `True`.
+
         Returns:
             An object containing the data retrieved from the data source.
         """
-        return self._storage_connector.get_data(self)
+        return self._storage_connector.get_data(self, use_cached=use_cached)
 
     @public
     def get_metadata(self) -> dict:

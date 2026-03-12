@@ -2988,13 +2988,56 @@ class FeatureGroup(FeatureGroupBase):
             and self.storage_connector.type == sc.StorageConnector.HOPSFS
         )
 
-    def _resolve_sink_enabled(self):
-        """Check if sink enabled must enabled based on storage connector."""
-        self._sink_enabled = (
+    def _resolve_sink_enabled(self, validate_requested_sink: bool = False):
+        """Resolve sink enabled based on storage connector type.
+
+        If `validate_requested_sink` is True and sink was explicitly requested,
+        require that data source carries a storage connector and that connector
+        type supports sink.
+        """
+        requested_sink = self._sink_enabled
+        supported_sink_connector = (
             self.storage_connector is not None
             and self.storage_connector.type
-            in [sc.StorageConnector.CRM, sc.StorageConnector.REST]
+            in [
+                sc.StorageConnector.CRM,
+                sc.StorageConnector.REST,
+                sc.StorageConnector.SNOWFLAKE,
+                sc.StorageConnector.REDSHIFT,
+                sc.StorageConnector.BIGQUERY,
+            ]
         )
+
+        if (
+            validate_requested_sink
+            and requested_sink
+            and (
+                self._data_source is None or self._data_source.storage_connector is None
+            )
+        ):
+            raise FeatureStoreException(
+                "Sink cannot be enabled for the feature group when the data source has no storage connector."
+            )
+
+        if validate_requested_sink and requested_sink and not supported_sink_connector:
+            connector_type = (
+                self.storage_connector.type
+                if self.storage_connector is not None
+                else "UNKNOWN"
+            )
+            raise FeatureStoreException(
+                f"Sink cannot be enabled for storage connector type '{connector_type}'. "
+                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY."
+            )
+
+        # CRM/REST connectors always have sink enabled.
+        if self.storage_connector is not None and self.storage_connector.type in [
+            sc.StorageConnector.CRM,
+            sc.StorageConnector.REST,
+        ]:
+            self._sink_enabled = True
+        else:
+            self._sink_enabled = requested_sink and supported_sink_connector
 
     @staticmethod
     def _resolve_stream_python(
@@ -3363,7 +3406,7 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._resolve_sink_enabled()
+        self._resolve_sink_enabled(validate_requested_sink=True)
         if self._sink_enabled and self.storage_connector is None:
             raise FeatureStoreException(
                 "Sink cannot be enabled for the feature group without a storage connector."
@@ -3448,7 +3491,11 @@ class FeatureGroup(FeatureGroupBase):
         # - python engine: only compute if FG is offline only (no backfill job)
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             self._statistics_engine.compute_and_save_statistics(self, feature_dataframe)
-        elif engine.get_type() == "python" and not self.stream:
+        elif (
+            self.statistics_config.enabled
+            and engine.get_type() == "python"
+            and not self.stream
+        ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
                 metadata_instance=self,
@@ -3654,7 +3701,11 @@ class FeatureGroup(FeatureGroupBase):
         # - python engine: only compute if FG is offline only (no backfill job)
         if engine.get_type().startswith("spark") and not self.stream:
             self.compute_statistics()
-        elif engine.get_type() == "python" and not self.stream:
+        elif (
+            self.statistics_config.enabled
+            and engine.get_type() == "python"
+            and not self.stream
+        ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
                 metadata_instance=self,
@@ -4237,12 +4288,12 @@ class FeatureGroup(FeatureGroupBase):
                     )
                     for transformation_function in transformation_functions
                 ]
-            if "sink_job" in json_decamelized:
+            if isinstance(json_dict, dict) and "sinkJob" in json_dict:
                 json_decamelized["sink_job"] = job.Job.from_response_json(
-                    json_decamelized["sink_job"]
+                    json_dict["sinkJob"]
                 )
             return cls(**json_decamelized)
-        for fg in json_decamelized:
+        for raw_fg, fg in zip(json_dict, json_decamelized):
             if "type" in fg:
                 fg["stream"] = fg["type"] == "streamFeatureGroupDTO"
             _ = fg.pop("type", None)
@@ -4262,8 +4313,8 @@ class FeatureGroup(FeatureGroupBase):
                     )
                     for transformation_function in transformation_functions
                 ]
-            if "sink_job" in fg:
-                fg["sink_job"] = job.Job.from_response_json(fg["sink_job"])
+            if "sinkJob" in raw_fg:
+                fg["sink_job"] = job.Job.from_response_json(raw_fg["sinkJob"])
         return [cls(**fg) for fg in json_decamelized]
 
     def update_from_response_json(self, json_dict: dict[str, Any]) -> FeatureGroup:
@@ -4285,6 +4336,10 @@ class FeatureGroup(FeatureGroupBase):
                 )
                 for transformation_function in transformation_functions
             ]
+        if "sinkJob" in json_dict:
+            json_decamelized["sink_job"] = job.Job.from_response_json(
+                json_dict["sinkJob"]
+            )
         self.__init__(**json_decamelized)
         return self
 
