@@ -743,3 +743,77 @@ class TestQuery:
         mock_fs_query.register_external.assert_called()
         mock_fs_query.register_delta_tables.assert_called()
         mock_fs_query.register_hudi_tables.assert_called()
+
+    def test_limit_sets_limit(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().limit(10)
+
+        # Assert
+        assert q._limit == 10
+
+    def test_limit_returns_self(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all()
+        result = q.limit(5)
+
+        # Assert
+        assert result is q
+
+    def test_limit_overrides_previous(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().limit(10).limit(20)
+
+        # Assert
+        assert q._limit == 20
+
+    def test_show_does_not_mutate_limit(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        mock_engine = mocker.MagicMock()
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.on_demand_feature_groups = []
+        mock_fs_query.hudi_cached_feature_groups = []
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            return_value=mock_fs_query,
+        )
+
+        q = TestQuery.fg1.select_all()
+        q._limit = 50
+
+        q.show(5)
+
+        # _limit should be restored to the original value after show
+        assert q._limit == 50
+
+    def test_show_uses_n_as_limit(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        mock_engine = mocker.MagicMock()
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.on_demand_feature_groups = []
+        mock_fs_query.hudi_cached_feature_groups = []
+
+        construct_query_mock = mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            return_value=mock_fs_query,
+        )
+
+        q = TestQuery.fg1.select_all()
+        q.show(7)
+
+        # The query sent to the backend should have _limit == 7 during _prep_read
+        called_query = construct_query_mock.call_args[0][0]
+        assert called_query._limit == 7

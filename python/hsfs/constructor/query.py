@@ -619,6 +619,25 @@ class Query:
 
         return self
 
+    @public
+    def limit(self, n: int) -> Query:
+        """Limit the number of rows returned by the query.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("...")
+            query = fg.select_all().limit(100)
+            ```
+
+        Parameters:
+            n: Maximum number of rows to return.
+
+        Returns:
+            The query object with the applied limit.
+        """
+        self._limit = n
+        return self
+
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
@@ -672,6 +691,7 @@ class Query:
                 for _join in json_decamelized.get("joins", [])
             ],
             filter=json_decamelized.get("filter", None),
+            limit=json_decamelized.get("limit", None),
         )
 
     def _check_read_supported(self, online: bool) -> None:
