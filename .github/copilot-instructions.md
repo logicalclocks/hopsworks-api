@@ -39,7 +39,7 @@
 ## Type Hints
 
 - Flag public functions missing return or parameters type annotations.
-- Suggest type hints for functions missing them, if you an figure out the types.
+- Suggest type hints for functions missing them, if you can figure out the types.
 
 ## Tests
 
