@@ -148,12 +148,12 @@ def create_engine(
     max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
     request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
     isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
+    verify: bool | str = False,
     http_session: Any = None,
     client_tags: list[str] | None = None,
     legacy_primitive_types: bool = False,
     legacy_prepared_statements: bool | None = None,
     roles: dict | None = None,
-    verify: bool | str = False,
     timezone: str | None = None,
     encoding: str | list[str] | None = None,
 ) -> Engine:
