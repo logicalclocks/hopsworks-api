@@ -2319,7 +2319,7 @@ class TestPython:
 
         # Assert - from_pandas called exactly once, with only the 3 key columns
         assert len(captured_columns) == 1
-        assert captured_columns[0] == ["purchase_id", "ts", "purchase_month"]
+        assert set(captured_columns[0]) == {"purchase_id", "ts", "purchase_month"} # Test using a set because order does not matter for duplicate check
 
     def test_legacy_save_dataframe(self, mocker):
         # Arrange
