@@ -32,6 +32,7 @@ LOADBALANCER_SERVICES = {
     "feature_query": "flyingduck",
     "datanode": "datanode",
     "namenode": "namenode",
+    "trino": "trino",
 }
 
 
