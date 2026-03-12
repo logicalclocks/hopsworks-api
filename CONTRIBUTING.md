@@ -291,27 +291,7 @@ Parameters:
 
 #### Extending the API Reference
 
-To create a new API reference page, you have to create a new markdown file in `docs` and add it to the `nav` section of the `mkdocs.yml` file:
-
-```yaml
-nav:
-  - Login: login.md
-  - Platform API:
-    - ...
-    - New Package: new_package.md
-```
-
-Inside the `new_package.md` file you can use `:::` syntax to include the documentation of different Python entities by providing their full path:
-
-```markdown
-# The New Package
-
-::: hopsworks_common.new_package.NewClass
-```
-
-You can add more entities as needed using the same include syntax.
-Prefer to include all the information into the docstring, and avoid writting Markdown text inside the markdown files of `docs` directory, except for the main title and the includes.
-We plan to move to fully automatic API reference generation in the future, which would not support custom Markdown text outside the docstrings.
+To expose a new class or function in the API reference, annotate it with `@public(...)` and write a complete docstring.
 
 ## Java Development Setup
 
