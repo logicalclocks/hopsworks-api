@@ -131,6 +131,7 @@ class VariableApi:
             "feature_query",
             "datanode",
             "namenode",
+            "trino",
         ],
     ) -> str:
         """Get domain loadbalancer for a service.
