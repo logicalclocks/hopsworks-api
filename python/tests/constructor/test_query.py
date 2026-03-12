@@ -806,14 +806,19 @@ class TestQuery:
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
 
-        construct_query_mock = mocker.patch(
+        captured_limit = []
+
+        def capture_limit(query, *args, **kwargs):
+            captured_limit.append(query._limit)
+            return mock_fs_query
+
+        mocker.patch(
             "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
-            return_value=mock_fs_query,
+            side_effect=capture_limit,
         )
 
         q = TestQuery.fg1.select_all()
         q.show(7)
 
         # The query sent to the backend should have _limit == 7 during _prep_read
-        called_query = construct_query_mock.call_args[0][0]
-        assert called_query._limit == 7
+        assert captured_limit[0] == 7
