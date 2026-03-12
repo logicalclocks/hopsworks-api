@@ -365,6 +365,7 @@ class _TrinoApi:
             user=user,
             catalog=self.catalog,
             schema=self.schema,
+            source=self.source,
             auth=BasicAuthentication(user, password),
             http_scheme=constants.HTTPS,
             verify=False,
@@ -406,6 +407,7 @@ class _TrinoApi:
         connection_url = URL(
             host=host,
             port=port,
+            user=user,
             catalog=self.catalog,
             schema=self.schema,
             source=self.source,
@@ -420,5 +422,7 @@ class _TrinoApi:
             "auth": BasicAuthentication(user, password),
             "http_scheme": constants.HTTPS,
             "verify": False,
+            "timezone": self.timezone,
+            "encoding": self.encoding,
         }
         return create_engine(connection_url, connect_args=connect_args)
