@@ -15,7 +15,6 @@
 #
 
 import pytest
-
 from hsfs import feature_group
 from hsfs.constructor import hudi_feature_group_alias
 from hsfs.core import hudi_engine
