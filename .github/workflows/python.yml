@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Get all changed files
         id: get-changed-files
@@ -31,7 +31,7 @@ jobs:
               - '!python/tests/test_helpers/transformation_test_helper.py'
 
       - name: install deps
-        run: pip install ruff==0.14.8
+        run: pip install ruff==0.15.6
 
       - name: ruff on python files
         if: steps.get-changed-files.outputs.src_any_changed == 'true'
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/setup-python@v5
         name: Setup Python
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/setup-python@v4
         name: Setup Python
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -201,7 +201,7 @@ jobs:
       - uses: actions/setup-python@v5
         name: Setup Python
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -234,7 +234,7 @@ jobs:
       - uses: actions/setup-python@v4
         name: Setup Python
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -270,7 +270,7 @@ jobs:
       - uses: actions/setup-python@v5
         name: Setup Python
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -308,7 +308,7 @@ jobs:
       - uses: actions/setup-python@v5
         name: Setup Python
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

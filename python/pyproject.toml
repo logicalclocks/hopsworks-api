@@ -79,30 +79,30 @@ dev-no-opt = [
     "hopsworks[python]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
-    "ruff==0.14.8",
+    "ruff==0.15.6",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas>=2.2.0",
     "typeguard==4.2.1",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
 ]
 dev-pandas1 = [
     "hopsworks[python]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
-    "ruff==0.14.8",
+    "ruff==0.15.6",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas<=1.5.3; python_version < '3.12'",
     "sqlalchemy<=1.4.48",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp]"]
-polars=[
+polars = [
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=17.0",
 ]
-mcp=[
+mcp = [
     "fastmcp>=2.10.5,<=2.13.3; python_version >= '3.10'",
     "filelock",
     "httpx",
@@ -114,6 +114,9 @@ mcp=[
 
 [dependency-groups]
 pre-commit = ["pre-commit"]
+docs = [
+    "hopsworks-docs[cli]@git+https://github.com/logicalclocks/logicalclocks.github.io.git",
+]
 
 [tool.uv]
 conflicts = [
@@ -177,7 +180,7 @@ exclude = [
     "site-packages",
     "venv",
     "java",
-    "transformation_test_helper.py"  # File excluded from ruff formatting to maintain formatting required for tests
+    "transformation_test_helper.py", # File excluded from ruff formatting to maintain formatting required for tests
 ]
 
 # Same as Black.
