@@ -93,7 +93,7 @@ class TestTrinoApi:
         api = TrinoApi(project=mock_project)
 
         # Assert
-        assert api.project == mock_project
+        assert api.project_name == mock_project.name
 
     def test_init_without_project(self, mocker, mock_project):
         """Test TrinoApi initialization without an explicit project."""
@@ -102,15 +102,15 @@ class TestTrinoApi:
         mocker.patch("hopsworks_common.core.trino_api.secret_api.SecretsApi")
         mocker.patch("hopsworks_common.core.trino_api.project_api.ProjectApi")
         mocker.patch(
-            "hopsworks.get_current_project",
-            return_value=mock_project,
+            "hopsworks_common.core.trino_api.client.get_instance",
+            return_value=Mock(_project_name=mock_project.name),
         )
 
         # Act
         api = TrinoApi()
 
         # Assert
-        assert api.project == mock_project
+        assert api.project_name == mock_project.name
 
     def test_download_ssl_cert_internal_client(self, mocker, trino_api):
         """Test SSL certificate download for internal client."""
