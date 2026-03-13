@@ -33,8 +33,6 @@ from hopsworks_common.core import (
     search_api,
     trino_api,
 )
-from trino import constants
-from trino.transaction import IsolationLevel
 
 
 if TYPE_CHECKING:
@@ -296,68 +294,13 @@ class Project:
         return self._search_api
 
     @public
-    def get_trino_api(
-        self,
-        source=None,
-        catalog=None,
-        schema=None,
-        session_properties=None,
-        http_headers=None,
-        max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
-        request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
-        isolation_level=IsolationLevel.AUTOCOMMIT,
-        verify: bool | str = False,
-        http_session=None,
-        client_tags=None,
-        legacy_primitive_types=False,
-        legacy_prepared_statements=None,
-        roles=None,
-        timezone=None,
-        encoding: str | list[str] | None = None,
-    ) -> trino_api.TrinoApi:
+    def get_trino_api(self) -> trino_api.TrinoApi:
         """Get the Trino API for the project.
-
-        Parameters:
-            source: Source identifier for Trino queries.
-            catalog: Trino catalog to connect to.
-            schema: Database schema within the catalog.
-            session_properties: Dictionary of Trino session properties.
-            http_headers: Additional HTTP headers for the connection.
-            max_attempts: Maximum number of retry attempts for failed requests.
-            request_timeout: Timeout in seconds for each HTTP request.
-            isolation_level: Transaction isolation level.
-            verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
-            http_session: Custom HTTP session for connection pooling.
-            client_tags: Tags to identify the client in Trino query logs.
-            legacy_primitive_types: Whether to use legacy primitive type handling.
-            legacy_prepared_statements: Whether to use legacy prepared statement handling.
-            roles: Dictionary mapping catalog names to role names.
-            timezone: Timezone for the session.
-            encoding: Character encoding for the connection.
 
         Returns:
             The Trino Api handle.
-
         """
-        return trino_api.TrinoApi(
-            project=self,
-            source=source,
-            catalog=catalog,
-            schema=schema,
-            session_properties=session_properties,
-            http_headers=http_headers,
-            max_attempts=max_attempts,
-            request_timeout=request_timeout,
-            isolation_level=isolation_level,
-            verify=verify,
-            http_session=http_session,
-            client_tags=client_tags,
-            legacy_primitive_types=legacy_primitive_types,
-            legacy_prepared_statements=legacy_prepared_statements,
-            roles=roles,
-            timezone=timezone,
-            encoding=encoding,
-        )
+        return trino_api.TrinoApi(project=self)
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:

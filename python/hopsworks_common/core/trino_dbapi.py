@@ -85,7 +85,8 @@ def connect(
             print(row)
         ```
     """
-    trino_api = TrinoApi(
+    trino_api = TrinoApi()
+    return trino_api.connect(
         source=source,
         catalog=catalog,
         schema=schema,
@@ -103,7 +104,6 @@ def connect(
         timezone=timezone,
         encoding=encoding,
     )
-    return trino_api.connect()
 
 
 @public("hopsworks.core.trino_dbapi.create_engine")
@@ -174,7 +174,8 @@ def create_engine(
                 print(row)
         ```
     """
-    trino_api = TrinoApi(
+    trino_api = TrinoApi()
+    return trino_api.create_engine(
         source=source,
         catalog=catalog,
         schema=schema,
@@ -192,4 +193,3 @@ def create_engine(
         timezone=timezone,
         encoding=encoding,
     )
-    return trino_api.create_engine()

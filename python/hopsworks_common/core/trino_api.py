@@ -70,8 +70,8 @@ class TrinoApi:
         from hopsworks.core.trino_api import TrinoApi
 
         project = hopsworks.login()
-        trino_api = TrinoApi(project=project, catalog="my_catalog", schema="my_schema")
-        conn = trino_api.connect()  # Get a DBAPI connection
+        trino_api = TrinoApi(project=project)
+        conn = trino_api.connect(catalog="iceberg", schema="my_db")  # Get a DBAPI connection
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM my_table")
         rows = cursor.fetchall()
@@ -79,7 +79,7 @@ class TrinoApi:
             print(row)
 
         # Or using SQLAlchemy
-        engine = trino_api.create_engine()
+        engine = trino_api.create_engine(catalog="iceberg", schema="my_db")
         with engine.connect() as connection:
             result = connection.execute("SELECT * FROM my_table")
             for row in result:
@@ -87,43 +87,7 @@ class TrinoApi:
         ```
     """
 
-    def __init__(
-        self,
-        project: project.Project | None = None,
-        source=None,
-        catalog=constants.DEFAULT_CATALOG,
-        schema=constants.DEFAULT_SCHEMA,
-        session_properties=None,
-        http_headers=None,
-        max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
-        request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
-        isolation_level=IsolationLevel.AUTOCOMMIT,
-        verify: bool | str = True,
-        http_session=None,
-        client_tags=None,
-        legacy_primitive_types=False,
-        legacy_prepared_statements=None,
-        roles=None,
-        timezone=None,
-        encoding: str | list[str] | None = None,
-    ):
-        self.source = source
-        self.catalog = catalog
-        self.schema = schema
-        self.session_properties = session_properties
-        self.http_headers = http_headers
-        self.max_attempts = max_attempts
-        self.request_timeout = request_timeout
-        self.isolation_level = isolation_level
-        self.verify = verify
-        self.http_session = http_session
-        self.client_tags = client_tags
-        self.legacy_primitive_types = legacy_primitive_types
-        self.legacy_prepared_statements = legacy_prepared_statements
-        self.roles = roles
-        self.timezone = timezone
-        self.encoding = encoding
-
+    def __init__(self, project: project.Project | None = None):
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
             self._variable_api.get_service_discovery_domain()
@@ -134,13 +98,21 @@ class TrinoApi:
             project if project is not None else hopsworks.get_current_project()
         )
 
+    def _download_ssl_cert(self, verify: bool) -> bool | str:
+        """Download the SSL certificate.
+
+        Parameters:
+            verify: Whether to verify the SSL certificate.
+
+        Returns:
+            The file path of the downloaded SSL certificate.
+        """
         if not client._is_external() and verify is not False:
             _client = client.get_instance()
             _client.download_certs()
             _cert_folder = _client.get_certs_folder()
-            self.verify = os.path.join(_cert_folder, "ca_chain.pem")
-        else:
-            self.verify = False
+            return os.path.join(_cert_folder, "ca_chain.pem")
+        return False
 
     @usage.method_logger
     def get_host(self) -> str:
@@ -219,7 +191,25 @@ class TrinoApi:
         return BasicAuthentication(user, password)
 
     @usage.method_logger
-    def connect(self) -> Connection:
+    def connect(
+        self,
+        source=DEFAULT_SOURCE,
+        catalog=constants.DEFAULT_CATALOG,
+        schema=constants.DEFAULT_SCHEMA,
+        session_properties=None,
+        http_headers=None,
+        max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
+        request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
+        isolation_level=IsolationLevel.AUTOCOMMIT,
+        verify: bool | str = True,
+        http_session=None,
+        client_tags=None,
+        legacy_primitive_types=False,
+        legacy_prepared_statements=None,
+        roles=None,
+        timezone=None,
+        encoding: str | list[str] | None = None,
+    ) -> Connection:
         """Connect to Trino using the native DBAPI interface.
 
         Returns:
@@ -238,7 +228,7 @@ class TrinoApi:
 
             project = hopsworks.login()
             trino_api = TrinoApi()
-            conn = trino_api.connect()
+            conn = trino_api.connect(catalog="iceberg", schema="my_db")
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM my_table")
             rows = cursor.fetchall()
@@ -251,34 +241,50 @@ class TrinoApi:
 
         basic_auth = self.get_basic_auth()
 
-        source = DEFAULT_SOURCE if self.source is None else self.source
-
         return _trino_connect(
             host=host,
             port=port,
             user=basic_auth._username,
-            catalog=self.catalog,
-            schema=self.schema,
+            catalog=catalog,
+            schema=schema,
             source=source,
             auth=basic_auth,
             http_scheme=constants.HTTPS,
-            verify=self.verify,
-            session_properties=self.session_properties,
-            http_headers=self.http_headers,
-            max_attempts=self.max_attempts,
-            request_timeout=self.request_timeout,
-            isolation_level=self.isolation_level,
-            http_session=self.http_session,
-            client_tags=self.client_tags,
-            legacy_primitive_types=self.legacy_primitive_types,
-            legacy_prepared_statements=self.legacy_prepared_statements,
-            roles=self.roles,
-            timezone=self.timezone,
-            encoding=self.encoding,
+            verify=self._download_ssl_cert(verify),
+            session_properties=session_properties,
+            http_headers=http_headers,
+            max_attempts=max_attempts,
+            request_timeout=request_timeout,
+            isolation_level=isolation_level,
+            http_session=http_session,
+            client_tags=client_tags,
+            legacy_primitive_types=legacy_primitive_types,
+            legacy_prepared_statements=legacy_prepared_statements,
+            roles=roles,
+            timezone=timezone,
+            encoding=encoding,
         )
 
     @usage.method_logger
-    def create_engine(self) -> Engine:
+    def create_engine(
+        self,
+        source=DEFAULT_SQLALCHEMY_SOURCE,
+        catalog=constants.DEFAULT_CATALOG,
+        schema=constants.DEFAULT_SCHEMA,
+        session_properties=None,
+        http_headers=None,
+        max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
+        request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
+        isolation_level=IsolationLevel.AUTOCOMMIT,
+        verify: bool | str = True,
+        http_session=None,
+        client_tags=None,
+        legacy_primitive_types=False,
+        legacy_prepared_statements=None,
+        roles=None,
+        timezone=None,
+        encoding: str | list[str] | None = None,
+    ) -> Engine:
         """Create a SQLAlchemy engine for Trino.
 
         Returns:
@@ -297,7 +303,7 @@ class TrinoApi:
 
             project = hopsworks.login()
             trino_api = TrinoApi()
-            engine = trino_api.create_engine()
+            engine = trino_api.create_engine(catalog="iceberg", schema="my_db")
             with engine.connect() as connection:
                 result = connection.execute("SELECT * FROM my_table")
                 for row in result:
@@ -311,31 +317,29 @@ class TrinoApi:
 
         basic_auth = self.get_basic_auth()
 
-        source = DEFAULT_SQLALCHEMY_SOURCE if self.source is None else self.source
-
         connection_url = URL(
             host=host,
             port=port,
             user=basic_auth._username,
-            catalog=self.catalog,
-            schema=self.schema,
+            catalog=catalog,
+            schema=schema,
         )
         connect_args = {
             "auth": basic_auth,
             "http_scheme": constants.HTTPS,
-            "verify": self.verify,
+            "verify": self._download_ssl_cert(verify),
             "source": source,
-            "session_properties": self.session_properties,
-            "http_headers": self.http_headers,
-            "client_tags": self.client_tags,
-            "legacy_primitive_types": self.legacy_primitive_types,
-            "legacy_prepared_statements": self.legacy_prepared_statements,
-            "roles": self.roles,
-            "timezone": self.timezone,
-            "encoding": self.encoding,
-            "max_attempts": self.max_attempts,
-            "request_timeout": self.request_timeout,
-            "isolation_level": self.isolation_level,
-            "http_session": self.http_session,
+            "session_properties": session_properties,
+            "http_headers": http_headers,
+            "client_tags": client_tags,
+            "legacy_primitive_types": legacy_primitive_types,
+            "legacy_prepared_statements": legacy_prepared_statements,
+            "roles": roles,
+            "timezone": timezone,
+            "encoding": encoding,
+            "max_attempts": max_attempts,
+            "request_timeout": request_timeout,
+            "isolation_level": isolation_level,
+            "http_session": http_session,
         }
         return create_engine(connection_url, connect_args=connect_args)
