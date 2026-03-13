@@ -744,7 +744,7 @@ class TestFeatureGroupEngine:
         )
 
         fg_commit = feature_group_commit.FeatureGroupCommit(
-            commitid=1, rows_inserted=2, rows_updated=3, rows_deleted=4
+            commitid=1, rows_inserted=2, rows_updated=3, rows_deleted=4, row_count=10
         )
         mock_fg_api.return_value.get_commit_details.return_value = [fg_commit]
         mock_util_get_hudi_datestr_from_timestamp.return_value = "123"
@@ -762,6 +762,7 @@ class TestFeatureGroupEngine:
                 "rowsUpdated": 3,
                 "rowsInserted": 2,
                 "rowsDeleted": 4,
+                "rowCount": 10,
             }
         }
 
