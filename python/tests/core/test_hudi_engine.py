@@ -17,7 +17,7 @@
 import pytest
 from hsfs import feature_group
 from hsfs.constructor import hudi_feature_group_alias
-from hsfs.core import hudi_engine
+from hsfs.core import data_source, hudi_engine
 
 
 class TestHudiEngine:
@@ -331,7 +331,6 @@ class TestHudiEngine:
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
-        storage_connector = mocker.Mock()
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
@@ -339,7 +338,7 @@ class TestHudiEngine:
             primary_key=["key1"],
             partition_key=[],
             hudi_precombine_key=None,
-            storage_connector=storage_connector,
+            data_source=data_source.DataSource(storage_connector=mocker.Mock()),
         )
 
         h_engine = hudi_engine.HudiEngine(
