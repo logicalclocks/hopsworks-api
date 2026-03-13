@@ -30,13 +30,21 @@ from hopsworks_apigen import public
 from hopsworks_common import client, project, usage
 from hopsworks_common.client.exceptions import TrinoException
 from hopsworks_common.core import project_api, secret_api
+from hopsworks_common.core.constants import (
+    HAS_TRINO,
+    trino_not_installed_message,
+)
 from hopsworks_common.core.variable_api import VariableApi
-from trino import constants
-from trino.auth import BasicAuthentication
-from trino.dbapi import connect as _trino_connect
-from trino.sqlalchemy import URL
-from trino.transaction import IsolationLevel
 
+
+if HAS_TRINO:
+    from trino import constants
+    from trino.auth import BasicAuthentication
+    from trino.dbapi import connect as _trino_connect
+    from trino.sqlalchemy import URL
+    from trino.transaction import IsolationLevel
+else:
+    raise ImportError(trino_not_installed_message)
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
