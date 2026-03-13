@@ -8,7 +8,7 @@
     <version>4.6.5</version>
 
     <properties>
-        <hops.version>3.2.0.17-EE-RC3</hops.version>
+        <hops.version>3.2.0.17-EE-RC4</hops.version>
         <hsfs.version>${project.version}</hsfs.version>
         <slf4j.version>2.0.17</slf4j.version>
         <maven.compiler.source>1.8</maven.compiler.source>
