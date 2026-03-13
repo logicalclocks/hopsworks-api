@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from hsfs import feature_group_commit, util
 from hsfs.core import feature_group_api
-from hsfs.engine import get_type as get_engine_type
 
 
 class HudiEngine:
@@ -156,9 +155,10 @@ class HudiEngine:
         )
 
         # dont enable hive sync when using managed FG or spark-no-metastore engine
+        from hsfs.engine import get_type
         hive_sync = (
             self._feature_group.storage_connector is None
-            and get_engine_type() != "spark-no-metastore"
+            and get_type() not in ["spark-no-metastore", "spark-delta"]
         )
 
         hudi_options = {
