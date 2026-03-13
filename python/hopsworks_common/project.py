@@ -317,8 +317,27 @@ class Project:
     ) -> trino_api.TrinoApi:
         """Get the Trino API for the project.
 
+        Parameters:
+            source: Source identifier for Trino queries.
+            catalog: Trino catalog to connect to.
+            schema: Database schema within the catalog.
+            session_properties: Dictionary of Trino session properties.
+            http_headers: Additional HTTP headers for the connection.
+            max_attempts: Maximum number of retry attempts for failed requests.
+            request_timeout: Timeout in seconds for each HTTP request.
+            isolation_level: Transaction isolation level.
+            verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
+            http_session: Custom HTTP session for connection pooling.
+            client_tags: Tags to identify the client in Trino query logs.
+            legacy_primitive_types: Whether to use legacy primitive type handling.
+            legacy_prepared_statements: Whether to use legacy prepared statement handling.
+            roles: Dictionary mapping catalog names to role names.
+            timezone: Timezone for the session.
+            encoding: Character encoding for the connection.
+
         Returns:
             The Trino Api handle.
+
         """
         return trino_api.TrinoApi(
             project=self,
