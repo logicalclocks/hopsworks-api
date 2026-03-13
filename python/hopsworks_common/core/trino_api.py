@@ -187,7 +187,7 @@ class TrinoApi:
                 If credentials cannot be retrieved from secrets storage.
         """
         username = self._project_api.get_user_info().get("username", None)
-        user = f"{self.project.name}__{username}"
+        user = f"{self.project_name}__{username}"
         password = self._get_password(user)
         return BasicAuthentication(user, password)
 
