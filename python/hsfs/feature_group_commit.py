@@ -36,6 +36,7 @@ class FeatureGroupCommit:
         archived=None,
         last_active_commit_time=None,
         table_size=None,
+        row_count=None,
         items=None,
         count=None,
         href=None,
@@ -51,6 +52,7 @@ class FeatureGroupCommit:
         self._archived = archived
         self._last_active_commit_time = last_active_commit_time
         self._table_size = table_size
+        self._row_count = row_count
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -78,6 +80,7 @@ class FeatureGroupCommit:
             "archived": self._archived,
             "lastActiveCommitTime": self._last_active_commit_time,
             "tableSize": self._table_size,
+            "rowCount": self._row_count,
         }
 
     @property
@@ -120,6 +123,10 @@ class FeatureGroupCommit:
     def table_size(self):
         return self._table_size
 
+    @property
+    def row_count(self):
+        return self._row_count
+
     @commitid.setter
     def commitid(self, commitid):
         self._commitid = commitid
@@ -151,3 +158,7 @@ class FeatureGroupCommit:
     @table_size.setter
     def table_size(self, table_size):
         self._table_size = table_size
+
+    @row_count.setter
+    def row_count(self, row_count):
+        self._row_count = row_count
