@@ -115,6 +115,7 @@ class TrinoApi:
             return os.path.join(_cert_folder, "ca_chain.pem")
         return False
 
+    @public
     @usage.method_logger
     def get_host(self) -> str:
         """Retrieve the Trino host based on client location.
@@ -145,6 +146,7 @@ class TrinoApi:
         _logger.debug(f"Connecting to Trino on host {host} and port {TRINO_PORT}.")
         return host
 
+    @public
     @usage.method_logger
     def get_port(self) -> int:
         """Get the Trino port number.
@@ -175,6 +177,7 @@ class TrinoApi:
             )
         return secret.value
 
+    @public
     @usage.method_logger
     def get_basic_auth(self) -> BasicAuthentication:
         """Get a BasicAuthentication object for the current project user.
@@ -191,6 +194,7 @@ class TrinoApi:
         password = self._get_password(user)
         return BasicAuthentication(user, password)
 
+    @public
     @usage.method_logger
     def connect(
         self,
@@ -284,6 +288,7 @@ class TrinoApi:
             encoding=encoding,
         )
 
+    @public
     @usage.method_logger
     def create_engine(
         self,
