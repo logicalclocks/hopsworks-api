@@ -29,7 +29,7 @@ def connect(
     max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
     request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
     isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
-    verify: bool | str = False,
+    verify: bool | str = True,
     http_session: Any = None,
     client_tags: list[str] | None = None,
     legacy_primitive_types: bool = False,
@@ -55,7 +55,7 @@ def connect(
         max_attempts: Maximum number of retry attempts for failed requests.
         request_timeout: Timeout in seconds for each HTTP request.
         isolation_level: Transaction isolation level.
-        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
+        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
         http_session: Custom HTTP session for connection pooling.
         client_tags: Tags to identify the client in Trino query logs.
         legacy_primitive_types: Whether to use legacy primitive type handling.
@@ -117,7 +117,7 @@ def create_engine(
     max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
     request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
     isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
-    verify: bool | str = False,
+    verify: bool | str = True,
     http_session: Any = None,
     client_tags: list[str] | None = None,
     legacy_primitive_types: bool = False,
@@ -143,7 +143,7 @@ def create_engine(
         max_attempts: Maximum number of retry attempts for failed requests.
         request_timeout: Timeout in seconds for each HTTP request.
         isolation_level: Transaction isolation level.
-        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
+        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
         http_session: Custom HTTP session for connection pooling.
         client_tags: Tags to identify the client in Trino query logs.
         legacy_primitive_types: Whether to use legacy primitive type handling.

@@ -23,6 +23,7 @@ Authentication and connection configuration are handled automatically.
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import hopsworks
@@ -97,7 +98,7 @@ class TrinoApi:
         max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
         request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
         isolation_level=IsolationLevel.AUTOCOMMIT,
-        verify: bool | str = False,
+        verify: bool | str = True,
         http_session=None,
         client_tags=None,
         legacy_primitive_types=False,
@@ -133,8 +134,13 @@ class TrinoApi:
             project if project is not None else hopsworks.get_current_project()
         )
 
-        _client = client.get_instance()
-        _client.download_certs()
+        if not client._is_external() and verify is not False:
+            _client = client.get_instance()
+            _client.download_certs()
+            _cert_folder = _client.get_certs_folder()
+            self.verify = os.path.join(_cert_folder, "ca_chain.pem")
+        else:
+            self.verify = False
 
     @usage.method_logger
     def get_host(self) -> str:
