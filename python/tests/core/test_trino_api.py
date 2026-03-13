@@ -43,7 +43,7 @@ class TestTrinoApi:
         api = trino_api._TrinoApi()
 
         # Act
-        host = api._retrieve_host()
+        host = api.retrieve_host()
 
         # Assert
         assert host == "trino.example.com"
@@ -70,7 +70,7 @@ class TestTrinoApi:
         api = trino_api._TrinoApi()
 
         # Act
-        host = api._retrieve_host()
+        host = api.retrieve_host()
 
         # Assert
         expected_host = f"{trino_api.TRINO_SERVICE_NAME}.cluster.local"
@@ -98,7 +98,7 @@ class TestTrinoApi:
 
         # Act & Assert
         with pytest.raises(TrinoException) as exc_info:
-            api._retrieve_host()
+            api.retrieve_host()
         assert "service_discovery_domain" in str(exc_info.value)
 
     def test_trino_connect_success(self, mocker):
@@ -303,3 +303,123 @@ class TestTrinoApi:
 
         # Assert
         assert engine == mock_engine
+
+    def test_trino_host_function(self, mocker):
+        # Arrange
+        mock_client = mocker.patch("hopsworks_common.core.trino_api.client")
+        mock_client._is_external.return_value = False
+
+        mock_variable_api = Mock()
+        mock_variable_api.get_service_discovery_domain.return_value = "cluster.local"
+
+        mocker.patch(
+            "hopsworks_common.core.trino_api.VariableApi",
+            return_value=mock_variable_api,
+        )
+        mocker.patch("hopsworks_common.core.trino_api.secret_api.SecretsApi")
+        mocker.patch("hopsworks_common.core.trino_api.project_api.ProjectApi")
+        mocker.patch("hopsworks_common.core.trino_api.hopsworks.get_current_project")
+
+        # Act
+        host = trino_api.trino_host()
+
+        # Assert
+        expected_host = f"{trino_api.TRINO_SERVICE_NAME}.cluster.local"
+        assert host == expected_host
+
+    def test_trino_port_function(self):
+        # Act
+        port = trino_api.trino_port()
+
+        # Assert
+        assert port == trino_api.TRINO_PORT
+        assert port == 8443
+
+    def test_trino_auth_function(self, mocker):
+        # Arrange
+        mock_client = mocker.patch("hopsworks_common.core.trino_api.client")
+        mock_client._is_external.return_value = False
+
+        mock_variable_api = Mock()
+        mock_variable_api.get_service_discovery_domain.return_value = "cluster.local"
+
+        mock_secret = Mock()
+        mock_secret.value = "test_password"
+        mock_secret_api = Mock()
+        mock_secret_api.get_secret.return_value = mock_secret
+
+        mock_project_api = Mock()
+        mock_project_api.get_user_info.return_value = {"username": "test_user"}
+
+        mock_project = Mock()
+        mock_project.name = "test_project"
+
+        mocker.patch(
+            "hopsworks_common.core.trino_api.VariableApi",
+            return_value=mock_variable_api,
+        )
+        mocker.patch(
+            "hopsworks_common.core.trino_api.secret_api.SecretsApi",
+            return_value=mock_secret_api,
+        )
+        mocker.patch(
+            "hopsworks_common.core.trino_api.project_api.ProjectApi",
+            return_value=mock_project_api,
+        )
+        mocker.patch(
+            "hopsworks_common.core.trino_api.hopsworks.get_current_project",
+            return_value=mock_project,
+        )
+
+        # Act
+        auth = trino_api.trino_auth()
+
+        # Assert
+        assert auth._username == "test_project__test_user"
+        assert auth._password == "test_password"
+        mock_secret_api.get_secret.assert_called_once_with("test_project__test_user")
+
+    def test_get_basic_auth(self, mocker):
+        # Arrange
+        mock_client = mocker.patch("hopsworks_common.core.trino_api.client")
+        mock_client._is_external.return_value = False
+
+        mock_variable_api = Mock()
+        mock_variable_api.get_service_discovery_domain.return_value = "cluster.local"
+
+        mock_secret = Mock()
+        mock_secret.value = "test_password"
+        mock_secret_api = Mock()
+        mock_secret_api.get_secret.return_value = mock_secret
+
+        mock_project_api = Mock()
+        mock_project_api.get_user_info.return_value = {"username": "test_user"}
+
+        mock_project = Mock()
+        mock_project.name = "test_project"
+
+        mocker.patch(
+            "hopsworks_common.core.trino_api.VariableApi",
+            return_value=mock_variable_api,
+        )
+        mocker.patch(
+            "hopsworks_common.core.trino_api.secret_api.SecretsApi",
+            return_value=mock_secret_api,
+        )
+        mocker.patch(
+            "hopsworks_common.core.trino_api.project_api.ProjectApi",
+            return_value=mock_project_api,
+        )
+        mocker.patch(
+            "hopsworks_common.core.trino_api.hopsworks.get_current_project",
+            return_value=mock_project,
+        )
+
+        api = trino_api._TrinoApi()
+
+        # Act
+        auth = api.get_basic_auth()
+
+        # Assert
+        assert auth._username == "test_project__test_user"
+        assert auth._password == "test_password"

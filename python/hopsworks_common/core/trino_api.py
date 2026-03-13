@@ -23,14 +23,15 @@ Authentication and connection configuration are handled automatically.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import hopsworks
 from hopsworks_apigen import public
-from hopsworks_common import client, usage
+from hopsworks_common import client, project
 from hopsworks_common.client.exceptions import TrinoException
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.core.variable_api import VariableApi
+from python.hopsworks_common import usage
 from trino import constants
 from trino.auth import BasicAuthentication
 from trino.dbapi import Connection
@@ -47,187 +48,13 @@ _logger = logging.getLogger(__name__)
 
 TRINO_SERVICE_NAME = "coordinator.trino.service"
 TRINO_PORT = 8443
+DEFAULT_SOURCE = "hopsworks-trino-python-client"
+DEFAULT_SQLALCHEMY_SOURCE = "hopsworks-trino-sqlalchemy"
 
 
-@public("hopsworks.core.trino_api.connect")
-@usage.method_logger
-def connect(
-    source: str = constants.DEFAULT_SOURCE,
-    catalog: str = constants.DEFAULT_CATALOG,
-    schema: str = constants.DEFAULT_SCHEMA,
-    session_properties: dict | None = None,
-    http_headers: dict | None = None,
-    max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
-    request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
-    isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
-    verify: bool | str = False,
-    http_session: Any = None,
-    client_tags: list[str] | None = None,
-    legacy_primitive_types: bool = False,
-    legacy_prepared_statements: bool | None = None,
-    roles: dict | None = None,
-    timezone: str | None = None,
-    encoding: str | list[str] | None = None,
-) -> Connection:
-    """Connect to Trino using the native DBAPI interface.
-
-    Use this when you want to work with cursors and the native Python DB API.
-    For SQLAlchemy integration, use `create_engine()` instead.
-
-    Hopsworks automatically handles authentication using project credentials from the secrets storage.
-    The connection is configured to use HTTPS with self-signed certificates.
-
-    Parameters:
-        source: Source identifier for Trino queries.
-        catalog: Trino catalog to connect to.
-        schema: Database schema within the catalog.
-        session_properties: Dictionary of Trino session properties.
-        http_headers: Additional HTTP headers for the connection.
-        max_attempts: Maximum number of retry attempts for failed requests.
-        request_timeout: Timeout in seconds for each HTTP request.
-        isolation_level: Transaction isolation level.
-        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
-        http_session: Custom HTTP session for connection pooling.
-        client_tags: Tags to identify the client in Trino query logs.
-        legacy_primitive_types: Whether to use legacy primitive type handling.
-        legacy_prepared_statements: Whether to use legacy prepared statement handling.
-        roles: Dictionary mapping catalog names to role names.
-        timezone: Timezone for the session.
-        encoding: Character encoding for the connection.
-
-    Returns:
-        A connection object implementing the Python DB API 2.0 specification.
-
-    Raises:
-        hopsworks_common.client.exceptions.TrinoException: If the service discovery domain is not configured.
-        hopsworks.client.exceptions.RestAPIError: If credentials cannot be retrieved.
-
-    Example:
-        ```python
-        import hopsworks
-        from hopsworks.core.trino_api import connect
-
-        project = hopsworks.login()
-        conn = connect(catalog="iceberg", schema="my_db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM my_table")
-        rows = cursor.fetchall()
-        for row in rows:
-            print(row)
-        ```
-    """
-    trino_api = _TrinoApi(
-        source=source,
-        catalog=catalog,
-        schema=schema,
-        session_properties=session_properties,
-        http_headers=http_headers,
-        max_attempts=max_attempts,
-        request_timeout=request_timeout,
-        isolation_level=isolation_level,
-        verify=verify,
-        http_session=http_session,
-        client_tags=client_tags,
-        legacy_primitive_types=legacy_primitive_types,
-        legacy_prepared_statements=legacy_prepared_statements,
-        roles=roles,
-        timezone=timezone,
-        encoding=encoding,
-    )
-    return trino_api.trino_connect()
-
-
-@public("hopsworks.core.trino_api.create_engine")
-@usage.method_logger
-def create_engine(
-    source: str = constants.DEFAULT_SOURCE,
-    catalog: str = constants.DEFAULT_CATALOG,
-    schema: str = constants.DEFAULT_SCHEMA,
-    session_properties: dict | None = None,
-    http_headers: dict | None = None,
-    max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
-    request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
-    isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
-    verify: bool | str = False,
-    http_session: Any = None,
-    client_tags: list[str] | None = None,
-    legacy_primitive_types: bool = False,
-    legacy_prepared_statements: bool | None = None,
-    roles: dict | None = None,
-    timezone: str | None = None,
-    encoding: str | list[str] | None = None,
-) -> Engine:
-    """Create a SQLAlchemy engine for Trino.
-
-    Use this when you want to work with SQLAlchemy for database operations.
-    For the native Python DB API, use `connect()` instead.
-
-    Hopsworks automatically handles authentication using project credentials from the secrets storage.
-    The connection is configured to use HTTPS with self-signed certificates.
-
-    Parameters:
-        source: Source identifier for Trino queries.
-        catalog: Trino catalog to connect to.
-        schema: Database schema within the catalog.
-        session_properties: Dictionary of Trino session properties.
-        http_headers: Additional HTTP headers for the connection.
-        max_attempts: Maximum number of retry attempts for failed requests.
-        request_timeout: Timeout in seconds for each HTTP request.
-        isolation_level: Transaction isolation level.
-        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: False).
-        http_session: Custom HTTP session for connection pooling.
-        client_tags: Tags to identify the client in Trino query logs.
-        legacy_primitive_types: Whether to use legacy primitive type handling.
-        legacy_prepared_statements: Whether to use legacy prepared statement handling.
-        roles: Dictionary mapping catalog names to role names.
-        timezone: Timezone for the session.
-        encoding: Character encoding for the connection.
-
-    Returns:
-        An Engine object implementing the SQLAlchemy interface.
-
-    Raises:
-        hopsworks_common.client.exceptions.TrinoException: If the service discovery domain is not configured.
-        hopsworks.client.exceptions.RestAPIError: If credentials cannot be retrieved.
-
-    Example:
-        ```python
-        import hopsworks
-        from hopsworks.core.trino_api import create_engine
-        from sqlalchemy.sql.expression import text
-
-        project = hopsworks.login()
-        engine = create_engine(catalog="iceberg", schema="my_db")
-        with engine.connect() as connection:
-            cursor = connection.execute(text("SELECT * FROM tiny.nation")).cursor
-            rows = cursor.fetchall()
-            for row in rows:
-                print(row)
-        ```
-    """
-    trino_api = _TrinoApi(
-        source=source,
-        catalog=catalog,
-        schema=schema,
-        session_properties=session_properties,
-        http_headers=http_headers,
-        max_attempts=max_attempts,
-        request_timeout=request_timeout,
-        isolation_level=isolation_level,
-        http_session=http_session,
-        client_tags=client_tags,
-        legacy_primitive_types=legacy_primitive_types,
-        legacy_prepared_statements=legacy_prepared_statements,
-        verify=verify,
-        roles=roles,
-        timezone=timezone,
-        encoding=encoding,
-    )
-    return trino_api.create_engine()
-
-
-class _TrinoApi:
-    """Internal API for connecting to Trino from within Hopsworks.
+@public("hopsworks.core.trino_api")
+class TrinoApi:
+    """API for connecting to Trino from within Hopsworks.
 
     This class provides methods to establish connections to Trino using either
     the native Trino DBAPI or SQLAlchemy engine.
@@ -237,14 +64,33 @@ class _TrinoApi:
     The connection configuration adapts based on whether you're connecting from
     within the Hopsworks cluster or externally through the load balancer.
 
-    Note: Private API
-        This class is internal and should not be used directly.
-        Use the `connect()` or `create_engine()` functions instead.
+    Example usage:
+        ```python
+        import hopsworks
+        from hopsworks.core.trino_api import TrinoApi
+
+        project = hopsworks.login()
+        trino_api = TrinoApi(project=project, catalog="my_catalog", schema="my_schema")
+        conn = trino_api.connect()  # Get a DBAPI connection
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM my_table")
+        rows = cursor.fetchall()
+        for row in rows:
+            print(row)
+
+        # Or using SQLAlchemy
+        engine = trino_api.create_engine()
+        with engine.connect() as connection:
+            result = connection.execute("SELECT * FROM my_table")
+            for row in result:
+                print(row)
+        ```
     """
 
     def __init__(
         self,
-        source=constants.DEFAULT_SOURCE,
+        project: project.Project | None = None,
+        source=None,
         catalog=constants.DEFAULT_CATALOG,
         schema=constants.DEFAULT_SCHEMA,
         session_properties=None,
@@ -284,9 +130,12 @@ class _TrinoApi:
         )
         self._secret_api: secret_api.SecretsApi = secret_api.SecretsApi()
         self._project_api: project_api.ProjectApi = project_api.ProjectApi()
-        self.project: hopsworks.Project = hopsworks.get_current_project()
+        self.project: project.Project = (
+            project if project is not None else hopsworks.get_current_project()
+        )
 
-    def _retrieve_host(self) -> str:
+    @usage.method_logger
+    def get_host(self) -> str:
         """Retrieve the Trino host based on client location.
 
         Returns the external load balancer domain if connecting from outside
@@ -315,6 +164,15 @@ class _TrinoApi:
         _logger.debug(f"Connecting to Trino on host {host} and port {TRINO_PORT}.")
         return host
 
+    @usage.method_logger
+    def get_port(self) -> int:
+        """Get the Trino port number.
+
+        Returns:
+            The port number for connecting to Trino.
+        """
+        return TRINO_PORT
+
     def _get_password(self, user: str) -> str:
         """Retrieve the password for the given user from secrets storage.
 
@@ -336,7 +194,24 @@ class _TrinoApi:
             )
         return secret.value
 
-    def trino_connect(self) -> Connection:
+    @usage.method_logger
+    def get_basic_auth(self) -> BasicAuthentication:
+        """Get a BasicAuthentication object for the current project user.
+
+        Returns:
+            A BasicAuthentication object with the current project user's credentials.
+
+        Raises:
+            hopsworks_common.client.exceptions.TrinoException:
+                If credentials cannot be retrieved from secrets storage.
+        """
+        username = self._project_api.get_user_info().get("username", None)
+        user = f"{self.project.name}__{username}"
+        password = self._get_password(user)
+        return BasicAuthentication(user, password)
+
+    @usage.method_logger
+    def connect(self) -> Connection:
         """Connect to Trino using the native DBAPI interface.
 
         Returns:
@@ -347,22 +222,37 @@ class _TrinoApi:
                 If service discovery domain is not configured.
             hopsworks.client.exceptions.RestAPIError:
                 If credentials cannot be retrieved.
-        """
-        host = self._retrieve_host()
-        port = TRINO_PORT
 
-        username = self._project_api.get_user_info().get("username", None)
-        user = f"{self.project.name}__{username}"
-        password = self._get_password(user)
+        Example:
+            ```python
+            import hopsworks
+            from hopsworks.core.trino_api import TrinoApi
+
+            project = hopsworks.login()
+            trino_api = TrinoApi()
+            conn = trino_api.connect()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM my_table")
+            rows = cursor.fetchall()
+            for row in rows:
+                print(row)
+            ```
+        """
+        host = self.get_host()
+        port = self.get_port()
+
+        basic_auth = self.get_basic_auth()
+
+        source = DEFAULT_SOURCE if self.source is None else self.source
 
         return _trino_connect(
             host=host,
             port=port,
-            user=user,
+            user=basic_auth._username,
             catalog=self.catalog,
             schema=self.schema,
-            source=self.source,
-            auth=BasicAuthentication(user, password),
+            source=source,
+            auth=basic_auth,
             http_scheme=constants.HTTPS,
             verify=self.verify,
             session_properties=self.session_properties,
@@ -379,6 +269,7 @@ class _TrinoApi:
             encoding=self.encoding,
         )
 
+    @usage.method_logger
     def create_engine(self) -> Engine:
         """Create a SQLAlchemy engine for Trino.
 
@@ -390,28 +281,42 @@ class _TrinoApi:
                 If service discovery domain is not configured.
             hopsworks.client.exceptions.RestAPIError:
                 If credentials cannot be retrieved.
+
+        Example:
+            ```python
+            import hopsworks
+            from hopsworks.core.trino_api import TrinoApi
+
+            project = hopsworks.login()
+            trino_api = TrinoApi()
+            engine = trino_api.create_engine()
+            with engine.connect() as connection:
+                result = connection.execute("SELECT * FROM my_table")
+                for row in result:
+                    print(row)
+            ```
         """
         from sqlalchemy import create_engine
 
-        host = self._retrieve_host()
-        port = TRINO_PORT
+        host = self.get_host()
+        port = self.get_port()
 
-        username = self._project_api.get_user_info().get("username", None)
-        user = f"{self.project.name}__{username}"
-        password = self._get_password(user)
+        basic_auth = self.get_basic_auth()
+
+        source = DEFAULT_SQLALCHEMY_SOURCE if self.source is None else self.source
 
         connection_url = URL(
             host=host,
             port=port,
-            user=user,
+            user=basic_auth._username,
             catalog=self.catalog,
             schema=self.schema,
         )
         connect_args = {
-            "auth": BasicAuthentication(user, password),
+            "auth": basic_auth,
             "http_scheme": constants.HTTPS,
             "verify": self.verify,
-            "source": self.source,
+            "source": source,
             "session_properties": self.session_properties,
             "http_headers": self.http_headers,
             "client_tags": self.client_tags,
