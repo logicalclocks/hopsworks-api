@@ -31,7 +31,10 @@ from hopsworks_common.core import (
     kafka_api,
     opensearch_api,
     search_api,
+    trino_api,
 )
+from trino import constants
+from trino.transaction import IsolationLevel
 
 
 if TYPE_CHECKING:
@@ -291,6 +294,51 @@ class Project:
             The Search Api handle.
         """
         return self._search_api
+
+    @public
+    def get_trino_api(
+        self,
+        source=None,
+        catalog=None,
+        schema=None,
+        session_properties=None,
+        http_headers=None,
+        max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
+        request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
+        isolation_level=IsolationLevel.AUTOCOMMIT,
+        verify: bool | str = False,
+        http_session=None,
+        client_tags=None,
+        legacy_primitive_types=False,
+        legacy_prepared_statements=None,
+        roles=None,
+        timezone=None,
+        encoding: str | list[str] | None = None,
+    ) -> trino_api.TrinoApi:
+        """Get the Trino API for the project.
+
+        Returns:
+            The Trino Api handle.
+        """
+        return trino_api.TrinoApi(
+            project=self,
+            source=source,
+            catalog=catalog,
+            schema=schema,
+            session_properties=session_properties,
+            http_headers=http_headers,
+            max_attempts=max_attempts,
+            request_timeout=request_timeout,
+            isolation_level=isolation_level,
+            verify=verify,
+            http_session=http_session,
+            client_tags=client_tags,
+            legacy_primitive_types=legacy_primitive_types,
+            legacy_prepared_statements=legacy_prepared_statements,
+            roles=roles,
+            timezone=timezone,
+            encoding=encoding,
+        )
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:
