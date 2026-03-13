@@ -1057,7 +1057,7 @@ class Engine:
                 FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
                 + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
                 f"primary_key ({feature_group_instance.primary_key}), "
-                f"event_time ({feature_group_instance.event_time})"
+                f"event_time ({feature_group_instance.event_time}) and "
                 f"partition_key ({feature_group_instance.partition_key}). "
                 f"Found {duplicate_count} duplicate group(s). "
                 f"Sample duplicate key combinations:\n{sample_str}"
