@@ -176,7 +176,7 @@ class TestHudiEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -225,7 +225,7 @@ class TestHudiEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         fg = feature_group.FeatureGroup(
             name="test",

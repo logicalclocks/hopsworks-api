@@ -154,7 +154,8 @@ class HudiEngine:
             else self._feature_group.primary_key[0]
         )
 
-        # only enable hive sync when using a Spark engine with a metastore
+        # only enable hive sync when using a Spark engine with a metastore and no storage connector,
+        # as the storage connector means data is saved in an external storage
         from hsfs.engine import get_type
         hive_sync = (
             self._feature_group.storage_connector is None
