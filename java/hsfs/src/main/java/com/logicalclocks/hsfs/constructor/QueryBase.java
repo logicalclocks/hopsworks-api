@@ -63,6 +63,9 @@ public class QueryBase<T extends QueryBase<T, T2, T3>, T2 extends FeatureGroupBa
   @Getter
   @Setter
   protected Boolean hiveEngine = false;
+  @Getter
+  @Setter
+  protected Integer limit;
 
   protected void setLeftFeatureGroup(T2 leftFeatureGroup) {
     setLeftBaseFeatureGroup(leftFeatureGroup);
@@ -272,6 +275,17 @@ public class QueryBase<T extends QueryBase<T, T2, T3>, T2 extends FeatureGroupBa
 
   public T appendFeature(Feature feature) {
     this.leftFeatures.add(feature);
+    return (T)this;
+  }
+
+  /**
+   * Limit the number of rows returned by the query.
+   *
+   * @param n maximum number of rows to return
+   * @return Query
+   */
+  public T limit(int n) {
+    this.limit = n;
     return (T)this;
   }
 
