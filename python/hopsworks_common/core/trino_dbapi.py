@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
-from python.hopsworks_common import usage
-from python.hopsworks_common.core.trino_api import (
+from hopsworks_common import usage
+from hopsworks_common.core.trino_api import (
     DEFAULT_SOURCE,
     DEFAULT_SQLALCHEMY_SOURCE,
     TrinoApi,
@@ -103,7 +103,7 @@ def connect(
         timezone=timezone,
         encoding=encoding,
     )
-    return trino_api.trino_connect()
+    return trino_api.connect()
 
 
 @public("hopsworks.core.trino_dbapi.create_engine")

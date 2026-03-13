@@ -27,11 +27,10 @@ from typing import TYPE_CHECKING
 
 import hopsworks
 from hopsworks_apigen import public
-from hopsworks_common import client, project
+from hopsworks_common import client, project, usage
 from hopsworks_common.client.exceptions import TrinoException
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.core.variable_api import VariableApi
-from python.hopsworks_common import usage
 from trino import constants
 from trino.auth import BasicAuthentication
 from trino.dbapi import Connection
@@ -133,6 +132,9 @@ class TrinoApi:
         self.project: project.Project = (
             project if project is not None else hopsworks.get_current_project()
         )
+
+        _client = client.get_instance()
+        _client.download_certs()
 
     @usage.method_logger
     def get_host(self) -> str:
