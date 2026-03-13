@@ -4,14 +4,22 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import usage
+from hopsworks_common.core.constants import (
+    HAS_TRINO,
+    trino_not_installed_message,
+)
 from hopsworks_common.core.trino_api import (
     DEFAULT_SOURCE,
     DEFAULT_SQLALCHEMY_SOURCE,
     TrinoApi,
 )
-from trino import constants
-from trino.transaction import IsolationLevel
 
+
+if HAS_TRINO:
+    from trino import constants
+    from trino.transaction import IsolationLevel
+else:
+    raise ImportError(trino_not_installed_message)
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
