@@ -149,3 +149,6 @@ dev_scripts/
 uv.lock
 
 /python/.gitignore
+
+# Local agent settings, user-specific
+/.claude/settings.local.json
