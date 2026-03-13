@@ -70,7 +70,7 @@ class TrinoApi:
         from hopsworks.core.trino_api import TrinoApi
 
         project = hopsworks.login()
-        trino_api = TrinoApi(project=project)
+        trino_api = project.get_trino_api()  # Get an instance of TrinoApi from the project context
         conn = trino_api.connect(catalog="iceberg", schema="my_db")  # Get a DBAPI connection
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM my_table")
