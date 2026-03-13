@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from hsfs import feature_group_commit, util
 from hsfs.core import feature_group_api
+from hsfs.engine import get_type as get_engine_type
 
 
 class HudiEngine:
@@ -154,8 +155,11 @@ class HudiEngine:
             else self._feature_group.primary_key[0]
         )
 
-        # dont enable hive sync when using managed FG
-        hive_sync = self._feature_group.storage_connector is None
+        # dont enable hive sync when using managed FG or spark-no-metastore engine
+        hive_sync = (
+            self._feature_group.storage_connector is None
+            and get_engine_type() != "spark-no-metastore"
+        )
 
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
