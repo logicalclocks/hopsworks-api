@@ -154,7 +154,7 @@ class HudiEngine:
             else self._feature_group.primary_key[0]
         )
 
-        # dont enable hive sync when using managed FG or spark-no-metastore engine
+        # Enable hive sync only for managed feature groups (no storage connector) when using a metastore-enabled engine (not spark-no-metastore or spark-delta)
         from hsfs.engine import get_type
         hive_sync = (
             self._feature_group.storage_connector is None
