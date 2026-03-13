@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import pytest
+
 from hsfs import feature_group
 from hsfs.constructor import hudi_feature_group_alias
 from hsfs.core import hudi_engine
@@ -269,6 +271,72 @@ class TestHudiEngine:
             "hoodie.upsert.shuffle.parallelism": "5",
             "test_name": "test_value",
         }
+
+    @pytest.mark.parametrize(
+        "engine_type,expected_hive_sync",
+        [
+            ("spark-no-metastore", "false"),
+            ("spark-delta", "false"),
+            ("spark", "true"),
+        ],
+    )
+    def test_setup_hudi_write_opts_hive_sync_by_engine_type(
+        self, mocker, engine_type, expected_hive_sync
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value=engine_type)
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["key1"],
+            partition_key=[],
+            hudi_precombine_key=None,
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options=None)
+
+        # Assert
+        assert result["hoodie.datasource.hive_sync.enable"] == expected_hive_sync
+
+    def test_setup_hudi_write_opts_hive_sync_external_fg(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        storage_connector = mocker.Mock()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["key1"],
+            partition_key=[],
+            hudi_precombine_key=None,
+            storage_connector=storage_connector,
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options=None)
+
+        # Assert — hive sync must be disabled for external (managed) feature groups
+        assert result["hoodie.datasource.hive_sync.enable"] == "false"
 
     def test_setup_hudi_read_opts(self, mocker, backend_fixtures):
         # Arrange
