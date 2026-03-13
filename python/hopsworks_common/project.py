@@ -31,6 +31,7 @@ from hopsworks_common.core import (
     kafka_api,
     opensearch_api,
     search_api,
+    trino_api,
 )
 
 
@@ -291,6 +292,15 @@ class Project:
             The Search Api handle.
         """
         return self._search_api
+
+    @public
+    def get_trino_api(self) -> trino_api.TrinoApi:
+        """Get the Trino API for the project.
+
+        Returns:
+            The Trino Api handle.
+        """
+        return trino_api.TrinoApi(project=self)
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:

@@ -263,3 +263,7 @@ class ModelServingException(Exception):
 
 class DataSourceException(Exception):
     """Generic data source exception."""
+
+
+class TrinoException(Exception):
+    """Generic Trino exception."""

@@ -98,3 +98,12 @@ deltalake_spark_not_installed_message = (
     "Delta Lake (delta) is required for Spark operations. "
     "Install 'delta-spark' to enable Delta Spark features."
 )
+
+HAS_TRINO: bool = importlib.util.find_spec("trino") is not None
+trino_not_installed_message = (
+    "Trino package not found. "
+    "If you want to use Trino with Hopsworks you can install the corresponding extra via "
+    '`pip install "hopsworks[trino]"`. '
+    "You can also install trino directly in your environment with `pip install trino`. "
+    "You will need to restart your kernel if applicable."
+)
