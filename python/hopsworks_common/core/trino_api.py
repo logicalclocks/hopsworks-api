@@ -153,7 +153,7 @@ def create_engine(
     legacy_primitive_types: bool = False,
     legacy_prepared_statements: bool | None = None,
     roles: dict | None = None,
-    verify: bool = False,
+    verify: bool | str = False,
     timezone: str | None = None,
     encoding: str | list[str] | None = None,
 ) -> Engine:
@@ -252,7 +252,7 @@ class _TrinoApi:
         max_attempts=constants.DEFAULT_MAX_ATTEMPTS,
         request_timeout=constants.DEFAULT_REQUEST_TIMEOUT,
         isolation_level=IsolationLevel.AUTOCOMMIT,
-        verify=False,
+        verify: bool | str = False,
         http_session=None,
         client_tags=None,
         legacy_primitive_types=False,
@@ -304,7 +304,7 @@ class _TrinoApi:
             external_domain = self._variable_api.get_loadbalancer_external_domain(
                 "trino"
             )
-            host = f"{external_domain}"
+            host = external_domain
         else:
             if self._service_discovery_domain == "":
                 raise TrinoException(
