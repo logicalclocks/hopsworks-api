@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import os
 from unittest.mock import Mock
 
 import pytest
@@ -119,7 +120,7 @@ class TestTrinoApi:
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
         )
         mock_client = Mock()
-        mock_client.get_certs_folder.return_value = "/path/to/certs"
+        mock_client.get_certs_folder.return_value = os.path.join("path", "to", "certs")
         mocker.patch(
             "hopsworks_common.core.trino_api.client.get_instance",
             return_value=mock_client,
@@ -129,7 +130,7 @@ class TestTrinoApi:
         result = trino_api._download_ssl_cert(verify=True)
 
         # Assert
-        assert result == "/path/to/certs/ca_chain.pem"
+        assert result == os.path.join("path", "to", "certs", "ca_chain.pem")
         mock_client.download_certs.assert_called_once()
 
         # Act with verification disabled
@@ -137,8 +138,10 @@ class TestTrinoApi:
         assert result is False
 
         # Act with custom verify value
-        result = trino_api._download_ssl_cert(verify="/path/to/custom/ca.pem")
-        assert result == "/path/to/custom/ca.pem"
+        result = trino_api._download_ssl_cert(
+            verify=os.path.join("path", "to", "custom", "ca.pem")
+        )
+        assert result == os.path.join("path", "to", "custom", "ca.pem")
 
     def test_download_ssl_cert_external_client(self, mocker, trino_api):
         """Test SSL certificate download for external client."""
@@ -157,8 +160,10 @@ class TestTrinoApi:
         result = trino_api._download_ssl_cert(verify=False)
         assert result is False
         # Act with custom verify value
-        result = trino_api._download_ssl_cert(verify="/path/to/custom/ca.pem")
-        assert result == "/path/to/custom/ca.pem"
+        result = trino_api._download_ssl_cert(
+            verify=os.path.join("path", "to", "custom", "ca.pem")
+        )
+        assert result == os.path.join("path", "to", "custom", "ca.pem")
 
     def test_get_host_internal_client(self, mocker, trino_api):
         """Test getting host for internal client."""
