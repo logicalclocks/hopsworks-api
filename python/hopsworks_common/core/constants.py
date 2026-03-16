@@ -104,6 +104,6 @@ trino_not_installed_message = (
     "Trino package not found. "
     "If you want to use Trino with Hopsworks you can install the corresponding extra via "
     '`pip install "hopsworks[trino]"`. '
-    "You can also install trino directly in your environment with `pip install trino`. "
+    "You can also install trino directly in your environment with `pip install trino[sqlalchemy]`. "
     "You will need to restart your kernel if applicable."
 )
