@@ -723,9 +723,11 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             transformation_functions:
-                On-Demand Transformation functions attached to the feature group.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                On-demand transformation functions attached to the feature group.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG (Directed Acyclic Graph) where independent transformations run in parallel.
+                The execution order can be inspected via the `_transformation_function_execution_graph` attribute.
             online_config: Optionally, define configuration which is used to configure online table.
             offline_backfill_every_hr:
                 If specified, the materialization job will be scheduled to run periodically.
@@ -945,9 +947,11 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             transformation_functions:
-                On-Demand Transformation functions attached to the feature group.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                On-demand transformation functions attached to the feature group.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG (Directed Acyclic Graph) where independent transformations run in parallel.
+                The execution order can be inspected via the `_transformation_function_execution_graph` attribute.
             online_config: Optionally, define configuration which is used to configure online table.
             offline_backfill_every_hr:
                 If specified, the materialization job will be scheduled to run periodically.
@@ -1904,9 +1908,11 @@ class FeatureStore:
                 For more details see documentation for feature view's get training data methods.
                 Defaults to `[]`, no training helper columns.
             transformation_functions:
-                Model Dependent Transformation functions attached to the feature view.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                Model-dependent transformation functions attached to the feature view.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG (Directed Acyclic Graph) where independent transformations run in parallel.
+                The execution order can be inspected via the `_model_dependent_transformation_execution_graph` attribute.
             logging_enabled: If true, enable feature logging for the feature view.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
@@ -1999,9 +2005,11 @@ class FeatureStore:
                 For more details see documentation for feature view's get training data methods.
                 Defaults to `[]`, no training helper columns.
             transformation_functions:
-                Model Dependent Transformation functions attached to the feature view.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                Model-dependent transformation functions attached to the feature view.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG (Directed Acyclic Graph) where independent transformations run in parallel.
+                The execution order can be inspected via the `_model_dependent_transformation_execution_graph` attribute.
             logging_enabled: If true, enable feature logging for the feature view.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.

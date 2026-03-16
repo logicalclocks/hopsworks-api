@@ -286,7 +286,7 @@ class TestTransformationFunction:
         def test_func(col1):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -300,7 +300,7 @@ class TestTransformationFunction:
         def test_func(col1):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
@@ -341,7 +341,7 @@ class TestTransformationFunction:
         def test_func(col1, col2, col3):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -362,7 +362,7 @@ class TestTransformationFunction:
         def test_func(col1, col2, col3):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
@@ -422,7 +422,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col1 + 1], "col3": [col1 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -449,7 +449,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col1 + 1], "col3": [col1 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
@@ -524,7 +524,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -551,7 +551,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
