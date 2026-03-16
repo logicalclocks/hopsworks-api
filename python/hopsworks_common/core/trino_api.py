@@ -123,10 +123,8 @@ class TrinoApi:
         if project is None:
             _client = client.get_instance()
             self.project_name = _client._project_name
-            self.project_id = _client._project_id
         else:
             self.project_name = project.name
-            self.project_id = project.id
 
     def _get_ca_chain_path(self, verify: bool | str) -> bool | str:
         """Get the SSL certificate or pass through a custom verify value.
