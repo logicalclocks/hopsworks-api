@@ -28,20 +28,20 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           activate-environment: true
-          working-directory: python
+          working-directory: logicalclocks.github.io
 
-      - name: Install Python API dependencies
-        run: uv sync --extra dev --project python
+      - name: Install Python dependencies
+        run: uv sync --extra cli
 
-      - name: Install docs Python dependencies
-        run: uv pip install -r logicalclocks.github.io/requirements-docs.txt
+      - name: Install Hopsworks Python API
+        run: uv pip install python
 
       - name: Install docs Ubuntu dependencies
         run: sudo apt update && sudo apt-get install -y libxml2-dev libxslt-dev
 
       - name: Check mkdocs warnings
         working-directory: logicalclocks.github.io
-        run: touch docs/javadoc; mkdocs build -s; rm docs/javadoc
+        run: hopsworks-docs check
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -63,24 +63,7 @@ jobs:
 
       - name: Check for broken links
         working-directory: logicalclocks.github.io
-        run: |
-          # run the server
-          mkdocs serve -q &
-          SERVER_PID=$!
-          echo "mk server in PID $SERVER_PID"
-          # Give enough time for deployment (2min max)
-          for run in {1..120}; do
-            if curl --output /dev/null --silent --head --fail http://127.0.0.1:8000/; then
-              break
-            fi
-            sleep 1
-          done
-          echo "Launching linkchecker"
-          # Ignore dejavu.css for now, it is a JDK bug.
-          linkchecker --no-warnings --no-status http://127.0.0.1:8000/ --ignore-url http://127.0.0.1:8000/javadoc/resources/fonts/dejavu.css
-
-          # If ok just kill the server
-          kill -9 $SERVER_PID
+        run: hopsworks-docs linkchecker
 
       - name: Setup git for mike
         run: |
