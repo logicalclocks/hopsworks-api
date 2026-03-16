@@ -63,7 +63,8 @@ def connect(
         max_attempts: Maximum number of retry attempts for failed requests.
         request_timeout: Timeout in seconds for each HTTP request.
         isolation_level: Transaction isolation level.
-        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
+        verify: Whether to verify SSL certificates.
+                Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
         http_session: Custom HTTP session for connection pooling.
         client_tags: Tags to identify the client in Trino query logs.
         legacy_primitive_types: Whether to use legacy primitive type handling.
@@ -151,7 +152,8 @@ def create_engine(
         max_attempts: Maximum number of retry attempts for failed requests.
         request_timeout: Timeout in seconds for each HTTP request.
         isolation_level: Transaction isolation level.
-        verify: Whether to verify SSL certificates. Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
+        verify: Whether to verify SSL certificates.
+                Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
         http_session: Custom HTTP session for connection pooling.
         client_tags: Tags to identify the client in Trino query logs.
         legacy_primitive_types: Whether to use legacy primitive type handling.
