@@ -31,6 +31,7 @@ jobs:
           working-directory: logicalclocks.github.io
 
       - name: Install Python dependencies
+        working-directory: logicalclocks.github.io
         run: uv sync --extra cli
 
       - name: Install Hopsworks Python API
