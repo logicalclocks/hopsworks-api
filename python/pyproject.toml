@@ -117,7 +117,7 @@ mcp = [
 [dependency-groups]
 pre-commit = ["pre-commit"]
 docs = [
-    "hopsworks-docs[cli]@git+https://github.com/aversey/logicalclocks.github.io.git@fix-checks; python_version ~= '3.13.0'",
+    "hopsworks-docs[cli]@git+https://github.com/logicalclocks/logicalclocks.github.io.git; python_version ~= '3.13.0'",
 ]
 
 [tool.uv]
