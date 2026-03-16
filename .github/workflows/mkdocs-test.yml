@@ -35,7 +35,7 @@ jobs:
         run: uv sync --extra cli
 
       - name: Install Hopsworks Python API
-        run: uv pip install python
+        run: uv pip install ./python
 
       - name: Install docs Ubuntu dependencies
         run: sudo apt update && sudo apt-get install -y libxml2-dev libxslt-dev
