@@ -88,6 +88,7 @@ class TrinoApi:
         ```python
         import hopsworks
         from hopsworks.core.trino_api import TrinoApi
+        from sqlalchemy import text
 
         project = hopsworks.login()
         trino_api = project.get_trino_api()  # Get an instance of TrinoApi from the project context
@@ -101,7 +102,7 @@ class TrinoApi:
         # Or using SQLAlchemy
         engine = trino_api.create_engine(catalog="iceberg", schema="my_db")
         with engine.connect() as connection:
-            result = connection.execute("SELECT * FROM my_table")
+            result = connection.execute(text("SELECT * FROM my_table"))
             for row in result:
                 print(row)
         ```
