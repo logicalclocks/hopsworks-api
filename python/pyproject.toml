@@ -128,11 +128,6 @@ conflicts = [
     [{ extra = "sqlalchemy-1" }, { extra = "dev" }],
 ]
 
-[tool.uv.extra-build-dependencies]
-# PEP 632
-pytest = ["setuptools"]
-pandas = ["pkg_resources"]
-
 [build-system]
 requires = ["setuptools", "hopsworks-apigen[build]>=1.0.4,<2.0.0"]
 build-backend = "setuptools.build_meta"
