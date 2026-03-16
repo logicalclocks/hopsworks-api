@@ -120,7 +120,6 @@ class TestTrinoApi:
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
         )
         mock_client = Mock()
-        mock_client.get_certs_folder.return_value = os.path.join("path", "to", "certs")
         mocker.patch(
             "hopsworks_common.core.trino_api.client.get_instance",
             return_value=mock_client,
@@ -130,8 +129,7 @@ class TestTrinoApi:
         result = trino_api._download_ssl_cert(verify=True)
 
         # Assert
-        assert result == os.path.join("path", "to", "certs", "ca_chain.pem")
-        mock_client.download_certs.assert_called_once()
+        assert result == os.path.join("/tmp", "trino_ca_chain.pem")
 
         # Act with verification disabled
         result = trino_api._download_ssl_cert(verify=False)
@@ -265,7 +263,6 @@ class TestTrinoApi:
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
         )
         mock_client = Mock()
-        mock_client.get_certs_folder.return_value = os.path.join("path", "to", "certs")
         mocker.patch(
             "hopsworks_common.core.trino_api.client.get_instance",
             return_value=mock_client,
@@ -292,9 +289,7 @@ class TestTrinoApi:
         assert call_kwargs["source"] == DEFAULT_SOURCE
         assert isinstance(call_kwargs["auth"], BasicAuthentication)
         assert call_kwargs["http_scheme"] == HTTPS
-        assert call_kwargs["verify"] == os.path.join(
-            "path", "to", "certs", "ca_chain.pem"
-        )
+        assert call_kwargs["verify"] == os.path.join("/tmp", "trino_ca_chain.pem")
 
     def test_connect_external_client(self, mocker, trino_api):
         """Test connecting to Trino using DBAPI from external client."""
@@ -373,7 +368,6 @@ class TestTrinoApi:
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
         )
         mock_client = Mock()
-        mock_client.get_certs_folder.return_value = os.path.join("path", "to", "certs")
         mocker.patch(
             "hopsworks_common.core.trino_api.client.get_instance",
             return_value=mock_client,
@@ -404,9 +398,7 @@ class TestTrinoApi:
         # Verify connect_args
         assert isinstance(connect_args["auth"], BasicAuthentication)
         assert connect_args["http_scheme"] == HTTPS
-        assert connect_args["verify"] == os.path.join(
-            "path", "to", "certs", "ca_chain.pem"
-        )
+        assert connect_args["verify"] == os.path.join("/tmp", "trino_ca_chain.pem")
         assert connect_args["source"] == DEFAULT_SQLALCHEMY_SOURCE
 
     def test_create_engine_external_client(self, mocker, trino_api):

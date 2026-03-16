@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
@@ -124,8 +125,10 @@ class TrinoApi:
         if project is None:
             _client = client.get_instance()
             self.project_name = _client._project_name
+            self.project_id = _client._project_id
         else:
             self.project_name = project.name
+            self.project_id = project.id
 
     def _download_ssl_cert(self, verify: bool | str) -> bool | str:
         """Download the SSL certificate or pass through a custom verify value.
@@ -138,10 +141,13 @@ class TrinoApi:
             The original verify value if verification is handled by the caller or disabled.
         """
         if not client._is_external() and verify is True:
-            _client = client.get_instance()
-            _client.download_certs()
-            _cert_folder = _client.get_certs_folder()
-            return os.path.join(_cert_folder, "ca_chain.pem")
+            ca_chain_path = os.path.join("/tmp", "trino_ca_chain.pem")
+            if not os.path.exists(ca_chain_path):
+                _client = client.get_instance()
+                credentials = _client._get_credentials(self.project_id)
+                with Path(ca_chain_path).open("w") as f:
+                    f.write(credentials["ca_chain"])
+            return ca_chain_path
         return verify
 
     @public
