@@ -25,9 +25,11 @@ from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
     HAS_POLARS,
+    HAS_TRINO,
     confluent_kafka_not_installed_message,
     great_expectations_not_installed_message,
     polars_not_installed_message,
+    trino_not_installed_message,
 )
 
 
@@ -171,6 +173,16 @@ def uses_confluent_kafka(f):
     def g(*args, **kwds):
         if not HAS_CONFLUENT_KAFKA:
             raise ModuleNotFoundError(confluent_kafka_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+
+def uses_trino(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_TRINO:
+            raise ModuleNotFoundError(trino_not_installed_message)
         return f(*args, **kwds)
 
     return g

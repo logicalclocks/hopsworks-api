@@ -27,28 +27,40 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
-from hopsworks_common import client, project, usage
+from hopsworks_common import client, usage
 from hopsworks_common.client.exceptions import TrinoException
 from hopsworks_common.core import project_api, secret_api
-from hopsworks_common.core.constants import (
-    HAS_TRINO,
-    trino_not_installed_message,
-)
+from hopsworks_common.core.constants import HAS_TRINO
 from hopsworks_common.core.variable_api import VariableApi
+from hopsworks_common.decorators import uses_trino
 
 
 if HAS_TRINO:
-    from trino import constants
     from trino.auth import BasicAuthentication
+    from trino.constants import (
+        DEFAULT_CATALOG,
+        DEFAULT_MAX_ATTEMPTS,
+        DEFAULT_REQUEST_TIMEOUT,
+        DEFAULT_SCHEMA,
+    )
     from trino.dbapi import connect as _trino_connect
     from trino.sqlalchemy import URL
     from trino.transaction import IsolationLevel
+
+    AUTOCOMMIT = IsolationLevel.AUTOCOMMIT
 else:
-    raise ImportError(trino_not_installed_message)
+    DEFAULT_CATALOG = None
+    DEFAULT_SCHEMA = None
+    DEFAULT_MAX_ATTEMPTS = None
+    DEFAULT_REQUEST_TIMEOUT = None
+    AUTOCOMMIT = None
+
 
 if TYPE_CHECKING:
+    from hopsworks_common import project
     from sqlalchemy.engine import Engine
     from trino.dbapi import Connection
+    from trino.transaction import IsolationLevel  # noqa: TC004
 
 
 _logger = logging.getLogger(__name__)
@@ -57,6 +69,7 @@ TRINO_SERVICE_NAME = "coordinator.trino.service"
 TRINO_PORT = 8443
 DEFAULT_SOURCE = "hopsworks-trino-python-client"
 DEFAULT_SQLALCHEMY_SOURCE = "hopsworks-trino-sqlalchemy"
+HTTPS = "https"
 
 
 @public("hopsworks.core.trino_api")
@@ -202,18 +215,19 @@ class TrinoApi:
         password = self._get_password(user)
         return BasicAuthentication(user, password)
 
+    @uses_trino
     @public
     @usage.method_logger
     def connect(
         self,
         source: str = DEFAULT_SOURCE,
-        catalog: str = constants.DEFAULT_CATALOG,
-        schema: str = constants.DEFAULT_SCHEMA,
+        catalog: str = DEFAULT_CATALOG,
+        schema: str = DEFAULT_SCHEMA,
         session_properties: dict | None = None,
         http_headers: dict | None = None,
-        max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
-        request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
-        isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+        isolation_level: IsolationLevel = AUTOCOMMIT,
         verify: bool | str = True,
         http_session: Any = None,
         client_tags: list[str] | None = None,
@@ -280,7 +294,7 @@ class TrinoApi:
             schema=schema,
             source=source,
             auth=basic_auth,
-            http_scheme=constants.HTTPS,
+            http_scheme=HTTPS,
             verify=self._download_ssl_cert(verify),
             session_properties=session_properties,
             http_headers=http_headers,
@@ -296,18 +310,19 @@ class TrinoApi:
             encoding=encoding,
         )
 
+    @uses_trino
     @public
     @usage.method_logger
     def create_engine(
         self,
         source: str = DEFAULT_SQLALCHEMY_SOURCE,
-        catalog: str = constants.DEFAULT_CATALOG,
-        schema: str = constants.DEFAULT_SCHEMA,
+        catalog: str = DEFAULT_CATALOG,
+        schema: str = DEFAULT_SCHEMA,
         session_properties: dict | None = None,
         http_headers: dict | None = None,
-        max_attempts: int = constants.DEFAULT_MAX_ATTEMPTS,
-        request_timeout: int = constants.DEFAULT_REQUEST_TIMEOUT,
-        isolation_level: IsolationLevel = IsolationLevel.AUTOCOMMIT,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+        isolation_level: IsolationLevel = AUTOCOMMIT,
         verify: bool | str = True,
         http_session: Any = None,
         client_tags: list[str] | None = None,
@@ -376,7 +391,7 @@ class TrinoApi:
         )
         connect_args = {
             "auth": basic_auth,
-            "http_scheme": constants.HTTPS,
+            "http_scheme": HTTPS,
             "verify": self._download_ssl_cert(verify),
             "source": source,
             "session_properties": session_properties,

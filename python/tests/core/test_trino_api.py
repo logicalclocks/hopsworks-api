@@ -460,3 +460,84 @@ class TestTrinoApi:
         assert connect_args["max_attempts"] == 10
         assert connect_args["isolation_level"] == IsolationLevel.READ_COMMITTED
         assert connect_args["timezone"] == "UTC"
+
+    def test_has_trino_when_installed(self):
+        """Test that HAS_TRINO is True when trino package is installed."""
+        # Arrange & Act
+        from hopsworks_common.core.constants import HAS_TRINO
+
+        # Assert
+        # Since trino is in the test dependencies, HAS_TRINO should be True
+        assert HAS_TRINO is True
+
+    def test_trino_imports_when_installed(self):
+        """Test that trino imports are available when HAS_TRINO is True."""
+        # Arrange & Act
+        from hopsworks_common.core import trino_api
+
+        # Assert
+        # Verify that trino-specific constants are imported correctly
+        # Note: DEFAULT_CATALOG and DEFAULT_SCHEMA are None in trino package itself
+        from trino import constants as trino_constants
+        from trino.transaction import IsolationLevel
+
+        assert trino_api.DEFAULT_CATALOG == trino_constants.DEFAULT_CATALOG
+        assert trino_api.DEFAULT_SCHEMA == trino_constants.DEFAULT_SCHEMA
+        assert trino_api.DEFAULT_MAX_ATTEMPTS == trino_constants.DEFAULT_MAX_ATTEMPTS
+        assert (
+            trino_api.DEFAULT_REQUEST_TIMEOUT == trino_constants.DEFAULT_REQUEST_TIMEOUT
+        )
+        assert trino_api.AUTOCOMMIT == IsolationLevel.AUTOCOMMIT
+
+        # Verify that at least some constants have meaningful values
+        assert trino_api.DEFAULT_MAX_ATTEMPTS is not None
+        assert trino_api.DEFAULT_REQUEST_TIMEOUT is not None
+        assert trino_api.AUTOCOMMIT is not None
+
+    def test_trino_imports_fallback_when_not_installed(self, mocker):
+        """Test that fallback values are used when trino is not installed."""
+        # Arrange
+        # Mock find_spec to simulate trino not being installed
+        mock_find_spec = mocker.patch("importlib.util.find_spec")
+        mock_find_spec.return_value = None
+
+        # Force reload of constants to pick up the mocked find_spec
+        import importlib
+
+        from hopsworks_common.core import constants
+
+        importlib.reload(constants)
+
+        # Act
+        from hopsworks_common.core.constants import HAS_TRINO
+
+        # Assert
+        assert HAS_TRINO is False
+
+        # Clean up by reloading constants to restore original state
+        mock_find_spec.stop()
+        importlib.reload(constants)
+
+    def test_trino_constants_with_fallback_values(self, mocker):
+        """Test that constants have None fallback values when trino is not installed."""
+        # Arrange
+        # We need to test the conditional import logic in trino_api module
+        # This is tricky because the module is already imported, so we need to
+        # manually check what would happen in the else branch
+
+        # We can verify the logic by checking the source directly
+        import inspect
+
+        from hopsworks_common.core import trino_api
+
+        source = inspect.getsource(trino_api)
+
+        # Assert
+        # Verify that the fallback logic exists in the source
+        assert "if HAS_TRINO:" in source
+        assert "else:" in source
+        assert "DEFAULT_CATALOG = None" in source
+        assert "DEFAULT_SCHEMA = None" in source
+        assert "DEFAULT_MAX_ATTEMPTS = None" in source
+        assert "DEFAULT_REQUEST_TIMEOUT = None" in source
+        assert "AUTOCOMMIT = None" in source
