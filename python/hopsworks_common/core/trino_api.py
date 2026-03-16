@@ -23,8 +23,6 @@ Authentication and connection configuration are handled automatically.
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
@@ -130,8 +128,8 @@ class TrinoApi:
             self.project_name = project.name
             self.project_id = project.id
 
-    def _download_ssl_cert(self, verify: bool | str) -> bool | str:
-        """Download the SSL certificate or pass through a custom verify value.
+    def _get_ca_chain_path(self, verify: bool | str) -> bool | str:
+        """Get the SSL certificate or pass through a custom verify value.
 
         Parameters:
             verify: Whether to verify the SSL certificate, or a path to a custom CA bundle.
@@ -141,13 +139,8 @@ class TrinoApi:
             The original verify value if verification is handled by the caller or disabled.
         """
         if not client._is_external() and verify is True:
-            ca_chain_path = os.path.join("/tmp", "trino_ca_chain.pem")
-            if not os.path.exists(ca_chain_path):
-                _client = client.get_instance()
-                credentials = _client._get_credentials(self.project_id)
-                with Path(ca_chain_path).open("w") as f:
-                    f.write(credentials["ca_chain"])
-            return ca_chain_path
+            _client = client.get_instance()
+            return _client._get_ca_chain_path()
         return verify
 
     @public
@@ -317,7 +310,7 @@ class TrinoApi:
             source=source,
             auth=basic_auth,
             http_scheme=HTTPS,
-            verify=self._download_ssl_cert(verify),
+            verify=self._get_ca_chain_path(verify),
             session_properties=session_properties,
             http_headers=http_headers,
             max_attempts=max_attempts,
@@ -417,7 +410,7 @@ class TrinoApi:
         connect_args = {
             "auth": basic_auth,
             "http_scheme": HTTPS,
-            "verify": self._download_ssl_cert(verify),
+            "verify": self._get_ca_chain_path(verify),
             "source": source,
             "session_properties": session_properties,
             "http_headers": http_headers,

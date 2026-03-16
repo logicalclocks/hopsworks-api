@@ -113,8 +113,8 @@ class TestTrinoApi:
         # Assert
         assert api.project_name == mock_project.name
 
-    def test_download_ssl_cert_internal_client(self, mocker, trino_api):
-        """Test SSL certificate download for internal client."""
+    def test_get_ca_chain_path_internal_client(self, mocker, trino_api):
+        """Test SSL certificate for internal client."""
         # Arrange
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=False
@@ -124,41 +124,44 @@ class TestTrinoApi:
             "hopsworks_common.core.trino_api.client.get_instance",
             return_value=mock_client,
         )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
+        )
 
         # Act
-        result = trino_api._download_ssl_cert(verify=True)
+        result = trino_api._get_ca_chain_path(verify=True)
 
         # Assert
         assert result == os.path.join("/tmp", "trino_ca_chain.pem")
 
         # Act with verification disabled
-        result = trino_api._download_ssl_cert(verify=False)
+        result = trino_api._get_ca_chain_path(verify=False)
         assert result is False
 
         # Act with custom verify value
-        result = trino_api._download_ssl_cert(
+        result = trino_api._get_ca_chain_path(
             verify=os.path.join("path", "to", "custom", "ca.pem")
         )
         assert result == os.path.join("path", "to", "custom", "ca.pem")
 
-    def test_download_ssl_cert_external_client(self, mocker, trino_api):
-        """Test SSL certificate download for external client."""
+    def test_get_ca_chain_path_external_client(self, mocker, trino_api):
+        """Test SSL certificate for external client."""
         # Arrange
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
 
         # Act
-        result = trino_api._download_ssl_cert(verify=True)
+        result = trino_api._get_ca_chain_path(verify=True)
 
         # Assert
         assert result is True
 
         # Act with verify disabled
-        result = trino_api._download_ssl_cert(verify=False)
+        result = trino_api._get_ca_chain_path(verify=False)
         assert result is False
         # Act with custom verify value
-        result = trino_api._download_ssl_cert(
+        result = trino_api._get_ca_chain_path(
             verify=os.path.join("path", "to", "custom", "ca.pem")
         )
         assert result == os.path.join("path", "to", "custom", "ca.pem")
@@ -267,6 +270,9 @@ class TestTrinoApi:
             "hopsworks_common.core.trino_api.client.get_instance",
             return_value=mock_client,
         )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
+        )
         mock_connection = Mock()
         mock_trino_connect = mocker.patch(
             "hopsworks_common.core.trino_api._trino_connect",
@@ -371,6 +377,9 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client.get_instance",
             return_value=mock_client,
+        )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
         )
         mock_engine = Mock()
         mock_create_engine = mocker.patch(
