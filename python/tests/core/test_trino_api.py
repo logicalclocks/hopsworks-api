@@ -240,14 +240,16 @@ class TestTrinoApi:
             trino_api._get_password(user)
 
     def test_get_basic_auth(self, trino_api):
-        """Test getting BasicAuthentication object."""
+        """Test getting user and password for basic authentication."""
         # Act
         auth = trino_api.get_basic_auth()
 
         # Assert
-        assert isinstance(auth, BasicAuthentication)
-        assert auth._username == "test_project__test_user"
-        assert auth._password == "test_password"
+        assert isinstance(auth, tuple)
+        assert len(auth) == 2
+        user, password = auth
+        assert user == "test_project__test_user"
+        assert password == "test_password"
 
     def test_connect_internal_client(self, mocker, trino_api):
         """Test connecting to Trino using DBAPI from internal client."""

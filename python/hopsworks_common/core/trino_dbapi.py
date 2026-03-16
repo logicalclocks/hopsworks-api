@@ -82,7 +82,7 @@ def connect(
     Example:
         ```python
         import hopsworks
-        from hopsworks.core.trino_api import connect
+        from hopsworks.core.trino_dbapi import connect
 
         project = hopsworks.login()
         conn = connect(catalog="iceberg", schema="my_db")
@@ -170,7 +170,7 @@ def create_engine(
     Example:
         ```python
         import hopsworks
-        from hopsworks.core.trino_api import create_engine
+        from hopsworks.core.trino_dbapi import create_engine
         from sqlalchemy.sql.expression import text
 
         project = hopsworks.login()
