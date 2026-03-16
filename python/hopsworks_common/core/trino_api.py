@@ -223,8 +223,14 @@ class TrinoApi:
         Raises:
             hopsworks_common.client.exceptions.TrinoException:
                 If credentials cannot be retrieved from secrets storage.
+            TrinoException:
+                If the client cannot determine the username for the current project user.
         """
         username = self._project_api.get_user_info().get("username", None)
+        if username is None:
+            raise TrinoException(
+                "Client could not determine username for the current project user."
+            )
         user = f"{self.project_name}__{username}"
         password = self._get_password(user)
         return user, password
