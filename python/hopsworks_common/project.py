@@ -299,7 +299,7 @@ class Project:
         """Get the Trino API for the project.
 
         Returns:
-            The Trino Api handle.
+            The Trino API handle.
         """
         if self._trino_api is None:
             self._trino_api = trino_api.TrinoApi(project=self)

@@ -21,11 +21,11 @@ from hopsworks_common.client.exceptions import TrinoException
 from hopsworks_common.core.trino_api import (
     DEFAULT_SOURCE,
     DEFAULT_SQLALCHEMY_SOURCE,
+    HTTPS,
     TRINO_PORT,
     TRINO_SERVICE_NAME,
     TrinoApi,
 )
-from trino import constants
 from trino.auth import BasicAuthentication
 from trino.transaction import IsolationLevel
 
@@ -282,7 +282,7 @@ class TestTrinoApi:
         assert call_kwargs["schema"] == "test_schema"
         assert call_kwargs["source"] == DEFAULT_SOURCE
         assert isinstance(call_kwargs["auth"], BasicAuthentication)
-        assert call_kwargs["http_scheme"] == constants.HTTPS
+        assert call_kwargs["http_scheme"] == HTTPS
         assert call_kwargs["verify"] == "/path/to/certs/ca_chain.pem"
 
     def test_connect_external_client(self, mocker, trino_api):
@@ -392,7 +392,7 @@ class TestTrinoApi:
 
         # Verify connect_args
         assert isinstance(connect_args["auth"], BasicAuthentication)
-        assert connect_args["http_scheme"] == constants.HTTPS
+        assert connect_args["http_scheme"] == HTTPS
         assert connect_args["verify"] == "/path/to/certs/ca_chain.pem"
         assert connect_args["source"] == DEFAULT_SQLALCHEMY_SOURCE
 

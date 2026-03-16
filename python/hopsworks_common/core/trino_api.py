@@ -199,14 +199,13 @@ class TrinoApi:
             )
         return secret.value
 
-    @uses_trino
     @public
     @usage.method_logger
-    def get_basic_auth(self) -> BasicAuthentication:
-        """Get a BasicAuthentication object for the current project user.
+    def get_basic_auth(self) -> tuple[str, str]:
+        """Get a tuple containing the username and password for the current project user.
 
         Returns:
-            A BasicAuthentication object with the current project user's credentials.
+            A tuple containing the username and the password for the current project user.
 
         Raises:
             hopsworks_common.client.exceptions.TrinoException:
@@ -215,7 +214,7 @@ class TrinoApi:
         username = self._project_api.get_user_info().get("username", None)
         user = f"{self.project_name}__{username}"
         password = self._get_password(user)
-        return BasicAuthentication(user, password)
+        return user, password
 
     @uses_trino
     @public
@@ -286,12 +285,13 @@ class TrinoApi:
         host = self.get_host()
         port = self.get_port()
 
-        basic_auth = self.get_basic_auth()
+        user, password = self.get_basic_auth()
+        basic_auth = BasicAuthentication(user, password)
 
         return _trino_connect(
             host=host,
             port=port,
-            user=basic_auth._username,
+            user=user,
             catalog=catalog,
             schema=schema,
             source=source,
@@ -382,12 +382,13 @@ class TrinoApi:
         host = self.get_host()
         port = self.get_port()
 
-        basic_auth = self.get_basic_auth()
+        user, password = self.get_basic_auth()
+        basic_auth = BasicAuthentication(user, password)
 
         connection_url = URL(
             host=host,
             port=port,
-            user=basic_auth._username,
+            user=user,
             catalog=catalog,
             schema=schema,
         )
