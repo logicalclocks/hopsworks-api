@@ -57,6 +57,7 @@ dependencies = [
     "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
     "packaging",                     # ^21.0
     "hopsworks-apigen>=1.0.4,<2.0.0",
+    "setuptools", # PEP 632
 ]
 
 [project.scripts]
