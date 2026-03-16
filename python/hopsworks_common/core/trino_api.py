@@ -109,6 +109,12 @@ class TrinoApi:
     """
 
     def __init__(self, project: project.Project | None = None):
+        """Initialize the TrinoApi instance.
+
+        Parameters:
+            project: The Hopsworks project context. If None, the default project is used.
+
+        """
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
             self._variable_api.get_service_discovery_domain()
