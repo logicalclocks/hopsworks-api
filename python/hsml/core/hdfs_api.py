@@ -42,14 +42,11 @@ class HdfsApi:
     ):
         """Upload file/directory to the Hopsworks filesystem.
 
-        :param local_path: local path to file to upload
-        :type local_path: str
-        :param upload_path: path to directory where to upload the file in Hopsworks filesystem
-        :type upload_path: str
-        :param overwrite: overwrite file if exists
-        :type overwrite: bool
-        :param buffer_size: size of the temporary read and write buffer. Defaults to 0.
-        :type buffer_size: int.
+        Parameters:
+            local_path: local path to file to upload
+            upload_path: path to directory where to upload the file in Hopsworks filesystem
+            overwrite: overwrite file if exists
+            buffer_size: size of the temporary read and write buffer.
         """
         # local path could be absolute or relative,
         if not os.path.isabs(local_path) and os.path.exists(
@@ -78,14 +75,14 @@ class HdfsApi:
 
         return upload_path + "/" + os.path.basename(local_path)
 
-    def download(self, path, local_path, buffer_size=DEFAULT_BUFFER_SIZE):
+    def download(
+        self, path: str, local_path: str, buffer_size: int = DEFAULT_BUFFER_SIZE
+    ):
         """Download file/directory on a path in datasets.
 
-        :param path: path to download
-        :type path: str
-        :param local_path: path to download in datasets
-        :type local_path: str
-        :param buffer_size: size of the temporary read and write buffer. Defaults to 0.
-        :type buffer_size: int.
+        Parameters:
+            path: path to download
+            local_path: path to download in datasets
+            buffer_size: size of the temporary read and write buffer.
         """
         self._hopsfs.download(path, local_path, recursive=True, buffer_size=buffer_size)

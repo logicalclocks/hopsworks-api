@@ -28,7 +28,18 @@ class FeatureStoreActivityApi:
         limit: int = 100,
         offset: int = 0,
     ) -> list[fsa_mod.FeatureStoreActivity]:
-        """Get the activities for a feature group in the feature store."""
+        """Get the activities for a feature group in the feature store.
+
+        Parameters:
+            feature_store_id: ID of the feature store.
+            feature_group_id: ID of the feature group.
+            activity_type: List of activity types to filter the activities by.
+            limit: Maximum number of activities to return.
+            offset: Number of activities to skip before starting to collect the result set.
+
+        Returns:
+            List of feature store activities for the specified feature group.
+        """
         _client = client.get_instance()
         path_params = [
             "project",

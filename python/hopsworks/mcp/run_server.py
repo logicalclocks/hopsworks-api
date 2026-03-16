@@ -107,7 +107,24 @@ def run_server(
         "spark", "python", "training", "spark-no-metastore", "spark-delta"
     ] = "python",
 ):
-    """Run the Hopsworks MCP server."""
+    """Run the Hopsworks MCP server.
+
+    Parameters:
+        host: Host to run the server on.
+        port:
+            Port to run the server on.
+            If not provided, it will default to the value of the UVICORN_PORT environment variable or 8000 if that is not set.
+        transport: Transport method to use.
+        create_session: Whether to create a Hopsworks session for the MCP server.
+        hopsworks_host: Hopsworks host URL.
+        hopsworks_port: Hopsworks port.
+        project: Project name to use as default.
+        api_key_value: API key value for Hopsworks authentication.
+        api_key_file: Path to a file containing the API key for Hopsworks authentication.
+        hostname_verification: Enable hostname verification for Hopsworks authentication.
+        trust_store_path: Path to the trust store for Hopsworks authentication.
+        engine: Hopsworks engine to use.
+    """
     if transport not in {"stdio", "http", "sse", "streamable-http"}:
         raise ValueError(
             "Invalid transport type. Choose from 'stdio', 'http', 'sse', or 'streamable-http'."

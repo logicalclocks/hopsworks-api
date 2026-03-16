@@ -371,7 +371,7 @@ class VectorServer:
         """Check if any request parameters required for computing on-demand features are missing.
 
         Parameters:
-            feature_vector: `Dict[str, Any]`. The feature vector used to compute on-demand features.
+            features: The feature vector used to compute on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
         """
         request_parameters = request_parameters if request_parameters else {}
@@ -446,7 +446,25 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | dict[str, Any]:
-        """Assembles serving vector from online feature store."""
+        """Assemble a single serving vector from the online feature store.
+
+        Parameters:
+            entry: Primary key values used to look up the feature vector.
+            return_type: The format of the returned feature vector.
+            passed_features: Feature values to substitute instead of fetching from the store.
+            vector_db_features: Feature values fetched from a vector database.
+            allow_missing: Whether to allow missing feature values in the result.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            request_parameters: Parameters required by on-demand transformation functions.
+            transformation_context: Contextual objects passed to transformation functions.
+            logging_data: Whether to include inference helper columns for logging.
+
+        Returns:
+            The assembled feature vector in the requested format.
+        """
         online_client_choice = self.which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
@@ -553,7 +571,25 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
-        """Assembles serving vector from online feature store."""
+        """Assemble a batch of serving vectors from the online feature store.
+
+        Parameters:
+            entries: List of primary key value dicts used to look up each feature vector.
+            return_type: The format of the returned feature vectors.
+            passed_features: Feature values to substitute instead of fetching from the store.
+            vector_db_features: Feature values fetched from a vector database.
+            request_parameters: Parameters required by on-demand transformation functions.
+            allow_missing: Whether to allow missing feature values in the result.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            transformation_context: Contextual objects passed to transformation functions.
+            logging_data: Whether to include inference helper columns for logging.
+
+        Returns:
+            The assembled feature vectors in the requested format.
+        """
         if passed_features is None:
             passed_features = []
         # Assertions on passed_features and vector_db_features
@@ -758,7 +794,23 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_meta_data: LoggingMetaData = None,
     ) -> list[Any] | None:
-        """Assembles serving vector from online feature store."""
+        """Assemble a single serving vector from fetched and passed feature values.
+
+        Parameters:
+            result_dict: Feature values fetched from the online store.
+            passed_values: Feature values passed directly by the caller.
+            vector_db_result: Feature values fetched from a vector database.
+            allow_missing: Whether to allow missing feature values in the result.
+            client: Which online store client was used ("rest" or "sql").
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            request_parameters: Parameters required by on-demand transformation functions.
+            transformation_context: Contextual objects passed to transformation functions.
+            logging_meta_data: Metadata object for logging, if logging is enabled.
+
+        Returns:
+            The assembled feature vector as a list, or None if the result was null.
+        """
         # Errors in batch requests are returned as None values
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling serving vector: %s", result_dict)
@@ -842,9 +894,8 @@ class VectorServer:
         """Validate if an feature-vector provided contain all required features.
 
         Parameters:
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
-            on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
-
+            feature_vectors: The feature vectors to be converted.
+            on_demand_features: Specify if on-demand features provided in the input feature vector.
         """
         required_features = (
             set(self._untransformed_feature_vector_col_name)
@@ -887,11 +938,11 @@ class VectorServer:
         """Function that converts an input feature vector into a list of dictionaries.
 
         Parameters:
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
-            on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
+            feature_vectors: The feature vectors to be converted.
+            on_demand_features: Specify if on-demand features provided in the input feature vector.
 
         Returns:
-            `Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]`: A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
+            A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
 
         """
         if isinstance(feature_vectors, pd.DataFrame):
@@ -937,13 +988,13 @@ class VectorServer:
         """Applies model dependent transformation on the provided feature vector.
 
         Parameters:
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be transformed using attached model-dependent transformations.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            feature_vectors: The feature vectors to be transformed using attached model-dependent transformations.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector.
+            The transformed feature vector.
         """
         if not self._model_dependent_transformation_functions:
             warnings.warn(
@@ -1000,19 +1051,19 @@ class VectorServer:
         request_parameters: list[dict[str, Any]] | dict[str, Any] = None,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
-    ):
+    ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Function computes on-demand features present in the feature view.
 
         Parameters:
-            feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
+            feature_vectors: The feature vector(s) to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
                 These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the `feature_vector`, the value from `request_parameters` is used.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
+            The feature vector that contains all on-demand features in the feature view.
         """
         if not self._on_demand_transformation_functions:
             warnings.warn(
@@ -1081,11 +1132,11 @@ class VectorServer:
         """Function that accepts a feature vectors as a list and returns the untransformed features as a dict that maps feature names to their values.
 
         Parameters:
-            features : `List[Any]`. List of feature vectors.
-            on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
+            features: List of feature vectors.
+            on_demand_features: Specify if on-demand features provided in the input feature vector.
 
         Returns:
-            `Dict[str, Any]` : Dictionary mapping features name to values.
+            Dictionary mapping features name to values.
         """
         if on_demand_features:
             return dict(zip(self._on_demand_feature_vector_col_name, features))
@@ -1175,7 +1226,17 @@ class VectorServer:
         force_rest_client: bool,
         force_sql_client: bool,
     ) -> pd.DataFrame | pl.DataFrame | dict[str, Any]:
-        """Assembles serving vector from online feature store."""
+        """Retrieve inference helper values for a single entry.
+
+        Parameters:
+            entry: Primary key values used to look up the inference helper vector.
+            return_type: The format of the returned inference helpers.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+
+        Returns:
+            The inference helper values in the requested format.
+        """
         default_client = self.which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
         )
@@ -1213,7 +1274,17 @@ class VectorServer:
         force_rest_client: bool,
         force_sql_client: bool,
     ) -> pd.DataFrame | pl.DataFrame | list[dict[str, Any]]:
-        """Assembles serving vector from online feature store."""
+        """Retrieve inference helper values for a batch of entries.
+
+        Parameters:
+            entries: List of primary key value dicts used to look up each inference helper vector.
+            return_type: The format of the returned inference helpers.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+
+        Returns:
+            The inference helper values in the requested format.
+        """
         default_client = self.which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
         )
@@ -1338,8 +1409,8 @@ class VectorServer:
         """Function that raises warnings based on the values of `transform` and `on_demand_features` parameters to let users know about the behavior of the function.
 
         Parameters:
-            transform : `bool`. Specify if model-dependent transformations should be applied.
-            on_demand_features : `bool`. Specify if on-demand features should be computed.
+            transform: Specify if model-dependent transformations should be applied.
+            on_demand_features: Specify if on-demand features should be computed.
         """
         warn_on_demand_features = (
             not on_demand_features and self.on_demand_transformation_functions
@@ -1378,11 +1449,15 @@ class VectorServer:
         on_demand_features: bool = True,
         logging_meta_data: LoggingMetaData = None,
     ):
-        """Function that applies both on-demand and model dependent transformation to the input dictonary.
+        """Apply both on-demand and model-dependent transformations to the input dictionary.
 
-        Returns:
-            feature_vector: The untransformed feature vector with untransformed features.
-            encoded_feature_dict: The transformed feature vector with transformed features.
+        Parameters:
+            row_dict: The feature dictionary or dataframe to transform.
+            request_parameter: Parameters required by on-demand transformation functions.
+            transformation_context: Contextual objects passed to transformation functions.
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            logging_meta_data: Metadata object for logging, if logging is enabled.
         """
         feature_dict = row_dict
         encoded_feature_dict = None
@@ -1453,6 +1528,9 @@ class VectorServer:
         Values already provided as native Python objects (e.g., via passed_features or REST) are returned unchanged.
         Embedding vectors are already deserialized, but complex features stored in OpenSearch must be deserialized here.
         Timestamp conversion is handled separately.
+
+        Returns:
+            A dictionary mapping feature names to their decoder callables.
         """
         if not HAS_AVRO:
             raise ModuleNotFoundError(avro_not_installed_message)
@@ -1501,18 +1579,20 @@ class VectorServer:
             _logger.debug("Fast Avro not found, using avro for deserialization.")
         return {
             f_name: (
-                lambda feature_value, avro_schema=schema: avro_schema.read(
-                    BinaryDecoder(
-                        BytesIO(
-                            feature_value
-                            if isinstance(feature_value, bytes)
-                            else b64decode(feature_value)
+                lambda feature_value, avro_schema=schema: (
+                    avro_schema.read(
+                        BinaryDecoder(
+                            BytesIO(
+                                feature_value
+                                if isinstance(feature_value, bytes)
+                                else b64decode(feature_value)
+                            )
                         )
                     )
+                    # embedded features are deserialized already but not complex features stored in Opensearch
+                    if (isinstance(feature_value, (str, bytes)))
+                    else feature_value
                 )
-                # embedded features are deserialized already but not complex features stored in Opensearch
-                if (isinstance(feature_value, (str, bytes)))
-                else feature_value
             )
             for (f_name, schema) in complex_feature_schemas.items()
         }
@@ -1524,6 +1604,9 @@ class VectorServer:
 
         Re-using the current logic from the vector server means that we currently iterate over the feature vectors
         and values multiple times, as well as converting the feature values to a dictionary and then back to a list.
+
+        Parameters:
+            features: The list of training dataset features to build handlers for.
         """
         if (
             hasattr(self, "_return_feature_value_handlers")
@@ -1592,6 +1675,15 @@ class VectorServer:
                 via passed_features or vector_db_features.
 
         Keys relevant to vector_db are filtered out.
+
+        Parameters:
+            entry: Primary key values provided by the caller.
+            allow_missing: Whether to allow missing serving keys.
+            passed_features: Feature values passed directly by the caller.
+            vector_db_features: Feature values fetched from a vector database.
+
+        Returns:
+            The validated entry dict with vector_db keys removed.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -1658,6 +1750,11 @@ class VectorServer:
         Limitation:
         - The method does not check whether serving keys correspond to existing rows in the online feature store.
         - The method does not check whether the passed features names and data types correspond to the query schema.
+
+        Parameters:
+            entry: Primary key values provided by the caller.
+            passed_features: Feature values passed directly by the caller.
+            vector_db_features: Feature values fetched from a vector database.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -1720,7 +1817,15 @@ class VectorServer:
         serving_keys: list[sk_mod.ServingKey],
         features: list[tdf_mod.TrainingDatasetFeature],
     ) -> dict[str, tuple[str, set[str]]]:
-        """Build a dictionary of feature names which will be fetched per serving key."""
+        """Build a dictionary of feature names which will be fetched per serving key.
+
+        Parameters:
+            serving_keys: The list of serving keys for the feature view.
+            features: The list of training dataset features.
+
+        Returns:
+            A dictionary mapping each required serving key to a tuple of (feature_name, set_of_fetched_feature_names).
+        """
         per_serving_key_features = {}
         for serving_key in serving_keys:
             per_serving_key_features[serving_key.required_serving_key] = (

@@ -47,6 +47,7 @@ class DeltaEngine:
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
     DELTA_DOT_PREFIX = "delta."
+    APPEND = "append"
 
     def __init__(
         self,
@@ -325,21 +326,60 @@ class DeltaEngine:
             _logger.debug(f"Internal client, using delta-rs location: {location}")
             return location
 
+    @staticmethod
+    def _get_partition_values(
+        dataset, partition_key: list[str]
+    ) -> dict[str, list[str]]:
+        """Return {col: [unique_str_values]} for each partition column.
+
+        Reads only the partition columns from the in-memory Arrow table — no
+        Parquet I/O.  Used by both _can_use_append (to query file_uris) and the
+        merge path (to build DataFusion partition-pruning IN filters).
+        """
+        import pyarrow.compute as pc
+
+        return {
+            col: [str(v) for v in pc.unique(dataset.column(col)).to_pylist()]
+            for col in partition_key
+        }
+
+    def _can_use_append(self, fg_source_table, dataset) -> bool:
+        """Return True if a plain append is safe (no partition overlap with existing data).
+
+        When the feature group has a partition key and none of the incoming
+        partition values are present in the existing Delta table, a merge is
+        unnecessary: every row is a new insert so appending produces the same
+        result with far less memory (no existing-partition scan for the join).
+
+        Falls back to False (i.e. use merge) on any error so correctness is
+        never compromised.
+        """
+        partition_key = self._feature_group.partition_key
+        if not partition_key:
+            return False
+        try:
+            partition_values = self._get_partition_values(dataset, partition_key)
+            filters = [(col, "in", vals) for col, vals in partition_values.items()]
+            matching_files = fg_source_table.file_uris(partition_filters=filters)
+            no_overlap = len(matching_files) == 0
+            _logger.debug(
+                f"Partition overlap check: incoming partitions={partition_values}, "
+                f"existing matching files={len(matching_files)}, use_append={no_overlap}"
+            )
+            return no_overlap
+        except Exception as e:
+            _logger.debug(f"Partition overlap check failed, falling back to merge: {e}")
+            return False
+
     def _write_delta_rs_dataset(
-        self, dataset, write_options: dict[str, Any] | None = None
+        self,
+        dataset: pa.Table | pl.DataFrame | pd.DataFrame,
+        write_options: dict[str, Any] | None = None,
     ):
         """Write a dataset to a Delta table using delta-rs.
 
-        Supports pyarrow.Table, polars.DataFrame, and pandas.DataFrame as input.
-
-        # Arguments
-
-            dataset: `pyarrow.Table` or `polars.DataFrame` or `pandas.DataFrame`.
-                Dataset to write to the Delta table.
-
-        # Returns
-
-            `None`. Writes the dataset to the Delta table.
+        Parameters:
+            dataset: Dataset to write to the Delta table.
         """
         try:
             from deltalake import DeltaTable as DeltaRsTable
@@ -350,7 +390,9 @@ class DeltaEngine:
                 "Delta Lake (deltalake) and its dependencies are required for non-Spark operations. "
                 "Install 'hops-deltalake' to enable Delta RS features."
             ) from e
+
         location = self._get_delta_rs_location()
+
         is_polars_df = False
         if HAS_POLARS:
             import polars as pl
@@ -362,6 +404,11 @@ class DeltaEngine:
 
         if not is_polars_df:
             dataset = self._prepare_df_for_delta(dataset)
+
+        append_requested = (
+            isinstance(write_options, dict)
+            and str(write_options.get("mode", "")).lower() == self.APPEND
+        )
 
         try:
             fg_source_table = DeltaRsTable(location)
@@ -399,25 +446,56 @@ class DeltaEngine:
                         )
                     }
                 )
-            source_alias = (
-                f"{self._feature_group.name}_{self._feature_group.version}_source"
-            )
-            updates_alias = (
-                f"{self._feature_group.name}_{self._feature_group.version}_updates"
-            )
-            merge_query_str = self._generate_merge_query(source_alias, updates_alias)
-
-            (
-                fg_source_table.merge(
-                    source=dataset,
-                    predicate=merge_query_str,
-                    source_alias=updates_alias,
-                    target_alias=source_alias,
+            if append_requested:
+                deltars_write(location, dataset, mode=self.APPEND)
+                _logger.debug(
+                    f"Explicit append mode requested for {location}. Skipping merge operation."
                 )
-                .when_matched_update_all()
-                .when_not_matched_insert_all()
-                .execute()
-            )
+                return self._get_last_commit_metadata(self._spark_session, location)
+            # Optimisation: if the feature group is partitioned and none of the
+            # incoming partition values already exist in the table, a plain append
+            # is equivalent to a merge (no rows to update) but avoids loading all
+            # existing partition data into memory for the join.
+            use_append = self._can_use_append(fg_source_table, dataset)
+            if use_append:
+                deltars_write(
+                    location,
+                    dataset,
+                    mode="append",
+                    partition_by=self._feature_group.partition_key,
+                )
+            else:
+                source_alias = (
+                    f"{self._feature_group.name}_{self._feature_group.version}_source"
+                )
+                updates_alias = (
+                    f"{self._feature_group.name}_{self._feature_group.version}_updates"
+                )
+                # Extract partition values from the in-memory dataset so
+                # _generate_merge_query can emit literal IN filters that let DataFusion
+                # prune Parquet files to only the overlapping partitions.  Zero I/O —
+                # the values come directly from the Arrow table already in memory.
+                partition_values = (
+                    self._get_partition_values(
+                        dataset, self._feature_group.partition_key
+                    )
+                    if self._feature_group.partition_key
+                    else None
+                )
+                merge_query_str = self._generate_merge_query(
+                    source_alias, updates_alias, partition_values
+                )
+                (
+                    fg_source_table.merge(
+                        source=dataset,
+                        predicate=merge_query_str,
+                        source_alias=updates_alias,
+                        target_alias=source_alias,
+                    )
+                    .when_matched_update_all()
+                    .when_not_matched_insert_all()
+                    .execute()
+                )
         _logger.debug(
             f"Executed delta-rs write. Retrieving commit metadata for Delta table at {location}"
         )
@@ -450,15 +528,17 @@ class DeltaEngine:
         # Process timestamp columns
         if not isinstance(df, pd.DataFrame):
             return df
-        df_copy = df.copy()
-        for col in df_copy.select_dtypes(include=["datetime64"]).columns:
+        # `df` is already a shallow copy from convert_to_default_dataframe, so we do not
+        # need a full deep copy here.  Column assignments on a shallow copy update only the
+        # copy's column reference and never mutate the caller's original DataFrame.
+        for col in df.select_dtypes(include=["datetime64"]).columns:
             # For timezone-aware timestamps, convert to UTC and remove timezone info
-            if hasattr(df_copy[col].dtype, "tz") and df_copy[col].dtype.tz is not None:
-                df_copy[col] = df_copy[col].dt.tz_convert("UTC").dt.tz_localize(None)
+            if hasattr(df[col].dtype, "tz") and df[col].dtype.tz is not None:
+                df[col] = df[col].dt.tz_convert("UTC").dt.tz_localize(None)
 
         # Convert to basic PyArrow table first
         _logger.debug("Converting DataFrame to basic PyArrow Table")
-        table = pa.Table.from_pandas(df_copy, preserve_index=False)
+        table = pa.Table.from_pandas(df, preserve_index=False)
 
         # Cast timestamp columns to the specified precision and float16 to float32
         _logger.debug("Casting timestamp and float16 columns if needed")
@@ -500,11 +580,11 @@ class DeltaEngine:
         and creates an empty DataFrame with that schema, then writes it to the
         feature group location using Delta format.
 
-        # Arguments
-            write_options: Optional dictionary of write options for Delta.
-                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
-                disable cdf operations on the feature group delta table. Set to true by default on FG created
-                after 4.6
+        Parameters:
+            write_options:
+                Optional dictionary of write options for Delta.
+                - key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or disable cdf operations on the feature group delta table.
+                  Set to true by default on FG created after 4.6.
         """
         # Build DDL schema string from features
         ddl_fields = []
@@ -533,11 +613,11 @@ class DeltaEngine:
 
         Supports simple types, array types, and struct types.
 
-        # Arguments
-            write_options: Optional dictionary of write options for Delta.
-                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
-                disable cdf operations on the feature group delta table. Set to true by default on FG created
-                after 4.6
+        Parameters:
+            write_options:
+                Optional dictionary of write options for Delta.
+                - key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or disable cdf operations on the feature group delta table.
+                  Set to true by default on FG created after 4.6.
         """
         try:
             import pyarrow as pa
@@ -590,7 +670,12 @@ class DeltaEngine:
         )
         self._spark_session.sql(f"VACUUM '{location}' {retention}")
 
-    def _generate_merge_query(self, source_alias, updates_alias):
+    def _generate_merge_query(
+        self,
+        source_alias,
+        updates_alias,
+        partition_values: dict[str, list[str]] | None = None,
+    ):
         _logger.debug(
             f"Generating merge query for feature group {self._feature_group.name} v{self._feature_group.version} from source alias {source_alias} and updates alias {updates_alias}"
         )
@@ -608,6 +693,15 @@ class DeltaEngine:
         for pk in primary_key:
             merge_query_list.append(f"{source_alias}.{pk} == {updates_alias}.{pk}")
         merge_query_str = " AND ".join(merge_query_list)
+
+        # Append literal partition-value IN filters so DataFusion can prune
+        # which Parquet files to read — avoids scanning the entire table when
+        # only a subset of partitions are being updated.
+        if partition_values:
+            for col, vals in partition_values.items():
+                vals_sql = ", ".join(f"'{v}'" for v in vals)
+                merge_query_str += f" AND {source_alias}.{col} IN ({vals_sql})"
+
         _logger.debug(f"Merge query: {merge_query_str}")
         return merge_query_str
 

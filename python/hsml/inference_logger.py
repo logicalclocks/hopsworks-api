@@ -30,9 +30,6 @@ class InferenceLogger:
     Parameters:
         kafka_topic: Kafka topic to send the inference logs to. By default, a new Kafka topic is configured.
         mode: Inference logging mode. (e.g., `NONE`, `ALL`, `PREDICTIONS`, or `MODEL_INPUTS`). By default, `ALL` inference logs are sent.
-
-    Returns:
-        `InferenceLogger`. Configuration of an inference logger.
     """
 
     def __init__(

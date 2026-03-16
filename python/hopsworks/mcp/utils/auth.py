@@ -16,9 +16,13 @@
 from __future__ import annotations
 
 import builtins
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import hopsworks
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.project import Project
 
 
 def login(
@@ -31,20 +35,20 @@ def login(
     trust_store_path: str | None = None,
     engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
     | None = "python",
-):
+) -> Project:
     """Login to Hopsworks and return the project.
 
     This function wraps hopsworks.login to simulate user input by overriding the built-in input function.
 
-    Args:
-        host (Optional[str]): Hopsworks host URL.
-        port (int): Hopsworks port (default 443).
-        project (Optional[str]): Project name to access.
-        api_key_value (Optional[str]): API key value for Hopsworks authentication.
-        api_key_file (Optional[str]): Path to a file containing the API key for Hopsworks authentication.
-        hostname_verification (bool): Enable hostname verification for Hopsworks authentication.
-        trust_store_path (Optional[str]): Path to the trust store for Hopsworks authentication.
-        engine (Union[None, Literal["spark"], Literal["python"], Literal["training"], Literal["spark-no-metastore"], Literal["spark-delta"]]): Engine to use (default: python).
+    Parameters:
+        host: Hopsworks host URL.
+        port: Hopsworks port (default 443).
+        project: Project name to access.
+        api_key_value: API key value for Hopsworks authentication.
+        api_key_file: Path to a file containing the API key for Hopsworks authentication.
+        hostname_verification: Enable hostname verification for Hopsworks authentication.
+        trust_store_path: Path to the trust store for Hopsworks authentication.
+        engine: Engine to use (default: python).
 
     Returns:
         Project: The project object after successful login.

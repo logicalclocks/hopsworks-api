@@ -121,23 +121,47 @@ class TrainingDatasetEngine:
         return fs_query.query
 
     def add_tag(self, training_dataset, name, value):
-        """Attach a name/value tag to a training dataset."""
+        """Attach a name/value tag to a training dataset.
+
+        Parameters:
+            training_dataset: The training dataset to tag.
+            name: Tag name.
+            value: Tag value.
+        """
         self._tags_api.add(training_dataset, name, value)
 
     def delete_tag(self, training_dataset, name):
-        """Remove a tag from a training dataset."""
+        """Remove a tag from a training dataset.
+
+        Parameters:
+            training_dataset: The training dataset to remove the tag from.
+            name: Tag name.
+        """
         self._tags_api.delete(training_dataset, name)
 
     def get_tag(self, training_dataset, name):
-        """Get tag with a certain name for a training dataset."""
+        """Get tag with a certain name for a training dataset.
+
+        Parameters:
+            training_dataset: The training dataset to read the tag from.
+            name: Tag name.
+        """
         return self._tags_api.get(training_dataset, name)[name]
 
     def get_tags(self, training_dataset):
-        """Get all tags for a training dataset."""
+        """Get all tags for a training dataset.
+
+        Parameters:
+            training_dataset: The training dataset to read tags from.
+        """
         return self._tags_api.get(training_dataset)
 
     def update_statistics_config(self, training_dataset):
-        """Update the statistics configuration of a feature group."""
+        """Update the statistics configuration of a training dataset.
+
+        Parameters:
+            training_dataset: The training dataset whose statistics config to update.
+        """
         self._training_dataset_api.update_metadata(
             training_dataset, training_dataset, "updateStatsConfig"
         )

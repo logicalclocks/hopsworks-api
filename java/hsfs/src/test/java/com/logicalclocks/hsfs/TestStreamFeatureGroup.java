@@ -19,7 +19,7 @@ package com.logicalclocks.hsfs;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+import com.logicalclocks.hsfs.StorageConnector.SqlConnector;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.spi.LoggingEvent;
@@ -80,8 +80,8 @@ class TestStreamFeatureGroup {
   @Test
   void testDataSourceUpdateStorageConnector() throws JsonProcessingException {
     // Arrange
-    RdsConnector sc = new RdsConnector();
-    sc.setStorageConnectorType(StorageConnectorType.RDS);
+    SqlConnector sc = new SqlConnector();
+    sc.setStorageConnectorType(StorageConnectorType.SQL);
 
     DataSource ds = Mockito.spy(DataSource.class);
     ds.setStorageConnector(sc);

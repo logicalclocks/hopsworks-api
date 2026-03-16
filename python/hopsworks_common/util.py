@@ -358,7 +358,10 @@ def get_job_url(href: str) -> str:
     """Use the endpoint returned by the API to construct the UI url for jobs.
 
     Parameters:
-        href: the endpoint returned by the API
+        href: The endpoint returned by the API.
+
+    Returns:
+        The UI url for the job.
     """
     url = urlparse(href)
     url_splits = url.path.split("/")
@@ -481,6 +484,7 @@ def validate_job_conf(config, project_name):
     if (
         config["type"] != "dockerJobConfiguration"
         and config["type"] != "flinkJobConfiguration"
+        and config["type"] != "ingestionJobConfiguration"
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
@@ -644,8 +648,15 @@ def validate_metrics(metrics):
                 ) from err
 
 
-def validate_model_name(name):
-    """Validate model name contains only alphanumeric characters and underscores."""
+def validate_model_name(name: str):
+    """Validate model name contains only alphanumeric characters and underscores.
+
+    Parameters:
+        name: The model name to validate.
+
+    Raises:
+        ModelRegistryException: If the model name contains invalid characters.
+    """
     if not re.fullmatch(r"[a-zA-Z0-9_]+", name):
         raise ModelRegistryException(
             f"Invalid model name '{name}'. Model name must contain only alphanumeric characters "
@@ -785,34 +796,38 @@ def feature_view_to_json(obj):
 
 def generate_fully_qualified_feature_name(
     feature_group: feature_group.FeatureGroup, feature_name: str
-):
+) -> str:
     """Generate the fully qualified feature name for a feature.
 
     The fully qualified name is created by concatenating the project name, feature group name, feature group version and feature name.
+
+    Parameters:
+        feature_group: The feature group object the feature belongs to.
+        feature_name: The name of the feature.
+
+    Returns:
+        The fully qualified feature name.
     """
     return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
 
 class AsyncTask:
-    """Generic class to represent an async task.
-
-    Args:
-        func (Callable): The function to run asynchronously.
-        requires_connection_pool (bool): Whether the task requires a connection pool.
-        **kwargs: Key word arguments to be passed to the functions.
-
-    Properties:
-        result (Any): The result of the async task.
-        event (threading.Event): The event that will be set when the async task is finished.
-    """
+    """Generic class to represent an async task."""
 
     def __init__(
         self,
         task_function: Callable,
         task_args: tuple = (),
-        requires_connection_pool=None,
+        requires_connection_pool: bool = False,
         **kwargs,
     ):
+        """Construct an AsyncTask.
+
+        Parameters:
+            task_function: The function to run asynchronously.
+            task_args: Arguments to be passed to the function.
+            requires_connection_pool: Whether the task requires a connection pool.
+        """
         self.task_function = task_function
         self.task_args = task_args
         self.task_kwargs = kwargs
@@ -850,31 +865,31 @@ class AsyncTaskThread(threading.Thread):
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.
-
-    Parameters:
-        connection_pool_initializer (Callable): A function that initializes a connection pool.
-        connection_pool_params (Tuple): The parameters to pass to the connection pool initializer.
-        *thread_args: Arguments to be passed to the thread.
-        **thread_kwargs: Key word arguments to be passed to the thread.
-        event_loop (asyncio.AbstractEventLoop): The event loop used by the thread.
-        task_queue (queue.Queue[AsyncTask]): The queue used to submit tasks to the thread.
-        connection_pool: The connection pool used
     """
 
     def __init__(
         self,
-        connection_pool_initializer: Callable = None,
-        connection_test: Callable = None,
+        connection_pool_initializer: Callable | None = None,
+        connection_test: Callable | None = None,
         connection_pool_params: tuple = (),
         *thread_args,
         **thread_kwargs,
     ):
+        """Construct an AsyncTaskThread.
+
+        Parameters:
+            connection_pool_initializer: A function that initializes a connection pool.
+            connection_test: A function that tests the connection to mysql, it should raise an exception if the connection is not healthy.
+            connection_pool_params: The parameters to pass to the connection pool initializer.
+            *thread_args: Arguments to be passed to the thread.
+            **thread_kwargs: Key word arguments to be passed to the thread.
+        """
         super().__init__(*thread_args, **thread_kwargs)
         self._task_queue: queue.Queue[AsyncTask] = queue.Queue()
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
-        self._connection_pool_initializer: Callable = connection_pool_initializer
-        self._connection_test_function: Callable = connection_test
+        self._connection_pool_initializer: Callable | None = connection_pool_initializer
+        self._connection_test_function: Callable | None = connection_test
         self._connection_pool_params: tuple = connection_pool_params
         self._connection_pool = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
@@ -938,8 +953,15 @@ class AsyncTaskThread(threading.Thread):
         finally:
             self._event_loop.close()
 
-    def submit(self, task: AsyncTask):
-        """Submit a async task to the thread and block until the execution of the function is completed."""
+    def submit(self, task: AsyncTask) -> Any:
+        """Submit a async task to the thread and block until the execution of the function is completed.
+
+        Parameters:
+            task: The async task to be executed in the thread.
+
+        Returns:
+            The result of the async task.
+        """
         # Submit a task to the queue.
         self.task_queue.put(task)
         # Block the execution until the task is finished.
