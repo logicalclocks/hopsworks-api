@@ -89,7 +89,7 @@ class Project:
         self._alerts_api = alerts_api.AlertsApi()
         self._search_api = search_api.SearchApi()
         self._project_namespace = project_namespace
-        self._trino_api = trino_api.TrinoApi(project=self)
+        self._trino_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -301,6 +301,8 @@ class Project:
         Returns:
             The Trino Api handle.
         """
+        if self._trino_api is None:
+            self._trino_api = trino_api.TrinoApi(project=self)
         return self._trino_api
 
     @public

@@ -127,7 +127,8 @@ class TrinoApi:
             verify: Whether to verify the SSL certificate.
 
         Returns:
-            The file path of the downloaded SSL certificate.
+            The file path of the downloaded SSL certificate if it was downloaded.
+            False if no certificate was downloaded or verification is disabled.
         """
         if not client._is_external() and verify is True:
             _client = client.get_instance()
@@ -198,6 +199,7 @@ class TrinoApi:
             )
         return secret.value
 
+    @uses_trino
     @public
     @usage.method_logger
     def get_basic_auth(self) -> BasicAuthentication:
