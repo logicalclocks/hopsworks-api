@@ -120,22 +120,22 @@ class TrinoApi:
         else:
             self.project_name = project.name
 
-    def _download_ssl_cert(self, verify: bool) -> bool | str:
-        """Download the SSL certificate.
+    def _download_ssl_cert(self, verify: bool | str) -> bool | str:
+        """Download the SSL certificate or pass through a custom verify value.
 
         Parameters:
-            verify: Whether to verify the SSL certificate.
+            verify: Whether to verify the SSL certificate, or a path to a custom CA bundle.
 
         Returns:
             The file path of the downloaded SSL certificate if it was downloaded.
-            False if no certificate was downloaded or verification is disabled.
+            The original verify value if verification is handled by the caller or disabled.
         """
         if not client._is_external() and verify is True:
             _client = client.get_instance()
             _client.download_certs()
             _cert_folder = _client.get_certs_folder()
             return os.path.join(_cert_folder, "ca_chain.pem")
-        return False
+        return verify
 
     @public
     @usage.method_logger
@@ -367,12 +367,13 @@ class TrinoApi:
             ```python
             import hopsworks
             from hopsworks.core.trino_api import TrinoApi
+            from sqlalchemy import text
 
             project = hopsworks.login()
             trino_api = TrinoApi()
             engine = trino_api.create_engine(catalog="iceberg", schema="my_db")
             with engine.connect() as connection:
-                result = connection.execute("SELECT * FROM my_table")
+                result = connection.execute(text("SELECT * FROM my_table"))
                 for row in result:
                     print(row)
             ```

@@ -171,7 +171,7 @@ def create_engine(
         ```python
         import hopsworks
         from hopsworks.core.trino_dbapi import create_engine
-        from sqlalchemy.sql.expression import text
+        from sqlalchemy import text
 
         project = hopsworks.login()
         engine = create_engine(catalog="iceberg", schema="my_db")

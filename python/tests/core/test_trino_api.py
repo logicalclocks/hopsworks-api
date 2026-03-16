@@ -132,18 +132,13 @@ class TestTrinoApi:
         assert result == "/path/to/certs/ca_chain.pem"
         mock_client.download_certs.assert_called_once()
 
-    def test_download_ssl_cert_internal_client_no_verify(self, mocker, trino_api):
-        """Test SSL certificate download when verify is False."""
-        # Arrange
-        mocker.patch(
-            "hopsworks_common.core.trino_api.client._is_external", return_value=False
-        )
-
-        # Act
+        # Act with verification disabled
         result = trino_api._download_ssl_cert(verify=False)
-
-        # Assert
         assert result is False
+
+        # Act with custom verify value
+        result = trino_api._download_ssl_cert(verify="/path/to/custom/ca.pem")
+        assert result == "/path/to/custom/ca.pem"
 
     def test_download_ssl_cert_external_client(self, mocker, trino_api):
         """Test SSL certificate download for external client."""
@@ -156,7 +151,14 @@ class TestTrinoApi:
         result = trino_api._download_ssl_cert(verify=True)
 
         # Assert
+        assert result is True
+
+        # Act with verify disabled
+        result = trino_api._download_ssl_cert(verify=False)
         assert result is False
+        # Act with custom verify value
+        result = trino_api._download_ssl_cert(verify="/path/to/custom/ca.pem")
+        assert result == "/path/to/custom/ca.pem"
 
     def test_get_host_internal_client(self, mocker, trino_api):
         """Test getting host for internal client."""
@@ -317,7 +319,7 @@ class TestTrinoApi:
         assert call_kwargs["catalog"] == "iceberg"
         assert call_kwargs["schema"] == "my_db"
         assert call_kwargs["isolation_level"] == IsolationLevel.READ_UNCOMMITTED
-        assert call_kwargs["verify"] is False
+        assert call_kwargs["verify"] is True
 
     def test_connect_with_custom_parameters(self, mocker, trino_api):
         """Test connecting to Trino with custom parameters."""
@@ -426,7 +428,7 @@ class TestTrinoApi:
         assert "trino.example.com" in url_str
         assert "iceberg" in url_str
         assert "my_db" in url_str
-        assert connect_args["verify"] is False
+        assert connect_args["verify"] is True
 
     def test_create_engine_with_custom_parameters(self, mocker, trino_api):
         """Test creating SQLAlchemy engine with custom parameters."""
