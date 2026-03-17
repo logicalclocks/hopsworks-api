@@ -11078,9 +11078,7 @@ class TestSpark:
                 ]
             )
             fresh = datetime.datetime.now()
-            df = self._make_df(
-                spark_engine, [(1, "a", fresh), (2, "b", fresh)], schema
-            )
+            df = self._make_df(spark_engine, [(1, "a", fresh), (2, "b", fresh)], schema)
 
             # Act
             result = spark_engine._filter_online_dataframe(fg, df)

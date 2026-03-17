@@ -1088,7 +1088,9 @@ class Engine:
             else:
                 if event_time:
                     dataframe = dataframe.sort(event_time)
-                dataframe = dataframe.unique(subset=feature_group.primary_key, keep="last", maintain_order=True)
+                dataframe = dataframe.unique(
+                    subset=feature_group.primary_key, keep="last", maintain_order=True
+                )
         else:
             if feature_group.ttl_enabled and feature_group.ttl:
                 if event_time:
@@ -1101,7 +1103,9 @@ class Engine:
             else:
                 if event_time:
                     dataframe = dataframe.sort_values(event_time)
-                dataframe = dataframe.drop_duplicates(subset=feature_group.primary_key, keep="last")
+                dataframe = dataframe.drop_duplicates(
+                    subset=feature_group.primary_key, keep="last"
+                )
 
         return dataframe
 
@@ -1128,9 +1132,9 @@ class Engine:
             hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
             and feature_group.online_enabled
         ) or feature_group.stream:
-            return self._write_dataframe_kafka(
+            return self._run_materialization_job(
                 feature_group,
-                self._filter_online_dataframe(feature_group, dataframe),
+                dataframe,
                 offline_write_options,
             )
         if engine.get_type() == "python":
@@ -1815,7 +1819,6 @@ class Engine:
         dataframe: pd.DataFrame | pl.DataFrame,
         offline_write_options: dict[str, Any],
     ) -> job.Job | None:
-        initial_check_point = ""
         producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
             feature_group,
             offline_write_options,
@@ -1823,15 +1826,6 @@ class Engine:
             if offline_write_options.get("disable_online_ingestion_count", False)
             else len(dataframe),
         )
-
-        if not feature_group._multi_part_insert:
-            # set initial_check_point to the current offset
-            initial_check_point = kafka_engine.kafka_get_offsets(
-                topic_name=feature_group._online_topic_name,
-                feature_store_id=feature_group.feature_store_id,
-                offline_write_options=offline_write_options,
-                high=True,
-            )
 
         acked, progress_bar = kafka_engine.build_ack_callback_and_optional_progress_bar(
             n_rows=dataframe.shape[0],
@@ -1870,6 +1864,33 @@ class Engine:
             producer.flush()
             del producer
             progress_bar.close()
+
+        # wait for online ingestion
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
+    def _run_materialization_job(
+        self,
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        offline_write_options: dict[str, Any],
+    ) -> job.Job | None:
+        initial_check_point = ""
+
+        if not feature_group._multi_part_insert:
+            # set initial_check_point to the current offset
+            initial_check_point = kafka_engine.kafka_get_offsets(
+                topic_name=feature_group._online_topic_name,
+                feature_store_id=feature_group.feature_store_id,
+                offline_write_options=offline_write_options,
+                high=True,
+            )
+
+        self._write_dataframe_kafka(feature_group, dataframe, offline_write_options)
 
         # start materialization job if not an external feature group, otherwise return None
         if isinstance(feature_group, ExternalFeatureGroup):
@@ -1932,14 +1953,6 @@ class Engine:
                     else ""
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
-            )
-
-        # wait for online ingestion
-        if feature_group.online_enabled and offline_write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
             )
 
         return feature_group.materialization_job

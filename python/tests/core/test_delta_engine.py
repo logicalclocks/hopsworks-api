@@ -564,10 +564,12 @@ class TestDeltaEngine:
         # Assert
         assert result == "commit"
         fake_deltalake.write_deltalake.assert_called_once_with(
-            "hdfs://nn:8020/p", dataset, mode="append"
+            "hdfs://nn:8020/p", dataset, mode="append", storage_options=None
         )
         delta_table.merge.assert_not_called()
-        mock_commit.assert_called_once_with(None, "hdfs://nn:8020/p")
+        mock_commit.assert_called_once_with(
+            None, "hdfs://nn:8020/p", storage_options={}
+        )
 
     def test_write_delta_rs_dataset_existing_table_uses_merge_by_default(
         self, mocker, monkeypatch
@@ -608,7 +610,9 @@ class TestDeltaEngine:
         insert_builder.assert_called_once()
         insert_builder.return_value.execute.assert_called_once()
         fake_deltalake.write_deltalake.assert_not_called()
-        mock_commit.assert_called_once_with(None, "hdfs://nn:8020/p")
+        mock_commit.assert_called_once_with(
+            None, "hdfs://nn:8020/p", storage_options={}
+        )
 
     def test_prepare_df_for_delta_importerror(self, monkeypatch):
         # Arrange

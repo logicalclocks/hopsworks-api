@@ -26,7 +26,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import convert_offline_type_to_pyarrow_type
-from hsfs import feature_group, feature_group_commit, util
+from hsfs import engine, feature_group, feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
 
 
@@ -180,6 +180,7 @@ class DeltaEngine:
         return delta_options
 
     def delete_record(self, delete_df):
+        storage_options = None
         if self._spark_session is not None:
             try:
                 from delta.tables import DeltaTable
@@ -192,7 +193,8 @@ class DeltaEngine:
             fg_source_table = DeltaTable.forPath(self._spark_session, location)
             is_delta_table = DeltaTable.isDeltaTable(self._spark_session, location)
         else:
-            location = self._feature_group.location.replace("hopsfs", "hdfs")
+            location = self._get_delta_rs_location()
+            storage_options = self._get_delta_rs_storage_options()
             try:
                 from deltalake import DeltaTable as DeltaRsTable
                 from deltalake.exceptions import TableNotFoundError
@@ -202,7 +204,9 @@ class DeltaEngine:
                     "Install 'hops-deltalake' to enable Delta RS features."
                 ) from e
             try:
-                fg_source_table = DeltaRsTable(location)
+                fg_source_table = DeltaRsTable(
+                    location, storage_options=storage_options
+                )
                 is_delta_table = True
             except TableNotFoundError:
                 is_delta_table = False
@@ -230,7 +234,9 @@ class DeltaEngine:
                 source_alias=updates_alias,
                 target_alias=source_alias,
             ).when_matched_delete().execute()
-        fg_commit = self._get_last_commit_metadata(self._spark_session, location)
+        fg_commit = self._get_last_commit_metadata(
+            self._spark_session, location, storage_options=storage_options
+        )
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
@@ -276,6 +282,11 @@ class DeltaEngine:
 
     def _setup_delta_rs(self):
         _logger.debug("Setting up delta-rs environment")
+        if not self._feature_group._is_hopsfs_storage():
+            _logger.debug(
+                "Non-HopsFS storage connector detected, skipping HopsFS-specific delta-rs setup"
+            )
+            return
         _client = client.get_instance()
         if _client._is_external():
             _logger.debug("Setting up delta-rs for external client")
@@ -305,6 +316,11 @@ class DeltaEngine:
             os.environ["LIBHDFS_DEFAULT_USER"] = project_username
 
     def _get_delta_rs_location(self):
+        if not self._feature_group._is_hopsfs_storage():
+            location = self._feature_group.location
+            _logger.debug(f"Non-HopsFS storage, using location as-is: {location}")
+            return location
+
         _client = client.get_instance()
         location = self._feature_group.location.replace(
             "hopsfs:/", "hdfs:/"
@@ -325,6 +341,49 @@ class DeltaEngine:
         else:
             _logger.debug(f"Internal client, using delta-rs location: {location}")
             return location
+
+    def _get_delta_rs_storage_options(self) -> dict[str, str]:
+        """Build delta-rs storage_options from the feature group's storage connector.
+
+        Returns an empty dict for HopsFS (handled separately via env vars) and for
+        feature groups without a connector.
+        For S3, ADLS, and GCS connectors the relevant credential keys are returned.
+        """
+        from hsfs import storage_connector as sc
+
+        connector = self._feature_group.storage_connector
+        if connector is None or connector.type == sc.StorageConnector.HOPSFS:
+            return {}
+        if connector.type == sc.StorageConnector.S3:
+            opts = {}
+            if connector.access_key:
+                opts["AWS_ACCESS_KEY_ID"] = connector.access_key
+            if connector.secret_key:
+                opts["AWS_SECRET_ACCESS_KEY"] = connector.secret_key
+            if connector.session_token:
+                opts["AWS_SESSION_TOKEN"] = connector.session_token
+            if connector.region:
+                opts["AWS_REGION"] = connector.region
+            return opts
+        if connector.type == sc.StorageConnector.ADLS:
+            opts = {}
+            if connector.account_name:
+                opts["AZURE_STORAGE_ACCOUNT_NAME"] = connector.account_name
+            if connector.application_id:
+                opts["AZURE_CLIENT_ID"] = connector.application_id
+            if connector.service_credential:
+                opts["AZURE_CLIENT_SECRET"] = connector.service_credential
+            if connector.directory_id:
+                opts["AZURE_TENANT_ID"] = connector.directory_id
+            return opts
+        if connector.type == sc.StorageConnector.GCS:
+            opts = {}
+            if connector.key_path:
+                # key_path is a HopsFS path; download it locally for external clients
+                local_key_path = engine.get_instance().add_file(connector.key_path)
+                opts["GOOGLE_SERVICE_ACCOUNT_PATH"] = local_key_path
+            return opts
+        return {}
 
     @staticmethod
     def _get_partition_values(
@@ -392,6 +451,7 @@ class DeltaEngine:
             ) from e
 
         location = self._get_delta_rs_location()
+        storage_options = self._get_delta_rs_storage_options()
 
         is_polars_df = False
         if HAS_POLARS:
@@ -411,7 +471,7 @@ class DeltaEngine:
         )
 
         try:
-            fg_source_table = DeltaRsTable(location)
+            fg_source_table = DeltaRsTable(location, storage_options=storage_options)
             is_delta_table = True
             _logger.debug(
                 f"Delta table found at {location}. Proceeding with merge operation."
@@ -433,6 +493,7 @@ class DeltaEngine:
                 dataset,
                 partition_by=self._feature_group.partition_key,
                 configuration=configuration,
+                storage_options=storage_options or None,
             )
         else:
             if (
@@ -447,11 +508,18 @@ class DeltaEngine:
                     }
                 )
             if append_requested:
-                deltars_write(location, dataset, mode=self.APPEND)
+                deltars_write(
+                    location,
+                    dataset,
+                    mode=self.APPEND,
+                    storage_options=storage_options or None,
+                )
                 _logger.debug(
                     f"Explicit append mode requested for {location}. Skipping merge operation."
                 )
-                return self._get_last_commit_metadata(self._spark_session, location)
+                return self._get_last_commit_metadata(
+                    self._spark_session, location, storage_options=storage_options
+                )
             # Optimisation: if the feature group is partitioned and none of the
             # incoming partition values already exist in the table, a plain append
             # is equivalent to a merge (no rows to update) but avoids loading all
@@ -463,6 +531,7 @@ class DeltaEngine:
                     dataset,
                     mode="append",
                     partition_by=self._feature_group.partition_key,
+                    storage_options=storage_options or None,
                 )
             else:
                 source_alias = (
@@ -499,7 +568,9 @@ class DeltaEngine:
         _logger.debug(
             f"Executed delta-rs write. Retrieving commit metadata for Delta table at {location}"
         )
-        return self._get_last_commit_metadata(self._spark_session, location)
+        return self._get_last_commit_metadata(
+            self._spark_session, location, storage_options=storage_options
+        )
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
@@ -706,7 +777,9 @@ class DeltaEngine:
         return merge_query_str
 
     @staticmethod
-    def _get_last_commit_metadata(spark_context, base_path):
+    def _get_last_commit_metadata(
+        spark_context, base_path, storage_options: dict | None = None
+    ):
         """Retrieve oldest and last data-changing commits (MERGE/WRITE) from a Delta table.
 
         Uses shared filtering logic for both Spark and delta-rs.
@@ -737,7 +810,9 @@ class DeltaEngine:
                     "Install 'hops-deltalake' to enable Delta RS features."
                 ) from e
             # delta-rs DeltaTable (returns list[dict])
-            fg_source_table = DeltaRsTable(base_path)
+            fg_source_table = DeltaRsTable(
+                base_path, storage_options=storage_options or {}
+            )
             history_records = fg_source_table.history()
             _logger.debug(f"history_records for {base_path}: {history_records}")
 

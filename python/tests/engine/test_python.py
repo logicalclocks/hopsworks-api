@@ -9263,7 +9263,18 @@ class TestPython:
                 pld_ts = None
             return pdf_ts, pld_ts
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_no_event_time_no_duplicates_returns_all_rows(self, use_polars):
             # Arrange
             fg = self._make_fg(primary_key=["id"])
@@ -9276,8 +9287,21 @@ class TestPython:
             # Assert
             assert len(result) == 2
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
-        def test_no_event_time_deduplicates_by_last_row_per_primary_key(self, use_polars):
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_no_event_time_deduplicates_by_last_row_per_primary_key(
+            self, use_polars
+        ):
             # Arrange: two rows for id=1 — last one should win
             fg = self._make_fg(primary_key=["id"])
             pdf, pld = self._make_df({"id": [1, 1, 2], "val": ["a", "b", "c"]})
@@ -9290,7 +9314,18 @@ class TestPython:
             assert len(result) == 2
             assert self._get_val(result, "id", 1, "val") == "b"
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_event_time_keeps_latest_per_primary_key(self, use_polars):
             # Arrange: two rows for id=1 — newer should survive
             fg = self._make_fg(primary_key=["id"], event_time="ts")
@@ -9298,7 +9333,11 @@ class TestPython:
                 {
                     "id": [1, 1, 2],
                     "val": ["old", "new", "only"],
-                    "ts": [datetime(2024, 1, 1), datetime(2024, 6, 1), datetime(2024, 1, 1)],
+                    "ts": [
+                        datetime(2024, 1, 1),
+                        datetime(2024, 6, 1),
+                        datetime(2024, 1, 1),
+                    ],
                 }
             )
             df = pld if use_polars else pdf
@@ -9310,7 +9349,18 @@ class TestPython:
             assert len(result) == 2
             assert self._get_val(result, "id", 1, "val") == "new"
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_event_time_out_of_order_batch_picks_max(self, use_polars):
             # Arrange: older record appears after newer in the dataframe
             fg = self._make_fg(primary_key=["id"], event_time="ts")
@@ -9330,7 +9380,18 @@ class TestPython:
             assert len(result) == 1
             assert (result["val"][0] if use_polars else result["val"].iloc[0]) == "new"
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_ttl_filters_expired_rows(self, use_polars):
             # Arrange: one expired row, one fresh row
             fg = self._make_fg(
@@ -9338,18 +9399,35 @@ class TestPython:
             )
             pdf_ts, pld_ts = self._make_ts_utc([datetime(2000, 1, 1), datetime.now()])
             if use_polars:
-                df = pl.DataFrame({"id": [1, 2], "val": ["expired", "fresh"], "ts": pld_ts})
+                df = pl.DataFrame(
+                    {"id": [1, 2], "val": ["expired", "fresh"], "ts": pld_ts}
+                )
             else:
-                df = pd.DataFrame({"id": [1, 2], "val": ["expired", "fresh"], "ts": pdf_ts})
+                df = pd.DataFrame(
+                    {"id": [1, 2], "val": ["expired", "fresh"], "ts": pdf_ts}
+                )
 
             # Act
             result = python.Engine()._filter_online_dataframe(fg, df)
 
             # Assert
             assert len(result) == 1
-            assert (result["val"][0] if use_polars else result["val"].iloc[0]) == "fresh"
+            assert (
+                result["val"][0] if use_polars else result["val"].iloc[0]
+            ) == "fresh"
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_ttl_keeps_all_rows_when_none_expired(self, use_polars):
             # Arrange: all rows are fresh
             fg = self._make_fg(
@@ -9367,7 +9445,18 @@ class TestPython:
             # Assert
             assert len(result) == 2
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_ttl_disabled_falls_back_to_dedup_by_event_time(self, use_polars):
             # Arrange: ttl_enabled=False — should deduplicate by event time instead
             fg = self._make_fg(
@@ -9389,7 +9478,18 @@ class TestPython:
             assert len(result) == 1
             assert (result["val"][0] if use_polars else result["val"].iloc[0]) == "new"
 
-        @pytest.mark.parametrize("use_polars", [False, pytest.param(True, marks=pytest.mark.skipif(not HAS_POLARS, reason="polars not installed"))])
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_composite_primary_key(self, use_polars):
             # Arrange: primary key is (user_id, item_id)
             fg = self._make_fg(primary_key=["user_id", "item_id"], event_time="ts")
@@ -9398,7 +9498,11 @@ class TestPython:
                     "user_id": [1, 1, 1],
                     "item_id": [10, 10, 20],
                     "val": ["old", "new", "only"],
-                    "ts": [datetime(2024, 1, 1), datetime(2024, 6, 1), datetime(2024, 1, 1)],
+                    "ts": [
+                        datetime(2024, 1, 1),
+                        datetime(2024, 6, 1),
+                        datetime(2024, 1, 1),
+                    ],
                 }
             )
             df = pld if use_polars else pdf
@@ -9408,4 +9512,7 @@ class TestPython:
 
             # Assert
             assert len(result) == 2
-            assert self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val") == "new"
+            assert (
+                self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val")
+                == "new"
+            )

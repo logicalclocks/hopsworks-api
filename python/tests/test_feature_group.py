@@ -1077,11 +1077,11 @@ class TestFeatureGroup:
     @pytest.mark.parametrize(
         "time_travel_format,stream,is_hopsfs,online_enabled,expected",
         [
-            # DELTA not streams when not HopsFS and online enabled
+            # DELTA not streams
             ("DELTA", False, True, False, False),
             ("DELTA", False, True, True, False),
-            ("DELTA", False, False, False, True),
-            ("DELTA", False, False, True, True),
+            ("DELTA", False, False, False, False),
+            ("DELTA", False, False, True, False),
             # DELTA always streams when stream is True
             ("DELTA", True, True, False, True),
             ("DELTA", True, True, True, True),

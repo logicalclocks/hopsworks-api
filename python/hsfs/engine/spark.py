@@ -665,18 +665,13 @@ class Engine:
         For non-TTL feature groups, only the last record per primary key is kept:
         ordered by event time if configured, otherwise by insertion order.
         """
-
         event_time = feature_group.event_time
 
         if feature_group.ttl_enabled and feature_group.ttl:
             # Drop rows whose event time is older than the TTL window.
             # event_time column is expected to be a timestamp; compare against current time minus TTL seconds.
-            ttl_threshold = current_timestamp().cast("long") - lit(
-                feature_group.ttl
-            )
-            dataframe = dataframe.filter(
-                col(event_time).cast("long") > ttl_threshold
-            )
+            ttl_threshold = current_timestamp().cast("long") - lit(feature_group.ttl)
+            dataframe = dataframe.filter(col(event_time).cast("long") > ttl_threshold)
         else:
             # Keep only the last record per primary key.
             # Use event time as the ordering column when available, otherwise fall back to insertion order.
@@ -685,9 +680,9 @@ class Engine:
                 if event_time
                 else monotonically_increasing_id().desc()
             )
-            window = Window.partitionBy(*[col(k) for k in feature_group.primary_key]).orderBy(
-                order_col
-            )
+            window = Window.partitionBy(
+                *[col(k) for k in feature_group.primary_key]
+            ).orderBy(order_col)
             dataframe = (
                 dataframe.withColumn("_rn", row_number().over(window))
                 .filter(col("_rn") == 1)
