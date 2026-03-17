@@ -3049,7 +3049,7 @@ class FeatureGroup(FeatureGroupBase):
         # If stream is explicitly set stream to True, use it.
         # Otherwise, resolve it based on time travel format and other flags.
         return stream or not (
-            is_hopsfs and time_travel_format == "DELTA" and not online_enabled
+            is_hopsfs and time_travel_format == "DELTA"
         )
 
     @staticmethod

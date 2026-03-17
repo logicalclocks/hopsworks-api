@@ -1060,6 +1060,51 @@ class Engine:
                 f"Sample duplicate key combinations:\n{sample_str}"
             )
 
+    def _filter_online_dataframe(
+        self,
+        feature_group: FeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+    ) -> pd.DataFrame | pl.DataFrame:
+        """Filter a dataframe before online ingestion to avoid overwriting newer data with older records.
+
+        For TTL-enabled feature groups, rows whose event time has already expired are dropped.
+        For non-TTL feature groups, only the last record per primary key is kept:
+        ordered by event time if configured, otherwise by insertion order.
+        """
+        if dataframe is None:
+            return dataframe
+
+        event_time = feature_group.event_time
+
+        if HAS_POLARS and isinstance(dataframe, pl.DataFrame):
+            if feature_group.ttl_enabled and feature_group.ttl:
+                if event_time:
+                    threshold = datetime.now(tz=timezone.utc) - timedelta(
+                        seconds=feature_group.ttl
+                    )
+                    dataframe = dataframe.filter(
+                        pl.col(event_time).dt.replace_time_zone("UTC") > threshold
+                    )
+            else:
+                if event_time:
+                    dataframe = dataframe.sort(event_time)
+                dataframe = dataframe.unique(subset=feature_group.primary_key, keep="last", maintain_order=True)
+        else:
+            if feature_group.ttl_enabled and feature_group.ttl:
+                if event_time:
+                    threshold = datetime.now(tz=timezone.utc) - timedelta(
+                        seconds=feature_group.ttl
+                    )
+                    dataframe = dataframe[
+                        pd.to_datetime(dataframe[event_time], utc=True) > threshold
+                    ]
+            else:
+                if event_time:
+                    dataframe = dataframe.sort_values(event_time)
+                dataframe = dataframe.drop_duplicates(subset=feature_group.primary_key, keep="last")
+
+        return dataframe
+
     def save_dataframe(
         self,
         feature_group: FeatureGroup,
@@ -1084,7 +1129,9 @@ class Engine:
             and feature_group.online_enabled
         ) or feature_group.stream:
             return self._write_dataframe_kafka(
-                feature_group, dataframe, offline_write_options
+                feature_group,
+                self._filter_online_dataframe(feature_group, dataframe),
+                offline_write_options,
             )
         if engine.get_type() == "python":
             if feature_group.time_travel_format == "DELTA":
@@ -1100,6 +1147,12 @@ class Engine:
                     write_options=offline_write_options,
                     validation_id=validation_id,
                 )
+                if feature_group.online_enabled:
+                    self._write_dataframe_kafka(
+                        feature_group,
+                        self._filter_online_dataframe(feature_group, dataframe),
+                        offline_write_options,
+                    )
         else:
             # for backwards compatibility
             return self.legacy_save_dataframe(

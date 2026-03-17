@@ -1079,7 +1079,7 @@ class TestFeatureGroup:
         [
             # DELTA not streams when not HopsFS and online enabled
             ("DELTA", False, True, False, False),
-            ("DELTA", False, True, True, True),
+            ("DELTA", False, True, True, False),
             ("DELTA", False, False, False, True),
             ("DELTA", False, False, True, True),
             # DELTA always streams when stream is True
@@ -1130,7 +1130,7 @@ class TestFeatureGroup:
 
         # Assert
         assert fg.online_enabled is True
-        assert fg.stream is True
+        assert fg.stream is False
 
 
 class TestExternalFeatureGroup:
