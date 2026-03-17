@@ -60,7 +60,6 @@ try:
         current_timestamp,
         from_json,
         lit,
-        max,
         monotonically_increasing_id,
         regexp_replace,
         row_number,

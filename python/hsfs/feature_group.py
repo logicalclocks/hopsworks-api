@@ -3048,7 +3048,7 @@ class FeatureGroup(FeatureGroupBase):
     ) -> bool | None:
         # If stream is explicitly set stream to True, use it.
         # Otherwise, resolve it based on time travel format and other flags.
-        return stream or not time_travel_format == "DELTA"
+        return stream or time_travel_format != "DELTA"
 
     @staticmethod
     def _resolve_time_travel_format(
