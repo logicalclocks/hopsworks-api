@@ -1126,6 +1126,7 @@ class TestFeatureGroup:
                 features=[hsfs.embedding.EmbeddingFeature("emb_feat", 128)],
             ),
             online_enabled=False,
+            time_travel_format="DELTA",
         )
 
         # Assert
