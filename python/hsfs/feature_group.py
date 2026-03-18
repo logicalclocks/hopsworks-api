@@ -3703,6 +3703,7 @@ class FeatureGroup(FeatureGroupBase):
             self.statistics_config.enabled
             and engine.get_type() == "python"
             and not self.stream
+            and storage != "online"
         ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
