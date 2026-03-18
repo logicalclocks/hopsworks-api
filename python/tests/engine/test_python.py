@@ -1815,8 +1815,8 @@ class TestPython:
 
     def test_save_dataframe_stream(self, mocker):
         # Arrange
-        mock_python_engine_write_dataframe_kafka = mocker.patch(
-            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        mock_python_engine_run_materialization_job = mocker.patch(
+            "hsfs.engine.python.Engine._run_materialization_job"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
             "hsfs.engine.python.Engine.legacy_save_dataframe"
@@ -1847,7 +1847,7 @@ class TestPython:
         )
 
         # Assert
-        assert mock_python_engine_write_dataframe_kafka.call_count == 1
+        assert mock_python_engine_run_materialization_job.call_count == 1
         assert mock_python_engine_legacy_save_dataframe.call_count == 0
 
     def test_save_dataframe_delta_time_travel_format(self, mocker):
@@ -1954,6 +1954,7 @@ class TestPython:
         mock_check_duplicate_records = mocker.patch(
             "hsfs.engine.python.Engine._check_duplicate_records"
         )
+        mock_legacy_save_dataframe = mocker.patch("hsfs.engine.python.Engine.legacy_save_dataframe")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         python_engine = python.Engine()
@@ -1985,6 +1986,7 @@ class TestPython:
 
         # Assert
         assert mock_check_duplicate_records.call_count == 0
+        assert mock_legacy_save_dataframe.call_count == 1
 
     @pytest.mark.parametrize(
         "test_name,primary_key,partition_key,event_time,data_dict",
@@ -3479,10 +3481,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -3543,10 +3546,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -3603,13 +3607,14 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={
                 "start_offline_materialization": True,
                 "skip_offsets": True,
             },
+            storage=None,
         )
 
         # Assert
@@ -3666,10 +3671,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -9263,6 +9269,12 @@ class TestPython:
                 pld_ts = None
             return pdf_ts, pld_ts
 
+        def _apply_flags(self, df, flags):
+            """Filter a dataframe using a list of booleans returned by _mark_online_rows."""
+            if HAS_POLARS and isinstance(df, pl.DataFrame):
+                return df.filter(pl.Series(flags))
+            return df[flags].reset_index(drop=True)
+
         @pytest.mark.parametrize(
             "use_polars",
             [
@@ -9282,7 +9294,8 @@ class TestPython:
             df = pld if use_polars else pdf
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 2
@@ -9308,7 +9321,8 @@ class TestPython:
             df = pld if use_polars else pdf
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 2
@@ -9343,7 +9357,8 @@ class TestPython:
             df = pld if use_polars else pdf
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 2
@@ -9374,7 +9389,8 @@ class TestPython:
             df = pld if use_polars else pdf
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 1
@@ -9408,7 +9424,8 @@ class TestPython:
                 )
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 1
@@ -9440,7 +9457,8 @@ class TestPython:
                 df = pd.DataFrame({"id": [1, 2], "val": ["a", "b"], "ts": pdf_ts})
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 2
@@ -9472,7 +9490,8 @@ class TestPython:
             df = pld if use_polars else pdf
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 1
@@ -9508,7 +9527,8 @@ class TestPython:
             df = pld if use_polars else pdf
 
             # Act
-            result = python.Engine()._filter_online_dataframe(fg, df)
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
 
             # Assert
             assert len(result) == 2
