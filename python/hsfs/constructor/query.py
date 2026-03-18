@@ -79,6 +79,7 @@ class Query:
         left_feature_group_end_time: str | int | date | datetime | None = None,
         joins: list[join_module.Join] | None = None,
         filter: Filter | Logic | dict[str, Any] | None = None,
+        limit: int | None = None,
         **kwargs,
     ) -> None:
         self._feature_store_name = feature_store_name
@@ -89,6 +90,7 @@ class Query:
         self._left_feature_group_end_time = left_feature_group_end_time
         self._joins = joins or []
         self._filter = Logic.from_response_json(filter)
+        self._limit = limit
         self._python_engine: bool = engine.get_type() == "python"
         self._query_constructor_api: query_constructor_api.QueryConstructorApi = (
             query_constructor_api.QueryConstructorApi()
@@ -343,7 +345,12 @@ class Query:
             return engine.get_instance().read_vector_db(
                 self._left_feature_group, n, filter=self._filter
             )
-        sql_query, online_conn = self._prep_read(online, read_options)
+        previous_limit = self._limit
+        try:
+            self._limit = n
+            sql_query, online_conn = self._prep_read(online, read_options)
+        finally:
+            self._limit = previous_limit
         return engine.get_instance().show(
             sql_query, self._feature_store_name, n, online_conn, read_options
         )
@@ -612,6 +619,25 @@ class Query:
 
         return self
 
+    @public
+    def limit(self, n: int) -> Query:
+        """Limit the number of rows returned by the query.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("...")
+            query = fg.select_all().limit(100)
+            ```
+
+        Parameters:
+            n: Maximum number of rows to return.
+
+        Returns:
+            The query object with the applied limit.
+        """
+        self._limit = n
+        return self
+
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
@@ -625,6 +651,7 @@ class Query:
             "leftFeatureGroupEndTime": self._left_feature_group_end_time,
             "joins": self._joins,
             "filter": self._filter,
+            "limit": self._limit,
             "hiveEngine": self._python_engine,
         }
 
@@ -664,6 +691,7 @@ class Query:
                 for _join in json_decamelized.get("joins", [])
             ],
             filter=json_decamelized.get("filter", None),
+            limit=json_decamelized.get("limit", None),
         )
 
     def _check_read_supported(self, online: bool) -> None:
