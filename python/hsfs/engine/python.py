@@ -60,7 +60,6 @@ from hopsworks_common.core.type_systems import create_extended_type
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
-    engine,
     feature,
     feature_view,
     util,
@@ -1090,35 +1089,29 @@ class Engine:
                         .to_list()
                     )
                 return [True] * len(dataframe)
-            else:
-                df = dataframe.with_row_index("__row_idx__")
-                order_col = event_time if event_time else "__row_idx__"
-                max_idx = df.group_by(pk_cols).agg(
-                    pl.col("__row_idx__")
-                    .sort_by(order_col)
-                    .last()
-                    .alias("__max_idx__")
+            df = dataframe.with_row_index("__row_idx__")
+            order_col = event_time if event_time else "__row_idx__"
+            max_idx = df.group_by(pk_cols).agg(
+                pl.col("__row_idx__").sort_by(order_col).last().alias("__max_idx__")
+            )
+            df = df.join(max_idx, on=pk_cols, how="left")
+            return (df["__row_idx__"] == df["__max_idx__"]).to_list()
+        if feature_group.ttl_enabled and feature_group.ttl:
+            if event_time:
+                threshold = datetime.now(tz=timezone.utc) - timedelta(
+                    seconds=feature_group.ttl
                 )
-                df = df.join(max_idx, on=pk_cols, how="left")
-                return (df["__row_idx__"] == df["__max_idx__"]).to_list()
+                return (
+                    pd.to_datetime(dataframe[event_time], utc=True) > threshold
+                ).tolist()
+            return [True] * len(dataframe)
+        if event_time:
+            max_idx = dataframe.groupby(pk_cols, sort=False)[event_time].idxmax()
         else:
-            if feature_group.ttl_enabled and feature_group.ttl:
-                if event_time:
-                    threshold = datetime.now(tz=timezone.utc) - timedelta(
-                        seconds=feature_group.ttl
-                    )
-                    return (
-                        pd.to_datetime(dataframe[event_time], utc=True) > threshold
-                    ).tolist()
-                return [True] * len(dataframe)
-            else:
-                if event_time:
-                    max_idx = dataframe.groupby(pk_cols, sort=False)[event_time].idxmax()
-                else:
-                    max_idx = dataframe.groupby(pk_cols, sort=False).tail(1).index
-                flags = pd.Series(False, index=dataframe.index)
-                flags.loc[max_idx] = True
-                return flags.tolist()
+            max_idx = dataframe.groupby(pk_cols, sort=False).tail(1).index
+        flags = pd.Series(False, index=dataframe.index)
+        flags.loc[max_idx] = True
+        return flags.tolist()
 
     def save_dataframe(
         self,
@@ -1145,13 +1138,15 @@ class Engine:
                 feature_group,
                 dataframe,
                 offline_write_options,
-                None # doesnt support storage parameter
+                None,  # doesnt support storage parameter
             )
 
         inserted = False
-        if (storage in [None, "offline"] and
-                not isinstance(feature_group, fg_mod.ExternalFeatureGroup) and
-                feature_group.time_travel_format == "DELTA"):
+        if (
+            storage in [None, "offline"]
+            and not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+            and feature_group.time_travel_format == "DELTA"
+        ):
             # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_store_id=feature_group.feature_store_id,
@@ -1165,15 +1160,12 @@ class Engine:
                 write_options=offline_write_options,
                 validation_id=validation_id,
             )
-            inserted=True
-        if (storage in [None, "online"] and feature_group.online_enabled):
+            inserted = True
+        if storage in [None, "online"] and feature_group.online_enabled:
             self._write_dataframe_kafka(
-                feature_group,
-                dataframe,
-                offline_write_options,
-                storage
+                feature_group, dataframe, offline_write_options, storage
             )
-            inserted=True
+            inserted = True
 
         if not inserted:
             # for backwards compatibility
@@ -1841,7 +1833,11 @@ class Engine:
         # Compute per-row online flags before building the Avro schema so the
         # marker never enters the writer and avoids column name mangling.
         online_flags = None
-        if feature_group.online_enabled and storage in [None, "online"] and offline_write_options.get("mark_online_rows", True):
+        if (
+            feature_group.online_enabled
+            and storage in [None, "online"]
+            and offline_write_options.get("mark_online_rows", True)
+        ):
             online_flags = self._mark_online_rows(feature_group, dataframe)
 
         if offline_write_options.get("disable_online_ingestion_count", False):
@@ -1938,7 +1934,9 @@ class Engine:
                 high=True,
             )
 
-        self._write_dataframe_kafka(feature_group, dataframe, offline_write_options, storage)
+        self._write_dataframe_kafka(
+            feature_group, dataframe, offline_write_options, storage
+        )
 
         # start materialization job if not an external feature group, otherwise return None
         if isinstance(feature_group, ExternalFeatureGroup):

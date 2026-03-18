@@ -1954,7 +1954,9 @@ class TestPython:
         mock_check_duplicate_records = mocker.patch(
             "hsfs.engine.python.Engine._check_duplicate_records"
         )
-        mock_legacy_save_dataframe = mocker.patch("hsfs.engine.python.Engine.legacy_save_dataframe")
+        mock_legacy_save_dataframe = mocker.patch(
+            "hsfs.engine.python.Engine.legacy_save_dataframe"
+        )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         python_engine = python.Engine()
