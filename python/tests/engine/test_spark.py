@@ -2223,10 +2223,13 @@ class TestSpark:
             name="test",
             version=1,
             featurestore_id=99,
-            primary_key=[],
             partition_key=[],
             id=10,
             online_topic_name="test_online_topic_name",
+            features=[
+                feature.Feature("col_0", primary=True),
+                feature.Feature("col_1"),
+            ],
         )
         fg.feature_store = mocker.Mock()
 
