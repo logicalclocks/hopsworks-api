@@ -174,8 +174,13 @@ public class FeatureViewApi {
         .set("fsId", featureStoreBase.getId())
         .set("fvName", name)
         .set("fvVersion", version)
-        .set("force", force)
         .expand();
+
+    if (force != null) {
+      Map<String, Object> params = Maps.newHashMap();
+      params.put("force", String.valueOf(force));
+      uri = addQueryParam(uri, params);
+    }
 
     HttpDelete request = new HttpDelete(uri);
 
@@ -190,8 +195,13 @@ public class FeatureViewApi {
         .set("projectId", hopsworksClient.getProject().getProjectId())
         .set("fsId", featureStoreBase.getId())
         .set("fvName", name)
-        .set("force", force)
         .expand();
+
+    if (force != null) {
+      Map<String, Object> params = Maps.newHashMap();
+      params.put("force", String.valueOf(force));
+      uri = addQueryParam(uri, params);
+    }
 
     HttpDelete request = new HttpDelete(uri);
 
