@@ -76,7 +76,7 @@ sqlalchemy-1 = [
 ]
 great-expectations = ["great_expectations==0.18.12"]
 dev-no-opt = [
-    "hopsworks[python]",
+    "hopsworks[python,trino]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "ruff==0.15.6",
@@ -88,7 +88,7 @@ dev-no-opt = [
     "delta-spark==3.3.1",
 ]
 dev-pandas1 = [
-    "hopsworks[python]",
+    "hopsworks[python,trino]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "ruff==0.15.6",
@@ -99,7 +99,7 @@ dev-pandas1 = [
     "sqlalchemy<=1.4.48",
     "delta-spark==3.3.1",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp]"]
+dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
 polars = [
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=17.0",
@@ -112,6 +112,9 @@ mcp = [
     "uvicorn",
     "uvloop; sys_platform != 'win32'",
     "pydantic>=2.11.7",
+]
+trino=[
+    "trino[sqlalchemy]==0.336.0"
 ]
 
 [dependency-groups]

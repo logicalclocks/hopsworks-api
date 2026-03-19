@@ -32,6 +32,7 @@ LOADBALANCER_SERVICES = {
     "feature_query": "flyingduck",
     "datanode": "datanode",
     "namenode": "namenode",
+    "trino": "trino",
 }
 
 
@@ -131,6 +132,7 @@ class VariableApi:
             "feature_query",
             "datanode",
             "namenode",
+            "trino",
         ],
     ) -> str:
         """Get domain loadbalancer for a service.
