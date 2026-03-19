@@ -31,6 +31,7 @@ from hopsworks_common.core import (
     kafka_api,
     opensearch_api,
     search_api,
+    trino_api,
 )
 
 
@@ -88,6 +89,7 @@ class Project:
         self._alerts_api = alerts_api.AlertsApi()
         self._search_api = search_api.SearchApi()
         self._project_namespace = project_namespace
+        self._trino_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -291,6 +293,17 @@ class Project:
             The Search Api handle.
         """
         return self._search_api
+
+    @public
+    def get_trino_api(self) -> trino_api.TrinoApi:
+        """Get the Trino API for the project.
+
+        Returns:
+            The Trino API handle.
+        """
+        if self._trino_api is None:
+            self._trino_api = trino_api.TrinoApi(project=self)
+        return self._trino_api
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:
