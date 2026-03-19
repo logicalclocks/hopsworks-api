@@ -38,7 +38,7 @@ uv run --project python pytest python/tests -v # verbose
 
 ## CI Test Matrix
 
-Three test runs in CI (see @.agent/development/ci.md):
+Three test runs in CI (see @docs/development/ci.md):
 
 - Main matrix: Python 3.9–3.13, full dev install
 - No optional deps: Python 3.10, core install only
