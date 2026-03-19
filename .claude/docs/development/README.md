@@ -14,7 +14,7 @@ uv run --project python pytest python/tests -k "feature_view" # by keyword
 
 ## Details
 
-- @.agent/development/setup.md — environment setup, pre-commit, IDE config
-- @.agent/development/testing.md — test structure, fixtures, what to test and how
-- @.agent/development/linting.md — Ruff rule groups, docsig, common failures and fixes
-- @.agent/development/ci.md — CI jobs and what triggers each failure
+- @docs/development/setup.md — environment setup, pre-commit, IDE config
+- @docs/development/testing.md — test structure, fixtures, what to test and how
+- @docs/development/linting.md — Ruff rule groups, docsig, common failures and fixes
+- @docs/development/ci.md — CI jobs and what triggers each failure

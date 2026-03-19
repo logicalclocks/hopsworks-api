@@ -14,6 +14,6 @@ HTTP calls do not appear directly in domain objects.
 
 ## Details
 
-- @.agent/architecture/packages.md — per-package structure, key files, internal patterns
-- @.agent/architecture/domain.md — domain concepts (FeatureGroup, FeatureView, Model, …) and how they relate
-- @.agent/architecture/dependencies.md — dependency groups, version policy, how to add deps
+- @docs/architecture/packages.md — per-package structure, key files, internal patterns
+- @docs/architecture/domain.md — domain concepts (FeatureGroup, FeatureView, Model, …) and how they relate
+- @docs/architecture/dependencies.md — dependency groups, version policy, how to add deps
