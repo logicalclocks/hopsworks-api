@@ -60,6 +60,13 @@ class OnlineStoreSqlClient:
     SINGLE_VECTOR_KEY = "single_feature_vector"
     SINGLE_LOGGING_VECTOR_KEY = "single_logging_feature_vector"
     BATCH_LOGGING_VECTOR_KEY = "batch_logging_feature_vector"
+
+    prepared_statements: dict[str, list[ServingPreparedStatement]]
+    """Contains up to 4 prepared statements for single and batch vector retrieval, and single or batch inference helpers.
+
+    The keys are the labels for the prepared statements, and the values are dictionaries of prepared statements
+    with the prepared statement index as the key.
+    """
     # Combined keys for features + inference helpers in single query
     SINGLE_VECTOR_WITH_INFERENCE_HELPERS_KEY = (
         "single_feature_vector_with_inference_helpers"
@@ -87,7 +94,7 @@ class OnlineStoreSqlClient:
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
-        self._prepared_statements: dict[str, list[ServingPreparedStatement]] = {}
+        self.prepared_statements: dict[str, list[ServingPreparedStatement]] = {}
         self._parametrised_prepared_statements = {}
         self._prepared_statement_engine = None
 
@@ -289,7 +296,7 @@ class OnlineStoreSqlClient:
         return prepared_statements_dict
 
     def init_async_mysql_connection(self, options=None):
-        assert self._prepared_statements.get(self.SINGLE_VECTOR_KEY) is not None, (
+        assert self.prepared_statements.get(self.SINGLE_VECTOR_KEY) is not None, (
             "Prepared statements are not initialized. "
             "Please call `init_prepared_statement` method first."
         )
@@ -313,7 +320,7 @@ class OnlineStoreSqlClient:
                 connection_pool_initializer=self._get_connection_pool,
                 connection_test=self._test_connection,
                 connection_pool_params=(
-                    len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
+                    len(self.prepared_statements[self.SINGLE_VECTOR_KEY]),
                 ),
             )
             self._async_task_thread.start()
@@ -816,24 +823,6 @@ class OnlineStoreSqlClient:
     @prepared_statement_engine.setter
     def prepared_statement_engine(self, prepared_statement_engine: Any) -> None:
         self._prepared_statement_engine = prepared_statement_engine
-
-    @property
-    def prepared_statements(
-        self,
-    ) -> dict[str, list[ServingPreparedStatement]]:
-        """Contains up to 4 prepared statements for single and batch vector retrieval, and single or batch inference helpers.
-
-        The keys are the labels for the prepared statements, and the values are dictionaries of prepared statements
-        with the prepared statement index as the key.
-        """
-        return self._prepared_statements
-
-    @prepared_statements.setter
-    def prepared_statements(
-        self,
-        prepared_statements: dict[str, list[ServingPreparedStatement]],
-    ) -> None:
-        self._prepared_statements = prepared_statements
 
     @property
     def parametrised_prepared_statements(
