@@ -71,7 +71,7 @@ DEFAULT_SQLALCHEMY_SOURCE = "hopsworks-trino-sqlalchemy"
 HTTPS = "https"
 
 
-@public("hopsworks.core.trino_api")
+@public("hopsworks.core.trino_api.TrinoAPI")
 class TrinoApi:
     """API for connecting to Trino from within Hopsworks.
 
@@ -86,7 +86,6 @@ class TrinoApi:
     Example:
         ```python
         import hopsworks
-        from hopsworks.core.trino_api import TrinoApi
         from sqlalchemy import text
 
         project = hopsworks.login()
@@ -280,10 +279,9 @@ class TrinoApi:
         Example:
             ```python
             import hopsworks
-            from hopsworks.core.trino_api import TrinoApi
 
             project = hopsworks.login()
-            trino_api = TrinoApi()
+            trino_api = project.get_trino_api()
             conn = trino_api.connect(catalog="iceberg", schema="my_db")
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM my_table")
@@ -377,11 +375,10 @@ class TrinoApi:
         Example:
             ```python
             import hopsworks
-            from hopsworks.core.trino_api import TrinoApi
             from sqlalchemy import text
 
             project = hopsworks.login()
-            trino_api = TrinoApi()
+            trino_api = project.get_trino_api()
             engine = trino_api.create_engine(catalog="iceberg", schema="my_db")
             with engine.connect() as connection:
                 result = connection.execute(text("SELECT * FROM my_table"))
