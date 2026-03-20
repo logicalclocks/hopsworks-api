@@ -37,62 +37,22 @@ class TrainingDatasetSplit:
         end_time=None,
         **kwargs,
     ):
-        self._name = name
-        self._percentage = percentage
-        self._split_type = split_type
-        self._start_time = start_time
-        self._end_time = end_time
-
-    @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, name):
-        self._name = name
-
-    @property
-    def percentage(self):
-        return self._percentage
-
-    @percentage.setter
-    def percentage(self, percentage):
-        self._percentage = percentage
-
-    @property
-    def split_type(self):
-        return self._split_type
-
-    @split_type.setter
-    def split_type(self, split_type):
-        self._split_type = split_type
-
-    @property
-    def start_time(self):
-        return self._start_time
-
-    @start_time.setter
-    def start_time(self, start_time):
-        self._start_time = start_time
-
-    @property
-    def end_time(self):
-        return self._end_time
-
-    @end_time.setter
-    def end_time(self, end_time):
-        self._end_time = end_time
+        self.name = name
+        self.percentage = percentage
+        self.split_type = split_type
+        self.start_time = start_time
+        self.end_time = end_time
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {
-            "name": self._name,
-            "percentage": self._percentage,
-            "splitType": self._split_type,
-            "startTime": self._start_time,
-            "endTime": self._end_time,
+            "name": self.name,
+            "percentage": self.percentage,
+            "splitType": self.split_type,
+            "startTime": self.start_time,
+            "endTime": self.end_time,
         }
 
     @classmethod
