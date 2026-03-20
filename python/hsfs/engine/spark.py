@@ -540,6 +540,7 @@ class Engine:
                 # Only `FeatureGroup class has time_travel_format property
                 isinstance(feature_group, fg_mod.FeatureGroup)
                 and feature_group.time_travel_format == "DELTA"
+                and storage in [None, "offline"]
             ):
                 self._check_duplicate_records(dataframe, feature_group)
                 _logger.debug(
