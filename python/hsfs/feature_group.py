@@ -2894,8 +2894,6 @@ class FeatureGroup(FeatureGroupBase):
             self._init_time_travel_and_stream(
                 stream,
                 time_travel_format,
-                self.online_enabled,  # use the getter of the super class to take into account embedding index
-                self._is_hopsfs_storage(),
             )
 
             self.primary_key = primary_key
@@ -2960,8 +2958,6 @@ class FeatureGroup(FeatureGroupBase):
         self,
         stream: bool,
         time_travel_format: str | None,
-        online_enabled: bool,
-        is_hopsfs: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
@@ -2969,16 +2965,12 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._time_travel_format = FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
         )
 
         if engine.get_type() == "python" and not self._sink_enabled:
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
-                is_hopsfs=is_hopsfs,
-                online_enabled=online_enabled,
             )
 
     def _is_hopsfs_storage(self) -> bool:
@@ -3043,18 +3035,14 @@ class FeatureGroup(FeatureGroupBase):
     def _resolve_stream_python(
         stream: bool,
         time_travel_format: str,
-        is_hopsfs: bool,
-        online_enabled: bool,
     ) -> bool | None:
-        # If stream is explicitly set stream to True, use it.
-        # Otherwise, resolve it based on time travel format and other flags.
+        # If stream is explicitly set to True, use it.
+        # Otherwise, only DELTA format disables stream by default.
         return stream or time_travel_format != "DELTA"
 
     @staticmethod
     def _resolve_time_travel_format(
         time_travel_format: str | None,
-        online_enabled: bool,
-        is_hopsfs: bool,
     ) -> str:
         """Resolve only the time travel format string."""
         fmt = time_travel_format.upper() if time_travel_format is not None else None
@@ -3682,12 +3670,13 @@ class FeatureGroup(FeatureGroupBase):
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = "true"
 
+        storage_normalized = storage.lower() if storage is not None else None
         job, ge_report = self._feature_group_engine.insert(
             self,
             feature_dataframe=feature_dataframe,
             overwrite=overwrite,
             operation=operation,
-            storage=storage.lower() if storage is not None else None,
+            storage=storage_normalized,
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
             transformation_context=transformation_context,
@@ -3700,14 +3689,14 @@ class FeatureGroup(FeatureGroupBase):
         if (
             engine.get_type().startswith("spark")
             and not self.stream
-            and storage != "online"
+            and storage_normalized != "online"
         ):
             self.compute_statistics()
         elif (
             self.statistics_config.enabled
             and engine.get_type() == "python"
             and not self.stream
-            and storage != "online"
+            and storage_normalized != "online"
         ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(

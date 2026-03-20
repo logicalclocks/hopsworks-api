@@ -668,10 +668,15 @@ class Engine:
         event_time = feature_group.event_time
 
         if feature_group.ttl_enabled and feature_group.ttl:
-            # Drop rows whose event time is older than the TTL window.
-            # event_time column is expected to be a timestamp; compare against current time minus TTL seconds.
-            ttl_threshold = current_timestamp().cast("long") - lit(feature_group.ttl)
-            dataframe = dataframe.filter(col(event_time).cast("long") > ttl_threshold)
+            if event_time:
+                # Drop rows whose event time is older than the TTL window.
+                # event_time column is expected to be a timestamp; compare against current time minus TTL seconds.
+                ttl_threshold = current_timestamp().cast("long") - lit(
+                    feature_group.ttl
+                )
+                dataframe = dataframe.filter(
+                    col(event_time).cast("long") > ttl_threshold
+                )
         else:
             # Keep only the last record per primary key.
             # Use event time as the ordering column when available, otherwise fall back to insertion order.

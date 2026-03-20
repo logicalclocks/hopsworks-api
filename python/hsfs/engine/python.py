@@ -1076,6 +1076,9 @@ class Engine:
         event_time = feature_group.event_time
         pk_cols = feature_group.primary_key
 
+        if not pk_cols:
+            return [True] * len(dataframe)
+
         if HAS_POLARS and isinstance(dataframe, pl.DataFrame):
             if feature_group.ttl_enabled and feature_group.ttl:
                 if event_time:
@@ -1829,8 +1832,8 @@ class Engine:
         feature_group: FeatureGroup | ExternalFeatureGroup,
         dataframe: pd.DataFrame | pl.DataFrame,
         offline_write_options: dict[str, Any],
-        storage: str,
-    ) -> job.Job | None:
+        storage: str | None,
+    ) -> None:
         # Compute per-row online flags before building the Avro schema so the
         # marker never enters the writer and avoids column name mangling.
         online_flags = None
