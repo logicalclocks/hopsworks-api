@@ -2912,8 +2912,7 @@ class FeatureGroup(FeatureGroupBase):
                 util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
                 and (
-                    self.time_travel_format is None
-                    or self.time_travel_format == "HUDI"
+                    self.time_travel_format is None or self.time_travel_format == "HUDI"
                 )
                 else None
             )
@@ -2957,10 +2956,8 @@ class FeatureGroup(FeatureGroupBase):
                     self.transformation_functions.append(transformation_function)
 
         if self.transformation_functions:
-            self.transformation_functions = (
-                FeatureGroup._sort_transformation_functions(
-                    self.transformation_functions
-                )
+            self.transformation_functions = FeatureGroup._sort_transformation_functions(
+                self.transformation_functions
             )
 
     def _init_time_travel_and_stream(
