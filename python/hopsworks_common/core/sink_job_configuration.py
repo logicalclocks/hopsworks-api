@@ -46,7 +46,7 @@ class WriteMode(Enum):
     MERGE = "MERGE"
 
 
-@public("hopsworks.core.FeatureColumnMapping")
+@public("hopsworks.core.sink_job_configuration.FeatureColumnMapping")
 class FeatureColumnMapping:
     source_column: str
     feature_name: str
@@ -70,7 +70,7 @@ class FeatureColumnMapping:
         return humps.decamelize(self.to_dict())
 
 
-@public("hopsworks.core.FullLoadConfig")
+@public("hopsworks.core.sink_job_configuration.FullLoadConfig")
 class FullLoadConfig:
     source_cursor_field: str | None
     initial_value: str | None
@@ -98,7 +98,7 @@ class FullLoadConfig:
         )
 
 
-@public("hopsworks.core.LoadingConfig")
+@public("hopsworks.core.sink_job_configuration.LoadingConfig")
 class LoadingConfig:
     def __init__(
         self,
@@ -219,7 +219,7 @@ class LoadingConfig:
         return humps.decamelize(self.to_dict())
 
 
-@public("hopsworks.core.SinkJobConfiguration")
+@public("hopsworks.core.sink_job_configuration.SinkJobConfiguration")
 class SinkJobConfiguration:
     DTO_TYPE = "ingestionJobConfiguration"
 
