@@ -3697,7 +3697,11 @@ class FeatureGroup(FeatureGroupBase):
         # Compute stats in client if there is no backfill job:
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
-        if engine.get_type().startswith("spark") and not self.stream:
+        if (
+            engine.get_type().startswith("spark")
+            and not self.stream
+            and storage != "online"
+        ):
             self.compute_statistics()
         elif (
             self.statistics_config.enabled
