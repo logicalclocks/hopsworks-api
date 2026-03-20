@@ -701,7 +701,10 @@ class Engine:
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
-        dataframe = self._filter_online_dataframe(feature_group, dataframe)
+        if (
+            write_options.get("mark_online_rows", True)
+        ):
+            dataframe = self._filter_online_dataframe(feature_group, dataframe)
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         (
