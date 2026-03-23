@@ -21,14 +21,22 @@ import contextlib
 with contextlib.suppress(ImportError):
     from pyspark.sql import SparkSession
 
+from hopsworks_common.spark_connect_utils import is_spark_connect_session
 from hsfs.engine import spark
 
 
 class Engine(spark.Engine):
     def __init__(self) -> None:
         self._spark_session = SparkSession.builder.getOrCreate()
-        self._spark_context = self._spark_session.sparkContext
-        self._jvm = self._spark_context._jvm
+
+        self._is_connect = is_spark_connect_session(self._spark_session)
+
+        if self._is_connect:
+            self._spark_context = None
+            self._jvm = None
+        else:
+            self._spark_context = self._spark_session.sparkContext
+            self._jvm = self._spark_context._jvm
 
         super().__init__()
 

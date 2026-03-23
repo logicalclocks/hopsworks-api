@@ -160,8 +160,14 @@ class Client(base.Client):
                 "hops.ipc.server.ssl.enabled": "true",
             }
 
-            for conf_key, conf_value in configuration_dict.items():
-                _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
+            from hopsworks_common.spark_connect_utils import is_spark_connect_session
+
+            if is_spark_connect_session(_spark_session):
+                for conf_key, conf_value in configuration_dict.items():
+                    _spark_session.conf.set(f"spark.hadoop.{conf_key}", conf_value)
+            else:
+                for conf_key, conf_value in configuration_dict.items():
+                    _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
         elif self._engine == "spark-delta":
             _logger.debug(
