@@ -24,7 +24,6 @@ from hsfs.constructor import query, serving_prepared_statement
 from hsfs.core import explicit_provenance, job, training_dataset_job_conf
 from hsfs.core.feature_logging import FeatureLogging
 from hsfs.core.job import Job
-from hsfs.constructor.filter import Filter, Logic
 
 
 class FeatureViewApi:
