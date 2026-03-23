@@ -515,6 +515,47 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
 
+    def test_get_batch_query_with_extra_filter(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_query(
+            feature_view_obj=fv,
+            start_time=1000000000,
+            end_time=2000000000,
+            with_label=False,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_fv_api.return_value.get_batch_query.call_count == 1
+        call_kwargs = mock_fv_api.return_value.get_batch_query.call_args
+        assert call_kwargs[1]["extra_filter"] is extra_filter
+
     def test_get_batch_query_string(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -2456,6 +2497,49 @@ class TestFeatureViewEngine:
             == tf_value.hopsworks_udf.function_name
         )
         assert tf_engine_patch.apply_transformation_functions.call_count == 1
+
+    def test_get_batch_data_with_extra_filter(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
+        )
+        mock_get_batch_query = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_data(
+            feature_view_obj=None,
+            start_time=None,
+            end_time=None,
+            training_dataset_version=None,
+            transformation_functions=None,
+            read_options=None,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_get_batch_query.call_count == 1
+        call_kwargs = mock_get_batch_query.call_args
+        assert call_kwargs[1]["extra_filter"] is extra_filter
 
     def test_add_tag(self, mocker):
         # Arrange
