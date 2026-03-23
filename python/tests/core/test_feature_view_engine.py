@@ -554,7 +554,8 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
         call_kwargs = mock_fv_api.return_value.get_batch_query.call_args
-        assert call_kwargs[1]["extra_filter"] is extra_filter
+        assert call_kwargs[1]["extra_filter"]._left_f is extra_filter
+        assert call_kwargs[1]["extra_filter"]._type == "SINGLE"
 
     def test_get_batch_query_string(self, mocker):
         # Arrange
