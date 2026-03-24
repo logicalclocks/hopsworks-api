@@ -104,13 +104,10 @@ def build_time_filter(
 ) -> filter.Filter | filter.Logic | None:
     """Build a time filter from start_time and end_time parameters.
 
-    # Arguments
-        event_time_feature: The feature to filter on.
-        start_time: The start time for the filter (exclusive).
-        end_time: The end time for the filter (exclusive).
-
-    # Returns
-        A Filter, Logic, or None if both start_time and end_time are None.
+    :param event_time_feature: The feature to filter on.
+    :param start_time: The start time for the filter (exclusive).
+    :param end_time: The end time for the filter (exclusive).
+    :return: A Filter, Logic, or None if both start_time and end_time are None.
     """
     time_filter = None
     if start_time is not None:
