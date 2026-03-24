@@ -1729,7 +1729,6 @@ class TestFeatureGroupExecuteOdts:
         )
 
 
-
 class TestFeatureGroupRead:
     def test_read_with_start_time_no_event_time_raises(self):
         # Arrange
