@@ -19,7 +19,7 @@ import datetime
 import json
 import logging
 import sys
-from unittest.mock import MagicMock, PropertyMock, call
+from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
 import hopsworks_common
 import numpy
@@ -11254,7 +11254,7 @@ class TestSparkConnectMode:
         ):
             engine.convert_to_default_dataframe(mock_rdd)
 
-    def test_add_file_skips_spark_context(self):
+    def test_add_file_skips_spark_context(self, tmp_path):
         from unittest.mock import patch as mock_patch
 
         engine = self._make_connect_engine()
@@ -11265,7 +11265,9 @@ class TestSparkConnectMode:
             mock_response.content = b"file-content"
             engine._dataset_api.read_content.return_value = mock_response
 
-            with mock_patch("hsfs.engine.spark.util") as mock_util:
+            with mock_patch("hsfs.engine.spark.util") as mock_util, mock_patch(
+                "builtins.open", mock_open()
+            ):
                 mock_util.get_dataset_type.return_value = "DATASET"
                 result = engine.add_file("hdfs:///path/to/file.jks", distribute=True)
 

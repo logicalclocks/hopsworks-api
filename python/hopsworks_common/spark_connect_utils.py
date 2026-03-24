@@ -58,5 +58,5 @@ def is_spark_connect_session(spark_session) -> bool:
     try:
         _ = spark_session.sparkContext
         return False
-    except Exception:
+    except (NotImplementedError, AttributeError):
         return True

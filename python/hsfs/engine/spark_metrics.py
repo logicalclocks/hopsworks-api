@@ -25,7 +25,6 @@ import json
 import logging
 import socket
 import time
-import urllib.error
 import urllib.request
 from contextlib import contextmanager
 
@@ -93,8 +92,10 @@ class SparkStageMetrics:
         self._base_url = f"http://localhost:{port}/api/v1"
 
         try:
-            resp = urllib.request.urlopen(f"{self._base_url}/applications/", timeout=2)
-            apps = json.loads(resp.read().decode())
+            with urllib.request.urlopen(
+                f"{self._base_url}/applications/", timeout=2
+            ) as resp:
+                apps = json.loads(resp.read().decode())
             if apps:
                 self._app_id = apps[0]["id"]
             else:
@@ -185,14 +186,16 @@ class SparkStageMetrics:
         """
         self.snapshot()
         wall_start = time.time()
-        yield
-        wall_elapsed = time.time() - wall_start
-        report = self.report(label)
-        if report:
-            print(f"Wall time: {wall_elapsed:.1f}s")
+        try:
+            yield
+        finally:
+            wall_elapsed = time.time() - wall_start
+            report = self.report(label)
+            if report:
+                print(f"Wall time: {wall_elapsed:.1f}s")
 
     def _fetch_stages(self) -> list[dict]:
         """Fetch all completed stages from the REST API."""
         url = f"{self._base_url}/applications/{self._app_id}/stages?status=complete"
-        resp = urllib.request.urlopen(url, timeout=5)
-        return json.loads(resp.read().decode())
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            return json.loads(resp.read().decode())

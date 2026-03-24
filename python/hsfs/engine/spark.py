@@ -282,6 +282,12 @@ class Engine:
     def register_hudi_temporary_table(
         self, hudi_fg_alias, feature_store_id, feature_store_name, read_options
     ):
+        if self._is_connect:
+            raise FeatureStoreException(
+                "Hudi time-travel format is not supported in Spark Connect mode "
+                "because it requires JVM bridge access. "
+                "Use DELTA format or no time-travel format instead."
+            )
         hudi_engine_instance = hudi_engine.HudiEngine(
             feature_store_id,
             feature_store_name,
@@ -1458,7 +1464,7 @@ class Engine:
         # also if the client is internal, but we only need the files on the driver
         if client._is_external() or not distribute or self._is_connect:
             tmp_file = f"/tmp/{file_name}"
-            print("Reading key file from storage connector.")
+            _logger.info("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
 
             with open(tmp_file, "wb") as f:

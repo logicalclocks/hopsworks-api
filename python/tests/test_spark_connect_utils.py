@@ -51,8 +51,8 @@ class TestIsSparkConnectEnv:
             import hopsworks_common.spark_connect_utils as mod
 
             reload(mod)
-            # Direct test with the mock
-            assert mock_utils.is_remote() is True
+            # After reloading, the helper should detect the mocked remote env
+            assert mod.is_spark_connect_env() is True
 
 
 class TestIsSparkConnectSession:
