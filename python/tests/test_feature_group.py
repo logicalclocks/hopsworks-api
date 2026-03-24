@@ -1727,3 +1727,83 @@ class TestFeatureGroupExecuteOdts:
             transformation_context=None,
             request_parameters=None,
         )
+
+
+class TestFeatureGroupRead:
+    def test_read_with_start_time_no_event_time_raises(self):
+        # Arrange
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="no event_time column"):
+            fg.read(start_time="2024-01-01")
+
+    def test_read_with_end_time_no_event_time_raises(self):
+        # Arrange
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="no event_time column"):
+            fg.read(end_time="2024-01-31")
+
+    def test_read_wallclock_time_with_start_time_raises(self):
+        # Arrange
+        fg = get_test_feature_group()
+
+        # Act & Assert
+        with pytest.raises(
+            FeatureStoreException, match="Cannot use wallclock_time together"
+        ):
+            fg.read(wallclock_time="2024-01-01", start_time="2024-01-01")
+
+    def test_read_wallclock_time_with_end_time_raises(self):
+        # Arrange
+        fg = get_test_feature_group()
+
+        # Act & Assert
+        with pytest.raises(
+            FeatureStoreException, match="Cannot use wallclock_time together"
+        ):
+            fg.read(wallclock_time="2024-01-01", end_time="2024-01-31")
+
+
+class TestExternalFeatureGroupRead:
+    def test_read_with_start_time_no_event_time_raises(self, backend_fixtures):
+        # Arrange
+        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+            json = backend_fixtures["external_feature_group"]["get"]["response"]
+            fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+            fg._event_time = None
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                fg.read(start_time="2024-01-01")
+
+    def test_read_with_end_time_no_event_time_raises(self, backend_fixtures):
+        # Arrange
+        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+            json = backend_fixtures["external_feature_group"]["get"]["response"]
+            fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+            fg._event_time = None
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                fg.read(end_time="2024-01-31")
