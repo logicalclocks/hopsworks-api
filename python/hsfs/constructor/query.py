@@ -303,7 +303,7 @@ class Query:
                 or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
-            `DataFrame`: DataFrame depending on the chosen type.
+            DataFrame depending on the chosen type.
 
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time
