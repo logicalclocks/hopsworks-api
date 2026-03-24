@@ -26,6 +26,9 @@ def is_spark_connect_env() -> bool:
     Checks the ``SPARK_CONNECT_MODE_ENABLED`` environment variable that PySpark
     sets when a Spark Connect session is created, and falls back to
     ``pyspark.sql.utils.is_remote()`` when available.
+
+    Returns:
+        `True` if running in Spark Connect mode, `False` otherwise.
     """
     if "SPARK_CONNECT_MODE_ENABLED" in os.environ:
         return True
@@ -43,6 +46,12 @@ def is_spark_connect_session(spark_session) -> bool:
     Uses :func:`is_spark_connect_env` first.
     As a last resort, attempts to access ``spark_session.sparkContext`` which
     raises ``PySparkNotImplementedError`` in Connect mode.
+
+    Parameters:
+        spark_session: The SparkSession instance to check.
+
+    Returns:
+        `True` if the session is a Spark Connect session, `False` otherwise.
     """
     if is_spark_connect_env():
         return True

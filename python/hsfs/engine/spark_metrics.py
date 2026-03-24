@@ -116,7 +116,11 @@ class SparkStageMetrics:
     def report(self, label: str = "") -> str | None:
         """Fetch stages completed since the last snapshot and print a report.
 
-        Returns the formatted report string, or ``None`` if unavailable.
+        Parameters:
+            label: Optional label to include in the report header.
+
+        Returns:
+            The formatted report string, or `None` if unavailable.
         """
         if not self._available:
             return None
@@ -174,7 +178,11 @@ class SparkStageMetrics:
 
     @contextmanager
     def measure(self, label: str = ""):
-        """Context manager that snapshots before and reports after."""
+        """Context manager that snapshots before and reports after.
+
+        Parameters:
+            label: Optional label to include in the report header.
+        """
         self.snapshot()
         wall_start = time.time()
         yield
