@@ -64,6 +64,11 @@ class DeltaEngine:
         self._spark_context = spark_context
         self._spark_session = spark_session
         if self._spark_session:
+            if self._spark_context is None:
+                self._spark_session.conf.set(
+                    "spark.sql.extensions",
+                    "io.delta.sql.DeltaSparkSessionExtension",
+                )
             self._spark_session.conf.set(
                 "spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog",

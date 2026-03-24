@@ -143,7 +143,18 @@ class Client(base.Client):
             _logger.debug(
                 "Running in Spark environment with no metastore, initializing Spark session"
             )
-            _spark_session = SparkSession.builder.getOrCreate()
+            from hopsworks_common.spark_connect_utils import is_spark_connect_env
+
+            builder = SparkSession.builder
+            if is_spark_connect_env():
+                builder = builder.config(
+                    "spark.sql.extensions",
+                    "io.delta.sql.DeltaSparkSessionExtension",
+                ).config(
+                    "spark.sql.catalog.spark_catalog",
+                    "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+                )
+            _spark_session = builder.getOrCreate()
             self.download_certs()
 
             # Set credentials location in the Spark configuration

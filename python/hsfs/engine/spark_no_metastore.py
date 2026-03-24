@@ -21,13 +21,25 @@ import contextlib
 with contextlib.suppress(ImportError):
     from pyspark.sql import SparkSession
 
-from hopsworks_common.spark_connect_utils import is_spark_connect_session
+from hopsworks_common.spark_connect_utils import (
+    is_spark_connect_env,
+    is_spark_connect_session,
+)
 from hsfs.engine import spark
 
 
 class Engine(spark.Engine):
     def __init__(self) -> None:
-        self._spark_session = SparkSession.builder.getOrCreate()
+        builder = SparkSession.builder
+        if is_spark_connect_env():
+            builder = builder.config(
+                "spark.sql.extensions",
+                "io.delta.sql.DeltaSparkSessionExtension",
+            ).config(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            )
+        self._spark_session = builder.getOrCreate()
 
         self._is_connect = is_spark_connect_session(self._spark_session)
 
