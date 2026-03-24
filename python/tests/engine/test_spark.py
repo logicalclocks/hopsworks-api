@@ -11180,7 +11180,6 @@ class TestSpark:
             )
             assert row["val"] == "new"
 
-
 class TestSparkConnectMode:
     """Tests for Spark Connect compatibility guards."""
 
