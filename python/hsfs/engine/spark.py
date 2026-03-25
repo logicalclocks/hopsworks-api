@@ -590,7 +590,7 @@ class Engine:
             )
 
         query = (
-            serialized_df.withColumn("headers", self._get_headers(feature_group))
+            serialized_df.withColumn("headers", self._get_headers(feature_group, options=write_options))
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
@@ -713,6 +713,7 @@ class Engine:
                     None
                     if write_options.get("disable_online_ingestion_count", False)
                     else dataframe.count(),
+                    write_options,
                 ),
             )
             .write.format(self.KAFKA_FORMAT)
@@ -733,12 +734,13 @@ class Engine:
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         num_entries: int | None = None,
+        options: dict | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine.get_headers(
-                    feature_group, num_entries
+                    feature_group, num_entries, options
                 ).items()
             ]
         )

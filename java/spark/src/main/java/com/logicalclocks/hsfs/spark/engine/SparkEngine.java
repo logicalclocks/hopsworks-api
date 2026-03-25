@@ -530,7 +530,10 @@ public class SparkEngine extends EngineBase {
    *
    * @param featureGroupBase
    * @param dataset
-   * @param writeOptions
+   * @param writeOptions options map; supported keys include
+   *     {@code "disable_online_ingestion_count"} (boolean string) and
+   *     {@code "online_ingestion_options.upsert_if_newer"} (boolean string, only updates a row
+   *     if the new value is newer than the existing one)
    * @throws FeatureStoreException
    * @throws IOException
    */
@@ -541,7 +544,7 @@ public class SparkEngine extends EngineBase {
     Long numEntries = Boolean.parseBoolean(writeOptions.getOrDefault("disable_online_ingestion_count", "false"))
         ? null : dataset.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", getHeader(featureGroupBase, numEntries))
+        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(kafkaConfig)
@@ -577,8 +580,13 @@ public class SparkEngine extends EngineBase {
   }
 
   private Column getHeader(FeatureGroupBase featureGroup, Long numEntries) throws FeatureStoreException, IOException {
+    return getHeader(featureGroup, numEntries, null);
+  }
+
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options)
+      throws FeatureStoreException, IOException {
     return array(
-      FeatureGroupUtils.getHeaders(featureGroup, numEntries).entrySet().stream()
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options).entrySet().stream()
       .map(entry -> struct(
         lit(entry.getKey()).as("key"),
         lit(entry.getValue()).as("value")
