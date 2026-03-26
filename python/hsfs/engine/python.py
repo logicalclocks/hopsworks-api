@@ -1932,7 +1932,7 @@ class Engine:
         feature_group: FeatureGroup | ExternalFeatureGroup,
         dataframe: pd.DataFrame | pl.DataFrame,
         offline_write_options: dict[str, Any],
-        storage: str,
+        storage: str | None,
     ) -> job.Job | None:
         initial_check_point = ""
 
