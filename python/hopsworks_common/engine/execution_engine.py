@@ -24,7 +24,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from hopsworks_apigen import also_available_as
-from hopsworks_common import constants
 from hopsworks_common.client.exceptions import JobExecutionException, RestAPIError
 from hopsworks_common.core import dataset_api, execution_api
 
@@ -197,7 +196,6 @@ class ExecutionEngine:
             raise JobExecutionException(
                 f"Execution failed with status: {status}. See the logs for more information."
             )
-        else:
-            self._log.info("Execution finished successfully.")
+        self._log.info("Execution finished successfully.")
 
         return updated_execution
