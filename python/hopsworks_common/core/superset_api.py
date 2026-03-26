@@ -114,6 +114,7 @@ class SupersetApi:
             _client = client.get_instance()
             self._project_id = _client._project_id
         self._session_token: str | None = None
+        self._csrf_token: str | None = None
 
     def _get_superset_url(self) -> str:
         return f"http://{SUPERSET_SERVICE_NAME}.{self._service_discovery_domain}:{SUPERSET_PORT}"
@@ -125,6 +126,21 @@ class SupersetApi:
         self._session_token = resp["accessToken"]
         return self._session_token
 
+    def _get_csrf_token(self) -> str:
+        url = (
+            self._get_superset_url()
+            + SUPERSET_BASE_PATH
+            + "/api/v1/security/csrf_token/"
+        )
+        headers = {
+            "Content-Type": "application/json",
+            "Cookie": f"session={self._session_token}",
+        }
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        self._csrf_token = resp.json()["result"]
+        return self._csrf_token
+
     def _request(
         self,
         method: str,
@@ -135,11 +151,17 @@ class SupersetApi:
         if not self._session_token:
             self._get_session_token()
 
+        needs_csrf = method.upper() in ("POST", "PUT", "DELETE")
+        if needs_csrf and not self._csrf_token:
+            self._get_csrf_token()
+
         url = self._get_superset_url() + SUPERSET_BASE_PATH + path
         headers = {
             "Content-Type": "application/json",
             "Cookie": f"session={self._session_token}",
         }
+        if needs_csrf:
+            headers["X-CSRFToken"] = self._csrf_token
 
         resp = requests.request(
             method, url, json=json_data, headers=headers, params=params
@@ -147,7 +169,11 @@ class SupersetApi:
 
         if resp.status_code == 401:
             self._get_session_token()
+            self._csrf_token = None
             headers["Cookie"] = f"session={self._session_token}"
+            if needs_csrf:
+                self._get_csrf_token()
+                headers["X-CSRFToken"] = self._csrf_token
             resp = requests.request(
                 method, url, json=json_data, headers=headers, params=params
             )
