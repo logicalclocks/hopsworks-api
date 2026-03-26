@@ -2890,7 +2890,7 @@ class FeatureGroup(FeatureGroupBase):
 
         else:
             self._resolve_sink_enabled()
-            # Set time travel format and streaming based on engine type and online status
+            # Set time travel format and streaming based on engine type and sink configuration
             self._init_time_travel_and_stream(
                 stream,
                 time_travel_format,

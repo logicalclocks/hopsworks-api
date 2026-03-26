@@ -561,7 +561,7 @@ public class SparkEngine extends EngineBase {
     queryName = makeQueryName(queryName, featureGroupBase);
     DataStreamWriter<Row> writer =
         onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-            .withColumn("headers", getHeader(featureGroupBase, null))
+            .withColumn("headers", getHeader(featureGroupBase, null, writeOptions))
             .writeStream()
             .format(Constants.KAFKA_FORMAT)
             .outputMode(outputMode)
@@ -578,10 +578,6 @@ public class SparkEngine extends EngineBase {
       query.awaitTermination(timeout);
     }
     return query;
-  }
-
-  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries) throws FeatureStoreException, IOException {
-    return getHeader(featureGroup, numEntries, null);
   }
 
   private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options)
