@@ -532,9 +532,8 @@ public class SparkEngine extends EngineBase {
    * @param dataset
    * @param writeOptions options map; supported keys under {@code "online_ingestion_options.*"} include
    *     {@code "online_ingestion_options.disable_online_ingestion_count"} (boolean string),
-   *     {@code "online_ingestion_options.upsert_if_newer"} (boolean string, only updates a row
-   *     if the new value is newer than the existing one),
-   *     and {@code "online_ingestion_options.mark_online_rows"} (boolean string)
+   *     and {@code "online_ingestion_options.upsert_if_newer"} (boolean string, only updates a row
+   *     if the new value is newer than the existing one)
    * @throws FeatureStoreException
    * @throws IOException
    */
