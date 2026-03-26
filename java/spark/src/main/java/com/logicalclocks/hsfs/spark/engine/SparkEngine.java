@@ -530,10 +530,11 @@ public class SparkEngine extends EngineBase {
    *
    * @param featureGroupBase
    * @param dataset
-   * @param writeOptions options map; supported keys include
-   *     {@code "disable_online_ingestion_count"} (boolean string) and
+   * @param writeOptions options map; supported keys under {@code "online_ingestion_options.*"} include
+   *     {@code "online_ingestion_options.disable_online_ingestion_count"} (boolean string),
    *     {@code "online_ingestion_options.upsert_if_newer"} (boolean string, only updates a row
-   *     if the new value is newer than the existing one)
+   *     if the new value is newer than the existing one),
+   *     and {@code "online_ingestion_options.mark_online_rows"} (boolean string)
    * @throws FeatureStoreException
    * @throws IOException
    */
@@ -541,7 +542,8 @@ public class SparkEngine extends EngineBase {
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
     Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
-    Long numEntries = Boolean.parseBoolean(writeOptions.getOrDefault("disable_online_ingestion_count", "false"))
+    Long numEntries = Boolean.parseBoolean(
+        writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
         ? null : dataset.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
         .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions))

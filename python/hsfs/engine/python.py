@@ -1843,11 +1843,15 @@ class Engine:
         if (
             feature_group.online_enabled
             and storage in [None, "online"]
-            and offline_write_options.get("mark_online_rows", True)
+            and offline_write_options.get("online_ingestion_options", {}).get(
+                "mark_online_rows", True
+            )
         ):
             online_flags = self._mark_online_rows(feature_group, dataframe)
 
-        if offline_write_options.get("disable_online_ingestion_count", False):
+        if offline_write_options.get("online_ingestion_options", {}).get(
+            "disable_online_ingestion_count", False
+        ):
             n_rows = None
         elif online_flags is not None and storage == "online":
             # we will only produce rows marked for online ingestion, so count those for accurate progress bar and Kafka producer configuration

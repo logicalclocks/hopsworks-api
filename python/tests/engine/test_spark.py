@@ -2311,25 +2311,16 @@ class TestSpark:
         spark_engine._save_online_dataframe(
             feature_group=fg,
             dataframe=spark_df,
-            write_options={"disable_online_ingestion_count": True},
+            write_options={
+                "online_ingestion_options": {"disable_online_ingestion_count": True}
+            },
         )
 
         # Assert - num_entries should be None when disable_online_ingestion_count is True
         mock_get_headers.assert_called_once_with(
             fg,
             None,
-            {
-                "kafka.test_option_name": "test_option_value",
-                "kafka.bootstrap.servers": "test_bootstrap_servers",
-                "kafka.security.protocol": "test_security_protocol",
-                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
-                "kafka.ssl.truststore.location": "result_from_add_file",
-                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
-                "kafka.ssl.keystore.location": "result_from_add_file",
-                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
-                "kafka.ssl.key.password": "test_ssl_key_password",
-                "disable_online_ingestion_count": True,
-            },
+            {"online_ingestion_options": {"disable_online_ingestion_count": True}},
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 

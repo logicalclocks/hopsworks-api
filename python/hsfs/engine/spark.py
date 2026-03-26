@@ -703,7 +703,9 @@ class Engine:
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
-        if write_options.get("mark_online_rows", True):
+        if write_options.get("online_ingestion_options", {}).get(
+            "mark_online_rows", True
+        ):
             dataframe = self._filter_online_dataframe(feature_group, dataframe)
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
@@ -713,7 +715,9 @@ class Engine:
                 self._get_headers(
                     feature_group,
                     None
-                    if write_options.get("disable_online_ingestion_count", False)
+                    if write_options.get("online_ingestion_options", {}).get(
+                        "disable_online_ingestion_count", False
+                    )
                     else dataframe.count(),
                     write_options,
                 ),

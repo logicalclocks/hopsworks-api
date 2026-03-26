@@ -204,7 +204,7 @@ class TestPythonWriter:
             feature_group=fg,
             dataframe=df,
             offline_write_options={
-                "disable_online_ingestion_count": True,
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
                 "start_offline_materialization": True,
             },
             storage=None,
@@ -214,7 +214,7 @@ class TestPythonWriter:
         mock_init_kafka_resources.assert_called_once_with(
             fg,
             {
-                "disable_online_ingestion_count": True,
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
                 "start_offline_materialization": True,
             },
             num_entries=None,
