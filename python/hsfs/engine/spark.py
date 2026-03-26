@@ -590,7 +590,9 @@ class Engine:
             )
 
         query = (
-            serialized_df.withColumn("headers", self._get_headers(feature_group, options=write_options))
+            serialized_df.withColumn(
+                "headers", self._get_headers(feature_group, options=write_options)
+            )
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(

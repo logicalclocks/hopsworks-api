@@ -138,9 +138,13 @@ def get_headers(
         "subjectId": str(feature_group.subject["id"]).encode("utf8"),
     }
 
-    online_ingestion_options = options.get("online_ingestion_options") if options else None
+    online_ingestion_options = (
+        options.get("online_ingestion_options") if options else None
+    )
     if online_ingestion_options and "upsert_if_newer" in online_ingestion_options:
-        headers["upsertIfNewer"] = b"1" if online_ingestion_options["upsert_if_newer"] else b"0"
+        headers["upsertIfNewer"] = (
+            b"1" if online_ingestion_options["upsert_if_newer"] else b"0"
+        )
 
     if feature_group.online_enabled:
         # setup online ingestion id
