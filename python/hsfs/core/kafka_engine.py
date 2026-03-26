@@ -298,9 +298,7 @@ def build_ack_callback_and_optional_progress_bar(
 ) -> tuple[Callable, tqdm | None]:
     if not is_multi_part_insert:
         if n_rows is None:
-            bar_format = (
-                "{desc}: {n_fmt} Rows | Elapsed Time: {elapsed}"
-            )
+            bar_format = "{desc}: {n_fmt} Rows | Elapsed Time: {elapsed}"
         else:
             bar_format = (
                 "{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt} | "
