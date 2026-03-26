@@ -271,9 +271,9 @@ public class FeatureGroupUtils {
     headerMap.put("subjectId",
         String.valueOf(featureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
 
-    if (options != null && options.containsKey("online_ingestion_options.upsert_if_newer")) {
-      headerMap.put("upsertIfNewer",
-          Boolean.parseBoolean(options.get("online_ingestion_options.upsert_if_newer")) ? new byte[]{'1'} : new byte[]{'0'});
+    if (options != null
+        && Boolean.parseBoolean(options.get("online_ingestion_options.upsert_if_newer"))) {
+      headerMap.put("upsertIfNewer", new byte[]{'1'});
     }
 
     if (featureGroup.getOnlineEnabled()) {
