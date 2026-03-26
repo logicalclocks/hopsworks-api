@@ -2320,7 +2320,18 @@ class TestSpark:
         mock_get_headers.assert_called_once_with(
             fg,
             None,
-            {"online_ingestion_options": {"disable_online_ingestion_count": True}},
+            {
+                "kafka.test_option_name": "test_option_value",
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
+            },
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
