@@ -138,6 +138,9 @@ class SupersetApi:
         }
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()
+        # Update session cookie if the server rotated it during CSRF token generation
+        if "session" in resp.cookies:
+            self._session_token = resp.cookies["session"]
         self._csrf_token = resp.json()["result"]
         return self._csrf_token
 
