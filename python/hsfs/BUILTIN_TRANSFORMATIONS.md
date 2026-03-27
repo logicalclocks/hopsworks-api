@@ -1,6 +1,7 @@
 # Built-in Transformation Functions
 
-The HSFS library includes several ready-to-use transformation functions in `hsfs.builtin_transformations`. These transformations are model-dependent and compute statistics on your training data during the first training dataset creation, then apply those same statistics at serving time.
+The Hopsworks library includes several ready-to-use transformation functions in `hsfs.builtin_transformations`.
+These transformations are model-dependent and compute statistics on your training data during the first training dataset creation, then apply those same statistics at serving time.
 
 ## Available Transformations
 
@@ -8,17 +9,21 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
 
 - **`min_max_scaler(feature)`**: Scale feature to [0, 1] using training min/max.
 - **`standard_scaler(feature)`**: Standardize feature using training mean and standard deviation.
-- **`robust_scaler(feature)`**: Scale using median and IQR (interquartile range). Robust to outliers. If IQR is zero, centers by median only.
+- **`robust_scaler(feature)`**: Scale using median and IQR (interquartile range).
+  Robust to outliers.
+  If IQR is zero, centers by median only.
 
 ### Distribution Transforms
 
-- **`log_transform(feature)`**: Apply natural logarithm (ln) to reduce skewness. Values ≤ 0 become NaN.
+- **`log_transform(feature)`**: Apply natural logarithm (ln) to reduce skewness.
+  Values ≤ 0 become NaN.
 - **`quantile_transformer(feature)`**: Map values to a uniform [0, 1] distribution using training percentiles with linear interpolation.
 - **`rank_normalizer(feature)`**: Replace each value with its percentile rank in the training distribution (0 to 1).
 
 ### Outlier Handling
 
-- **`winsorize(feature)`**: Clip extreme values at specified percentiles (default: 1st and 99th). Override thresholds via transformation context:
+- **`winsorize(feature)`**: Clip extreme values at specified percentiles (default: 1st and 99th).
+  Override thresholds via transformation context:
   ```python
   from hsfs.builtin_transformations import winsorize
 
@@ -34,24 +39,32 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
 
 ### Encoding
 
-- **`label_encoder(feature)`**: Encode categorical values as integers based on sorted unique values from training. Unseen categories → -1.
-- **`one_hot_encoder(feature)`**: One-hot encode categorical features. Unseen categories → all False.
-- **`top_k_categorical_binner(feature)`**: Group rare categorical values into an "Other" bucket based on training data frequencies. Keeps top N most frequent categories (default: 10). Useful for high-cardinality features. Override via transformation context:
+- **`label_encoder(feature)`**: Encode categorical values as integers based on sorted unique values from training.
+  Unseen categories → -1.
+- **`one_hot_encoder(feature)`**: One-hot encode categorical features.
+  Unseen categories → all False.
+- **`top_k_categorical_binner(feature)`**: Group rare categorical values into an "Other" bucket based on training data frequencies.
+  Keeps top N most frequent categories (default: 10).
+  Useful for high-cardinality features.
+  Override via transformation context:
   ```python
   from hsfs.builtin_transformations import top_k_categorical_binner
 
   tf = top_k_categorical_binner("country")
   tf.transformation_context = {"top_n": 20, "other_label": "Rare"}
   ```
+
 ### Imputation
 
-Replace missing values (NaN) using statistics computed on training data. Imputation should always run **before** encoding when transformations are chained.
+Replace missing values (NaN) using statistics computed on training data.
+Imputation should always run **before** encoding when transformations are chained.
 
 **Numeric features:**
 
 - **`impute_mean(feature)`**: Replace NaN with the training mean.
 - **`impute_median(feature)`**: Replace NaN with the training median (50th percentile).
-- **`impute_constant(feature)`**: Replace NaN with a fixed numeric value (default: `0.0`). Override via transformation context:
+- **`impute_constant(feature)`**: Replace NaN with a fixed numeric value (default: `0.0`).
+  Override via transformation context:
   ```python
   from hsfs.builtin_transformations import impute_constant
 
@@ -61,15 +74,18 @@ Replace missing values (NaN) using statistics computed on training data. Imputat
 
 **Categorical features:**
 
-- **`impute_mode(feature)`**: Replace NaN with the most frequent category from the training histogram. Because the mode was seen during training, this chains safely into `label_encoder` and `one_hot_encoder`.
-- **`impute_category(feature)`**: Replace NaN with a sentinel category string (default: `"__MISSING__"`). Override via transformation context:
+- **`impute_mode(feature)`**: Replace NaN with the most frequent category from the training histogram.
+  Because the mode was seen during training, this chains safely into `label_encoder` and `one_hot_encoder`.
+- **`impute_category(feature)`**: Replace NaN with a sentinel category string (default: `"__MISSING__"`).
+  Override via transformation context:
   ```python
   from hsfs.builtin_transformations import impute_category
 
   tf = impute_category("country")
   tf.transformation_context = {"value": "Unknown"}
   ```
-  > **Chaining warning:** downstream encoders trained before imputation will treat the sentinel as an unseen category (encoded as `-1` / all-False). To get a dedicated encoding for the missing category, compute encoder statistics on already-imputed training data.
+  > **Chaining warning:** downstream encoders trained before imputation will treat the sentinel as an unseen category (encoded as `-1` / all-False).
+  > To get a dedicated encoding for the missing category, compute encoder statistics on already-imputed training data.
 
 ## Usage
 
@@ -91,4 +107,5 @@ Statistics are computed automatically during training dataset creation and appli
 
 ## Custom Transformations
 
-You can also define your own UDFs using the `@udf` decorator. See the [Transformation Functions API documentation](https://docs.hopsworks.ai) for details.
+You can also define your own UDFs using the `@udf` decorator.
+See the [Transformation Functions API documentation](https://docs.hopsworks.ai) for details.

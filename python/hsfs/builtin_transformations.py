@@ -52,7 +52,8 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     """Robust scaling using median and IQR.
 
     Scales a feature by removing the median and dividing by the interquartile
-    range (IQR = Q3 - Q1). This makes the transformation robust to outliers.
+    range (IQR = Q3 - Q1).
+    This makes the transformation robust to outliers.
 
     If IQR is zero (constant feature), the function centers the data by the
     median without scaling to avoid division by zero.
@@ -375,6 +376,9 @@ def winsorize(
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
 
+    if not percentiles or len(percentiles) < 2:
+        return numerical_feature
+
     # Defaults: 1 and 99 percentiles
     p_low = 1
     p_high = 99
@@ -471,7 +475,7 @@ def top_k_categorical_binner(
     # Map rare and unseen categories to other_label
     def map_category(value):
         if pd.isna(value):
-            return np.nan
+            return pd.NA
         return value if value in frequent_categories else other_label
 
     return feature.map(map_category)

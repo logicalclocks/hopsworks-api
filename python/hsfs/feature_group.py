@@ -2563,7 +2563,8 @@ class FeatureGroupBase:
         """Feature Group schema (alias).
 
         .. deprecated::
-            Use :py:attr:`columns` instead. This property will be removed in a future version.
+            Use :py:attr:`columns` instead.
+            This property will be removed in a future version.
 
         :meta private:
         """
