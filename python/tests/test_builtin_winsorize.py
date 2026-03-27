@@ -77,7 +77,9 @@ def test_winsorize_context_override():
 
     # Act - Override percentile thresholds via context parameter
     result = TransformationFunctionEngine.apply_transformation_functions(
-        transformation_functions=[tf], data=df, transformation_context={"p_low": 5, "p_high": 95}
+        transformation_functions=[tf],
+        data=df,
+        transformation_context={"p_low": 5, "p_high": 95},
     )
 
     # Assert - clips at 5th and 95th percentiles (values 5 and 95)

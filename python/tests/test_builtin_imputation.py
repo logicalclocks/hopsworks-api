@@ -123,13 +123,17 @@ def test_impute_constant_default_fills_zero():
     result = _apply(_make_tf(impute_constant("col"), stats), df)
 
     assert list(result.columns) == ["impute_constant_col_"]
-    assert result["impute_constant_col_"].tolist() == pytest.approx([1.0, 0.0, 3.0, 0.0])
+    assert result["impute_constant_col_"].tolist() == pytest.approx(
+        [1.0, 0.0, 3.0, 0.0]
+    )
 
 
 def test_impute_constant_custom_value():
     df = pd.DataFrame({"col": [1.0, None, None, 4.0], "other": list("abcd")})
     stats = FeatureDescriptiveStatistics(feature_name="col")
-    result = _apply(_make_tf(impute_constant("col"), stats), df, context={"value": -999.0})
+    result = _apply(
+        _make_tf(impute_constant("col"), stats), df, context={"value": -999.0}
+    )
 
     assert result["impute_constant_col_"].tolist() == pytest.approx(
         [1.0, -999.0, -999.0, 4.0]
