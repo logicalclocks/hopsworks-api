@@ -1717,20 +1717,22 @@ class TestFeatureGroupRead:
         fg = get_test_feature_group()
 
         # Act & Assert
-        with pytest.raises(
-            FeatureStoreException, match="Cannot use wallclock_time together"
-        ):
-            fg.read(wallclock_time="2024-01-01", start_time="2024-01-01")
+        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+            with pytest.raises(
+                FeatureStoreException, match="Cannot use wallclock_time together"
+            ):
+                fg.read(wallclock_time="2024-01-01", start_time="2024-01-01")
 
     def test_read_wallclock_time_with_end_time_raises(self):
         # Arrange
         fg = get_test_feature_group()
 
         # Act & Assert
-        with pytest.raises(
-            FeatureStoreException, match="Cannot use wallclock_time together"
-        ):
-            fg.read(wallclock_time="2024-01-01", end_time="2024-01-31")
+        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+            with pytest.raises(
+                FeatureStoreException, match="Cannot use wallclock_time together"
+            ):
+                fg.read(wallclock_time="2024-01-01", end_time="2024-01-31")
 
 
 class TestExternalFeatureGroupRead:
