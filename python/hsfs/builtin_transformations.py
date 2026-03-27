@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import contextlib
-import math
 
 import numpy as np
 import pandas as pd
@@ -30,14 +29,22 @@ feature_statistics = TransformationStatistics("feature")
 
 @udf(float, drop=["feature"])
 def min_max_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    return (feature - statistics.feature.min) / (
-        statistics.feature.max - statistics.feature.min
-    )
+    min_val = statistics.feature.min
+    max_val = statistics.feature.max
+    if pd.isna(min_val) or pd.isna(max_val) or max_val == min_val:
+        return feature - (min_val if not pd.isna(min_val) else 0)
+    return (feature - min_val) / (max_val - min_val)
 
 
 @udf(float, drop=["feature"])
 def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    return (feature - statistics.feature.mean) / statistics.feature.stddev
+    mean = statistics.feature.mean
+    stddev = statistics.feature.stddev
+    if pd.isna(mean):
+        return feature
+    if pd.isna(stddev) or stddev == 0:
+        return feature - mean
+    return (feature - mean) / stddev
 
 
 @udf(float, drop=["feature"], mode="pandas")
@@ -50,12 +57,16 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     If IQR is zero (constant feature), the function centers the data by the
     median without scaling to avoid division by zero.
     """
-    q1 = statistics.feature.percentiles[24]
-    q2 = statistics.feature.percentiles[49]
-    q3 = statistics.feature.percentiles[74]
+    percentiles = statistics.feature.percentiles
+    scaled_feature = feature.astype("float64")
+    if not percentiles or len(percentiles) < 75:
+        return scaled_feature
+
+    q1 = percentiles[24]
+    q2 = percentiles[49]
+    q3 = percentiles[74]
     iqr = q3 - q1
 
-    scaled_feature = feature.astype("float64")
     if pd.isna(iqr) or iqr == 0:
         # Constant feature or invalid IQR: center only
         return scaled_feature - q2
@@ -70,9 +81,11 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     # Unknown categories not present in training dataset are encoded as -1.
     return pd.Series(
         [
-            value_to_index.get(data, -1) if not pd.isna(data) else math.nan
+            value_to_index.get(data, -1) if not pd.isna(data) else pd.NA
             for data in feature
-        ]
+        ],
+        dtype="Int64",
+        index=feature.index,
     )
 
 
@@ -91,7 +104,7 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 
 
 @udf(float, drop=["feature"], mode="pandas")
-def log_transform(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def log_transform(feature: pd.Series) -> pd.Series:
     """Apply natural logarithm to a numeric feature.
 
     Notes:
@@ -167,9 +180,15 @@ def equal_frequency_binner(
     - NaN inputs remain NaN.
     """
     s = feature.astype("float64")
-    q1 = statistics.feature.percentiles[24]
-    q2 = statistics.feature.percentiles[49]
-    q3 = statistics.feature.percentiles[74]
+    percentiles = statistics.feature.percentiles
+    if not percentiles or len(percentiles) < 75:
+        result = pd.Series(0, index=feature.index, dtype="Int64")
+        result[s.isna()] = pd.NA
+        return result
+
+    q1 = percentiles[24]
+    q2 = percentiles[49]
+    q3 = percentiles[74]
 
     # Check if we have valid quartiles
     if any(pd.isna([q1, q2, q3])):
@@ -203,7 +222,7 @@ def equal_frequency_binner(
     return binned.astype("Int64")
 
 
-@udf(int, drop=["feature"])
+@udf(int, drop=["feature"], mode="pandas")
 def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Discretize numeric values using quantile-based boundaries from training statistics.
 
@@ -215,6 +234,11 @@ def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 
     # Use quartiles: 25th, 50th, 75th percentiles
     p = statistics.feature.percentiles
+    if not p or len(p) < 75:
+        result = pd.Series(0, index=feature.index, dtype="Int64")
+        result[numerical_feature.isna()] = pd.NA
+        return result
+
     q25 = p[24]  # Q1
     q50 = p[49]  # Q2 (median)
     q75 = p[74]  # Q3
@@ -269,6 +293,9 @@ def quantile_transformer(
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
 
+    if not percentiles or len(percentiles) < 2:
+        return numerical_feature
+
     # Handle NaN values
     result = np.full(len(numerical_feature), np.nan)
     valid_mask = ~numerical_feature.isna()
@@ -276,7 +303,6 @@ def quantile_transformer(
     if valid_mask.any():
         valid_values = numerical_feature[valid_mask].values
         # Map each value to its quantile position using linear interpolation
-        # percentiles[i] = i-th percentile (0th through 100th percentile = 101 values)
         quantile_positions = np.interp(
             valid_values, percentiles, np.linspace(0, 1, len(percentiles))
         )
@@ -300,8 +326,11 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     - Requires percentiles computed from training data statistics
     - Output range: [0, 1] where 0 = at or below minimum, 1 = at or above maximum
     """
-    numerical_feature = feature.astype("float64")  # Fixed: singular
+    numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
+
+    if not percentiles or len(percentiles) < 2:
+        return numerical_feature
 
     # Handle NaN values
     result = np.full(len(numerical_feature), np.nan)
@@ -362,7 +391,7 @@ def winsorize(
     upper = percentiles[ui]
 
     # Invalid bounds → return unchanged
-    if pd.isna(lower) or pd.isna(upper) or lower > upper:
+    if pd.isna(lower) or pd.isna(upper) or lower >= upper:
         return numerical_feature
 
     # Winsorize (no rows dropped), preserving NaN values
@@ -527,7 +556,7 @@ def impute_median(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     left unchanged.
     """
     percentiles = statistics.feature.percentiles
-    median = percentiles[49] if percentiles else None
+    median = percentiles[49] if percentiles and len(percentiles) > 49 else None
     s = feature.astype("float64")
     return s if median is None or pd.isna(median) else s.fillna(median)
 
@@ -535,7 +564,6 @@ def impute_median(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 @udf(float, drop=["feature"], mode="pandas")
 def impute_constant(
     feature: pd.Series,
-    statistics=feature_statistics,
     context: dict | None = None,
 ) -> pd.Series:
     """Replace NaN values with a constant numeric fill value. For numeric features.
@@ -578,7 +606,6 @@ def impute_mode(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
 @udf(str, drop=["feature"], mode="pandas")
 def impute_category(
     feature: pd.Series,
-    statistics=feature_statistics,
     context: dict | None = None,
 ) -> pd.Series:
     """Replace NaN values with a sentinel category string. For categorical features.
