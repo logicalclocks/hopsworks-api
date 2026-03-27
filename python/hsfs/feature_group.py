@@ -2575,6 +2575,7 @@ class FeatureGroupBase:
         )
         return self._features
 
+    @public
     @property
     def columns(self) -> list[feature.Feature]:
         """Feature Group schema.
@@ -2590,6 +2591,7 @@ class FeatureGroupBase:
         """Feature Group schema."""
         return self._features
 
+    @public
     @property
     def column_names(self) -> list[str]:
         """List of column names in the Feature Group.

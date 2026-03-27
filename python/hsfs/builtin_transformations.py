@@ -296,16 +296,26 @@ def quantile_transformer(
     if not percentiles or len(percentiles) < 2:
         return numerical_feature
 
+    # Deduplicate percentiles to ensure strictly increasing xp for np.interp.
+    # Constant/low-cardinality features can produce duplicate percentile values.
+    pct_array = np.asarray(percentiles, dtype="float64")
+    quantile_pos = np.linspace(0, 1, len(pct_array))
+    unique_mask = np.concatenate(([True], np.diff(pct_array) > 0))
+    pct_unique = pct_array[unique_mask]
+    pos_unique = quantile_pos[unique_mask]
+
+    if len(pct_unique) < 2:
+        # All percentiles identical (constant feature) — map everything to 0.5
+        result = np.where(numerical_feature.isna(), np.nan, 0.5)
+        return pd.Series(result, index=feature.index)
+
     # Handle NaN values
     result = np.full(len(numerical_feature), np.nan)
     valid_mask = ~numerical_feature.isna()
 
     if valid_mask.any():
         valid_values = numerical_feature[valid_mask].values
-        # Map each value to its quantile position using linear interpolation
-        quantile_positions = np.interp(
-            valid_values, percentiles, np.linspace(0, 1, len(percentiles))
-        )
+        quantile_positions = np.interp(valid_values, pct_unique, pos_unique)
         result[valid_mask] = quantile_positions
 
     return pd.Series(result, index=feature.index)
@@ -465,72 +475,6 @@ def top_k_categorical_binner(
         return value if value in frequent_categories else other_label
 
     return feature.map(map_category)
-
-
-# @udf(float, drop=["feature"], mode="pandas")
-# def target_mean_encoder(
-#     feature: pd.Series,
-#     label: pd.Series,
-#     statistics=feature_statistics,
-#     context: dict | None = None,
-# ) -> pd.Series:
-#     """
-#     Target / Mean Encoding for categorical features.
-
-#     Replaces each category in `feature` with the mean of the target variable `label`.
-
-#     Usage notes:
-#     - During training (offline): provide both `feature` and `label`; the encoder computes
-#       the per-category mean on-the-fly from these two Series.
-#     - During serving/online or when labels are unavailable: provide a precomputed mapping via
-#       the transformation context as `{"target_means": {category: mean, ...}, "global_mean": <float>}`.
-#       Unseen categories fall back to `global_mean` when provided, otherwise NaN.
-#     - Only the input `feature` column is dropped. The `label` column is preserved in outputs.
-
-#     Edge cases:
-#     - If `label` is entirely null or not provided (e.g., serving), a context mapping is required.
-#     - If `feature` contains NaN, the encoded value will be NaN for those rows.
-#     """
-
-#     # Ensure pandas Series with appropriate dtype
-#     f = feature
-#     y = label if label is not None else None
-
-#     mapping: dict | None = None
-#     global_mean: float | None = None
-
-#     if isinstance(context, dict):
-#         mapping = context.get("target_means") or context.get("mapping")
-#         global_mean = context.get("global_mean")
-
-#     # Training/offline path: compute mapping from data if label provided and non-empty
-#     if y is not None and not (isinstance(y, pd.Series) and y.isna().all()):
-#         # Attempt numeric conversion for label; errors='coerce' will turn non-numeric into NaN
-#         y_num = pd.to_numeric(y, errors="coerce")
-#         # Compute category -> mean(label)
-#         df = pd.DataFrame({"__cat__": f, "__y__": y_num})
-#         means = df.groupby("__cat__")["__y__"].mean()
-#         mapping = means.to_dict()
-#         # Global mean for fallback on unseen categories at serve-time
-#         global_mean = float(y_num.mean()) if not pd.isna(y_num.mean()) else None
-
-#     if mapping is None:
-#         # No mapping available: try to use just global mean for all known categories
-#         if global_mean is not None:
-#             return pd.Series(
-#                 [global_mean if pd.notna(v) else np.nan for v in f], index=f.index
-#             )
-#         # As a last resort, return NaNs (cannot encode)
-#         return pd.Series([np.nan for _ in f], index=f.index)
-
-#     # Map categories to target means; unseen -> global_mean (if provided) else NaN
-#     def _map_val(v):
-#         if pd.isna(v):
-#             return np.nan
-#         return mapping.get(v, global_mean)
-
-#     encoded = f.map(_map_val)
-#     return pd.Series(encoded, index=f.index)
 
 
 # ── Imputation ────────────────────────────────────────────────────────────────

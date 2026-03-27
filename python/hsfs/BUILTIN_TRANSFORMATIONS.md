@@ -71,23 +71,6 @@ Replace missing values (NaN) using statistics computed on training data. Imputat
   ```
   > **Chaining warning:** downstream encoders trained before imputation will treat the sentinel as an unseen category (encoded as `-1` / all-False). To get a dedicated encoding for the missing category, compute encoder statistics on already-imputed training data.
 
-<!--
-- **`target_mean_encoder(feature, label)`**: Replace categories with the mean of the target variable.
-  - **Training**: Computes per-category target means from `feature` and `label` Series.
-  - **Serving**: Use a precomputed mapping via transformation context:
-    ```python
-    from hsfs.builtin_transformations import target_mean_encoder
-
-    tf = target_mean_encoder("category_col", "label_col")
-    tf.transformation_context = {
-        "target_means": {"A": 1.5, "B": 0.8},
-        "global_mean": 1.2
-    }
-    ```
-  - Unseen categories fall back to `global_mean` if provided, otherwise NaN.
-  - Only the feature column is dropped; the label column is preserved.
--->
-
 ## Usage
 
 Import any built-in transformation and attach it to your Feature View:

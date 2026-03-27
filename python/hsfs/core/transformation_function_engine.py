@@ -51,7 +51,6 @@ class TransformationFunctionEngine:
         "equal_frequency_binner",
         "quantile_binner",
         "top_k_categorical_binner",
-        # "target_mean_encoder",
         "impute_mean",
         "impute_median",
         "impute_constant",
