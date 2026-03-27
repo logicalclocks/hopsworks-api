@@ -2562,11 +2562,9 @@ class FeatureGroupBase:
     def features(self) -> list[feature.Feature]:
         """Feature Group schema (alias).
 
-        .. deprecated::
-            Use :py:attr:`columns` instead.
+        Warning: Deprecated Property
+            Use [`columns`][hsfs.feature_group.FeatureGroupBase.columns] instead.
             This property will be removed in a future version.
-
-        :meta private:
         """
         warnings.warn(
             "The 'features' property is deprecated and will be removed in a future version. "
@@ -2579,10 +2577,10 @@ class FeatureGroupBase:
     @public
     @property
     def columns(self) -> list[feature.Feature]:
-        """Feature Group schema.
+        """Feature Group schema as a list of feature definitions.
 
         Returns:
-            List of features/columns in the feature group.
+            All feature definitions including name, type, and metadata such as primary key or event time flags.
         """
         return self._features
 
@@ -2595,10 +2593,10 @@ class FeatureGroupBase:
     @public
     @property
     def column_names(self) -> list[str]:
-        """List of column names in the Feature Group.
+        """Feature Group column names without type or metadata information.
 
         Returns:
-            List of column names extracted from the columns property.
+            Plain string names in the same order as the schema.
         """
         return [f.name for f in self._features]
 
@@ -2648,10 +2646,9 @@ class FeatureGroupBase:
     def features(self, new_features: list[feature.Feature]) -> None:
         """Set the feature group schema.
 
-        .. deprecated::
-            Use :py:attr:`columns` instead. This property will be removed in a future version.
-
-        :meta private:
+        Warning: Deprecated Property
+            Use [`columns`][hsfs.feature_group.FeatureGroupBase.columns] instead.
+            This property will be removed in a future version.
         """
         warnings.warn(
             "The 'features' property is deprecated and will be removed in a future version. "
@@ -2665,8 +2662,8 @@ class FeatureGroupBase:
     def columns(self, new_columns: list[feature.Feature]) -> None:
         """Set the feature group schema.
 
-        Args:
-            new_columns: List of features/columns to set for the feature group.
+        Parameters:
+            new_columns: List of feature definitions to replace the current schema.
         """
         self._features = new_columns
 

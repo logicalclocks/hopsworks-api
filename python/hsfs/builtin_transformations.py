@@ -51,12 +51,9 @@ def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Robust scaling using median and IQR.
 
-    Scales a feature by removing the median and dividing by the interquartile
-    range (IQR = Q3 - Q1).
+    Scales a feature by removing the median and dividing by the interquartile range (IQR = Q3 - Q1).
     This makes the transformation robust to outliers.
-
-    If IQR is zero (constant feature), the function centers the data by the
-    median without scaling to avoid division by zero.
+    If IQR is zero (constant feature), the function centers the data by the median without scaling to avoid division by zero.
     """
     percentiles = statistics.feature.percentiles
     scaled_feature = feature.astype("float64")
@@ -108,9 +105,8 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 def log_transform(feature: pd.Series) -> pd.Series:
     """Apply natural logarithm to a numeric feature.
 
-    Notes:
-    - Only strictly positive values are transformed: y = ln(x) if x > 0, otherwise NaN.
-    - This is useful to reduce skewness or model exponential relationships.
+    Only strictly positive values are transformed: y = ln(x) if x > 0, otherwise NaN.
+    This is useful to reduce skewness or model exponential relationships.
     """
     # Ensure float dtype and handle NaNs; values <= 0 become NaN
     numeric_feature = feature.astype("float64")
@@ -126,13 +122,15 @@ def equal_width_binner(
 ) -> pd.Series:
     """Discretize numeric values into equal-width bins using training min/max.
 
-    - Default bins: 10 (configurable via context["n_bins"])
-    - Values below min are placed in the first bin; values above max in the last bin.
-    - NaN inputs remain NaN.
+    Default number of bins is 10, configurable via context["n_bins"].
+    Values below min are placed in the first bin; values above max in the last bin.
+    NaN inputs remain NaN.
 
-    Example to use 20 bins:
+    Example: Using 20 bins
+        ```python
         tf = equal_width_binner("feature")
         tf.transformation_context = {"n_bins": 20}
+        ```
     """
     numerical_feature = feature.astype("float64")
     min_v = statistics.feature.min
@@ -176,9 +174,9 @@ def equal_frequency_binner(
 ) -> pd.Series:
     """Discretize numeric values into equal-frequency bins using training quartiles.
 
-    - Uses Q1/Q2/Q3 percentiles as boundaries to form up to 4 bins.
-    - If quartiles have duplicates (constant regions), fewer bins are created.
-    - NaN inputs remain NaN.
+    Uses Q1/Q2/Q3 percentiles as boundaries to form up to 4 bins.
+    If quartiles have duplicates (constant regions), fewer bins are created.
+    NaN inputs remain NaN.
     """
     s = feature.astype("float64")
     percentiles = statistics.feature.percentiles
@@ -227,9 +225,9 @@ def equal_frequency_binner(
 def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Discretize numeric values using quantile-based boundaries from training statistics.
 
-    - Default quantiles: quartiles (0%, 25%, 50%, 75%, 100%).
-    - Creates up to 4 bins based on Q1, Q2 (median), and Q3.
-    - NaN inputs remain NaN.
+    Default quantiles are quartiles (0%, 25%, 50%, 75%, 100%).
+    Creates up to 4 bins based on Q1, Q2 (median), and Q3.
+    NaN inputs remain NaN.
     """
     numerical_feature = feature.astype("float64")
 
@@ -281,15 +279,11 @@ def quantile_transformer(
 ) -> pd.Series:
     """Transform features using quantile information to map to a uniform [0, 1] distribution.
 
-    This transformation maps the input feature to a uniform distribution by using
-    the percentiles computed during training. Values are mapped to their quantile
-    position in the training distribution.
-
-    Notes:
-    - Useful for normalizing non-Gaussian distributions
-    - Maps outliers to the edges of the [0, 1] interval
-    - Requires percentiles computed from training data statistics
-    - Output range: [0, 1] where 0 = minimum, 0.5 = median, 1 = maximum
+    Maps the input feature to a uniform distribution using percentiles computed during training.
+    Values are mapped to their quantile position in the training distribution.
+    Useful for normalizing non-Gaussian distributions.
+    Maps outliers to the edges of the [0, 1] interval.
+    Output range is [0, 1] where 0 = minimum, 0.5 = median, 1 = maximum.
     """
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
@@ -326,16 +320,10 @@ def quantile_transformer(
 def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Replace each value with its percentile rank in the training distribution.
 
-    This transformation assigns each value a rank between 0 and 1 based on its
-    position in the sorted training data distribution. The rank represents the
-    percentage of training values that are less than or equal to the given value.
-
-    Notes:
-    - Useful for rank-based normalization of features
-    - Robust to outliers (outliers get ranks near 0 or 1)
-    - Preserves the relative ordering of values
-    - Requires percentiles computed from training data statistics
-    - Output range: [0, 1] where 0 = at or below minimum, 1 = at or above maximum
+    Assigns each value a rank between 0 and 1 based on its position in the sorted training data distribution.
+    The rank represents the percentage of training values that are less than or equal to the given value.
+    Robust to outliers (outliers get ranks near 0 or 1) and preserves the relative ordering of values.
+    Output range is [0, 1] where 0 = at or below minimum, 1 = at or above maximum.
     """
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
@@ -367,11 +355,8 @@ def winsorize(
 ) -> pd.Series:
     """Winsorization (clipping) to limit extreme values and reduce outlier influence.
 
-    Row-size preserving: outliers are replaced with percentile boundary
-    values instead of removing rows.
-
-    Defaults to [1st, 99th] percentiles unless overridden via context:
-      {"p_low": 5, "p_high": 95}
+    Outliers are replaced with percentile boundary values instead of removing rows.
+    Defaults to [1st, 99th] percentiles unless overridden via context with {"p_low": 5, "p_high": 95}.
     """
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
@@ -421,29 +406,17 @@ def top_k_categorical_binner(
     """Bin categorical features by grouping rare categories into an 'Other' bucket.
 
     Groups low-frequency categories together based on training data frequencies.
-    Keeps the top N most frequent categories and maps all others (including
-    unseen categories) to a single label.
+    Keeps the top N most frequent categories and maps all others (including unseen categories) to a single label.
+    Useful for high-cardinality categorical features to reduce dimensionality and prevent overfitting.
+    Preserves NaN values as NaN.
+    Unseen categories in production data are treated as rare and grouped.
+    Configure via context: "top_n" sets the number of categories to keep (default 10), "other_label" sets the bucket label (default "Other").
 
-    This transformation is useful for:
-    - High-cardinality categorical features (country, city, product_id, etc.)
-    - Reducing dimensionality
-    - Preventing overfitting to rare categories
-    - Improving model generalization
-
-    Parameters (via context):
-    - top_n: int - Keep the top N most frequent categories (default: 10)
-    - other_label: str - Label for grouped rare categories (default: "Other")
-
-    Example usage:
-        # Keep top 20 countries, group rest as "Rare"
+    Example: Keeping top 20 countries
+        ```python
         tf = top_k_categorical_binner("country")
         tf.transformation_context = {"top_n": 20, "other_label": "Rare"}
-
-    Notes:
-    - Preserves NaN values as NaN
-    - Unseen categories in production data are treated as rare and grouped
-    - Requires histogram statistics from training data
-    - Output type is string
+        ```
     """
     # Get parameters from context
     top_n = 10
@@ -486,10 +459,9 @@ def top_k_categorical_binner(
 
 @udf(float, drop=["feature"], mode="pandas")
 def impute_mean(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    """Replace NaN values with the training mean. For numeric features.
+    """Replace NaN values with the training mean for numeric features.
 
-    If the training mean is itself NaN (no non-null training data), NaN values
-    are left unchanged.
+    If the training mean is itself NaN (no non-null training data), NaN values are left unchanged.
     """
     fill = statistics.feature.mean
     s = feature.astype("float64")
@@ -498,10 +470,9 @@ def impute_mean(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
 
 @udf(float, drop=["feature"], mode="pandas")
 def impute_median(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    """Replace NaN values with the training median (50th percentile). For numeric features.
+    """Replace NaN values with the training median (50th percentile) for numeric features.
 
-    If the training median is NaN (no non-null training data), NaN values are
-    left unchanged.
+    If the training median is NaN (no non-null training data), NaN values are left unchanged.
     """
     percentiles = statistics.feature.percentiles
     median = percentiles[49] if percentiles and len(percentiles) > 49 else None
@@ -514,13 +485,15 @@ def impute_constant(
     feature: pd.Series,
     context: dict | None = None,
 ) -> pd.Series:
-    """Replace NaN values with a constant numeric fill value. For numeric features.
+    """Replace NaN values with a constant numeric fill value for numeric features.
 
     The fill value is taken from context["value"] (default: 0.0).
 
-    Example:
+    Example: Using a custom fill value
+        ```python
         tf = impute_constant("age")
         tf.transformation_context = {"value": -1.0}
+        ```
     """
     fill = 0.0
     if isinstance(context, dict):
@@ -531,17 +504,11 @@ def impute_constant(
 
 @udf(str, drop=["feature"], mode="pandas")
 def impute_mode(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    """Replace NaN values with the most frequent category from the training histogram.
+    """Replace NaN values with the most frequent category from the training histogram for categorical features.
 
-    For categorical features.
-
-    The mode is derived from the training-time histogram (the category with the
-    highest count). Because the mode was seen during training, this chains safely
-    into label_encoder and one_hot_encoder without producing unseen-category
-    fallback values.
-
-    If no histogram is available (statistics not computed), NaN values are left
-    unchanged.
+    The mode is derived from the training-time histogram (the category with the highest count).
+    Because the mode was seen during training, this chains safely into label_encoder and one_hot_encoder without producing unseen-category fallback values.
+    If no histogram is available (statistics not computed), NaN values are left unchanged.
     """
     histogram = statistics.feature.histogram
     if not histogram:
@@ -556,19 +523,21 @@ def impute_category(
     feature: pd.Series,
     context: dict | None = None,
 ) -> pd.Series:
-    """Replace NaN values with a sentinel category string. For categorical features.
+    """Replace NaN values with a sentinel category string for categorical features.
 
-    The sentinel defaults to "__MISSING__" and can be overridden via
-    context["value"].
+    The sentinel defaults to "__MISSING__" and can be overridden via context["value"].
 
-    **Chaining warning:** downstream encoders (label_encoder, one_hot_encoder)
-    trained before imputation will treat this sentinel as an unseen category and
-    encode it as -1 / all-False. To get a dedicated encoding for the missing
-    category, compute encoder statistics on already-imputed training data.
+    Warning: Encoder chaining order matters
+        Downstream encoders (label_encoder, one_hot_encoder) trained before imputation will treat
+        this sentinel as an unseen category and encode it as -1 / all-False.
+        To get a dedicated encoding for the missing category, compute encoder statistics on
+        already-imputed training data.
 
-    Example:
+    Example: Using a custom sentinel
+        ```python
         tf = impute_category("country")
         tf.transformation_context = {"value": "Unknown"}
+        ```
     """
     sentinel = "__MISSING__"
     if isinstance(context, dict):
