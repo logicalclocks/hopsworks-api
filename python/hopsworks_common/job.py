@@ -165,7 +165,7 @@ class Job:
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
 
-        Example:
+        Example (batch job):
             ```python
             # connect to the Feature Store
             fs = ...
@@ -186,9 +186,37 @@ class Job:
             out_log_path, err_log_path = execution.download_logs()
             ```
 
+        Example (Python App / Streamlit):
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            job_api = project.get_job_api()
+
+            # Get default Python App configuration
+            config = job_api.get_configuration("PYTHON_APP")
+            config["appPath"] = "Resources/my_streamlit_app.py"
+
+            # Create the job
+            job = job_api.create_job("my_app", config)
+
+            # Run - waits until the app is ready, then prints the App UI URL
+            execution = job.run()
+
+            # Access the Streamlit UI URL programmatically
+            print(execution.app_url)
+
+            # Stop the app
+            execution.stop()
+
+            # Delete the job
+            job.delete()
+            ```
+
         Parameters:
             args: Optional runtime arguments for the job.
             await_termination: Identifies if the client should wait for the job to complete.
+                Ignored for Python App jobs which wait for RUNNING state instead.
 
         Returns:
             The execution object for the submitted run.
@@ -198,13 +226,24 @@ class Job:
         """
         if self._is_materialization_running(args):
             return None
+        is_python_app = self._job_type == "PYTHON_APP"
         print(f"Launching job: {self.name}")
         execution = self._execution_api._start(self, args=args)
-        print(
-            f"Job started successfully, you can follow the progress at \n{execution.get_url()}"
-        )
-        if await_termination:
-            return self._execution_engine.wait_until_finished(self, execution)
+        if is_python_app:
+            print("Python App started, waiting for it to become ready...")
+            execution = self._execution_engine.wait_for_running(self, execution)
+            if execution.app_url:
+                print(f"App is running at:\n{execution.app_url}")
+            else:
+                print(
+                    f"App started, you can follow the progress at \n{execution.get_url()}"
+                )
+        else:
+            print(
+                f"Job started successfully, you can follow the progress at \n{execution.get_url()}"
+            )
+            if await_termination:
+                return self._execution_engine.wait_until_finished(self, execution)
         return execution
 
     @public
