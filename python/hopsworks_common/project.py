@@ -23,6 +23,7 @@ from hopsworks_apigen import public
 from hopsworks_common import alert, client, util
 from hopsworks_common.core import (
     alerts_api,
+    app_api,
     dataset_api,
     environment_api,
     flink_cluster_api,
@@ -79,6 +80,7 @@ class Project:
         self._description = description
         self._created = created
 
+        self._app_api = app_api.AppApi()
         self._opensearch_api = opensearch_api.OpenSearchApi()
         self._kafka_api = kafka_api.KafkaApi()
         self._job_api = job_api.JobApi()
@@ -257,6 +259,24 @@ class Project:
             The Job Api handle.
         """
         return self._job_api
+
+    @public
+    def get_app_api(self) -> app_api.AppApi:
+        """Get the app API for the project.
+
+        Use this to manage Streamlit apps.
+
+        Example:
+            ```python
+            apps = project.get_app_api()
+            for app in apps.get_apps():
+                print(f"{app.name}: {app.state}")
+            ```
+
+        Returns:
+            The App Api handle.
+        """
+        return self._app_api
 
     def get_jobs_api(self):
         """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage."""
