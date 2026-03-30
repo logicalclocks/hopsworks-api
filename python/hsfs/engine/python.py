@@ -1139,7 +1139,10 @@ class Engine:
             self._check_duplicate_records(dataframe, feature_group)
             _logger.debug("No duplicate records found. Proceeding with Delta write.")
 
-        if not isinstance(feature_group, fg_mod.ExternalFeatureGroup) and feature_group.stream:
+        if (
+            not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+            and feature_group.stream
+        ):
             # Streaming feature groups require the same data to be written on online and offline storage
             return self._run_materialization_job(
                 feature_group,

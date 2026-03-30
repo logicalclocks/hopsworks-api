@@ -16,6 +16,7 @@
 import os
 import sys
 import types
+from datetime import date
 from unittest import mock
 
 import pandas as pd
@@ -665,6 +666,44 @@ class TestDeltaEngine:
             if pa.types.is_timestamp(field.type):
                 assert field.type.unit == target_precision
         # Other columns should remain unchanged
+        assert len(table.columns) == df.shape[1]
+
+    def test_prepare_df_for_delta_date64_cast_to_date32(self):
+        # Arrange — date64 (milliseconds since epoch) must be cast to date32
+        # (days since epoch) because the Delta kernel statistics parser rejects
+        # millisecond values when decoding date fields.
+        import pyarrow as pa
+
+        df = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "date32_col": pd.array(
+                    [date(2022, 1, 1), date(2022, 6, 15), date(2022, 12, 31)],
+                    dtype=pd.ArrowDtype(pa.date32()),
+                ),
+                "date64_col": pd.array(
+                    [date(2022, 1, 1), date(2022, 6, 15), date(2022, 12, 31)],
+                    dtype=pd.ArrowDtype(pa.date64()),
+                ),
+            }
+        )
+
+        # Act
+        table = DeltaEngine._prepare_df_for_delta(df)
+
+        # Assert — both date columns must be date32 in the output
+        assert isinstance(table, pa.Table)
+        for field in table.schema:
+            if pa.types.is_date(field.type):
+                assert field.type == pa.date32(), (
+                    f"Column '{field.name}' has type {field.type}, expected date32"
+                )
+        # Calendar values must be preserved after the cast
+        assert table.column("date64_col").to_pylist() == [
+            date(2022, 1, 1),
+            date(2022, 6, 15),
+            date(2022, 12, 31),
+        ]
         assert len(table.columns) == df.shape[1]
 
     def test_prepare_df_for_delta_does_not_mutate_shallow_copy_input(self):

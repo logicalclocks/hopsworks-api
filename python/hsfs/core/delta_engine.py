@@ -639,6 +639,10 @@ class DeltaEngine:
                     stacklevel=1,
                 )
                 new_cols.append(col.cast(pa.float32()))
+            elif pa.types.is_date(field.type) and field.type != pa.date32():
+                # Delta Lake statistics use Date32 (days since epoch); date64
+                # (milliseconds since epoch) causes a parse error in the kernel.
+                new_cols.append(col.cast(pa.date32()))
             else:
                 new_cols.append(col)
 
