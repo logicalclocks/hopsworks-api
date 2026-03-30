@@ -21,7 +21,6 @@ import json
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, usage, util
-from hopsworks_common.client.exceptions import JobExecutionException
 from hopsworks_common.core import execution_api
 from hopsworks_common.engine import execution_engine
 
@@ -256,18 +255,9 @@ class Execution:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.JobExecutionException: If the execution finished with a failure status.
         """
-        x = self._execution_engine.wait_until_finished(self._job, self, timeout)
-        if x.final_status == "KILLED":
-            raise JobExecutionException("The Hopsworks Job was stopped")
-        if x.final_status == "FAILED":
-            raise JobExecutionException(
-                "The Hopsworks Job failed, use the Hopsworks UI to access the job logs"
-            )
-        if x.final_status == "FRAMEWORK_FAILURE":
-            raise JobExecutionException(
-                "The Hopsworks Job monitoring failed, could not determine the final status"
-            )
+        self._execution_engine.wait_until_finished(self._job, self, timeout)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

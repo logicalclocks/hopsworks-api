@@ -192,6 +192,9 @@ class Job:
 
         Returns:
             The execution object for the submitted run.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If `await_termination` is `True` and the job finished with a failure status.
         """
         if self._is_materialization_running(args):
             return None
