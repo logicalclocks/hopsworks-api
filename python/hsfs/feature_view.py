@@ -1724,7 +1724,7 @@ class FeatureView:
             description=description,
             data_format=data_format,
             data_source=data_source,
-            featurestore_id=self.schematore_id,
+            featurestore_id=self.featurestore_id,
             splits={},
             seed=seed,
             statistics_config=statistics_config,
