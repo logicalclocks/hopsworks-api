@@ -23,6 +23,11 @@ from hsfs.constructor import prepared_statement_parameter
 
 
 class ServingPreparedStatement:
+    feature_group_id: int | None
+    prepared_statement_index: int | None
+    query_online: str | None
+    prefix: str | None
+
     def __init__(
         self,
         feature_group_id: int | None = None,
@@ -39,12 +44,12 @@ class ServingPreparedStatement:
         href: str | None = None,
         **kwargs,
     ) -> None:
-        self._feature_group_id = feature_group_id
-        self._prepared_statement_index = prepared_statement_index
+        self.feature_group_id = feature_group_id
+        self.prepared_statement_index = prepared_statement_index
         # use setter to ensure that the parameters are sorted by index
         self.prepared_statement_parameters = prepared_statement_parameters
-        self._query_online = query_online
-        self._prefix = prefix
+        self.query_online = query_online
+        self.prefix = prefix
 
     @classmethod
     def from_response_json(
@@ -67,49 +72,25 @@ class ServingPreparedStatement:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "preparedStatementIndex": self._prepared_statement_index,
+            "preparedStatementIndex": self.prepared_statement_index,
             "preparedStatementParameters": self._prepared_statement_parameters,
-            "queryOnline": self._query_online,
+            "queryOnline": self.query_online,
         }
 
     def __repr__(self) -> str:
         repr_dict = humps.decamelize(self.to_dict())
-        repr_dict["feature_group_id"] = self._feature_group_id
-        repr_dict["prefix"] = self._prefix
+        repr_dict["feature_group_id"] = self.feature_group_id
+        repr_dict["prefix"] = self.prefix
         repr_dict["prepared_statement_parameters"] = [
             pstm_param.__repr__() for pstm_param in self._prepared_statement_parameters
         ]
         return json.dumps(repr_dict, sort_keys=True, indent=4)
 
     @property
-    def feature_group_id(self) -> int | None:
-        return self._feature_group_id
-
-    @property
-    def prepared_statement_index(self) -> int | None:
-        return self._prepared_statement_index
-
-    @property
     def prepared_statement_parameters(
         self,
     ) -> list[prepared_statement_parameter.PreparedStatementParameter] | None:
         return self._prepared_statement_parameters
-
-    @property
-    def query_online(self) -> str | None:
-        return self._query_online
-
-    @property
-    def prefix(self) -> str | None:
-        return self._prefix
-
-    @feature_group_id.setter
-    def feature_group_id(self, feature_group_id: int | None) -> None:
-        self._feature_group_id = feature_group_id
-
-    @prepared_statement_index.setter
-    def prepared_statement_index(self, prepared_statement_index: int | None) -> None:
-        self._prepared_statement_index = prepared_statement_index
 
     @prepared_statement_parameters.setter
     def prepared_statement_parameters(
@@ -130,11 +111,3 @@ class ServingPreparedStatement:
         self._prepared_statement_parameters = sorted(
             prepared_statement_parameters, key=lambda x: x.index
         )
-
-    @query_online.setter
-    def query_online(self, query_online: str | None) -> None:
-        self._query_online = query_online
-
-    @prefix.setter
-    def prefix(self, prefix: str | None) -> None:
-        self._prefix = prefix

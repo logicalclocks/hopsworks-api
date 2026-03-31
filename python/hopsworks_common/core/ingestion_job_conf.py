@@ -30,54 +30,22 @@ class IngestionJobConf:
     def __init__(
         self, data_format, data_options, write_options, spark_job_configuration
     ):
-        self._data_format = data_format
-        self._data_options = data_options
-        self._write_options = write_options
-        self._spark_job_configuration = spark_job_configuration
-
-    @property
-    def data_format(self):
-        return self._data_format
-
-    @data_format.setter
-    def data_format(self, data_format):
-        self._data_format = data_format
-
-    @property
-    def data_options(self):
-        return self._data_options
-
-    @data_options.setter
-    def data_options(self, data_options):
-        self._data_options = data_options
-
-    @property
-    def write_options(self):
-        return self._write_options
-
-    @write_options.setter
-    def write_options(self, write_options):
-        self._write_options = write_options
-
-    @property
-    def spark_job_configuration(self):
-        return self._spark_job_configuration
-
-    @spark_job_configuration.setter
-    def spark_job_configuration(self, spark_job_configuration):
-        self._spark_job_configuration = spark_job_configuration
+        self.data_format = data_format
+        self.data_options = data_options
+        self.write_options = write_options
+        self.spark_job_configuration = spark_job_configuration
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {
-            "dataFormat": self._data_format,
-            "dataOptions": self._data_options,
+            "dataFormat": self.data_format,
+            "dataOptions": self.data_options,
             "writeOptions": [
-                {"name": k, "value": v} for k, v in self._write_options.items()
+                {"name": k, "value": v} for k, v in self.write_options.items()
             ]
-            if self._write_options
+            if self.write_options
             else None,
-            "sparkJobConfiguration": self._spark_job_configuration,
+            "sparkJobConfiguration": self.spark_job_configuration,
         }

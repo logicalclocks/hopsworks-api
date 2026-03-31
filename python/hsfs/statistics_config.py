@@ -24,6 +24,17 @@ from hsfs import util
 
 @public
 class StatisticsConfig:
+    enabled: bool
+    """Enable statistics, by default this computes only descriptive statistics."""
+    correlations: bool
+    """Enable correlations as an additional statistic to be computed for each feature pair."""
+    histograms: bool
+    """Enable histograms as an additional statistic to be computed for each feature."""
+    exact_uniqueness: bool
+    """Enable exact uniqueness as an additional statistic to be computed for each feature."""
+    columns: list
+    """Specify a subset of columns to compute statistics for."""
+
     def __init__(
         self,
         enabled=True,
@@ -33,13 +44,12 @@ class StatisticsConfig:
         columns=None,
         **kwargs,
     ):
-        self._enabled = enabled
-        # use setters for input validation
+        self.enabled = enabled
         self.correlations = correlations
         self.histograms = histograms
         self.exact_uniqueness = exact_uniqueness
         # overwrite default with new empty [] but keep the empty list default for documentation
-        self._columns = columns or []
+        self.columns = columns or []
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -51,69 +61,19 @@ class StatisticsConfig:
 
     def to_dict(self):
         return {
-            "enabled": self._enabled,
-            "correlations": self._correlations,
-            "histograms": self._histograms,
-            "exactUniqueness": self._exact_uniqueness,
-            "columns": self._columns,
+            "enabled": self.enabled,
+            "correlations": self.correlations,
+            "histograms": self.histograms,
+            "exactUniqueness": self.exact_uniqueness,
+            "columns": self.columns,
         }
-
-    @public
-    @property
-    def enabled(self):
-        """Enable statistics, by default this computes only descriptive statistics."""
-        return self._enabled
-
-    @enabled.setter
-    def enabled(self, enabled):
-        self._enabled = enabled
-
-    @public
-    @property
-    def correlations(self):
-        """Enable correlations as an additional statistic to be computed for each feature pair."""
-        return self._correlations
-
-    @correlations.setter
-    def correlations(self, correlations):
-        self._correlations = correlations
-
-    @public
-    @property
-    def histograms(self):
-        """Enable histograms as an additional statistic to be computed for each feature."""
-        return self._histograms
-
-    @histograms.setter
-    def histograms(self, histograms):
-        self._histograms = histograms
-
-    @public
-    @property
-    def exact_uniqueness(self):
-        """Enable exact uniqueness as an additional statistic to be computed for each feature."""
-        return self._exact_uniqueness
-
-    @exact_uniqueness.setter
-    def exact_uniqueness(self, exact_uniqueness):
-        self._exact_uniqueness = exact_uniqueness
-
-    @public
-    @property
-    def columns(self):
-        """Specify a subset of columns to compute statistics for."""
-        return self._columns
-
-    @columns.setter
-    def columns(self, columns):
-        self._columns = columns
 
     def __str__(self):
         return self.json()
 
     def __repr__(self):
         return (
-            f"StatisticsConfig({self._enabled}, {self._correlations}, {self._histograms},"
-            f" {self._exact_uniqueness},"
-            f" {self._columns})"
+            f"StatisticsConfig({self.enabled}, {self.correlations}, {self.histograms},"
+            f" {self.exact_uniqueness},"
+            f" {self.columns})"
         )

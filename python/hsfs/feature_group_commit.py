@@ -41,16 +41,16 @@ class FeatureGroupCommit:
         href=None,
         **kwargs,
     ):
-        self._commitid = commitid
+        self.commitid = commitid
         self._commit_date_string = commit_date_string
-        self._commit_time = commit_time
-        self._rows_inserted = rows_inserted
-        self._rows_updated = rows_updated
-        self._rows_deleted = rows_deleted
-        self._validation_id = validation_id
+        self.commit_time = commit_time
+        self.rows_inserted = rows_inserted
+        self.rows_updated = rows_updated
+        self.rows_deleted = rows_deleted
+        self.validation_id = validation_id
         self._archived = archived
-        self._last_active_commit_time = last_active_commit_time
-        self._table_size = table_size
+        self.last_active_commit_time = last_active_commit_time
+        self.table_size = table_size
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -68,86 +68,22 @@ class FeatureGroupCommit:
 
     def to_dict(self):
         return {
-            "commitID": self._commitid,
+            "commitID": self.commitid,
             "commitDateString": self._commit_date_string,
-            "commitTime": self._commit_time,
-            "rowsInserted": self._rows_inserted,
-            "rowsUpdated": self._rows_updated,
-            "rowsDeleted": self._rows_deleted,
-            "validationId": self._validation_id,
+            "commitTime": self.commit_time,
+            "rowsInserted": self.rows_inserted,
+            "rowsUpdated": self.rows_updated,
+            "rowsDeleted": self.rows_deleted,
+            "validationId": self.validation_id,
             "archived": self._archived,
-            "lastActiveCommitTime": self._last_active_commit_time,
-            "tableSize": self._table_size,
+            "lastActiveCommitTime": self.last_active_commit_time,
+            "tableSize": self.table_size,
         }
-
-    @property
-    def commitid(self):
-        return self._commitid
 
     @property
     def commit_date_string(self):
         return self._commit_date_string
 
     @property
-    def commit_time(self):
-        return self._commit_time
-
-    @property
-    def rows_inserted(self):
-        return self._rows_inserted
-
-    @property
-    def rows_updated(self):
-        return self._rows_updated
-
-    @property
-    def rows_deleted(self):
-        return self._rows_deleted
-
-    @property
-    def validation_id(self):
-        return self._validation_id
-
-    @property
     def archived(self):
         return self._archived
-
-    @property
-    def last_active_commit_time(self):
-        return self._last_active_commit_time
-
-    @property
-    def table_size(self):
-        return self._table_size
-
-    @commitid.setter
-    def commitid(self, commitid):
-        self._commitid = commitid
-
-    @commit_time.setter
-    def commit_time(self, commit_time):
-        self._commit_time = commit_time
-
-    @rows_inserted.setter
-    def rows_inserted(self, rows_inserted):
-        self._rows_inserted = rows_inserted
-
-    @rows_updated.setter
-    def rows_updated(self, rows_updated):
-        self._rows_updated = rows_updated
-
-    @rows_deleted.setter
-    def rows_deleted(self, rows_deleted):
-        self._rows_deleted = rows_deleted
-
-    @validation_id.setter
-    def validation_id(self, validation_id):
-        self._validation_id = validation_id
-
-    @last_active_commit_time.setter
-    def last_active_commit_time(self, last_active_commit_time):
-        self._last_active_commit_time = last_active_commit_time
-
-    @table_size.setter
-    def table_size(self, table_size):
-        self._table_size = table_size

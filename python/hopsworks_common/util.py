@@ -814,6 +814,11 @@ def generate_fully_qualified_feature_name(
 class AsyncTask:
     """Generic class to represent an async task."""
 
+    event: threading.Event
+    """The event that will be set when the async task is finished."""
+    result: Any
+    """The result of the async task."""
+
     def __init__(
         self,
         task_function: Callable,
@@ -831,27 +836,9 @@ class AsyncTask:
         self.task_function = task_function
         self.task_args = task_args
         self.task_kwargs = kwargs
-        self._event: threading.Event = threading.Event()
-        self._result: Any = None
+        self.event = threading.Event()
+        self.result = None
         self._requires_connection_pool = requires_connection_pool
-
-    @property
-    def result(self) -> Any:
-        """The result of the async task."""
-        return self._result
-
-    @result.setter
-    def result(self, value) -> None:
-        self._result = value
-
-    @property
-    def event(self) -> threading.Event:
-        """The event that will be set when the async task is finished."""
-        return self._event
-
-    @event.setter
-    def event(self, value) -> None:
-        self._event = value
 
     @property
     def requires_connection_pool(self) -> bool:

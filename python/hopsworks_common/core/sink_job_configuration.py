@@ -46,8 +46,11 @@ class WriteMode(Enum):
     MERGE = "MERGE"
 
 
-@public("hopsworks.core.FeatureColumnMapping")
+@public("hopsworks.core.sink_job_configuration.FeatureColumnMapping")
 class FeatureColumnMapping:
+    source_column: str
+    feature_name: str
+
     def __init__(self, source_column: str, feature_name: str):
         self.source_column = source_column
         self.feature_name = feature_name
@@ -66,39 +69,24 @@ class FeatureColumnMapping:
     def to_json(self):
         return humps.decamelize(self.to_dict())
 
-    @public
-    @property
-    def source_column(self) -> str:
-        return self._source_column
 
-    @source_column.setter
-    def source_column(self, source_column: str) -> None:
-        self._source_column = source_column
-
-    @public
-    @property
-    def feature_name(self) -> str:
-        return self._feature_name
-
-    @feature_name.setter
-    def feature_name(self, feature_name: str) -> None:
-        self._feature_name = feature_name
-
-
-@public("hopsworks.core.FullLoadConfig")
+@public("hopsworks.core.sink_job_configuration.FullLoadConfig")
 class FullLoadConfig:
+    source_cursor_field: str | None
+    initial_value: str | None
+
     def __init__(
         self,
         source_cursor_field: str | None = None,
         initial_value: str | None = None,
     ):
-        self._source_cursor_field = source_cursor_field
-        self._initial_value = initial_value
+        self.source_cursor_field = source_cursor_field
+        self.initial_value = initial_value
 
     def to_dict(self):
         return {
-            "sourceCursorField": self._source_cursor_field,
-            "initialValue": self._initial_value,
+            "sourceCursorField": self.source_cursor_field,
+            "initialValue": self.initial_value,
         }
 
     @classmethod
@@ -109,24 +97,8 @@ class FullLoadConfig:
             initial_value=json_decamelized.get("initial_value"),
         )
 
-    @property
-    def source_cursor_field(self) -> str | None:
-        return self._source_cursor_field
 
-    @source_cursor_field.setter
-    def source_cursor_field(self, source_cursor_field: str | None) -> None:
-        self._source_cursor_field = source_cursor_field
-
-    @property
-    def initial_value(self) -> str | None:
-        return self._initial_value
-
-    @initial_value.setter
-    def initial_value(self, initial_value: str | None) -> None:
-        self._initial_value = initial_value
-
-
-@public("hopsworks.core.LoadingConfig")
+@public("hopsworks.core.sink_job_configuration.LoadingConfig")
 class LoadingConfig:
     def __init__(
         self,
@@ -247,9 +219,19 @@ class LoadingConfig:
         return humps.decamelize(self.to_dict())
 
 
-@public("hopsworks.core.SinkJobConfiguration")
+@public("hopsworks.core.sink_job_configuration.SinkJobConfiguration")
 class SinkJobConfiguration:
     DTO_TYPE = "ingestionJobConfiguration"
+
+    name: str | None
+    batch_size: int | None
+    sql_source_fetch_chunk_size: int | None
+    source_read_workers: int | None
+    data_processing_workers: int | None
+    max_upload_batch_size_mb: int | None
+    sql_table_num_partitions: int | None
+    loading_config: LoadingConfig | dict | None
+    column_mappings: list[FeatureColumnMapping] | list[dict] | None
 
     def __init__(
         self,
@@ -266,21 +248,21 @@ class SinkJobConfiguration:
         endpoint_config: dict | RestEndpointConfig | None = None,
         schedule_config: JobSchedule | dict | None = None,
     ):
-        self._name = name
+        self.name = name
         self.write_mode = write_mode
-        self._batch_size = batch_size
-        self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
-        self._source_read_workers = source_read_workers
-        self._data_processing_workers = data_processing_workers
-        self._max_upload_batch_size_mb = max_upload_batch_size_mb
-        self._sql_table_num_partitions = sql_table_num_partitions
+        self.batch_size = batch_size
+        self.sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
+        self.source_read_workers = source_read_workers
+        self.data_processing_workers = data_processing_workers
+        self.max_upload_batch_size_mb = max_upload_batch_size_mb
+        self.sql_table_num_partitions = sql_table_num_partitions
         if isinstance(loading_config, dict):
-            self._loading_config = LoadingConfig.from_response_json(loading_config)
+            self.loading_config = LoadingConfig.from_response_json(loading_config)
         else:
-            self._loading_config = loading_config or LoadingConfig()
+            self.loading_config = loading_config or LoadingConfig()
 
         if column_mappings:
-            self._column_mappings = [
+            self.column_mappings = [
                 (
                     FeatureColumnMapping.from_response_json(mapping)
                     if isinstance(mapping, dict)
@@ -289,7 +271,7 @@ class SinkJobConfiguration:
                 for mapping in column_mappings
             ]
         else:
-            self._column_mappings = []
+            self.column_mappings = []
         self._featuregroup_id = None
         self._featurestore_id = None
         self._storage_connector_id = None
@@ -308,22 +290,22 @@ class SinkJobConfiguration:
     def to_dict(self):
         return {
             "type": self.DTO_TYPE,
-            "name": self._name,
+            "name": self.name,
             "writeMode": self._write_mode.value,
-            "batchSize": self._batch_size,
-            "sqlSourceFetchChunkSize": self._sql_source_fetch_chunk_size,
-            "sourceReadWorkers": self._source_read_workers,
-            "dataProcessingWorkers": self._data_processing_workers,
-            "maxUploadBatchSizeMB": self._max_upload_batch_size_mb,
-            "sqlTableNumPartitions": self._sql_table_num_partitions,
+            "batchSize": self.batch_size,
+            "sqlSourceFetchChunkSize": self.sql_source_fetch_chunk_size,
+            "sourceReadWorkers": self.source_read_workers,
+            "dataProcessingWorkers": self.data_processing_workers,
+            "maxUploadBatchSizeMB": self.max_upload_batch_size_mb,
+            "sqlTableNumPartitions": self.sql_table_num_partitions,
             "loadingConfig": (
-                self._loading_config.to_dict()
-                if isinstance(self._loading_config, LoadingConfig)
-                else self._loading_config
+                self.loading_config.to_dict()
+                if isinstance(self.loading_config, LoadingConfig)
+                else self.loading_config
             ),
             "columnMappings": [
                 self._normalize_column_mapping(mapping)
-                for mapping in self._column_mappings
+                for mapping in self.column_mappings
             ],
             "featuregroupId": self._featuregroup_id,
             "featurestoreId": self._featurestore_id,
@@ -411,87 +393,7 @@ class SinkJobConfiguration:
             )
         else:
             self._endpoint_config = endpoint_config
-        self._name = kwargs.get("name", self._name)
-
-    @public
-    @property
-    def batch_size(self) -> int | None:
-        return self._batch_size
-
-    @batch_size.setter
-    def batch_size(self, batch_size: int | None) -> None:
-        self._batch_size = batch_size
-
-    @public
-    @property
-    def sql_source_fetch_chunk_size(self) -> int | None:
-        return self._sql_source_fetch_chunk_size
-
-    @sql_source_fetch_chunk_size.setter
-    def sql_source_fetch_chunk_size(
-        self, sql_source_fetch_chunk_size: int | None
-    ) -> None:
-        self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
-
-    @property
-    def source_read_workers(self) -> int | None:
-        return self._source_read_workers
-
-    @source_read_workers.setter
-    def source_read_workers(self, source_read_workers: int | None) -> None:
-        self._source_read_workers = source_read_workers
-
-    @property
-    def data_processing_workers(self) -> int | None:
-        return self._data_processing_workers
-
-    @data_processing_workers.setter
-    def data_processing_workers(self, data_processing_workers: int | None) -> None:
-        self._data_processing_workers = data_processing_workers
-
-    @property
-    def max_upload_batch_size_mb(self) -> int | None:
-        return self._max_upload_batch_size_mb
-
-    @max_upload_batch_size_mb.setter
-    def max_upload_batch_size_mb(self, max_upload_batch_size_mb: int | None) -> None:
-        self._max_upload_batch_size_mb = max_upload_batch_size_mb
-
-    @property
-    def sql_table_num_partitions(self) -> int | None:
-        return self._sql_table_num_partitions
-
-    @sql_table_num_partitions.setter
-    def sql_table_num_partitions(self, sql_table_num_partitions: int | None) -> None:
-        self._sql_table_num_partitions = sql_table_num_partitions
-
-    @property
-    def loading_config(self) -> LoadingConfig | dict | None:
-        return self._loading_config
-
-    @loading_config.setter
-    def loading_config(self, loading_config: LoadingConfig | dict | None) -> None:
-        self._loading_config = loading_config
-
-    @public
-    @property
-    def column_mappings(self) -> list[FeatureColumnMapping] | list[dict] | None:
-        return self._column_mappings
-
-    @column_mappings.setter
-    def column_mappings(
-        self, column_mappings: list[FeatureColumnMapping] | list[dict] | None
-    ) -> None:
-        self._column_mappings = column_mappings
-
-    @public
-    @property
-    def name(self) -> str | None:
-        return self._name
-
-    @name.setter
-    def name(self, name: str | None) -> None:
-        self._name = name
+        self.name = kwargs.get("name", self.name)
 
     @public
     @property

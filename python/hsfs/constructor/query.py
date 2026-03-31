@@ -51,6 +51,11 @@ if HAS_NUMPY:
 @public
 @typechecked
 class Query:
+    left_feature_group_start_time: str | int | date | datetime | None
+    """Start time of time travel for the left feature group."""
+    left_feature_group_end_time: str | int | date | datetime | None
+    """End time of time travel for the left feature group."""
+
     ERROR_MESSAGE_FEATURE_AMBIGUOUS = (
         "Provided feature name '{}' is ambiguous and exists in more than one feature group. "
         "Consider prepending the prefix specified in the join."
@@ -86,8 +91,8 @@ class Query:
         self._feature_store_id = feature_store_id
         self._left_feature_group = left_feature_group
         self._left_features = util.parse_features(left_features)
-        self._left_feature_group_start_time = left_feature_group_start_time
-        self._left_feature_group_end_time = left_feature_group_end_time
+        self.left_feature_group_start_time = left_feature_group_start_time
+        self.left_feature_group_end_time = left_feature_group_end_time
         self._joins = joins or []
         self._filter = Logic.from_response_json(filter)
         self._limit = limit
@@ -715,8 +720,8 @@ class Query:
             "featureStoreId": self._feature_store_id,
             "leftFeatureGroup": self._left_feature_group,
             "leftFeatures": self._left_features,
-            "leftFeatureGroupStartTime": self._left_feature_group_start_time,
-            "leftFeatureGroupEndTime": self._left_feature_group_end_time,
+            "leftFeatureGroupStartTime": self.left_feature_group_start_time,
+            "leftFeatureGroupEndTime": self.left_feature_group_end_time,
             "joins": self._joins,
             "filter": self._filter,
             "limit": self._limit,
@@ -854,32 +859,6 @@ class Query:
             return fs_query.pit_query_signature
 
         return fs_query.query_signature
-
-    @public
-    @property
-    def left_feature_group_start_time(
-        self,
-    ) -> str | int | date | datetime | None:
-        """Start time of time travel for the left feature group."""
-        return self._left_feature_group_start_time
-
-    @public
-    @property
-    def left_feature_group_end_time(self) -> str | int | date | datetime | None:
-        """End time of time travel for the left feature group."""
-        return self._left_feature_group_end_time
-
-    @left_feature_group_start_time.setter
-    def left_feature_group_start_time(
-        self, left_feature_group_start_time: str | int | datetime | date | None
-    ) -> None:
-        self._left_feature_group_start_time = left_feature_group_start_time
-
-    @left_feature_group_end_time.setter
-    def left_feature_group_end_time(
-        self, left_feature_group_end_time: str | int | date | datetime | None
-    ) -> None:
-        self._left_feature_group_end_time = left_feature_group_end_time
 
     @public
     def append_feature(self, feature: str | Feature) -> Query:

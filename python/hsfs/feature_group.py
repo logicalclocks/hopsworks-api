@@ -151,6 +151,9 @@ class FeatureGroupBase:
 
     NOT_FOUND_ERROR_CODE = 270009
 
+    features: list[feature.Feature]
+    """Feature Group schema."""
+
     def __init__(
         self,
         name: str | None,
@@ -388,7 +391,7 @@ class FeatureGroupBase:
             return self.select_except(removed_keys)
         return query.Query(
             left_feature_group=self,
-            left_features=self._features,
+            left_features=self.features,
             feature_store_name=self._feature_store_name,
             feature_store_id=self._feature_store_id,
         )
@@ -589,7 +592,7 @@ class FeatureGroupBase:
             return query.Query(
                 left_feature_group=self,
                 left_features=[
-                    f for f in self._features if f.name not in except_features
+                    f for f in self.features if f.name not in except_features
                 ],
                 feature_store_name=self._feature_store_name,
                 feature_store_id=self._feature_store_id,
@@ -1856,7 +1859,7 @@ class FeatureGroupBase:
             feature_name=feature_name,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=[feat.name for feat in self.features],
             end_date_time=end_date_time,
             cron_expression=cron_expression,
         )
@@ -1931,7 +1934,7 @@ class FeatureGroupBase:
             feature_name=feature_name,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=[feat.name for feat in self.features],
             end_date_time=end_date_time,
             cron_expression=cron_expression,
         )
@@ -2559,15 +2562,9 @@ class FeatureGroupBase:
 
     @public
     @property
-    def features(self) -> list[feature.Feature]:
-        """Feature Group schema (alias)."""
-        return self._features
-
-    @public
-    @property
     def schema(self) -> list[feature.Feature]:
         """Feature Group schema."""
-        return self._features
+        return self.features
 
     def _are_statistics_missing(self, statistics: Statistics) -> bool:
         if not self.statistics_config.enabled:
@@ -2610,10 +2607,6 @@ class FeatureGroupBase:
             raise FeatureStoreException(
                 "Statistics not supported for this Feature Group type"
             )
-
-    @features.setter
-    def features(self, new_features: list[feature.Feature]) -> None:
-        self._features = new_features
 
     def _get_project_name(self) -> str:
         return util.strip_feature_store_suffix(self.feature_store_name)
@@ -2757,6 +2750,20 @@ class FeatureGroup(FeatureGroupBase):
     STREAM_FEATURE_GROUP = "STREAM_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
 
+    description: str | None
+    """Description of the feature group contents."""
+    time_travel_format: str | None
+    """Setting of the feature group time travel format."""
+    stream: bool
+    """Whether to enable real time stream writing capabilities."""
+    parents: list[explicit_provenance.Links]
+    """Parent feature groups as origin of the data in the current feature group.
+
+    This is part of explicit provenance.
+    """
+    transformation_functions: list[TransformationFunction]
+    """Get transformation functions."""
+
     def __init__(
         self,
         name: str,
@@ -2834,7 +2841,7 @@ class FeatureGroup(FeatureGroupBase):
         )
 
         self._feature_store_name: str | None = featurestore_name
-        self._description: str | None = description
+        self.description: str | None = description
         self._created = created
         self._creator = user.User.from_response_json(creator)
         self._sink_job = sink_job
@@ -2844,17 +2851,17 @@ class FeatureGroup(FeatureGroupBase):
         else:
             self._sink_job_conf = sink_job_conf
 
-        self._features = [
+        self.features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
             for feat in (features or [])
         ]
 
-        self._time_travel_format = (
+        self.time_travel_format = (
             time_travel_format.upper() if time_travel_format is not None else None
         )
 
-        self._stream = stream
-        self._parents = parents
+        self.stream = stream
+        self.parents = parents
         self._deltastreamer_jobconf = delta_streamer_job_conf
         self._tags: list[tag.Tag] | None = tags
 
@@ -2863,23 +2870,23 @@ class FeatureGroup(FeatureGroupBase):
         if self._id:
             # initialized by backend
             self.primary_key: list[str] = [
-                feat.name for feat in self._features if feat.primary is True
+                feat.name for feat in self.features if feat.primary is True
             ]
             self.foreign_key: list[str] = [
-                feat.name for feat in self._features if feat.foreign is True
+                feat.name for feat in self.features if feat.foreign is True
             ]
             self._partition_key: list[str] = [
-                feat.name for feat in self._features if feat.partition is True
+                feat.name for feat in self.features if feat.partition is True
             ]
             if (
                 time_travel_format is not None
                 and time_travel_format.upper() == "HUDI"
-                and self._features
+                and self.features
             ):
                 # hudi precombine key is always a single feature
                 self._hudi_precombine_key: str | None = [
                     feat.name
-                    for feat in self._features
+                    for feat in self.features
                     if feat.hudi_precombine_key is True
                 ][0]
             else:
@@ -2905,8 +2912,7 @@ class FeatureGroup(FeatureGroupBase):
                 util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
                 and (
-                    self._time_travel_format is None
-                    or self._time_travel_format == "HUDI"
+                    self.time_travel_format is None or self.time_travel_format == "HUDI"
                 )
                 else None
             )
@@ -2925,12 +2931,12 @@ class FeatureGroup(FeatureGroupBase):
         self._writer: callable | None = None
         self._kafka_headers: dict[str, bytes] | None = None
         # On-Demand Transformation Functions
-        self._transformation_functions: list[TransformationFunction] = []
+        self.transformation_functions: list[TransformationFunction] = []
 
         if transformation_functions:
             for transformation_function in transformation_functions:
                 if not isinstance(transformation_function, TransformationFunction):
-                    self._transformation_functions.append(
+                    self.transformation_functions.append(
                         TransformationFunction(
                             featurestore_id,
                             hopsworks_udf=transformation_function,
@@ -2947,13 +2953,11 @@ class FeatureGroup(FeatureGroupBase):
                         transformation_function.transformation_type = (
                             TransformationType.ON_DEMAND
                         )
-                    self._transformation_functions.append(transformation_function)
+                    self.transformation_functions.append(transformation_function)
 
-        if self._transformation_functions:
-            self._transformation_functions = (
-                FeatureGroup._sort_transformation_functions(
-                    self._transformation_functions
-                )
+        if self.transformation_functions:
+            self.transformation_functions = FeatureGroup._sort_transformation_functions(
+                self.transformation_functions
             )
 
     def _init_time_travel_and_stream(
@@ -2963,20 +2967,20 @@ class FeatureGroup(FeatureGroupBase):
         online_enabled: bool,
         is_hopsfs: bool,
     ) -> None:
-        """Initialize `self._time_travel_format` and `self._stream` for new objects.
+        """Initialize `self.time_travel_format` and `self.stream` for new objects.
 
         Extracted into testable helpers to simplify unit testing.
         """
-        self._time_travel_format = FeatureGroup._resolve_time_travel_format(
+        self.time_travel_format = FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
         )
 
         if engine.get_type() == "python" and not self._sink_enabled:
-            self._stream = FeatureGroup._resolve_stream_python(
+            self.stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
-                time_travel_format=self._time_travel_format,
+                time_travel_format=self.time_travel_format,
                 is_hopsfs=is_hopsfs,
                 online_enabled=online_enabled,
             )
@@ -3178,7 +3182,7 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
             hopsworks.client.exceptions.FeatureStoreException: If wallclock_time is used together with start_time or end_time.
         """
-        if wallclock_time and self._time_travel_format is None:
+        if wallclock_time and self.time_travel_format is None:
             raise FeatureStoreException(
                 "Time travel format is not set for the feature group, cannot read as of specific point in time."
             )
@@ -3470,7 +3474,7 @@ class FeatureGroup(FeatureGroupBase):
             write_options["delta.enableChangeDataFeed"] = "true"
 
         if (
-            (features is None and len(self._features) > 0)
+            (features is None and len(self.features) > 0)
             or (
                 isinstance(features, list)
                 and len(features) > 0
@@ -3485,16 +3489,16 @@ class FeatureGroup(FeatureGroupBase):
             # and in the `save()` call, then the (get_or_)create_feature_group wins.
             # This is consistent with the behavior of the insert method where the feature list wins over the
             # dataframe structure
-            self._features = (
-                self._features
-                if len(self._features) > 0
+            self.features = (
+                self.features
+                if len(self.features) > 0
                 else features
                 if features
                 else []
             )
 
-            self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
-                self, self._features
+            self.features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
+                self, self.features
             )
 
             self._feature_group_engine.save_feature_group_metadata(
@@ -4414,23 +4418,23 @@ class FeatureGroup(FeatureGroupBase):
             "id": self._id,
             "name": self._name,
             "version": self._version,
-            "description": self._description,
+            "description": self.description,
             "onlineEnabled": self._online_enabled,
-            "timeTravelFormat": self._time_travel_format,
-            "features": self._features,
+            "timeTravelFormat": self.time_travel_format,
+            "features": self.features,
             "featurestoreId": self._feature_store_id,
             "type": (
-                "cachedFeaturegroupDTO" if not self._stream else "streamFeatureGroupDTO"
+                "cachedFeaturegroupDTO" if not self.stream else "streamFeatureGroupDTO"
             ),
             "statisticsConfig": self._statistics_config,
             "eventTime": self.event_time,
             "expectationSuite": self._expectation_suite,
-            "parents": self._parents,
+            "parents": self.parents,
             "topicName": self.topic_name,
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
             "transformationFunctions": [
-                tf.to_dict() for tf in self._transformation_functions
+                tf.to_dict() for tf in self.transformation_functions
             ],
             "ttl": self.ttl,
             "ttlEnabled": self._ttl_enabled,
@@ -4442,7 +4446,7 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
-        if self._stream:
+        if self.stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
         tags_dict = tag.Tag.tags_to_dict(self._tags)
         if tags_dict:
@@ -4455,8 +4459,8 @@ class FeatureGroup(FeatureGroupBase):
     def _is_time_travel_enabled(self) -> bool:
         """Whether time-travel is enabled or not."""
         return (
-            self._time_travel_format is not None
-            and self._time_travel_format.upper() != "NONE"
+            self.time_travel_format is not None
+            and self.time_travel_format.upper() != "NONE"
         )
 
     def execute_odts(
@@ -4530,18 +4534,6 @@ class FeatureGroup(FeatureGroupBase):
 
     @public
     @property
-    def description(self) -> str | None:
-        """Description of the feature group contents."""
-        return self._description
-
-    @public
-    @property
-    def time_travel_format(self) -> str | None:
-        """Setting of the feature group time travel format."""
-        return self._time_travel_format
-
-    @public
-    @property
     def partition_key(self) -> list[str]:
         """List of features building the partition key."""
         return self._partition_key
@@ -4569,21 +4561,6 @@ class FeatureGroup(FeatureGroupBase):
     def created(self) -> str | None:
         """Timestamp when the feature group was created."""
         return self._created
-
-    @public
-    @property
-    def stream(self) -> bool:
-        """Whether to enable real time stream writing capabilities."""
-        return self._stream
-
-    @public
-    @property
-    def parents(self) -> list[explicit_provenance.Links]:
-        """Parent feature groups as origin of the data in the current feature group.
-
-        This is part of explicit provenance.
-        """
-        return self._parents
 
     @public
     @property
@@ -4622,22 +4599,6 @@ class FeatureGroup(FeatureGroupBase):
             )
         return super().statistics
 
-    @public
-    @property
-    def transformation_functions(
-        self,
-    ) -> list[TransformationFunction]:
-        """Get transformation functions."""
-        return self._transformation_functions
-
-    @description.setter
-    def description(self, new_description: str | None) -> None:
-        self._description = new_description
-
-    @time_travel_format.setter
-    def time_travel_format(self, new_time_travel_format: str | None) -> None:
-        self._time_travel_format = new_time_travel_format
-
     @partition_key.setter
     def partition_key(self, new_partition_key: list[str]) -> None:
         self._partition_key = [
@@ -4649,21 +4610,6 @@ class FeatureGroup(FeatureGroupBase):
         self._hudi_precombine_key = util.autofix_feature_name(
             hudi_precombine_key, warn=True
         )
-
-    @stream.setter
-    def stream(self, stream: bool) -> None:
-        self._stream = stream
-
-    @parents.setter
-    def parents(self, new_parents: explicit_provenance.Links) -> None:
-        self._parents = new_parents
-
-    @transformation_functions.setter
-    def transformation_functions(
-        self,
-        transformation_functions: list[TransformationFunction],
-    ) -> None:
-        self._transformation_functions = transformation_functions
 
     @public
     @property
@@ -4802,7 +4748,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._creator = user.User.from_response_json(creator)
         self._data_format = data_format.upper() if data_format else None
 
-        self._features = [
+        self.features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
             for feat in (features or [])
         ]
@@ -4814,13 +4760,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
         if self._id:
             # Got from Hopsworks, deserialize features and storage connector
             self.primary_key = (
-                [feat.name for feat in self._features if feat.primary is True]
-                if self._features
+                [feat.name for feat in self.features if feat.primary is True]
+                if self.features
                 else []
             )
             self.foreign_key = (
-                [feat.name for feat in self._features if feat.foreign is True]
-                if self._features
+                [feat.name for feat in self.features if feat.foreign is True]
+                if self.features
                 else []
             )
             self.statistics_config = statistics_config
@@ -5235,7 +5181,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "name": self._name,
             "description": self._description,
             "version": self._version,
-            "features": self._features,
+            "features": self.features,
             "featurestoreId": self._feature_store_id,
             "dataFormat": self._data_format,
             "options": (
@@ -5377,7 +5323,7 @@ class SpineGroup(FeatureGroupBase):
         self._created = created
         self._creator = user.User.from_response_json(creator)
 
-        self._features = [
+        self.features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
             for feat in (features or [])
         ]
@@ -5389,7 +5335,7 @@ class SpineGroup(FeatureGroupBase):
 
         if self._id:
             # Got from Hopsworks, deserialize features and storage connector
-            self._features = (
+            self.features = (
                 [
                     (
                         feature.Feature.from_response_json(feat)
@@ -5402,13 +5348,13 @@ class SpineGroup(FeatureGroupBase):
                 else None
             )
             self.primary_key = (
-                [feat.name for feat in self._features if feat.primary is True]
-                if self._features
+                [feat.name for feat in self.features if feat.primary is True]
+                if self.features
                 else []
             )
         else:
             self.primary_key = primary_key
-            self._features = features
+            self.features = features
 
         self._href = href
 
@@ -5484,13 +5430,13 @@ class SpineGroup(FeatureGroupBase):
         if (
             self._id is not None
             and self._dataframe is not None
-            and self._features is not None
+            and self.features is not None
         ):
             dataframe_features = engine.get_instance().parse_schema_feature_group(
                 self._dataframe
             )
             self._feature_group_engine._verify_schema_compatibility(
-                self._features, dataframe_features
+                self.features, dataframe_features
             )
 
     @classmethod
@@ -5521,7 +5467,7 @@ class SpineGroup(FeatureGroupBase):
             "name": self._name,
             "description": self._description,
             "version": self._version,
-            "features": self._features,
+            "features": self.features,
             "featurestoreId": self._feature_store_id,
             "type": "onDemandFeaturegroupDTO",
             "statisticsConfig": self._statistics_config,

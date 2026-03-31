@@ -132,6 +132,9 @@ class FeatureView:
     ENTITY_TYPE = "featureview"
     NOT_FOUND_ERROR_CODE = 270181
 
+    schema: list[training_dataset_feature.TrainingDatasetFeature]
+    """Schema of untransformed features in the Feature view."""
+
     def __init__(
         self,
         name: str,
@@ -159,7 +162,7 @@ class FeatureView:
         self._query = query
         # Check if query has any ambiguous columns and print warning in these cases:
         query.check_and_warn_ambiguous_features()
-        self._featurestore_id = featurestore_id
+        self.schematore_id = featurestore_id
         self._feature_store_id = featurestore_id  # for consistency with feature group
         self._feature_store_name = featurestore_name
         self._version = version
@@ -201,7 +204,7 @@ class FeatureView:
                 self._transformation_functions
             )
 
-        self._features = []
+        self.schema = []
         self._request_parameters = None
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(featurestore_id)
@@ -1721,7 +1724,7 @@ class FeatureView:
             description=description,
             data_format=data_format,
             data_source=data_source,
-            featurestore_id=self._featurestore_id,
+            featurestore_id=self.featurestore_id,
             splits={},
             seed=seed,
             statistics_config=statistics_config,
@@ -2015,7 +2018,7 @@ class FeatureView:
             description=description,
             data_format=data_format,
             data_source=data_source,
-            featurestore_id=self._featurestore_id,
+            featurestore_id=self.schematore_id,
             splits={},
             seed=seed,
             statistics_config=statistics_config,
@@ -2304,7 +2307,7 @@ class FeatureView:
             description=description,
             data_format=data_format,
             data_source=data_source,
-            featurestore_id=self._featurestore_id,
+            featurestore_id=self.schematore_id,
             splits={},
             seed=seed,
             statistics_config=statistics_config,
@@ -2540,7 +2543,7 @@ class FeatureView:
             event_end_time=end_time,
             description=description,
             data_source=None,
-            featurestore_id=self._featurestore_id,
+            featurestore_id=self.schematore_id,
             data_format="tsv",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
@@ -2717,7 +2720,7 @@ class FeatureView:
             time_split_size=2,
             description=description,
             data_source=None,
-            featurestore_id=self._featurestore_id,
+            featurestore_id=self.schematore_id,
             data_format="tsv",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
@@ -2934,7 +2937,7 @@ class FeatureView:
             test_end=test_end,
             description=description,
             data_source=None,
-            featurestore_id=self._featurestore_id,
+            featurestore_id=self.schematore_id,
             data_format="tsv",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
@@ -3713,7 +3716,7 @@ class FeatureView:
             feature_name=feature_name,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=[feat.name for feat in self.schema],
             cron_expression=cron_expression,
             end_date_time=end_date_time,
         )
@@ -3784,7 +3787,7 @@ class FeatureView:
             feature_name=feature_name,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=[feat.name for feat in self.schema],
             end_date_time=end_date_time,
             cron_expression=cron_expression,
         )
@@ -4682,14 +4685,14 @@ class FeatureView:
     def _init_feature_monitoring_engine(self) -> None:
         self._feature_monitoring_config_engine = (
             feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
-                feature_store_id=self._featurestore_id,
+                feature_store_id=self.schematore_id,
                 feature_view_name=self._name,
                 feature_view_version=self._version,
             )
         )
         self._feature_monitoring_result_engine = (
             feature_monitoring_result_engine.FeatureMonitoringResultEngine(
-                feature_store_id=self._featurestore_id,
+                feature_store_id=self.schematore_id,
                 feature_view_name=self._name,
                 feature_view_version=self._version,
             )
@@ -4710,12 +4713,12 @@ class FeatureView:
             Dictionary that contains all data required to JSON serialize the object.
         """
         fv_dict = {
-            "featurestoreId": self._featurestore_id,
+            "featurestoreId": self.schematore_id,
             "name": self._name,
             "version": self._version,
             "description": self._description,
             "query": self._query,
-            "features": self._features,
+            "features": self.schema,
             "loggingEnabled": self._logging_enabled,
             "transformationFunctions": self._transformation_functions,
             "type": "featureViewDTO",
@@ -4767,11 +4770,11 @@ class FeatureView:
     @property
     def featurestore_id(self) -> int:
         """Feature store id."""
-        return self._featurestore_id
+        return self.schematore_id
 
     @featurestore_id.setter
     def featurestore_id(self, id: int | None) -> None:
-        self._featurestore_id = id
+        self.schematore_id = id
 
     @public
     @property
@@ -4931,21 +4934,9 @@ class FeatureView:
 
     @public
     @property
-    def schema(self) -> list[training_dataset_feature.TrainingDatasetFeature]:
-        """Schema of untransformed features in the Feature view."""
-        return self._features
-
-    @public
-    @property
     def features(self) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Schema of untransformed features in the Feature view. (alias)."""
-        return self._features
-
-    @schema.setter
-    def schema(
-        self, features: list[training_dataset_feature.TrainingDatasetFeature]
-    ) -> None:
-        self._features = features
+        return self.schema
 
     @public
     @property
@@ -5018,8 +5009,8 @@ class FeatureView:
     def _vector_server(self) -> vector_server.VectorServer:
         if not self.__vector_server:
             self.__vector_server = vector_server.VectorServer(
-                feature_store_id=self._featurestore_id,
-                features=self._features,
+                feature_store_id=self.schematore_id,
+                features=self.schema,
                 serving_keys=self._serving_keys,
                 skip_fg_ids=self._get_skip_fg_ids(),
                 skip_feature_decoding_fg_ids=self._get_spine_fg_ids(),
@@ -5033,8 +5024,8 @@ class FeatureView:
     def _batch_scoring_server(self) -> vector_server.VectorServer:
         if not self.__batch_scoring_server:
             self.__batch_scoring_server = vector_server.VectorServer(
-                feature_store_id=self._featurestore_id,
-                features=self._features,
+                feature_store_id=self.schematore_id,
+                features=self.schema,
                 serving_keys=self._serving_keys,
                 skip_fg_ids=self._get_skip_fg_ids(),
                 skip_feature_decoding_fg_ids=self._get_spine_fg_ids(),
