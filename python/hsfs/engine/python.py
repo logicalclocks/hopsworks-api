@@ -1169,6 +1169,7 @@ class Engine:
                 dataframe,
                 write_options=offline_write_options,
                 validation_id=validation_id,
+                operation=operation,
             )
             inserted = True
         if storage in [None, "online"] and feature_group.online_enabled:
