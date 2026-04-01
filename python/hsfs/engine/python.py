@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import math
@@ -59,11 +60,11 @@ from hopsworks_common.core.type_systems import create_extended_type
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
-    engine,
     feature,
     feature_view,
     util,
 )
+from hsfs import feature_group as fg_mod
 from hsfs import storage_connector as sc
 from hsfs.constructor import query
 from hsfs.constructor.fs_query import FsQuery
@@ -1063,6 +1064,61 @@ class Engine:
                 f"Sample duplicate key combinations:\n{sample_str}"
             )
 
+    def _mark_online_rows(
+        self,
+        feature_group: FeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+    ) -> list[bool]:
+        """Return a per-row boolean list indicating which rows should be written to online storage.
+
+        For TTL-enabled feature groups, rows whose event time has already expired
+        are marked False.
+        For non-TTL feature groups, only the last occurrence per primary key is
+        marked True; earlier duplicates are marked False.
+        """
+        event_time = feature_group.event_time
+        pk_cols = feature_group.primary_key
+
+        if not pk_cols:
+            return [True] * len(dataframe)
+
+        if HAS_POLARS and isinstance(dataframe, pl.DataFrame):
+            if feature_group.ttl_enabled and feature_group.ttl:
+                if event_time:
+                    threshold = datetime.now(tz=timezone.utc) - timedelta(
+                        seconds=feature_group.ttl
+                    )
+                    return (
+                        dataframe[event_time]
+                        .dt.replace_time_zone("UTC")
+                        .gt(threshold)
+                        .to_list()
+                    )
+                return [True] * len(dataframe)
+            df = dataframe.with_row_index("__row_idx__")
+            order_col = event_time if event_time else "__row_idx__"
+            max_idx = df.group_by(pk_cols).agg(
+                pl.col("__row_idx__").sort_by(order_col).last().alias("__max_idx__")
+            )
+            df = df.join(max_idx, on=pk_cols, how="left")
+            return (df["__row_idx__"] == df["__max_idx__"]).to_list()
+        if feature_group.ttl_enabled and feature_group.ttl:
+            if event_time:
+                threshold = datetime.now(tz=timezone.utc) - timedelta(
+                    seconds=feature_group.ttl
+                )
+                return (
+                    pd.to_datetime(dataframe[event_time], utc=True) > threshold
+                ).tolist()
+            return [True] * len(dataframe)
+        if event_time:
+            max_idx = dataframe.groupby(pk_cols, sort=False)[event_time].idxmax()
+        else:
+            max_idx = dataframe.groupby(pk_cols, sort=False).tail(1).index
+        flags = pd.Series(False, index=dataframe.index)
+        flags.loc[max_idx] = True
+        return flags.tolist()
+
     def save_dataframe(
         self,
         feature_group: FeatureGroup,
@@ -1078,32 +1134,50 @@ class Engine:
             # Only `FeatureGroup` class has time_travel_format property
             isinstance(feature_group, FeatureGroup)
             and feature_group.time_travel_format == "DELTA"
+            and storage in [None, "offline"]
         ):
             self._check_duplicate_records(dataframe, feature_group)
             _logger.debug("No duplicate records found. Proceeding with Delta write.")
 
         if (
-            hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
-            and feature_group.online_enabled
-        ) or feature_group.stream:
-            return self._write_dataframe_kafka(
-                feature_group, dataframe, offline_write_options
+            not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+            and feature_group.stream
+        ):
+            # Streaming feature groups require the same data to be written on online and offline storage
+            return self._run_materialization_job(
+                feature_group,
+                dataframe,
+                offline_write_options,
+                None,  # doesnt support storage parameter
             )
-        if engine.get_type() == "python":
-            if feature_group.time_travel_format == "DELTA":
-                delta_engine_instance = delta_engine.DeltaEngine(
-                    feature_store_id=feature_group.feature_store_id,
-                    feature_store_name=feature_group.feature_store_name,
-                    feature_group=feature_group,
-                    spark_context=None,
-                    spark_session=None,
-                )
-                delta_engine_instance.save_delta_fg(
-                    dataframe,
-                    write_options=offline_write_options,
-                    validation_id=validation_id,
-                )
-        else:
+
+        inserted = False
+        if (
+            storage in [None, "offline"]
+            and not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+            and feature_group.time_travel_format == "DELTA"
+        ):
+            # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
+            delta_engine_instance = delta_engine.DeltaEngine(
+                feature_store_id=feature_group.feature_store_id,
+                feature_store_name=feature_group.feature_store_name,
+                feature_group=feature_group,
+                spark_context=None,
+                spark_session=None,
+            )
+            delta_engine_instance.save_delta_fg(
+                dataframe,
+                write_options=offline_write_options,
+                validation_id=validation_id,
+            )
+            inserted = True
+        if storage in [None, "online"] and feature_group.online_enabled:
+            self._write_dataframe_kafka(
+                feature_group, dataframe, offline_write_options, storage
+            )
+            inserted = True
+
+        if not inserted:
             # for backwards compatibility
             return self.legacy_save_dataframe(
                 feature_group,
@@ -1764,27 +1838,39 @@ class Engine:
         feature_group: FeatureGroup | ExternalFeatureGroup,
         dataframe: pd.DataFrame | pl.DataFrame,
         offline_write_options: dict[str, Any],
-    ) -> job.Job | None:
-        initial_check_point = ""
+        storage: str | None,
+    ) -> None:
+        # Compute per-row online flags before building the Avro schema so the
+        # marker never enters the writer and avoids column name mangling.
+        online_flags = None
+        if (
+            feature_group.online_enabled
+            and storage in [None, "online"]
+            and offline_write_options.get("online_ingestion_options", {}).get(
+                "mark_online_rows", True
+            )
+        ):
+            online_flags = self._mark_online_rows(feature_group, dataframe)
+
+        if offline_write_options.get("online_ingestion_options", {}).get(
+            "disable_online_ingestion_count", False
+        ):
+            n_rows = None
+        elif online_flags is not None and storage == "online":
+            # we will only produce rows marked for online ingestion, so count those for accurate progress bar and Kafka producer configuration
+            n_rows = sum(online_flags)
+        else:
+            # if we are writing to offline or not marking online rows, all rows will be produced, so count the entire dataframe
+            n_rows = len(dataframe)
+
         producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
             feature_group,
             offline_write_options,
-            num_entries=None
-            if offline_write_options.get("disable_online_ingestion_count", False)
-            else len(dataframe),
+            num_entries=n_rows,
         )
 
-        if not feature_group._multi_part_insert:
-            # set initial_check_point to the current offset
-            initial_check_point = kafka_engine.kafka_get_offsets(
-                topic_name=feature_group._online_topic_name,
-                feature_store_id=feature_group.feature_store_id,
-                offline_write_options=offline_write_options,
-                high=True,
-            )
-
         acked, progress_bar = kafka_engine.build_ack_callback_and_optional_progress_bar(
-            n_rows=dataframe.shape[0],
+            n_rows=n_rows,
             is_multi_part_insert=feature_group._multi_part_insert,
             offline_write_options=offline_write_options,
         )
@@ -1795,11 +1881,26 @@ class Engine:
             row_iterator = dataframe.iter_rows(named=True)
 
         # loop over rows
-        for row in row_iterator:
+        for row, online_flag in zip(
+            row_iterator,
+            online_flags if online_flags is not None else itertools.repeat(None),
+        ):
             if isinstance(dataframe, pd.DataFrame):
-                # itertuples returns Python NamedTyple, to be able to serialize it using
-                # avro, create copy of row only by converting to dict, which preserves datatypes
+                # itertuples returns Python NamedTuple; convert to dict to serialize via Avro
                 row = row._asdict()
+
+            # Set per-row storage header based on the online flag when present.
+            row_headers = headers
+            if online_flag is not None:
+                if not online_flag and storage == "online":
+                    # Online-only write — skip rows not destined for online store.
+                    continue
+                # b"1" = ingest online, b"0" = offline only
+                row_headers = {
+                    **headers,
+                    "storage": b"1" if online_flag else b"0",
+                }
+
             encoded_row = kafka_engine.encode_row(feature_writers, writer, row)
 
             # assemble key
@@ -1810,7 +1911,7 @@ class Engine:
                 key=key,
                 encoded_row=encoded_row,
                 topic_name=feature_group._online_topic_name,
-                headers=headers,
+                headers=row_headers,
                 acked=acked,
                 debug_kafka=offline_write_options.get("debug_kafka", False),
             )
@@ -1820,6 +1921,36 @@ class Engine:
             producer.flush()
             del producer
             progress_bar.close()
+
+        # wait for online ingestion
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
+    def _run_materialization_job(
+        self,
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        offline_write_options: dict[str, Any],
+        storage: str | None,
+    ) -> job.Job | None:
+        initial_check_point = ""
+
+        if not feature_group._multi_part_insert:
+            # set initial_check_point to the current offset
+            initial_check_point = kafka_engine.kafka_get_offsets(
+                topic_name=feature_group._online_topic_name,
+                feature_store_id=feature_group.feature_store_id,
+                offline_write_options=offline_write_options,
+                high=True,
+            )
+
+        self._write_dataframe_kafka(
+            feature_group, dataframe, offline_write_options, storage
+        )
 
         # start materialization job if not an external feature group, otherwise return None
         if isinstance(feature_group, ExternalFeatureGroup):
@@ -1882,14 +2013,6 @@ class Engine:
                     else ""
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
-            )
-
-        # wait for online ingestion
-        if feature_group.online_enabled and offline_write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
             )
 
         return feature_group.materialization_job

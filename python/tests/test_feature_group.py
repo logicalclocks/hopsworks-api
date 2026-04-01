@@ -959,8 +959,6 @@ class TestFeatureGroup:
         fg._init_time_travel_and_stream(
             stream=False,
             time_travel_format="None",
-            online_enabled=True,
-            is_hopsfs=False,
         )
 
         # Assert: _init uses resolvers' outputs
@@ -969,15 +967,11 @@ class TestFeatureGroup:
         assert fmt_mock.call_count == 1
         assert fmt_mock.call_args.kwargs == {
             "time_travel_format": "None",
-            "online_enabled": True,
-            "is_hopsfs": False,
         }
         assert stream_mock.call_count == 1
         assert stream_mock.call_args.kwargs == {
             "stream": False,
             "time_travel_format": expected_fmt,
-            "is_hopsfs": False,
-            "online_enabled": True,
         }
 
     def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):
@@ -1009,8 +1003,6 @@ class TestFeatureGroup:
         fg._init_time_travel_and_stream(
             stream=False,
             time_travel_format="HUDI",
-            online_enabled=False,
-            is_hopsfs=False,
         )
 
         # Assert: format set via resolver, stream resolver not used, _stream unchanged
@@ -1020,47 +1012,20 @@ class TestFeatureGroup:
         assert fg._stream is False
 
     @pytest.mark.parametrize(
-        "time_travel_format,is_hopsfs,has_deltalake,online_enabled,expected",
+        "time_travel_format,has_deltalake,expected",
         [
-            # time_travel_format=None cases (resolved by flags)
-            (None, False, False, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
-            (None, False, False, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
-            (None, False, True, True, "DELTA"),  # Non-HopsFS & Online -> HUDI
-            (None, False, True, False, "DELTA"),  # Non-HopsFS & Offline -> HUDI
-            (None, True, False, True, "HUDI"),  # HopsFS & Online -> HUDI
-            (None, True, True, True, "DELTA"),  # HopsFS & Online -> HUDI
-            (
-                None,
-                True,
-                True,
-                False,
-                "DELTA",
-            ),  # HopsFS & Offline -> DELTA when available
-            (
-                None,
-                True,
-                False,
-                False,
-                "HUDI",
-            ),  # HopsFS & Offline -> HUDI when not available
-            # time_travel_format="HUDI" cases (passthrough)
-            ("HUDI", False, False, True, "HUDI"),
-            ("HUDI", False, True, False, "HUDI"),
-            ("HUDI", True, False, True, "HUDI"),
-            ("HUDI", True, True, False, "HUDI"),
-            # time_travel_format="DELTA" cases (passthrough)
-            ("DELTA", False, False, True, "DELTA"),
-            ("DELTA", False, True, False, "DELTA"),
-            ("DELTA", True, False, True, "DELTA"),
-            ("DELTA", True, True, False, "DELTA"),
+            (None, False, "HUDI"),
+            (None, True, "DELTA"),
+            ("HUDI", False, "HUDI"),
+            ("HUDI", True, "HUDI"),
+            ("DELTA", False, "DELTA"),
+            ("DELTA", True, "DELTA"),
         ],
     )
     def test_resolve_time_travel_format(
         self,
         monkeypatch,
         time_travel_format,
-        online_enabled,
-        is_hopsfs,
         has_deltalake,
         expected,
     ):
@@ -1069,45 +1034,27 @@ class TestFeatureGroup:
         )
         result = feature_group.FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
         )
         assert result == expected
 
     @pytest.mark.parametrize(
-        "time_travel_format,stream,is_hopsfs,online_enabled,expected",
+        "time_travel_format,stream,expect_stream",
         [
-            # DELTA not streams when not HopsFS and online enabled
-            ("DELTA", False, True, False, False),
-            ("DELTA", False, True, True, True),
-            ("DELTA", False, False, False, True),
-            ("DELTA", False, False, True, True),
+            # DELTA not streams
+            ("DELTA", False, False),
             # DELTA always streams when stream is True
-            ("DELTA", True, True, False, True),
-            ("DELTA", True, True, True, True),
-            ("DELTA", True, False, False, True),
-            ("DELTA", True, False, True, True),
+            ("DELTA", True, True),
             # HUDI always streams
-            ("HUDI", False, True, False, True),
-            ("HUDI", False, True, True, True),
-            ("HUDI", False, False, False, True),
-            ("HUDI", False, False, True, True),
-            ("HUDI", True, True, False, True),
-            ("HUDI", True, True, True, True),
-            ("HUDI", True, False, False, True),
-            ("HUDI", True, False, True, True),
+            ("HUDI", False, True),
+            ("HUDI", True, True),
         ],
     )
-    def test_resolve_stream_python(
-        self, time_travel_format, stream, is_hopsfs, online_enabled, expected
-    ):
+    def test_resolve_stream_python(self, time_travel_format, stream, expect_stream):
         result = feature_group.FeatureGroup._resolve_stream_python(
             stream=stream,
             time_travel_format=time_travel_format,
-            is_hopsfs=is_hopsfs,
-            online_enabled=online_enabled,
         )
-        assert result is expected
+        assert result is expect_stream
 
     def test_embedding_index_forces_online_enabled(self, mocker):
         # Arrange
@@ -1126,11 +1073,12 @@ class TestFeatureGroup:
                 features=[hsfs.embedding.EmbeddingFeature("emb_feat", 128)],
             ),
             online_enabled=False,
+            time_travel_format="DELTA",
         )
 
         # Assert
         assert fg.online_enabled is True
-        assert fg.stream is True
+        assert fg.stream is False
 
 
 class TestExternalFeatureGroup:

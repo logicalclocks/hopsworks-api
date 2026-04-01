@@ -74,9 +74,11 @@ public class Engine<T> extends EngineBase {
     kafkaProps.put("value.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
     kafkaProps.putAll(getKafkaConfig(streamFeatureGroup, writeOptions));
 
-    Long numEntries = Boolean.parseBoolean(writeOptions.getOrDefault("disable_online_ingestion_count", "false"))
+    Long numEntries = Boolean.parseBoolean(
+        writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
         ? null : (long) featureData.size();
-    KafkaRecordSerializer kafkaRecordSerializer = new KafkaRecordSerializer(streamFeatureGroup, numEntries);
+    KafkaRecordSerializer kafkaRecordSerializer =
+        new KafkaRecordSerializer(streamFeatureGroup, numEntries, writeOptions);
 
     try (KafkaProducer<byte[], byte[]> producer = new KafkaProducer<>(kafkaProps)) {
       for (Object input : featureData) {

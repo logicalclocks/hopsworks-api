@@ -2223,10 +2223,13 @@ class TestSpark:
             name="test",
             version=1,
             featurestore_id=99,
-            primary_key=[],
             partition_key=[],
             id=10,
             online_topic_name="test_online_topic_name",
+            features=[
+                feature.Feature("col_0", primary=True),
+                feature.Feature("col_1"),
+            ],
         )
         fg.feature_store = mocker.Mock()
 
@@ -2241,7 +2244,21 @@ class TestSpark:
         )
 
         # Assert - num_entries should be dataframe row count (2) when flag is not set
-        mock_get_headers.assert_called_once_with(fg, 2)
+        mock_get_headers.assert_called_once_with(
+            fg,
+            2,
+            {
+                "kafka.test_option_name": "test_option_value",
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+            },
+        )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
     def test_save_online_dataframe_disable_online_ingestion_count(
@@ -2294,11 +2311,28 @@ class TestSpark:
         spark_engine._save_online_dataframe(
             feature_group=fg,
             dataframe=spark_df,
-            write_options={"disable_online_ingestion_count": True},
+            write_options={
+                "online_ingestion_options": {"disable_online_ingestion_count": True}
+            },
         )
 
         # Assert - num_entries should be None when disable_online_ingestion_count is True
-        mock_get_headers.assert_called_once_with(fg, None)
+        mock_get_headers.assert_called_once_with(
+            fg,
+            None,
+            {
+                "kafka.test_option_name": "test_option_value",
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
+            },
+        )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
     def test_serialize_to_avro(self, mocker):
@@ -10928,3 +10962,220 @@ class TestSpark:
                 result.hopsworks_logging_metadata.request_parameters.collect()
                 == request_parameters_spark_df.collect()
             )
+
+    class TestFilterOnlineDataframe:
+        @pytest.fixture(autouse=True)
+        def patch_engine_type(self, mocker):
+            mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        @pytest.fixture(autouse=True)
+        def spark_engine(self):
+            engine = spark.Engine()
+            engine._spark_session.conf.set("spark.sql.shuffle.partitions", "1")
+            return engine
+
+        def _make_fg(self, primary_key, event_time=None, ttl=None, ttl_enabled=None):
+            return feature_group.FeatureGroup(
+                name="test",
+                version=1,
+                featurestore_id=1,
+                primary_key=primary_key,
+                partition_key=[],
+                event_time=event_time,
+                ttl=ttl,
+                ttl_enabled=ttl_enabled,
+            )
+
+        def _make_df(self, spark_engine, data, schema):
+            return spark_engine._spark_session.createDataFrame(data, schema=schema)
+
+        def test_no_event_time_no_duplicates_returns_all_rows(self, spark_engine):
+            # Arrange
+            fg = self._make_fg(primary_key=["id"])
+            schema = StructType(
+                [StructField("id", IntegerType()), StructField("val", StringType())]
+            )
+            df = self._make_df(spark_engine, [(1, "a"), (2, "b")], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+
+        def test_no_event_time_deduplicates_by_last_row_per_primary_key(
+            self, spark_engine
+        ):
+            # Arrange: two rows for the same primary key — last one should win
+            fg = self._make_fg(primary_key=["id"])
+            schema = StructType(
+                [StructField("id", IntegerType()), StructField("val", StringType())]
+            )
+            df = self._make_df(spark_engine, [(1, "a"), (1, "b"), (2, "c")], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            ids = {r["id"] for r in result.collect()}
+            assert ids == {1, 2}
+
+        def test_event_time_keeps_latest_per_primary_key(self, spark_engine):
+            # Arrange: two rows for id=1 with different event times — only newer survives
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "old", older), (1, "new", newer), (2, "only", older)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            row = next(r for r in result.collect() if r["id"] == 1)
+            assert row["val"] == "new"
+
+        def test_event_time_out_of_order_batch_picks_max(self, spark_engine):
+            # Arrange: older record appears after newer in the dataframe
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            newer = datetime.datetime(2024, 6, 1)
+            older = datetime.datetime(2024, 1, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "new", newer), (1, "old", older)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "new"
+
+        def test_ttl_filters_expired_rows(self, spark_engine):
+            # Arrange: one row with a very old timestamp (expired), one with now
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            expired = datetime.datetime(2000, 1, 1)
+            fresh = datetime.datetime.now()
+            df = self._make_df(
+                spark_engine,
+                [(1, "expired", expired), (2, "fresh", fresh)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "fresh"
+
+        def test_ttl_keeps_all_rows_when_none_expired(self, spark_engine):
+            # Arrange: all rows are fresh
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            fresh = datetime.datetime.now()
+            df = self._make_df(spark_engine, [(1, "a", fresh), (2, "b", fresh)], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+
+        def test_ttl_disabled_falls_back_to_dedup_by_event_time(self, spark_engine):
+            # Arrange: ttl_enabled=False — should deduplicate by event time instead
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=False
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "old", older), (1, "new", newer)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "new"
+
+        def test_composite_primary_key(self, spark_engine):
+            # Arrange: primary key is (user_id, item_id) — two entries for same pair
+            fg = self._make_fg(primary_key=["user_id", "item_id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("user_id", IntegerType()),
+                    StructField("item_id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [
+                    (1, 10, "old", older),
+                    (1, 10, "new", newer),
+                    (1, 20, "only", older),
+                ],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            row = next(
+                r for r in result.collect() if r["user_id"] == 1 and r["item_id"] == 10
+            )
+            assert row["val"] == "new"

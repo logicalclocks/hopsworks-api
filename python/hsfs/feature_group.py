@@ -2890,12 +2890,10 @@ class FeatureGroup(FeatureGroupBase):
 
         else:
             self._resolve_sink_enabled()
-            # Set time travel format and streaming based on engine type and online status
+            # Set time travel format and streaming based on engine type and sink configuration
             self._init_time_travel_and_stream(
                 stream,
                 time_travel_format,
-                self.online_enabled,  # use the getter of the super class to take into account embedding index
-                self._is_hopsfs_storage(),
             )
 
             self.primary_key = primary_key
@@ -2960,8 +2958,6 @@ class FeatureGroup(FeatureGroupBase):
         self,
         stream: bool,
         time_travel_format: str | None,
-        online_enabled: bool,
-        is_hopsfs: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
@@ -2969,16 +2965,12 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._time_travel_format = FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
         )
 
         if engine.get_type() == "python" and not self._sink_enabled:
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
-                is_hopsfs=is_hopsfs,
-                online_enabled=online_enabled,
             )
 
     def _is_hopsfs_storage(self) -> bool:
@@ -3043,20 +3035,14 @@ class FeatureGroup(FeatureGroupBase):
     def _resolve_stream_python(
         stream: bool,
         time_travel_format: str,
-        is_hopsfs: bool,
-        online_enabled: bool,
     ) -> bool | None:
-        # If stream is explicitly set stream to True, use it.
-        # Otherwise, resolve it based on time travel format and other flags.
-        return stream or not (
-            is_hopsfs and time_travel_format == "DELTA" and not online_enabled
-        )
+        # If stream is explicitly set to True, use it.
+        # Otherwise, only DELTA format disables stream by default.
+        return stream or time_travel_format != "DELTA"
 
     @staticmethod
     def _resolve_time_travel_format(
         time_travel_format: str | None,
-        online_enabled: bool,
-        is_hopsfs: bool,
     ) -> str:
         """Resolve only the time travel format string."""
         fmt = time_travel_format.upper() if time_travel_format is not None else None
@@ -3412,8 +3398,16 @@ class FeatureGroup(FeatureGroupBase):
                   By default it does not wait.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
                   By default it does not wait.
-                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
-                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
+                - key `online_ingestion_options` and value a dict to configure online ingestion behaviour.
+                  Supported keys:
+                    - `timeout`: seconds to wait for online ingestion completion, default `60`, set to `0` for indefinite.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `period`: polling interval in seconds, default `1`.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `upsert_if_newer`: `True` or `False` to only update a row if the new value is newer than the existing one, defaults to `False`.
+                    - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
+                    - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
+                      When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage. `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
                 - key `start_offline_materialization` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
@@ -3647,11 +3641,16 @@ class FeatureGroup(FeatureGroupBase):
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration] to configure the Hopsworks Job used to write data into the feature group.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished. By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished. By default it does not wait.
-                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
-                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
-                - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
-                  Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
-                  Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
+                - key `online_ingestion_options` and value a dict to configure online ingestion behaviour.
+                  Supported keys:
+                    - `timeout`: seconds to wait for online ingestion completion, default `60`, set to `0` for indefinite.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `period`: polling interval in seconds, default `1`.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `upsert_if_newer`: `True` or `False` to only update a row if the new value is newer than the existing one, defaults to `False`.
+                    - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
+                    - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
+                      When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
                   `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
@@ -3721,12 +3720,13 @@ class FeatureGroup(FeatureGroupBase):
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = "true"
 
+        storage_normalized = storage.lower() if storage is not None else None
         job, ge_report = self._feature_group_engine.insert(
             self,
             feature_dataframe=feature_dataframe,
             overwrite=overwrite,
             operation=operation,
-            storage=storage.lower() if storage is not None else None,
+            storage=storage_normalized,
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
             transformation_context=transformation_context,
@@ -3736,12 +3736,17 @@ class FeatureGroup(FeatureGroupBase):
         # Compute stats in client if there is no backfill job:
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
-        if engine.get_type().startswith("spark") and not self.stream:
+        if (
+            engine.get_type().startswith("spark")
+            and not self.stream
+            and storage_normalized != "online"
+        ):
             self.compute_statistics()
         elif (
             self.statistics_config.enabled
             and engine.get_type() == "python"
             and not self.stream
+            and storage_normalized != "online"
         ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
@@ -4918,11 +4923,16 @@ class ExternalFeatureGroup(FeatureGroupBase):
                   By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
                   By default it does not wait.
-                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
-                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
-                - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
-                  Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
-                  Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
+                - key `online_ingestion_options` and value a dict to configure online ingestion behaviour.
+                  Supported keys:
+                    - `timeout`: seconds to wait for online ingestion completion, default `60`, set to `0` for indefinite.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `period`: polling interval in seconds, default `1`.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `upsert_if_newer`: `True` or `False` to only update a row if the new value is newer than the existing one, defaults to `False`.
+                    - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
+                    - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
+                      When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
                 - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
                   To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.

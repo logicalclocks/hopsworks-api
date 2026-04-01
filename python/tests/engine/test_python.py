@@ -1815,8 +1815,8 @@ class TestPython:
 
     def test_save_dataframe_stream(self, mocker):
         # Arrange
-        mock_python_engine_write_dataframe_kafka = mocker.patch(
-            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        mock_python_engine_run_materialization_job = mocker.patch(
+            "hsfs.engine.python.Engine._run_materialization_job"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
             "hsfs.engine.python.Engine.legacy_save_dataframe"
@@ -1847,7 +1847,7 @@ class TestPython:
         )
 
         # Assert
-        assert mock_python_engine_write_dataframe_kafka.call_count == 1
+        assert mock_python_engine_run_materialization_job.call_count == 1
         assert mock_python_engine_legacy_save_dataframe.call_count == 0
 
     def test_save_dataframe_delta_time_travel_format(self, mocker):
@@ -1954,6 +1954,9 @@ class TestPython:
         mock_check_duplicate_records = mocker.patch(
             "hsfs.engine.python.Engine._check_duplicate_records"
         )
+        mock_legacy_save_dataframe = mocker.patch(
+            "hsfs.engine.python.Engine.legacy_save_dataframe"
+        )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         python_engine = python.Engine()
@@ -1985,6 +1988,7 @@ class TestPython:
 
         # Assert
         assert mock_check_duplicate_records.call_count == 0
+        assert mock_legacy_save_dataframe.call_count == 1
 
     @pytest.mark.parametrize(
         "test_name,primary_key,partition_key,event_time,data_dict",
@@ -3559,10 +3563,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -3623,10 +3628,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -3683,13 +3689,14 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={
                 "start_offline_materialization": True,
                 "skip_offsets": True,
             },
+            storage=None,
         )
 
         # Assert
@@ -3746,10 +3753,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -9291,3 +9299,322 @@ class TestPython:
             for key in row:
                 if key not in meta_data_logging_columns_name:
                     assert row[key] == expected_row[key]
+
+    class TestFilterOnlineDataframe:
+        @pytest.fixture(autouse=True)
+        def patch_engine_type(self, mocker):
+            mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        def _make_fg(self, primary_key, event_time=None, ttl=None, ttl_enabled=None):
+            return feature_group.FeatureGroup(
+                name="test",
+                version=1,
+                featurestore_id=1,
+                primary_key=primary_key,
+                partition_key=[],
+                event_time=event_time,
+                ttl=ttl,
+                ttl_enabled=ttl_enabled,
+            )
+
+        def _make_df(self, data):
+            """Return (pandas_df, polars_df) tuple from a dict of columns."""
+            pdf = pd.DataFrame(data)
+            pld = pl.DataFrame(data) if HAS_POLARS else None
+            return pdf, pld
+
+        def _get_val(self, result, filter_col, filter_val, val_col):
+            """Get val from result filtered by a column value, works for both types."""
+            if HAS_POLARS and isinstance(result, pl.DataFrame):
+                return result.filter(pl.col(filter_col) == filter_val)[val_col][0]
+            return result[result[filter_col] == filter_val][val_col].iloc[0]
+
+        def _get_val_multi(self, result, filters, val_col):
+            """Get val from result filtered by multiple column-value pairs."""
+            if HAS_POLARS and isinstance(result, pl.DataFrame):
+                mask = None
+                for col_name, col_val in filters.items():
+                    cond = pl.col(col_name) == col_val
+                    mask = cond if mask is None else mask & cond
+                return result.filter(mask)[val_col][0]
+            mask = pd.Series([True] * len(result), index=result.index)
+            for col_name, col_val in filters.items():
+                mask &= result[col_name] == col_val
+            return result[mask][val_col].iloc[0]
+
+        def _make_ts_utc(self, timestamps):
+            """Return UTC-aware timestamps suitable for TTL tests."""
+            pdf_ts = pd.to_datetime(timestamps, utc=True)
+            if HAS_POLARS:
+                pld_ts = pl.Series(timestamps).dt.replace_time_zone("UTC")
+            else:
+                pld_ts = None
+            return pdf_ts, pld_ts
+
+        def _apply_flags(self, df, flags):
+            """Filter a dataframe using a list of booleans returned by _mark_online_rows."""
+            if HAS_POLARS and isinstance(df, pl.DataFrame):
+                return df.filter(pl.Series(flags))
+            return df[flags].reset_index(drop=True)
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_no_event_time_no_duplicates_returns_all_rows(self, use_polars):
+            # Arrange
+            fg = self._make_fg(primary_key=["id"])
+            pdf, pld = self._make_df({"id": [1, 2], "val": ["a", "b"]})
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_no_event_time_deduplicates_by_last_row_per_primary_key(
+            self, use_polars
+        ):
+            # Arrange: two rows for id=1 — last one should win
+            fg = self._make_fg(primary_key=["id"])
+            pdf, pld = self._make_df({"id": [1, 1, 2], "val": ["a", "b", "c"]})
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+            assert self._get_val(result, "id", 1, "val") == "b"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_event_time_keeps_latest_per_primary_key(self, use_polars):
+            # Arrange: two rows for id=1 — newer should survive
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            pdf, pld = self._make_df(
+                {
+                    "id": [1, 1, 2],
+                    "val": ["old", "new", "only"],
+                    "ts": [
+                        datetime(2024, 1, 1),
+                        datetime(2024, 6, 1),
+                        datetime(2024, 1, 1),
+                    ],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+            assert self._get_val(result, "id", 1, "val") == "new"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_event_time_out_of_order_batch_picks_max(self, use_polars):
+            # Arrange: older record appears after newer in the dataframe
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            pdf, pld = self._make_df(
+                {
+                    "id": [1, 1],
+                    "val": ["new", "old"],
+                    "ts": [datetime(2024, 6, 1), datetime(2024, 1, 1)],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 1
+            assert (result["val"][0] if use_polars else result["val"].iloc[0]) == "new"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_ttl_filters_expired_rows(self, use_polars):
+            # Arrange: one expired row, one fresh row
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            pdf_ts, pld_ts = self._make_ts_utc([datetime(2000, 1, 1), datetime.now()])
+            if use_polars:
+                df = pl.DataFrame(
+                    {"id": [1, 2], "val": ["expired", "fresh"], "ts": pld_ts}
+                )
+            else:
+                df = pd.DataFrame(
+                    {"id": [1, 2], "val": ["expired", "fresh"], "ts": pdf_ts}
+                )
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 1
+            assert (
+                result["val"][0] if use_polars else result["val"].iloc[0]
+            ) == "fresh"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_ttl_keeps_all_rows_when_none_expired(self, use_polars):
+            # Arrange: all rows are fresh
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            pdf_ts, pld_ts = self._make_ts_utc([datetime.now(), datetime.now()])
+            if use_polars:
+                df = pl.DataFrame({"id": [1, 2], "val": ["a", "b"], "ts": pld_ts})
+            else:
+                df = pd.DataFrame({"id": [1, 2], "val": ["a", "b"], "ts": pdf_ts})
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_ttl_disabled_falls_back_to_dedup_by_event_time(self, use_polars):
+            # Arrange: ttl_enabled=False — should deduplicate by event time instead
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=False
+            )
+            pdf, pld = self._make_df(
+                {
+                    "id": [1, 1],
+                    "val": ["old", "new"],
+                    "ts": [datetime(2024, 1, 1), datetime(2024, 6, 1)],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 1
+            assert (result["val"][0] if use_polars else result["val"].iloc[0]) == "new"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_composite_primary_key(self, use_polars):
+            # Arrange: primary key is (user_id, item_id)
+            fg = self._make_fg(primary_key=["user_id", "item_id"], event_time="ts")
+            pdf, pld = self._make_df(
+                {
+                    "user_id": [1, 1, 1],
+                    "item_id": [10, 10, 20],
+                    "val": ["old", "new", "only"],
+                    "ts": [
+                        datetime(2024, 1, 1),
+                        datetime(2024, 6, 1),
+                        datetime(2024, 1, 1),
+                    ],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+            assert (
+                self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val")
+                == "new"
+            )

@@ -57,6 +57,7 @@ try:
         col,
         concat,
         count,
+        current_timestamp,
         from_json,
         lit,
         monotonically_increasing_id,
@@ -539,6 +540,7 @@ class Engine:
                 # Only `FeatureGroup class has time_travel_format property
                 isinstance(feature_group, fg_mod.FeatureGroup)
                 and feature_group.time_travel_format == "DELTA"
+                and storage in [None, "offline"]
             ):
                 self._check_duplicate_records(dataframe, feature_group)
                 _logger.debug(
@@ -588,7 +590,9 @@ class Engine:
             )
 
         query = (
-            serialized_df.withColumn("headers", self._get_headers(feature_group))
+            serialized_df.withColumn(
+                "headers", self._get_headers(feature_group, options=write_options)
+            )
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
@@ -656,11 +660,53 @@ class Engine:
                 feature_group.partition_key if feature_group.partition_key else []
             ).saveAsTable(feature_group._get_table_name())
 
+    def _filter_online_dataframe(self, feature_group, dataframe):
+        """Filter a dataframe before online ingestion to avoid overwriting newer data with older records.
+
+        For TTL-enabled feature groups, rows whose event time has already expired are dropped.
+        For non-TTL feature groups, only the last record per primary key is kept:
+        ordered by event time if configured, otherwise by insertion order.
+        """
+        event_time = feature_group.event_time
+
+        if feature_group.ttl_enabled and feature_group.ttl:
+            if event_time:
+                # Drop rows whose event time is older than the TTL window.
+                # event_time column is expected to be a timestamp; compare against current time minus TTL seconds.
+                ttl_threshold = current_timestamp().cast("long") - lit(
+                    feature_group.ttl
+                )
+                dataframe = dataframe.filter(
+                    col(event_time).cast("long") > ttl_threshold
+                )
+        else:
+            # Keep only the last record per primary key.
+            # Use event time as the ordering column when available, otherwise fall back to insertion order.
+            order_col = (
+                col(event_time).desc()
+                if event_time
+                else monotonically_increasing_id().desc()
+            )
+            window = Window.partitionBy(
+                *[col(k) for k in feature_group.primary_key]
+            ).orderBy(order_col)
+            dataframe = (
+                dataframe.withColumn("_rn", row_number().over(window))
+                .filter(col("_rn") == 1)
+                .drop("_rn")
+            )
+
+        return dataframe
+
     def _save_online_dataframe(self, feature_group, dataframe, write_options):
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
+        if write_options.get("online_ingestion_options", {}).get(
+            "mark_online_rows", True
+        ):
+            dataframe = self._filter_online_dataframe(feature_group, dataframe)
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         (
@@ -669,8 +715,11 @@ class Engine:
                 self._get_headers(
                     feature_group,
                     None
-                    if write_options.get("disable_online_ingestion_count", False)
+                    if write_options.get("online_ingestion_options", {}).get(
+                        "disable_online_ingestion_count", False
+                    )
                     else dataframe.count(),
+                    write_options,
                 ),
             )
             .write.format(self.KAFKA_FORMAT)
@@ -691,12 +740,13 @@ class Engine:
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         num_entries: int | None = None,
+        options: dict | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine.get_headers(
-                    feature_group, num_entries
+                    feature_group, num_entries, options
                 ).items()
             ]
         )
