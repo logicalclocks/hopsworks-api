@@ -196,6 +196,20 @@ class SupersetApi:
         return resp.json()
 
     # ------------------------------------------------------------------ #
+    #  Databases                                                          #
+    # ------------------------------------------------------------------ #
+
+    @public
+    @usage.method_logger
+    def list_databases(self) -> dict:
+        """List all Superset database connections visible to the current user.
+
+        Returns:
+            A dict containing the list of databases under the "result" key.
+        """
+        return self._request("GET", "/api/v1/database/")
+
+    # ------------------------------------------------------------------ #
     #  Datasets                                                           #
     # ------------------------------------------------------------------ #
 
