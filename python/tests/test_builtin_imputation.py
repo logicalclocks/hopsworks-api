@@ -53,8 +53,6 @@ def _apply(tf, df, context=None):
     )
 
 
-# ── impute_mean ───────────────────────────────────────────────────────────────
-
 
 def test_impute_mean_fills_nan():
     df = pd.DataFrame({"col": [1.0, None, 3.0, None], "other": list("abcd")})
