@@ -14,11 +14,10 @@
 #   limitations under the License.
 #
 
-from unittest.mock import Mock, MagicMock, call
+from unittest.mock import Mock
 
 import pytest
 import requests
-
 from hopsworks_common.core.superset_api import SupersetApi
 
 
