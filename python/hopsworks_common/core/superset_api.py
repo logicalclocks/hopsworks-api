@@ -22,7 +22,6 @@ Authentication is handled automatically via the Hopsworks Superset login endpoin
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 import requests
@@ -34,7 +33,6 @@ from hopsworks_common.core.variable_api import VariableApi
 if TYPE_CHECKING:
     from hopsworks_common import project
 
-_logger = logging.getLogger(__name__)
 
 SUPERSET_SERVICE_NAME = "app.superset.service"
 SUPERSET_PORT = 8088
@@ -58,10 +56,8 @@ class SupersetApi:
         project = hopsworks.login()
         superset = project.get_superset_api()
 
-        # 1. Find the database connection for your project's online feature store
-        databases = superset.list_datasets()
-        # Or list available database connections directly:
-        # databases = superset._request("GET", "/api/v1/database/")
+        # 1. List existing datasets in Superset
+        datasets = superset.list_datasets()
 
         # 2. Create a dataset backed by an existing database table
         dataset = superset.create_dataset(
@@ -115,8 +111,21 @@ class SupersetApi:
             self._project_id = _client._project_id
         self._session_token: str | None = None
         self._csrf_token: str | None = None
+        self._http = requests.Session()
 
     def _get_superset_url(self) -> str:
+        if client._is_external():
+            raise RuntimeError(
+                "SupersetApi is only available from within the Hopsworks cluster. "
+                "Connecting from an external client is not supported."
+            )
+        if not self._service_discovery_domain:
+            raise RuntimeError(
+                "Service discovery domain is not configured. "
+                "Superset cannot be reached because "
+                "'VariableApi.get_service_discovery_domain()' "
+                "returned an empty value."
+            )
         return f"http://{SUPERSET_SERVICE_NAME}.{self._service_discovery_domain}:{SUPERSET_PORT}"
 
     def _get_session_token(self) -> str:
@@ -136,7 +145,7 @@ class SupersetApi:
             "Content-Type": "application/json",
             "Cookie": f"session={self._session_token}",
         }
-        resp = requests.get(url, headers=headers)
+        resp = self._http.get(url, headers=headers, timeout=60)
         resp.raise_for_status()
         # Update session cookie if the server rotated it during CSRF token generation
         if "session" in resp.cookies:
@@ -166,8 +175,8 @@ class SupersetApi:
         if needs_csrf:
             headers["X-CSRFToken"] = self._csrf_token
 
-        resp = requests.request(
-            method, url, json=json_data, headers=headers, params=params
+        resp = self._http.request(
+            method, url, json=json_data, headers=headers, params=params, timeout=60
         )
 
         if resp.status_code == 401:
@@ -177,8 +186,8 @@ class SupersetApi:
             if needs_csrf:
                 self._get_csrf_token()
                 headers["X-CSRFToken"] = self._csrf_token
-            resp = requests.request(
-                method, url, json=json_data, headers=headers, params=params
+            resp = self._http.request(
+                method, url, json=json_data, headers=headers, params=params, timeout=60
             )
 
         resp.raise_for_status()
@@ -256,9 +265,10 @@ class SupersetApi:
     def update_dataset(self, dataset_id: int, **kwargs: Any) -> dict:
         """Update a Superset dataset.
 
+        Pass fields to update as keyword arguments (e.g., description, sql, table_name, owners).
+
         Parameters:
             dataset_id: The dataset ID.
-            **kwargs: Fields to update (e.g., description, sql, table_name, owners).
 
         Returns:
             The updated dataset as a dict.
@@ -353,9 +363,10 @@ class SupersetApi:
     def update_chart(self, chart_id: int, **kwargs: Any) -> dict:
         """Update a Superset chart.
 
+        Pass fields to update as keyword arguments (e.g., slice_name, viz_type, params, owners).
+
         Parameters:
             chart_id: The chart ID.
-            **kwargs: Fields to update (e.g., slice_name, viz_type, params, owners).
 
         Returns:
             The updated chart as a dict.
@@ -449,9 +460,10 @@ class SupersetApi:
     def update_dashboard(self, dashboard_id: int, **kwargs: Any) -> dict:
         """Update a Superset dashboard.
 
+        Pass fields to update as keyword arguments (e.g., dashboard_title, published, position_json, json_metadata, css, owners).
+
         Parameters:
             dashboard_id: The dashboard ID.
-            **kwargs: Fields to update (e.g., dashboard_title, published, position_json, json_metadata, css, owners).
 
         Returns:
             The updated dashboard as a dict.
