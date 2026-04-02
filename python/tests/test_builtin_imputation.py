@@ -53,7 +53,6 @@ def _apply(tf, df, context=None):
     )
 
 
-
 def test_impute_mean_fills_nan():
     df = pd.DataFrame({"col": [1.0, None, 3.0, None], "other": list("abcd")})
     stats = FeatureDescriptiveStatistics(feature_name="col", mean=2.0)
