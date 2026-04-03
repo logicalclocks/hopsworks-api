@@ -11180,6 +11180,7 @@ class TestSpark:
             )
             assert row["val"] == "new"
 
+
 class TestSparkConnectMode:
     """Tests for Spark Connect compatibility guards."""
 
@@ -11265,8 +11266,9 @@ class TestSparkConnectMode:
             mock_response.content = b"file-content"
             engine._dataset_api.read_content.return_value = mock_response
 
-            with mock_patch("hsfs.engine.spark.util") as mock_util, mock_patch(
-                "builtins.open", mock_open()
+            with (
+                mock_patch("hsfs.engine.spark.util") as mock_util,
+                mock_patch("builtins.open", mock_open()),
             ):
                 mock_util.get_dataset_type.return_value = "DATASET"
                 result = engine.add_file("hdfs:///path/to/file.jks", distribute=True)

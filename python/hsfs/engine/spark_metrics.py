@@ -47,11 +47,8 @@ def _find_spark_ui_port(start: int = 4040, end: int = 4100) -> int | None:
     """Find the port where the Spark UI is listening."""
     for port in range(start, end + 1):
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.5)
-            s.connect(("localhost", port))
-            s.close()
-            return port
+            with socket.create_connection(("localhost", port), timeout=0.5):
+                return port
         except OSError:
             continue
     return None
