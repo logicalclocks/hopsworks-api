@@ -89,6 +89,12 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 
 @udf(bool, drop=["feature"], mode="pandas")
 def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+    """Encode a categorical feature as a boolean one-hot DataFrame.
+
+    Creates one boolean column per category seen during training.
+    Categories absent from training statistics are encoded as all-False.
+    Output columns are sorted alphabetically for consistent ordering.
+    """
     unique_data = list(statistics.feature.unique_values)
 
     # One hot encode features. Re-indexing to set missing categories to False and drop categories not in training data statistics.
