@@ -50,6 +50,8 @@ class TestSparkStageMetrics:
                 resp.read.return_value = apps_response
             else:
                 resp.read.return_value = stages_response
+            resp.__enter__ = lambda s: s
+            resp.__exit__ = MagicMock(return_value=False)
             return resp
 
         with patch(
@@ -94,6 +96,8 @@ class TestSparkStageMetrics:
         with patch("hsfs.engine.spark_metrics.urllib.request.urlopen") as mock_urlopen:
             resp = MagicMock()
             resp.read.return_value = new_stages
+            resp.__enter__ = lambda s: s
+            resp.__exit__ = MagicMock(return_value=False)
             mock_urlopen.return_value = resp
 
             report = metrics.report("test")
@@ -114,5 +118,7 @@ class TestSparkStageMetrics:
         with patch("hsfs.engine.spark_metrics.urllib.request.urlopen") as mock_urlopen:
             resp = MagicMock()
             resp.read.return_value = json.dumps([]).encode()
+            resp.__enter__ = lambda s: s
+            resp.__exit__ = MagicMock(return_value=False)
             mock_urlopen.return_value = resp
             assert metrics.report() is None

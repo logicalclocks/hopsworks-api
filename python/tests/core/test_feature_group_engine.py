@@ -770,7 +770,15 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mock_engine = mocker.MagicMock()
+        mock_engine._spark_session = mocker.MagicMock()
+        mock_engine._spark_context = mocker.MagicMock()
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine"
+            "._get_spark_session_and_context",
+            return_value=(mock_engine._spark_session, mock_engine._spark_context),
+        )
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
