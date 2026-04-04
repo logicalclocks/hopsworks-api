@@ -1454,9 +1454,7 @@ class TestDeltaEngineConnectMode:
         _patch_client(mocker, is_external=False)
 
         spark_session = mock.MagicMock()
-        spark_session.conf.get.return_value = (
-            "io.delta.sql.DeltaSparkSessionExtension"
-        )
+        spark_session.conf.get.return_value = "io.delta.sql.DeltaSparkSessionExtension"
 
         import logging
 

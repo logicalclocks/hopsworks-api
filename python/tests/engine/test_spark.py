@@ -11281,9 +11281,7 @@ class TestSparkConnectMode:
         from unittest.mock import patch as mock_patch
 
         with (
-            mock_patch(
-                "hsfs.engine.spark.is_spark_connect_env", return_value=True
-            ),
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=True),
             mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
         ):
             engine = self._make_connect_engine()
@@ -11295,9 +11293,7 @@ class TestSparkConnectMode:
         from unittest.mock import patch as mock_patch
 
         with (
-            mock_patch(
-                "hsfs.engine.spark.is_spark_connect_env", return_value=False
-            ),
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=False),
             mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
         ):
             engine = self._make_connect_engine()
