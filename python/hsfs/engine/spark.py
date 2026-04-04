@@ -141,11 +141,18 @@ class Engine:
     APPEND = "append"
     OVERWRITE = "overwrite"
 
-    def __init__(self):
+    def _create_spark_session(self):
+        """Create and return a SparkSession.
+
+        Subclasses can override to customize the session builder
+        (e.g. skip Hive support or add Delta extensions).
+        """
         if is_spark_connect_env():
-            self._spark_session = SparkSession.builder.getOrCreate()
-        else:
-            self._spark_session = SparkSession.builder.enableHiveSupport().getOrCreate()
+            return SparkSession.builder.getOrCreate()
+        return SparkSession.builder.enableHiveSupport().getOrCreate()
+
+    def __init__(self):
+        self._spark_session = self._create_spark_session()
 
         self._is_connect = is_spark_connect_session(self._spark_session)
 
@@ -1688,7 +1695,7 @@ class Engine:
                 storage_connector.server_encryption_key,
             )
         if storage_connector.session_token:
-            print(f"session token set for {prefix}")
+            _logger.debug("Session token set for %s", prefix)
             self._set_hadoop_conf(
                 f"{prefix}.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
@@ -1755,10 +1762,6 @@ class Engine:
         )
 
     def _add_cols_to_delta_table(self, feature_group):
-        self._spark_session.conf.set(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("delta").load(location)

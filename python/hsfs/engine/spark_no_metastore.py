@@ -21,15 +21,17 @@ import contextlib
 with contextlib.suppress(ImportError):
     from pyspark.sql import SparkSession
 
-from hopsworks_common.spark_connect_utils import (
-    is_spark_connect_env,
-    is_spark_connect_session,
-)
+from hopsworks_common.spark_connect_utils import is_spark_connect_env
 from hsfs.engine import spark
 
 
 class Engine(spark.Engine):
-    def __init__(self) -> None:
+    def _create_spark_session(self):
+        """Create a SparkSession without Hive metastore.
+
+        In Spark Connect mode, configures Delta Lake extensions
+        since there is no metastore to provide them.
+        """
         builder = SparkSession.builder
         if is_spark_connect_env():
             builder = builder.config(
@@ -39,18 +41,7 @@ class Engine(spark.Engine):
                 "spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog",
             )
-        self._spark_session = builder.getOrCreate()
-
-        self._is_connect = is_spark_connect_session(self._spark_session)
-
-        if self._is_connect:
-            self._spark_context = None
-            self._jvm = None
-        else:
-            self._spark_context = self._spark_session.sparkContext
-            self._jvm = self._spark_context._jvm
-
-        super().__init__()
+        return builder.getOrCreate()
 
     def _sql_offline(self, sql_query, feature_store):
         # Spark no metastore does not require the

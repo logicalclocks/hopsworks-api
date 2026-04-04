@@ -11276,3 +11276,30 @@ class TestSparkConnectMode:
         # Should not have called sparkContext.addFile
         assert engine._spark_context is None
         assert result.endswith("file.jks")
+
+    def test_create_spark_session_connect_skips_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch(
+                "hsfs.engine.spark.is_spark_connect_env", return_value=True
+            ),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.getOrCreate.assert_called_once()
+            mock_spark.builder.enableHiveSupport.assert_not_called()
+
+    def test_create_spark_session_classic_enables_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch(
+                "hsfs.engine.spark.is_spark_connect_env", return_value=False
+            ),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.enableHiveSupport.assert_called_once()

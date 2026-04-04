@@ -793,6 +793,35 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_hudi_engine.return_value.delete_record.call_count == 1
 
+    def test_commit_delete_blocks_hudi_in_connect_mode(self, mocker):
+        """Hudi deletes require JVM; Connect mode must raise early."""
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mock_engine = mocker.MagicMock()
+        mock_engine._spark_session = mocker.MagicMock()
+        mock_engine._spark_context = None
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+        )
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Hudi"):
+            fg_engine.commit_delete(
+                feature_group=fg, delete_df=None, write_options=None
+            )
+
     def test_clean_delta(self, mocker):
         # Arrange
         feature_store_id = 99

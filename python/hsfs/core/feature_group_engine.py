@@ -373,6 +373,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_context,
             )
             return delta_engine_instance.delete_record(delete_df)
+        if spark_context is None:
+            raise exceptions.FeatureStoreException(
+                "Hudi feature group deletes are not supported with Spark Connect. "
+                "Use DELTA time travel format instead."
+            )
         hudi_engine_instance = hudi_engine.HudiEngine(
             feature_group.feature_store_id,
             feature_group.feature_store_name,

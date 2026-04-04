@@ -109,7 +109,7 @@ class SparkStageMetrics:
             stages = self._fetch_stages()
             self._stage_snapshot = len(stages)
         except Exception:
-            pass
+            _logger.debug("Failed to capture stage snapshot", exc_info=True)
 
     def report(self, label: str = "") -> str | None:
         """Fetch stages completed since the last snapshot and print a report.
@@ -169,6 +169,7 @@ class SparkStageMetrics:
         lines.append(f"Total executor time: {total_s:.1f}s")
 
         report_str = "\n".join(lines)
+        # Intentionally print to stdout so metrics are visible in console output
         print(report_str)
 
         self._stage_snapshot = len(stages)
@@ -189,6 +190,7 @@ class SparkStageMetrics:
             wall_elapsed = time.time() - wall_start
             report = self.report(label)
             if report:
+                # Intentionally print to stdout so metrics are visible in console output
                 print(f"Wall time: {wall_elapsed:.1f}s")
 
     def _fetch_stages(self) -> list[dict]:

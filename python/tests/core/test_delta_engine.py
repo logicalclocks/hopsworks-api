@@ -1422,3 +1422,74 @@ class TestDeltaEngine:
         # Assert - operation forwarded to _write_delta_rs_dataset
         write_mock.assert_called_once()
         assert write_mock.call_args.kwargs.get("operation") == "insert"
+
+
+class TestDeltaEngineConnectMode:
+    """Tests for DeltaEngine initialization in Spark Connect mode."""
+
+    def test_warns_when_delta_extension_missing(self, mocker, caplog):
+        """In Connect mode, warn if DeltaSparkSessionExtension is not configured."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_session.conf.get.return_value = ""
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="hsfs.core.delta_engine"):
+            DeltaEngine(
+                feature_store_id=1,
+                feature_store_name="fs",
+                feature_group=_make_fg("hdfs:///path"),
+                spark_session=spark_session,
+                spark_context=None,
+            )
+
+        assert "Delta SQL extension not configured" in caplog.text
+
+    def test_no_warning_when_delta_extension_present(self, mocker, caplog):
+        """No warning when the extension is already on the session."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_session.conf.get.return_value = (
+            "io.delta.sql.DeltaSparkSessionExtension"
+        )
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="hsfs.core.delta_engine"):
+            DeltaEngine(
+                feature_store_id=1,
+                feature_store_name="fs",
+                feature_group=_make_fg("hdfs:///path"),
+                spark_session=spark_session,
+                spark_context=None,
+            )
+
+        assert "Delta SQL extension not configured" not in caplog.text
+
+    def test_classic_mode_skips_extension_check(self, mocker, caplog):
+        """In classic Spark mode, the extension check is skipped entirely."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_context = mock.MagicMock()
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="hsfs.core.delta_engine"):
+            DeltaEngine(
+                feature_store_id=1,
+                feature_store_name="fs",
+                feature_group=_make_fg("hdfs:///path"),
+                spark_session=spark_session,
+                spark_context=spark_context,
+            )
+
+        # conf.get should NOT have been called for extensions
+        spark_session.conf.get.assert_not_called()
+        assert "Delta SQL extension not configured" not in caplog.text
