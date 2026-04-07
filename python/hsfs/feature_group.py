@@ -31,6 +31,7 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
+from hopsworks_apigen import deprecated as apigen_deprecated
 from hopsworks_apigen import public
 from hopsworks_common import job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
@@ -2557,31 +2558,17 @@ class FeatureGroupBase:
                 return json.dumps(field["type"])
         return None
 
-    @public
     @property
+    @apigen_deprecated("hsfs.feature_group.FeatureGroupBase.columns")
+    @public
     def features(self) -> list[feature.Feature]:
-        """Feature Group schema (alias).
-
-        Warning: Deprecated Property
-            Use [`columns`][hsfs.feature_group.FeatureGroupBase.columns] instead.
-            This property will be removed in a future version.
-        """
-        warnings.warn(
-            "The 'features' property is deprecated and will be removed in a future version. "
-            "Please use 'columns' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._features
+        """Feature Group schema (alias)."""
+        return self.columns
 
     @public
     @property
     def columns(self) -> list[feature.Feature]:
-        """Feature Group schema as a list of feature definitions.
-
-        Returns:
-            All feature definitions including name, type, and metadata such as primary key or event time flags.
-        """
+        """Feature Group schema as a list of all feature definitions, including name, type, and metadata such as primary key or event time flags."""
         return self._features
 
     @public
@@ -2593,10 +2580,9 @@ class FeatureGroupBase:
     @public
     @property
     def column_names(self) -> list[str]:
-        """Feature Group column names without type or metadata information.
+        """Feature Group column names without type or metadata information, as plain strings.
 
-        Returns:
-            Plain string names in the same order as the schema.
+        The order is the same as in the [`schema`][hsfs.feature_group.FeatureGroupBase.schema] and [`columns`][hsfs.feature_group.FeatureGroupBase.columns].
         """
         return [f.name for f in self._features]
 
@@ -2644,27 +2630,10 @@ class FeatureGroupBase:
 
     @features.setter
     def features(self, new_features: list[feature.Feature]) -> None:
-        """Set the feature group schema.
-
-        Warning: Deprecated Property
-            Use [`columns`][hsfs.feature_group.FeatureGroupBase.columns] instead.
-            This property will be removed in a future version.
-        """
-        warnings.warn(
-            "The 'features' property is deprecated and will be removed in a future version. "
-            "Please use 'columns' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._features = new_features
+        self.columns = new_features
 
     @columns.setter
     def columns(self, new_columns: list[feature.Feature]) -> None:
-        """Set the feature group schema.
-
-        Parameters:
-            new_columns: List of feature definitions to replace the current schema.
-        """
         self._features = new_columns
 
     def _get_project_name(self) -> str:

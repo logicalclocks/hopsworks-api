@@ -20,6 +20,7 @@ import contextlib
 
 import numpy as np
 import pandas as pd
+from hopsworks_common import constants
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_statistics import TransformationStatistics
 
@@ -111,7 +112,7 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 def log_transform(feature: pd.Series) -> pd.Series:
     """Apply natural logarithm to a numeric feature.
 
-    Only strictly positive values are transformed: y = ln(x) if x > 0, otherwise NaN.
+    Only strictly positive values are transformed: `y = ln(x) if x > 0 else nan`.
     This is useful to reduce skewness or model exponential relationships.
     """
     # Ensure float dtype and handle NaNs; values <= 0 become NaN
@@ -128,7 +129,7 @@ def equal_width_binner(
 ) -> pd.Series:
     """Discretize numeric values into equal-width bins using training min/max.
 
-    Default number of bins is 10, configurable via context["n_bins"].
+    Default number of bins is 10, configurable via `context["n_bins"]`.
     Values below min are placed in the first bin; values above max in the last bin.
     NaN inputs remain NaN.
 
@@ -149,14 +150,12 @@ def equal_width_binner(
         return result
 
     # Get number of bins from context, default to 10
+    if context is None:
+        context = {}
+
     bins = 10
-    if isinstance(context, dict):
-        try:
-            n_bins = context.get("n_bins")
-            if n_bins is not None:
-                bins = max(2, int(n_bins))  # Ensure at least 2 bins
-        except (ValueError, TypeError):
-            pass  # Use default if conversion fails
+    with contextlib.suppress(ValueError, TypeError):
+        bins = max(2, int(context.get("n_bins", bins)))  # Ensure at least 2 bins
 
     edges = np.linspace(min_v, max_v, num=bins + 1)
     edges[0] = -np.inf
@@ -362,7 +361,7 @@ def winsorize(
     """Winsorization (clipping) to limit extreme values and reduce outlier influence.
 
     Outliers are replaced with percentile boundary values instead of removing rows.
-    Defaults to [1st, 99th] percentiles unless overridden via context with {"p_low": 5, "p_high": 95}.
+    Defaults to [1st, 99th] percentiles unless overridden via `context` with `{"p_low": 5, "p_high": 95}`.
     """
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
@@ -371,17 +370,14 @@ def winsorize(
         return numerical_feature
 
     # Defaults: 1 and 99 percentiles
-    p_low = 1
-    p_high = 99
-    if isinstance(context, dict):
-        p_low = context.get("p_low", p_low)
-        p_high = context.get("p_high", p_high)
-
-    try:
-        li = int(round(float(p_low)))
-        ui = int(round(float(p_high)))
-    except Exception:
-        li, ui = 1, 99
+    if context is None:
+        context = {}
+    li = 1
+    with contextlib.suppress(ValueError, TypeError):
+        li = int(round(float(context.get("p_low", li))))
+    ui = 99
+    with contextlib.suppress(ValueError, TypeError):
+        ui = int(round(float(context.get("p_high", ui))))
 
     # Bound indices
     max_idx = len(percentiles) - 1
@@ -395,7 +391,7 @@ def winsorize(
     lower = percentiles[li]
     upper = percentiles[ui]
 
-    # Invalid bounds → return unchanged
+    # Invalid bounds -> return unchanged
     if pd.isna(lower) or pd.isna(upper) or lower >= upper:
         return numerical_feature
 
@@ -409,14 +405,14 @@ def winsorize(
 def top_k_categorical_binner(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
 ) -> pd.Series:
-    """Bin categorical features by grouping rare categories into an 'Other' bucket.
+    """Bin categorical features by grouping rare categories into an `"Other"` bucket.
 
     Groups low-frequency categories together based on training data frequencies.
     Keeps the top N most frequent categories and maps all others (including unseen categories) to a single label.
     Useful for high-cardinality categorical features to reduce dimensionality and prevent overfitting.
     Preserves NaN values as NaN.
     Unseen categories in production data are treated as rare and grouped.
-    Configure via context: "top_n" sets the number of categories to keep (default 10), "other_label" sets the bucket label (default "Other").
+    Configure via context: `"top_n"` sets the number of categories to keep (default `10`), `"other_label"` sets the bucket label (default `"Other"`).
 
     Example: Keeping top 20 countries
         ```python
@@ -424,13 +420,11 @@ def top_k_categorical_binner(
         tf.transformation_context = {"top_n": 20, "other_label": "Rare"}
         ```
     """
+    if context is None:
+        context = {}
     # Get parameters from context
-    top_n = 10
-    other_label = "Other"
-
-    if isinstance(context, dict):
-        top_n = context.get("top_n", top_n)
-        other_label = context.get("other_label", other_label)
+    top_n = context.get("top_n", 10)
+    other_label = context.get("other_label", "Other")
 
     # Get histogram from training statistics (contains value counts)
     histogram = statistics.feature.histogram
@@ -460,7 +454,7 @@ def top_k_categorical_binner(
     return feature.map(map_category)
 
 
-# ── Imputation ────────────────────────────────────────────────────────────────
+# region Imputation
 
 
 @udf(float, drop=["feature"], mode="pandas")
@@ -493,7 +487,7 @@ def impute_constant(
 ) -> pd.Series:
     """Replace NaN values with a constant numeric fill value for numeric features.
 
-    The fill value is taken from context["value"] (default: 0.0).
+    The fill value is taken from `context["value"]` (default: `0.0`).
 
     Example: Using a custom fill value
         ```python
@@ -501,10 +495,11 @@ def impute_constant(
         tf.transformation_context = {"value": -1.0}
         ```
     """
+    if context is None:
+        context = {}
     fill = 0.0
-    if isinstance(context, dict):
-        with contextlib.suppress(ValueError, TypeError):
-            fill = float(context.get("value", 0.0))
+    with contextlib.suppress(ValueError, TypeError):
+        fill = float(context.get("value", fill))
     return feature.astype("float64").fillna(fill)
 
 
@@ -513,7 +508,7 @@ def impute_mode(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Replace NaN values with the most frequent category from the training histogram for categorical features.
 
     The mode is derived from the training-time histogram (the category with the highest count).
-    Because the mode was seen during training, this chains safely into label_encoder and one_hot_encoder without producing unseen-category fallback values.
+    Because the mode was seen during training, this chains safely into [`label_encoder`][hsfs.builtin_transformations.label_encoder] and [`one_hot_encoder`][hsfs.builtin_transformations.one_hot_encoder] without producing unseen-category fallback values.
     If no histogram is available (statistics not computed), NaN values are left unchanged.
     """
     histogram = statistics.feature.histogram
@@ -531,13 +526,11 @@ def impute_category(
 ) -> pd.Series:
     """Replace NaN values with a sentinel category string for categorical features.
 
-    The sentinel defaults to "__MISSING__" and can be overridden via context["value"].
+    The sentinel defaults to `"__MISSING__"` and can be overridden via `context["value"]`.
 
     Warning: Encoder chaining order matters
-        Downstream encoders (label_encoder, one_hot_encoder) trained before imputation will treat
-        this sentinel as an unseen category and encode it as -1 / all-False.
-        To get a dedicated encoding for the missing category, compute encoder statistics on
-        already-imputed training data.
+        Downstream encoders ([`label_encoder`][hsfs.builtin_transformations.label_encoder], [`one_hot_encoder`][hsfs.builtin_transformations.one_hot_encoder]) trained before imputation will treat this sentinel as an unseen category and encode it as -1 / all-False.
+        To get a dedicated encoding for the missing category, compute encoder statistics on already-imputed training data.
 
     Example: Using a custom sentinel
         ```python
@@ -545,7 +538,7 @@ def impute_category(
         tf.transformation_context = {"value": "Unknown"}
         ```
     """
-    sentinel = "__MISSING__"
-    if isinstance(context, dict):
-        sentinel = str(context.get("value", "__MISSING__"))
+    if context is None:
+        context = {}
+    sentinel = str(context.get("value", constants.TRANSFORMATIONS.MISSING))
     return feature.where(feature.notna(), other=sentinel)

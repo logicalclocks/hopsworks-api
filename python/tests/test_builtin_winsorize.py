@@ -61,10 +61,7 @@ def test_winsorize_default_thresholds():
     expected.name = "winsorize_col_0_"
 
     for got, want in zip(result["winsorize_col_0_"].tolist(), expected.tolist()):
-        if math.isnan(want):
-            assert math.isnan(got)
-        else:
-            assert got == want
+        assert math.isnan(got) and math.isnan(want) or got == want
 
 
 def test_winsorize_context_override():
@@ -104,7 +101,4 @@ def test_winsorize_context_override():
     expected.name = "winsorize_col_0_"
 
     for got, want in zip(result["winsorize_col_0_"].tolist(), expected.tolist()):
-        if math.isnan(want):
-            assert math.isnan(got)
-        else:
-            assert got == want
+        assert math.isnan(got) and math.isnan(want) or got == want
