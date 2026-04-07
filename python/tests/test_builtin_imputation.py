@@ -19,6 +19,7 @@ import math
 
 import pandas as pd
 import pytest
+from hopsworks_common import constants
 from hsfs import engine as hopsworks_engine
 from hsfs import transformation_function
 from hsfs.builtin_transformations import (
@@ -34,23 +35,23 @@ from hsfs.engine import python as python_engine
 from hsfs.transformation_function import TransformationType
 
 
-def _make_tf(udf_fn, stats: FeatureDescriptiveStatistics, context: dict | None = None):
+def _make_tf(udf_fn, stats: FeatureDescriptiveStatistics):
     tf = transformation_function.TransformationFunction(
         hopsworks_udf=udf_fn,
         featurestore_id=1,
         transformation_type=TransformationType.MODEL_DEPENDENT,
-        transformation_context=context,
     )
     tf.transformation_statistics = [stats]
     return tf
 
 
-def _apply(tf, df):
+def _apply(tf, df, context: dict | None = None):
     engine = python_engine.Engine()
     hopsworks_engine.set_instance(engine=engine, engine_type="python")
     return TransformationFunctionEngine.apply_transformation_functions(
         transformation_functions=[tf],
         data=df,
+        transformation_context=context,
     )
 
 
@@ -130,7 +131,7 @@ def test_impute_constant_custom_value():
     df = pd.DataFrame({"col": [1.0, None, None, 4.0], "other": list("abcd")})
     stats = FeatureDescriptiveStatistics(feature_name="col")
     result = _apply(
-        _make_tf(impute_constant("col"), stats, context={"value": -999.0}), df
+        _make_tf(impute_constant("col"), stats), df, context={"value": -999.0}
     )
 
     assert result["impute_constant_col_"].tolist() == pytest.approx(
@@ -141,7 +142,7 @@ def test_impute_constant_custom_value():
 def test_impute_constant_non_nan_unchanged():
     df = pd.DataFrame({"col": [7.0, 8.0, 9.0]})
     stats = FeatureDescriptiveStatistics(feature_name="col")
-    result = _apply(_make_tf(impute_constant("col"), stats, context={"value": 0.0}), df)
+    result = _apply(_make_tf(impute_constant("col"), stats), df, context={"value": 0.0})
 
     assert result["impute_constant_col_"].tolist() == pytest.approx([7.0, 8.0, 9.0])
 
@@ -195,18 +196,19 @@ def test_impute_category_default_sentinel():
     result = _apply(_make_tf(impute_category("col"), stats), df)
 
     assert list(result.columns) == ["other", "impute_category_col_"]
-    assert result["impute_category_col_"].iloc[1] == "__MISSING__"
-    assert result["impute_category_col_"].iloc[3] == "__MISSING__"
+    assert result["impute_category_col_"].iloc[1] == constants.TRANSFORMATIONS.MISSING
+    assert result["impute_category_col_"].iloc[3] == constants.TRANSFORMATIONS.MISSING
 
 
 def test_impute_category_custom_sentinel():
     df = pd.DataFrame({"col": ["US", None, "FR"]})
     stats = FeatureDescriptiveStatistics(feature_name="col")
+    missing = "Unknown"
     result = _apply(
-        _make_tf(impute_category("col"), stats, context={"value": "Unknown"}), df
+        _make_tf(impute_category("col"), stats), df, context={"value": missing}
     )
 
-    assert result["impute_category_col_"].tolist() == ["US", "Unknown", "FR"]
+    assert result["impute_category_col_"].tolist() == ["US", missing, "FR"]
 
 
 def test_impute_category_non_nan_unchanged():
