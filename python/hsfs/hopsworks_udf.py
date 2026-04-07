@@ -532,15 +532,15 @@ class HopsworksUdf:
         scope = __import__("__main__").__dict__.copy()
 
         # Adding variables required to be injected into the scope.
-        vaariable_to_inject = {
+        variables_to_inject = {
             UDFKeyWords.STATISTICS.value: self.transformation_statistics,
             UDFKeyWords.CONTEXT.value: self.transformation_context,
             "_output_col_names": self.output_column_names,
         }
-        vaariable_to_inject.update(**kwargs)
+        variables_to_inject.update(**kwargs)
 
         # Injecting variables that have a value into scope.
-        scope.update({k: v for k, v in vaariable_to_inject.items() if v is not None})
+        scope.update({k: v for k, v in variables_to_inject.items() if v is not None})
 
         return scope
 

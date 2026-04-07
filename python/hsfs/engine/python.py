@@ -1795,36 +1795,18 @@ class Engine:
             else:
                 dataframe = dataframe.to_pandas(use_pyarrow_extension_array=False)
 
+        features = [dataframe[f] for f in hopsworks_udf.transformation_features]
+        # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
+        output = hopsworks_udf.get_udf(online=online)(*features)
+        output_names = hopsworks_udf.output_column_names
         if len(hopsworks_udf.return_types) > 1:
-            dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
-                online=online
-            )(
-                *(
-                    [
-                        dataframe[feature]
-                        for feature in hopsworks_udf.transformation_features
-                    ]
-                )
-            ).set_index(
-                dataframe.index
-            )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
+            dataframe[output_names] = output.set_index(dataframe.index)
         else:
-            dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
-                online=online
-            )(
-                *(
-                    [
-                        dataframe[feature]
-                        for feature in hopsworks_udf.transformation_features
-                    ]
-                )
-            ).set_axis(
-                dataframe.index
-            )  # Index is set to the input dataframe index so that pandas would merge the new column without reordering it.
-            if hopsworks_udf.output_column_names[0] in dataframe.columns:
+            dataframe[output_names[0]] = output.set_axis(dataframe.index)
+            if output_names[0] in dataframe.columns:
                 # Overwriting features also reordering dataframe to move overwritten column to the end of the dataframe
                 cols = dataframe.columns.tolist()
-                cols.append(cols.pop(cols.index(hopsworks_udf.output_column_names[0])))
+                cols.append(cols.pop(cols.index(output_names[0])))
                 dataframe = dataframe[cols]
         return dataframe
 

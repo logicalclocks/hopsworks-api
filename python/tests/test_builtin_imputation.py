@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import math
 
@@ -33,23 +34,23 @@ from hsfs.engine import python as python_engine
 from hsfs.transformation_function import TransformationType
 
 
-def _make_tf(udf_fn, stats: FeatureDescriptiveStatistics):
+def _make_tf(udf_fn, stats: FeatureDescriptiveStatistics, context: dict | None = None):
     tf = transformation_function.TransformationFunction(
         hopsworks_udf=udf_fn,
         featurestore_id=1,
         transformation_type=TransformationType.MODEL_DEPENDENT,
+        transformation_context=context,
     )
     tf.transformation_statistics = [stats]
     return tf
 
 
-def _apply(tf, df, context=None):
+def _apply(tf, df):
     engine = python_engine.Engine()
     hopsworks_engine.set_instance(engine=engine, engine_type="python")
     return TransformationFunctionEngine.apply_transformation_functions(
         transformation_functions=[tf],
         data=df,
-        transformation_context=context,
     )
 
 
@@ -79,7 +80,7 @@ def test_impute_mean_non_nan_unchanged():
     assert result["impute_mean_col_"].tolist() == pytest.approx([10.0, 20.0, 30.0])
 
 
-# ── impute_median ─────────────────────────────────────────────────────────────
+# region impute_median
 
 
 def test_impute_median_fills_nan():
@@ -111,7 +112,7 @@ def test_impute_median_non_nan_unchanged():
     assert result["impute_median_col_"].tolist() == pytest.approx([5.0, 15.0, 25.0])
 
 
-# ── impute_constant ───────────────────────────────────────────────────────────
+# region impute_constant
 
 
 def test_impute_constant_default_fills_zero():
@@ -129,7 +130,7 @@ def test_impute_constant_custom_value():
     df = pd.DataFrame({"col": [1.0, None, None, 4.0], "other": list("abcd")})
     stats = FeatureDescriptiveStatistics(feature_name="col")
     result = _apply(
-        _make_tf(impute_constant("col"), stats), df, context={"value": -999.0}
+        _make_tf(impute_constant("col"), stats, context={"value": -999.0}), df
     )
 
     assert result["impute_constant_col_"].tolist() == pytest.approx(
@@ -140,12 +141,12 @@ def test_impute_constant_custom_value():
 def test_impute_constant_non_nan_unchanged():
     df = pd.DataFrame({"col": [7.0, 8.0, 9.0]})
     stats = FeatureDescriptiveStatistics(feature_name="col")
-    result = _apply(_make_tf(impute_constant("col"), stats), df, context={"value": 0.0})
+    result = _apply(_make_tf(impute_constant("col"), stats, context={"value": 0.0}), df)
 
     assert result["impute_constant_col_"].tolist() == pytest.approx([7.0, 8.0, 9.0])
 
 
-# ── impute_mode ───────────────────────────────────────────────────────────────
+# region impute_mode
 
 
 def test_impute_mode_fills_nan_with_most_frequent():
@@ -185,7 +186,7 @@ def test_impute_mode_no_histogram_no_crash():
     assert pd.isna(result["impute_mode_col_"].iloc[1])
 
 
-# ── impute_category ───────────────────────────────────────────────────────────
+# region impute_category
 
 
 def test_impute_category_default_sentinel():
@@ -202,7 +203,7 @@ def test_impute_category_custom_sentinel():
     df = pd.DataFrame({"col": ["US", None, "FR"]})
     stats = FeatureDescriptiveStatistics(feature_name="col")
     result = _apply(
-        _make_tf(impute_category("col"), stats), df, context={"value": "Unknown"}
+        _make_tf(impute_category("col"), stats, context={"value": "Unknown"}), df
     )
 
     assert result["impute_category_col_"].tolist() == ["US", "Unknown", "FR"]

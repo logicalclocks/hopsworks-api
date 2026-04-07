@@ -178,12 +178,11 @@ def equal_width_binner(
         return result
 
     # Get number of bins from context, default to 10
-    if context is None:
-        context = {}
+    ctx = context or {}
 
     bins = 10
     with contextlib.suppress(ValueError, TypeError):
-        bins = max(2, int(context.get("n_bins", bins)))  # Ensure at least 2 bins
+        bins = max(2, int(ctx.get("n_bins", bins)))  # Ensure at least 2 bins
 
     edges = np.linspace(min_v, max_v, num=bins + 1)
     edges[0] = -np.inf
@@ -434,14 +433,13 @@ def winsorize(
         return numerical_feature
 
     # Defaults: 1 and 99 percentiles
-    if context is None:
-        context = {}
+    ctx = context or {}
     li = 1
     with contextlib.suppress(ValueError, TypeError):
-        li = int(round(float(context.get("p_low", li))))
+        li = int(round(float(ctx.get("p_low", li))))
     ui = 99
     with contextlib.suppress(ValueError, TypeError):
-        ui = int(round(float(context.get("p_high", ui))))
+        ui = int(round(float(ctx.get("p_high", ui))))
 
     # Bound indices
     max_idx = len(percentiles) - 1
@@ -492,11 +490,10 @@ def top_k_categorical_binner(
         tf.transformation_context = {"top_n": 20, "other_label": "Rare"}
         ```
     """
-    if context is None:
-        context = {}
+    ctx = context or {}
     # Get parameters from context
-    top_n = context.get("top_n", 10)
-    other_label = context.get("other_label", "Other")
+    top_n = ctx.get("top_n", 10)
+    other_label = ctx.get("other_label", "Other")
 
     # Get histogram from training statistics (contains value counts)
     histogram = statistics.feature.histogram
@@ -588,11 +585,10 @@ def impute_constant(
         tf.transformation_context = {"value": -1.0}
         ```
     """
-    if context is None:
-        context = {}
+    ctx = context or {}
     fill = 0.0
     with contextlib.suppress(ValueError, TypeError):
-        fill = float(context.get("value", fill))
+        fill = float(ctx.get("value", fill))
     return feature.astype("float64").fillna(fill)
 
 
@@ -645,7 +641,6 @@ def impute_category(
         tf.transformation_context = {"value": "Unknown"}
         ```
     """
-    if context is None:
-        context = {}
-    sentinel = str(context.get("value", constants.TRANSFORMATIONS.MISSING))
+    ctx = context or {}
+    sentinel = str(ctx.get("value", constants.TRANSFORMATIONS.MISSING))
     return feature.where(feature.notna(), other=sentinel)

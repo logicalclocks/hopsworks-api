@@ -173,9 +173,9 @@ class TransformationFunctionEngine:
         transformation_functions: list[transformation_function.TransformationFunction],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
-        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
-        request_parameters: dict[str, Any] = None,
-        expected_features: set[str] = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] | None = None,
+        request_parameters: dict[str, Any] | None = None,
+        expected_features: set[str] | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Function to apply the transformation functions to the passed data.
 

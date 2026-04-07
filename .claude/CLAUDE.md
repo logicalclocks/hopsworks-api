@@ -21,6 +21,7 @@ uv run --project python docsig python/hopsworks python/hsfs python/hsml python/h
 - Code using optional packages (`polars`, `confluent_kafka`, `great_expectations`, `pyarrow`) must be gated by a decorator from `hopsworks_common.decorators` (e.g. `@uses_polars`)
 - `hopsworks_common` must not runtime-import `hopsworks`, `hsfs`, or `hsml`; `hsfs` and `hsml` must not runtime-import each other or `hopsworks`
 - Never commit or log API keys, tokens, or credentials
+- If you want to mark a section of a file with a comment, use `# region Region Name`
 
 ## Agent Docs
 
