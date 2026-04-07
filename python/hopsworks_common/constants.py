@@ -294,3 +294,9 @@ class CLIENT:
     """Constants for Hopsworks client configuration."""
 
     CERT_FOLDER_DEFAULT = "/tmp"
+
+
+class TRANSFORMATIONS:
+    """Constants for transformations."""
+
+    MISSING = "__MISSING__"
