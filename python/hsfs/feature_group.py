@@ -31,8 +31,7 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_apigen import deprecated as apigen_deprecated
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecation, public
 from hopsworks_common import job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
@@ -2558,11 +2557,18 @@ class FeatureGroupBase:
                 return json.dumps(field["type"])
         return None
 
-    @property
-    @apigen_deprecated("hsfs.feature_group.FeatureGroupBase.columns")
     @public
+    @property
     def features(self) -> list[feature.Feature]:
-        """Feature Group schema (alias)."""
+        """Feature Group schema (alias).
+
+        Warning:
+            hsfs.feature_group.FeatureGroupBase.features is deprecated.
+            The function will be removed in a future release of hopsworks."
+            Consider using [`FeatureGroupBase.columns`][hsfs.feature_group.FeatureGroupBase.columns] instead."
+        """
+        warnings.warn(deprecation.generate_deprecation_message("hsfs.feature_group.FeatureGroupBase.features", "hsfs.feature_group.FeatureGroupBase.columns"), deprecation.HopsworksDeprecationWarning, stacklevel=2)
+
         return self.columns
 
     @public
@@ -2630,6 +2636,8 @@ class FeatureGroupBase:
 
     @features.setter
     def features(self, new_features: list[feature.Feature]) -> None:
+        warnings.warn(deprecation.generate_deprecation_message("hsfs.feature_group.FeatureGroupBase.features", "hsfs.feature_group.FeatureGroupBase.columns"), deprecation.HopsworksDeprecationWarning, stacklevel=2)
+
         self.columns = new_features
 
     @columns.setter
