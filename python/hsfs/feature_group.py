@@ -2567,7 +2567,14 @@ class FeatureGroupBase:
             The function will be removed in a future release of hopsworks."
             Consider using [`FeatureGroupBase.columns`][hsfs.feature_group.FeatureGroupBase.columns] instead."
         """
-        warnings.warn(deprecation.generate_deprecation_message("hsfs.feature_group.FeatureGroupBase.features", "hsfs.feature_group.FeatureGroupBase.columns"), deprecation.HopsworksDeprecationWarning, stacklevel=2)
+        warnings.warn(
+            deprecation.generate_deprecation_message(
+                "hsfs.feature_group.FeatureGroupBase.features",
+                "hsfs.feature_group.FeatureGroupBase.columns",
+            ),
+            deprecation.HopsworksDeprecationWarning,
+            stacklevel=2,
+        )
 
         return self.columns
 
@@ -2636,7 +2643,14 @@ class FeatureGroupBase:
 
     @features.setter
     def features(self, new_features: list[feature.Feature]) -> None:
-        warnings.warn(deprecation.generate_deprecation_message("hsfs.feature_group.FeatureGroupBase.features", "hsfs.feature_group.FeatureGroupBase.columns"), deprecation.HopsworksDeprecationWarning, stacklevel=2)
+        warnings.warn(
+            deprecation.generate_deprecation_message(
+                "hsfs.feature_group.FeatureGroupBase.features",
+                "hsfs.feature_group.FeatureGroupBase.columns",
+            ),
+            deprecation.HopsworksDeprecationWarning,
+            stacklevel=2,
+        )
 
         self.columns = new_features
 
