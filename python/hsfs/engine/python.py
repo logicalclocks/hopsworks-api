@@ -1111,11 +1111,12 @@ class Engine:
                     pd.to_datetime(dataframe[event_time], utc=True) > threshold
                 ).tolist()
             return [True] * len(dataframe)
+        df = dataframe.reset_index(drop=True)
         if event_time:
-            max_idx = dataframe.groupby(pk_cols, sort=False)[event_time].idxmax()
+            max_idx = df.groupby(pk_cols, sort=False)[event_time].idxmax()
         else:
-            max_idx = dataframe.groupby(pk_cols, sort=False).tail(1).index
-        flags = pd.Series(False, index=dataframe.index)
+            max_idx = df.groupby(pk_cols, sort=False).tail(1).index
+        flags = pd.Series(False, index=df.index)
         flags.loc[max_idx] = True
         return flags.tolist()
 
@@ -1169,6 +1170,7 @@ class Engine:
                 dataframe,
                 write_options=offline_write_options,
                 validation_id=validation_id,
+                operation=operation,
             )
             inserted = True
         if storage in [None, "online"] and feature_group.online_enabled:
