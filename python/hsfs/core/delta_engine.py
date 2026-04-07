@@ -487,7 +487,7 @@ class DeltaEngine:
         if not is_polars_df:
             dataset = self._prepare_df_for_delta(dataset)
 
-        append_requested = operation == "insert" or (
+        append_requested = (
             isinstance(write_options, dict)
             and str(write_options.get("mode", "")).lower() == self.APPEND
         )
@@ -528,6 +528,19 @@ class DeltaEngine:
                             self.DELTA_ENABLE_CHANGE_DATA_FEED
                         )
                     }
+                )
+            if operation == "insert":
+                deltars_write(
+                    location,
+                    dataset,
+                    mode=self.APPEND,
+                    storage_options=storage_options or None,
+                )
+                _logger.debug(
+                    f"Insert operation requested for {location}. Using append mode, skipping merge."
+                )
+                return self._get_last_commit_metadata(
+                    self._spark_session, location, storage_options=storage_options
                 )
             if append_requested:
                 deltars_write(
