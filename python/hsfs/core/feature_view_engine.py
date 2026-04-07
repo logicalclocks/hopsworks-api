@@ -33,6 +33,7 @@ from hsfs import (
     util,
 )
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
     query_constructor_api,
@@ -52,7 +53,6 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     from hsfs.constructor.join import Join
-    from hsfs.constructor.query import Query
     from hsfs.core import explicit_provenance
     from hsfs.core.feature_logging import LoggingMetaData
     from hsfs.feature_logger import FeatureLogger
@@ -102,13 +102,26 @@ class FeatureViewEngine:
                 " feature view does not support time travel query.",
                 stacklevel=1,
             )
+
+        # Build feature lookup cache once to avoid rebuilding it for every column.
+        # Only build the cache when there are labels or helper columns to resolve.
+        feature_lookup_cache = None
+        if (
+            feature_view_obj.labels
+            or feature_view_obj.inference_helper_columns
+            or feature_view_obj.training_helper_columns
+        ):
+            feature_lookup_cache = feature_view_obj.query._build_feature_lookup()
+
         if feature_view_obj.labels:
             for label_name in feature_view_obj.labels:
                 (
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(label_name)
+                ) = Query._resolve_feature_from_lookup(
+                    label_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -122,7 +135,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = Query._resolve_feature_from_lookup(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -137,7 +152,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = Query._resolve_feature_from_lookup(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,

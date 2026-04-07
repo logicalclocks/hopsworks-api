@@ -952,25 +952,22 @@ class Query:
             Query.ERROR_MESSAGE_FEATURE_NOT_FOUND_FG.format(feature.name)
         )
 
-    def _get_feature_by_name(
-        self,
-        feature_name: str,
-    ) -> tuple[
-        Feature,
-        str | None,
-        fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup,
-    ]:
-        # collect a dict that maps feature names -> (feature, prefix, fg)
-        query_features = {}
+    def _build_feature_lookup(self) -> dict[str, list[tuple]]:
+        """Build a dictionary mapping feature names to (feature, prefix, fg) tuples.
+
+        The returned dict can be reused across multiple lookups to avoid
+        rebuilding it for each feature.
+        """
+        query_features: dict[str, list[tuple]] = {}
+
         for feat in self._left_features:
             feature_entry = (feat, None, self._left_feature_group)
-            query_features[feat.name] = query_features.get(feat.name, []) + [
-                feature_entry
-            ]
+            query_features.setdefault(feat.name, []).append(feature_entry)
 
-        # collect joins. we do it recursively to collect nested joins.
+        # collect joins recursively
         joins = set(self.joins)
-        [self._fg_rec_add_joins(q_join, joins) for q_join in self.joins]
+        for q_join in self.joins:
+            self._fg_rec_add_joins(q_join, joins)
 
         for join_obj in joins:
             for feat in join_obj.query._left_features:
@@ -979,23 +976,36 @@ class Query:
                     join_obj.prefix,
                     join_obj.query._left_feature_group,
                 )
-                query_features[feat.name] = query_features.get(feat.name, []) + [
-                    feature_entry
-                ]
+                query_features.setdefault(feat.name, []).append(feature_entry)
                 # if the join has a prefix, add a lookup for "prefix.feature_name"
                 if join_obj.prefix:
                     name_with_prefix = f"{join_obj.prefix}{feat.name}"
-                    query_features[name_with_prefix] = query_features.get(
-                        name_with_prefix, []
-                    ) + [feature_entry]
+                    query_features.setdefault(name_with_prefix, []).append(
+                        feature_entry
+                    )
 
-        if feature_name not in query_features:
+        return query_features
+
+    @staticmethod
+    def _resolve_feature_from_lookup(
+        feature_name: str,
+        feature_lookup: dict[str, list[tuple]],
+    ) -> tuple[
+        Feature,
+        str | None,
+        fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup,
+    ]:
+        """Resolve a single feature from a pre-built feature lookup dictionary.
+
+        Raises FeatureStoreException if the feature is not found or is ambiguous.
+        """
+        if feature_name not in feature_lookup:
             raise FeatureStoreException(
                 Query.ERROR_MESSAGE_FEATURE_NOT_FOUND.format(feature_name)
             )
 
         # return (feature, prefix, fg) tuple, if only one match was found
-        feats = query_features[feature_name]
+        feats = feature_lookup[feature_name]
         if len(feats) == 1:
             return feats[0]
 
@@ -1007,6 +1017,18 @@ class Query:
         # there were multiple ambiguous matches
         raise FeatureStoreException(
             Query.ERROR_MESSAGE_FEATURE_AMBIGUOUS.format(feature_name)
+        )
+
+    def _get_feature_by_name(
+        self,
+        feature_name: str,
+    ) -> tuple[
+        Feature,
+        str | None,
+        fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup,
+    ]:
+        return self._resolve_feature_from_lookup(
+            feature_name, self._build_feature_lookup()
         )
 
     @public
