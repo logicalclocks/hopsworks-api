@@ -31,6 +31,7 @@ from hopsworks_common.core import (
     kafka_api,
     opensearch_api,
     search_api,
+    superset_api,
     trino_api,
 )
 
@@ -90,6 +91,7 @@ class Project:
         self._search_api = search_api.SearchApi()
         self._project_namespace = project_namespace
         self._trino_api = None
+        self._superset_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -304,6 +306,17 @@ class Project:
         if self._trino_api is None:
             self._trino_api = trino_api.TrinoApi(project=self)
         return self._trino_api
+
+    @public
+    def get_superset_api(self) -> superset_api.SupersetApi:
+        """Get the Superset API for the project.
+
+        Returns:
+            The Superset API handle.
+        """
+        if self._superset_api is None:
+            self._superset_api = superset_api.SupersetApi(project=self)
+        return self._superset_api
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:

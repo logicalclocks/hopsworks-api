@@ -9355,7 +9355,7 @@ class TestPython:
             """Filter a dataframe using a list of booleans returned by _mark_online_rows."""
             if HAS_POLARS and isinstance(df, pl.DataFrame):
                 return df.filter(pl.Series(flags))
-            return df[flags].reset_index(drop=True)
+            return df[flags]
 
         @pytest.mark.parametrize(
             "use_polars",
