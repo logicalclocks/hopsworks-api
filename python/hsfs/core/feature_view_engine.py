@@ -119,9 +119,7 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = Query._resolve_feature_from_lookup(
-                    label_name, feature_lookup_cache
-                )
+                ) = Query._resolve_feature_from_lookup(label_name, feature_lookup_cache)
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,

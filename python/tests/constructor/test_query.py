@@ -943,9 +943,7 @@ class TestQueryRead:
     def test_build_feature_lookup_with_prefix(self, mocker, backend_fixtures):
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
-        q = TestQuery.fg1.select_all().join(
-            TestQuery.fg3.select_all(), prefix="fg3_"
-        )
+        q = TestQuery.fg1.select_all().join(TestQuery.fg3.select_all(), prefix="fg3_")
         lookup = q._build_feature_lookup()
 
         # fg3 features should appear both with and without prefix
@@ -962,8 +960,8 @@ class TestQueryRead:
         fg_obj = TestQuery.fg1
         lookup = {"col_a": [(feat_obj, None, fg_obj)]}
 
-        result_feat, result_prefix, result_fg = query.Query._resolve_feature_from_lookup(
-            "col_a", lookup
+        result_feat, result_prefix, result_fg = (
+            query.Query._resolve_feature_from_lookup("col_a", lookup)
         )
 
         assert result_feat is feat_obj
@@ -982,8 +980,8 @@ class TestQueryRead:
             ]
         }
 
-        result_feat, result_prefix, result_fg = query.Query._resolve_feature_from_lookup(
-            "col_a", lookup
+        result_feat, result_prefix, result_fg = (
+            query.Query._resolve_feature_from_lookup("col_a", lookup)
         )
 
         assert result_feat is feat_no_prefix
