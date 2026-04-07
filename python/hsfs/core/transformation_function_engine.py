@@ -42,6 +42,20 @@ class TransformationFunctionEngine:
         "standard_scaler",
         "robust_scaler",
         "label_encoder",
+        "one_hot_encoder",
+        "log_transform",
+        "quantile_transformer",
+        "rank_normalizer",
+        "winsorize",
+        "equal_width_binner",
+        "equal_frequency_binner",
+        "quantile_binner",
+        "top_k_categorical_binner",
+        "impute_mean",
+        "impute_median",
+        "impute_constant",
+        "impute_mode",
+        "impute_category",
     ]
     AMBIGUOUS_FEATURE_ERROR = (
         "Provided feature '{}' in transformation functions is ambiguous and exists in more than one feature groups."
@@ -159,9 +173,9 @@ class TransformationFunctionEngine:
         transformation_functions: list[transformation_function.TransformationFunction],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
-        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
-        request_parameters: dict[str, Any] = None,
-        expected_features: set[str] = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] | None = None,
+        request_parameters: dict[str, Any] | None = None,
+        expected_features: set[str] | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Function to apply the transformation functions to the passed data.
 
