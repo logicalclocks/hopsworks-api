@@ -1904,7 +1904,7 @@ class TestPython:
 
         # Verify save_delta_fg was called with correct parameters
         mock_delta_engine.return_value.save_delta_fg.assert_called_once_with(
-            test_dataframe, write_options={}, validation_id=None
+            test_dataframe, write_options={}, validation_id=None, operation="insert"
         )
 
     def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
