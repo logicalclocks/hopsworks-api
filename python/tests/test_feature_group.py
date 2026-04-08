@@ -716,6 +716,7 @@ class TestFeatureGroup:
             name="test_fg",
             version=2,
             featurestore_id=99,
+            time_travel_format="DELTA",
             primary_key=[],
             foreign_key=[],
             partition_key=[],
@@ -742,6 +743,7 @@ class TestFeatureGroup:
             name="test_fg",
             version=2,
             featurestore_id=99,
+            time_travel_format="DELTA",
             features=features,
             primary_key=[],
             foreign_key=[],
@@ -1717,8 +1719,11 @@ class TestFeatureGroupRead:
         fg = get_test_feature_group()
 
         # Act & Assert
-        with pytest.raises(
-            FeatureStoreException, match="Cannot use wallclock_time together"
+        with (
+            mock.patch("hsfs.engine.get_type", return_value="spark"),
+            pytest.raises(
+                FeatureStoreException, match="Cannot use wallclock_time together"
+            ),
         ):
             fg.read(wallclock_time="2024-01-01", start_time="2024-01-01")
 
@@ -1727,8 +1732,11 @@ class TestFeatureGroupRead:
         fg = get_test_feature_group()
 
         # Act & Assert
-        with pytest.raises(
-            FeatureStoreException, match="Cannot use wallclock_time together"
+        with (
+            mock.patch("hsfs.engine.get_type", return_value="spark"),
+            pytest.raises(
+                FeatureStoreException, match="Cannot use wallclock_time together"
+            ),
         ):
             fg.read(wallclock_time="2024-01-01", end_time="2024-01-31")
 
