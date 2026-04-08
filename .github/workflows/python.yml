@@ -350,7 +350,7 @@ jobs:
             | tee pytest-coverage.txt
 
       - name: Post coverage comment
-        uses: MishaKav/pytest-coverage-comment@v1.9.0
+        uses: MishaKav/pytest-coverage-comment@v1.7.1
         with:
           pytest-coverage-path: ./pytest-coverage.txt
           junitxml-path: ./pytest.xml
