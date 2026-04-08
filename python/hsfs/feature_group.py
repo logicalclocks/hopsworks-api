@@ -2467,7 +2467,9 @@ class FeatureGroupBase:
     def data_source(self, data_source: ds.DataSource) -> None:
         self._data_source = data_source
         if self._data_source is not None and self._data_source.storage_connector:
-            self._data_source._update_storage_connector(self._data_source.storage_connector)
+            self._data_source._update_storage_connector(
+                self._data_source.storage_connector
+            )
 
     @public
     def prepare_spark_location(self) -> str:
