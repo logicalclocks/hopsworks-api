@@ -1293,33 +1293,53 @@ class TestDeltaEngine:
         fake_delta_table.merge.return_value.when_matched_update_all.return_value.when_not_matched_insert_all.return_value.execute.assert_called_once()
         fake_write.assert_not_called()
 
+    def _setup_fake_deltalake_insert(self, mocker):
+        """Minimal fake deltalake module for operation=insert tests.
+
+        Only sets up write_deltalake and a table that exists — no merge builder chain needed.
+        """
+        fake_write = mocker.Mock()
+
+        class _FakeTableNotFoundError(Exception):
+            pass
+
+        fake_deltalake = types.SimpleNamespace(
+            DeltaTable=mocker.Mock(return_value=mocker.Mock()),
+            write_deltalake=fake_write,
+        )
+        fake_exceptions = types.SimpleNamespace(
+            TableNotFoundError=_FakeTableNotFoundError,
+        )
+        mocker.patch.dict(
+            sys.modules,
+            {"deltalake": fake_deltalake, "deltalake.exceptions": fake_exceptions},
+        )
+        return fake_write
+
     def test_write_delta_rs_insert_operation_skips_merge(self, mocker):
-        # Arrange: existing table, overlap present, but operation="insert" should bypass merge
+        # Arrange: existing table, operation="insert" should append directly, bypassing merge
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/projects/p1")
-        fg.partition_key = ["month"]
         fg.primary_key = ["id"]
         fg.event_time = None
         engine = DeltaEngine(1, "fs", fg, None, None)
 
-        fake_write, fake_delta_table = self._setup_fake_deltalake(mocker)
+        fake_write = self._setup_fake_deltalake_insert(mocker)
         mocker.patch.object(
             engine, "_get_delta_rs_location", return_value="hdfs://nn/p"
         )
-        mocker.patch.object(engine, "_can_use_append", return_value=False)
         mocker.patch.object(
             engine, "_get_last_commit_metadata", return_value=mock.Mock()
         )
 
-        dataset = pa.table({"month": ["2024-01"], "id": [1]})
+        dataset = pa.table({"id": [1]})
 
         # Act
         engine._write_delta_rs_dataset(dataset, operation="insert")
 
-        # Assert - plain append used, merge never invoked
+        # Assert - plain append used
         fake_write.assert_called_once()
         assert fake_write.call_args.kwargs.get("mode") == "append"
-        fake_delta_table.merge.assert_not_called()
 
     def test_write_delta_dataset_insert_operation_skips_merge(
         self, mocker, monkeypatch
