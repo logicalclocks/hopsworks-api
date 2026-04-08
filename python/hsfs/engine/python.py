@@ -1060,6 +1060,7 @@ class Engine:
                     dataframe,
                     write_options=offline_write_options,
                     validation_id=validation_id,
+                    operation=operation,
                 )
         else:
             # for backwards compatibility

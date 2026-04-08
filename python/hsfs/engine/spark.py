@@ -659,7 +659,9 @@ class Engine:
                 self._spark_session,
                 self._spark_context,
             )
-            delta_engine_instance.save_delta_fg(dataframe, write_options, validation_id)
+            delta_engine_instance.save_delta_fg(
+                dataframe, write_options, validation_id, operation=operation
+            )
         else:
             dataframe.write.format(self.HIVE_FORMAT).mode(self.APPEND).options(
                 **write_options
