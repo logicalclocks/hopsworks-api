@@ -1140,8 +1140,12 @@ class VectorServer:
             Dictionary mapping features name to values.
         """
         if on_demand_features:
-            return dict(zip(self._on_demand_feature_vector_col_name, features, strict=False))
-        return dict(zip(self._untransformed_feature_vector_col_name, features, strict=False))
+            return dict(
+                zip(self._on_demand_feature_vector_col_name, features, strict=False)
+            )
+        return dict(
+            zip(self._untransformed_feature_vector_col_name, features, strict=False)
+        )
 
     def handle_feature_vector_return_type(
         self,

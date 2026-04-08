@@ -354,7 +354,9 @@ class FeatureMonitoringResultEngine:
             "detection_statistics and reference_statistics must contain the same number of feature statistics"
         )
         det_stats_set, ref_stats_set = set(), set()
-        for det_fds, ref_fds in zip(detection_statistics, reference_statistics, strict=False):
+        for det_fds, ref_fds in zip(
+            detection_statistics, reference_statistics, strict=False
+        ):
             det_stats_set.add((det_fds.feature_name, det_fds.feature_type))
             ref_stats_set.add((ref_fds.feature_name, ref_fds.feature_type))
 

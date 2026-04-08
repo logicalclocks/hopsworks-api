@@ -436,7 +436,9 @@ class OnlineStoreRestClientEngine:
                 return {
                     name: None
                     for (name, is_helper) in zip(
-                        self.ordered_feature_names, self.is_inference_helpers_list, strict=False
+                        self.ordered_feature_names,
+                        self.is_inference_helpers_list,
+                        strict=False,
                     )
                     if is_helper is inference_helpers_only
                 }
