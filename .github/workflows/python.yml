@@ -304,9 +304,6 @@ jobs:
     name: Coverage Report
     needs: lint_stylecheck
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
 
     steps:
       - name: Set up JDK 8
@@ -345,15 +342,22 @@ jobs:
           pytest python/tests \
             --cov=hopsworks --cov=hsfs --cov=hsml --cov=hopsworks_common \
             --cov-report=xml \
-            --cov-report=term-missing \
+            --cov-report=term-missing:skip-covered \
             --junitxml=pytest.xml \
             | tee pytest-coverage.txt
 
-      - name: Post coverage comment
-        uses: MishaKav/pytest-coverage-comment@v1.7.1
+      - name: Save PR number
+        run: echo "${{ github.event.number }}" > pr_number.txt
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
         with:
-          pytest-coverage-path: ./pytest-coverage.txt
-          junitxml-path: ./pytest.xml
+          name: coverage-artifacts
+          path: |
+            pytest-coverage.txt
+            pytest.xml
+            coverage.xml
+            pr_number.txt
 
   unit_tests_windows_local_tz:
     name: Unit Tests (Windows) (Local TZ)

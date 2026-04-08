@@ -1,0 +1,36 @@
+name: Coverage Comment
+
+on:
+  workflow_run:
+    workflows: ["python"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  comment:
+    name: Post Coverage Comment
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'
+
+    steps:
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-artifacts
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Read PR number
+        id: pr
+        run: echo "number=$(cat pr_number.txt)" >> $GITHUB_OUTPUT
+
+      - name: Post coverage comment
+        uses: MishaKav/pytest-coverage-comment@v1.7.1
+        with:
+          pytest-coverage-path: ./pytest-coverage.txt
+          junitxml-path: ./pytest.xml
+          issue-number: ${{ steps.pr.outputs.number }}
+          xml-skip-covered: true
