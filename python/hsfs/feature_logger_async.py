@@ -24,7 +24,7 @@ import threading
 import traceback
 import uuid
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hsfs.core.feature_logging_client import (
@@ -38,6 +38,8 @@ from hsfs.feature_logger import FeatureLogger
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs.feature_view import FeatureView
 
 

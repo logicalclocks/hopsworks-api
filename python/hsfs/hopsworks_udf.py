@@ -22,10 +22,11 @@ import json
 import logging
 import re
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import humps
 from hopsworks_apigen import public
@@ -738,7 +739,7 @@ def renaming_wrapper(*args):
                 new_feature_name, transformation_feature.statistic_argument_name
             )
             for transformation_feature, new_feature_name in zip(
-                self._transformation_features, features
+                self._transformation_features, features, strict=False
             )
         ]
         udf.dropped_features = updated_dropped_features

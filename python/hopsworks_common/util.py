@@ -29,7 +29,7 @@ import threading
 import time
 import warnings
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urljoin, urlparse
 
 import humps
@@ -54,6 +54,8 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs import feature_group
 
 

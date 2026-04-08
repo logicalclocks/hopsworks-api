@@ -10,7 +10,7 @@
     alt="Hopsworks Documentation"
   /></a>
   <a><img
-    src="https://img.shields.io/badge/python-3.9+-blue"
+    src="https://img.shields.io/badge/python-3.10+-blue"
     alt="python"
   /></a>
   <a href="https://pypi.org/project/hopsworks/"><img
