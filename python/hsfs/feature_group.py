@@ -3090,7 +3090,12 @@ class FeatureGroup(FeatureGroupBase):
         """Resolve only the time travel format string."""
         if time_travel_format is None:
             return TIME_TRAVEL_NONE
-        return time_travel_format.upper()
+        fmt = time_travel_format.upper()
+        if fmt == TIME_TRAVEL_DELTA and not FeatureGroup._has_deltalake():
+            raise FeatureStoreException(
+                "Cannot use time_travel_format='DELTA': delta library is not installed."
+            )
+        return fmt
 
     @staticmethod
     def _has_deltalake():

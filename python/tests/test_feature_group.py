@@ -1014,26 +1014,39 @@ class TestFeatureGroup:
         assert fg._stream is False
 
     @pytest.mark.parametrize(
-        "time_travel_format,expected",
+        "time_travel_format,has_deltalake,expected,expected_exception",
         [
-            (None, "NONE"),
-            ("NONE", "NONE"),
-            ("none", "NONE"),
-            ("HUDI", "HUDI"),
-            ("hudi", "HUDI"),
-            ("DELTA", "DELTA"),
-            ("delta", "DELTA"),
+            (None, False, "NONE", None),
+            (None, True, "NONE", None),
+            ("NONE", False, "NONE", None),
+            ("NONE", True, "NONE", None),
+            ("HUDI", False, "HUDI", None),
+            ("HUDI", True, "HUDI", None),
+            ("DELTA", False, None, FeatureStoreException),
+            ("DELTA", True, "DELTA", None),
         ],
     )
     def test_resolve_time_travel_format(
         self,
+        monkeypatch,
         time_travel_format,
+        has_deltalake,
         expected,
+        expected_exception,
     ):
-        result = feature_group.FeatureGroup._resolve_time_travel_format(
-            time_travel_format=time_travel_format,
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake
         )
-        assert result == expected
+        if expected_exception:
+            with pytest.raises(expected_exception):
+                feature_group.FeatureGroup._resolve_time_travel_format(
+                    time_travel_format=time_travel_format,
+                )
+        else:
+            result = feature_group.FeatureGroup._resolve_time_travel_format(
+                time_travel_format=time_travel_format,
+            )
+            assert result == expected
 
     @pytest.mark.parametrize(
         "time_travel_format,stream,expect_stream",
