@@ -110,10 +110,11 @@ class ExecutionEngine:
             timeout: Maximum waiting time in seconds (default 120).
 
         Returns:
-            The updated execution once it reaches RUNNING (or a final state).
+            The updated execution once it reaches RUNNING, a final state, or when the timeout is exceeded.
+            On timeout the execution may still be in an intermediate state.
 
         Raises:
-            hopsworks.client.exceptions.JobExecutionException: If the execution fails before reaching RUNNING.
+            hopsworks.client.exceptions.JobExecutionException: If the execution reaches an error state before RUNNING.
         """
         from hopsworks_common import constants
 

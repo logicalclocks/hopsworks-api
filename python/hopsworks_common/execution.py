@@ -198,7 +198,7 @@ class Execution:
         """URL to the Python App UI (Streamlit) if the execution is running.
 
         Returns the full URL to access the Streamlit application through the Hopsworks proxy,
-        or None if the execution is not a Python App or is not running.
+        or None if the app URL is not available.
         """
         if (
             self._monitoring
