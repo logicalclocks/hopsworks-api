@@ -2820,7 +2820,7 @@ class FeatureGroup(FeatureGroupBase):
         features: list[feature.Feature | dict[str, Any]] | None = None,
         location: str | None = None,
         online_enabled: bool = False,
-        time_travel_format: str | None = None,
+        time_travel_format: str | None = "DELTA",
         statistics_config: StatisticsConfig | dict[str, Any] | None = None,
         online_topic_name: str | None = None,
         topic_name: str | None = None,
@@ -2947,10 +2947,7 @@ class FeatureGroup(FeatureGroupBase):
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
-                and (
-                    self._time_travel_format is None
-                    or self._time_travel_format == "HUDI"
-                )
+                and self._time_travel_format == "HUDI"
                 else None
             )
             self.statistics_config = statistics_config
@@ -3090,11 +3087,13 @@ class FeatureGroup(FeatureGroupBase):
         time_travel_format: str | None,
     ) -> str:
         """Resolve only the time travel format string."""
-        fmt = time_travel_format.upper() if time_travel_format is not None else None
-        if fmt is None:
-            if not FeatureGroup._has_deltalake():
-                return "HUDI"
-            return "DELTA"
+        if time_travel_format is None:
+            return "NONE"
+        fmt = time_travel_format.upper()
+        if fmt == "DELTA" and not FeatureGroup._has_deltalake():
+            raise FeatureStoreException(
+                "Cannot use time_travel_format='DELTA': delta library is not installed."
+            )
         return fmt
 
     @staticmethod

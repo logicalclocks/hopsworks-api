@@ -165,7 +165,7 @@ class TestFeatureGroup:
         assert len(fg.features) == 2
         assert fg.location is None
         assert fg.online_enabled is False
-        assert fg.time_travel_format is None
+        assert fg.time_travel_format == "DELTA"
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg._online_topic_name is None
         assert fg.event_time is None
@@ -198,7 +198,7 @@ class TestFeatureGroup:
         assert len(fg.features) == 2
         assert fg.location is None
         assert fg.online_enabled is False
-        assert fg.time_travel_format is None
+        assert fg.time_travel_format == "DELTA"
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg._online_topic_name is None
         assert fg.event_time is None
@@ -304,7 +304,7 @@ class TestFeatureGroup:
         assert len(fg.features) == 0
         assert fg.location is None
         assert fg.online_enabled is False
-        assert fg.time_travel_format is None
+        assert fg.time_travel_format == "DELTA"
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg._online_topic_name is None
         assert fg.event_time is None
@@ -1014,14 +1014,16 @@ class TestFeatureGroup:
         assert fg._stream is False
 
     @pytest.mark.parametrize(
-        "time_travel_format,has_deltalake,expected",
+        "time_travel_format,has_deltalake,expected,expected_exception",
         [
-            (None, False, "HUDI"),
-            (None, True, "DELTA"),
-            ("HUDI", False, "HUDI"),
-            ("HUDI", True, "HUDI"),
-            ("DELTA", False, "DELTA"),
-            ("DELTA", True, "DELTA"),
+            (None, False, "NONE", None),
+            (None, True, "NONE", None),
+            ("NONE", False, "NONE", None),
+            ("NONE", True, "NONE", None),
+            ("HUDI", False, "HUDI", None),
+            ("HUDI", True, "HUDI", None),
+            ("DELTA", False, None, FeatureStoreException),
+            ("DELTA", True, "DELTA", None),
         ],
     )
     def test_resolve_time_travel_format(
@@ -1030,14 +1032,21 @@ class TestFeatureGroup:
         time_travel_format,
         has_deltalake,
         expected,
+        expected_exception,
     ):
         monkeypatch.setattr(
             "hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake
         )
-        result = feature_group.FeatureGroup._resolve_time_travel_format(
-            time_travel_format=time_travel_format,
-        )
-        assert result == expected
+        if expected_exception:
+            with pytest.raises(expected_exception):
+                feature_group.FeatureGroup._resolve_time_travel_format(
+                    time_travel_format=time_travel_format,
+                )
+        else:
+            result = feature_group.FeatureGroup._resolve_time_travel_format(
+                time_travel_format=time_travel_format,
+            )
+            assert result == expected
 
     @pytest.mark.parametrize(
         "time_travel_format,stream,expect_stream",
