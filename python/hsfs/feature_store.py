@@ -46,6 +46,7 @@ from hsfs.core import (
 )
 from hsfs.core.chart import Chart
 from hsfs.core.chart_api import ChartApi
+from hsfs.core.constants import TIME_TRAVEL_DELTA
 from hsfs.core.dashboard import Dashboard
 from hsfs.core.dashboard_api import DashboardApi
 from hsfs.core.job import Job
@@ -597,7 +598,7 @@ class FeatureStore:
         version: int | None = None,
         description: str = "",
         online_enabled: bool = False,
-        time_travel_format: str | None = feature_group.TIME_TRAVEL_DELTA,
+        time_travel_format: str | None = TIME_TRAVEL_DELTA,
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -826,7 +827,7 @@ class FeatureStore:
         version: int,
         description: str | None = "",
         online_enabled: bool | None = False,
-        time_travel_format: str | None = feature_group.TIME_TRAVEL_DELTA,
+        time_travel_format: str | None = TIME_TRAVEL_DELTA,
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,

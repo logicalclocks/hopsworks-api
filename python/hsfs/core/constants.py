@@ -14,6 +14,10 @@
 #   limitations under the License.
 #
 
+TIME_TRAVEL_HUDI = "HUDI"
+TIME_TRAVEL_DELTA = "DELTA"
+TIME_TRAVEL_NONE = "NONE"
+
 from hopsworks_common.core.constants import (
     HAS_AIOMYSQL,
     HAS_AVRO,
@@ -31,6 +35,9 @@ from hopsworks_common.core.constants import (
 
 
 __all__ = [
+    "TIME_TRAVEL_HUDI",
+    "TIME_TRAVEL_DELTA",
+    "TIME_TRAVEL_NONE",
     "HAS_AIOMYSQL",
     "HAS_PYARROW",
     "HAS_AVRO",

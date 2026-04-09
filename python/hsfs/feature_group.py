@@ -15,11 +15,6 @@
 #
 from __future__ import annotations
 
-
-TIME_TRAVEL_HUDI = "HUDI"
-TIME_TRAVEL_DELTA = "DELTA"
-TIME_TRAVEL_NONE = "NONE"
-
 import copy
 import json
 import logging
@@ -56,9 +51,6 @@ from hsfs import (
     util,
 )
 from hsfs import (
-    feature_store as feature_store_mod,
-)
-from hsfs import (
     storage_connector as sc,
 )
 from hsfs.constructor import filter as filter_module
@@ -87,6 +79,9 @@ from hsfs.core import feature_monitoring_result as fmr
 from hsfs.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
+    TIME_TRAVEL_DELTA,
+    TIME_TRAVEL_HUDI,
+    TIME_TRAVEL_NONE,
 )
 from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
@@ -109,6 +104,7 @@ if TYPE_CHECKING:
         import polars as pl
     import pandas as pd
     from hopsworks_common.alert import FeatureGroupAlert
+    from hsfs import feature_store as feature_store_mod
     from hsfs.constructor.filter import Filter, Logic
     from hsfs.core.job import Job
     from hsfs.ge_validation_result import ValidationResult
