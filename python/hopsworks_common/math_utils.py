@@ -1,3 +1,22 @@
+def normalize(value: float, min_value: float, max_value: float) -> float:
+    """Return value scaled to the range [0, 1] given the observed min and max.
+
+    Args:
+        value: The value to normalize.
+        min_value: The minimum observed value.
+        max_value: The maximum observed value.
+
+    Returns:
+        A float in [0, 1].
+
+    Raises:
+        ValueError: If min_value equals max_value.
+    """
+    if min_value == max_value:
+        raise ValueError("min_value and max_value must differ")
+    return (value - min_value) / (max_value - min_value)
+
+
 def clamp(value: float, min_value: float, max_value: float) -> float:
     """Return value clamped to the range [min_value, max_value].
 
