@@ -17,8 +17,10 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 T = TypeVar("T")
