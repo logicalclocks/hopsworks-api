@@ -28,4 +28,4 @@ class TestTruncate:
         assert truncate("hello world", 8) == "hello..."
 
     def test_custom_ellipsis(self):
-        assert truncate("hello world", 7, "…") == "hello w…"
+        assert truncate("hello world", 8, "…") == "hello w…"
