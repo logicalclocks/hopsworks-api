@@ -14,10 +14,6 @@
 #   limitations under the License.
 #
 
-TIME_TRAVEL_HUDI = "HUDI"
-TIME_TRAVEL_DELTA = "DELTA"
-TIME_TRAVEL_NONE = "NONE"
-
 from hopsworks_common.core.constants import (
     HAS_AIOMYSQL,
     HAS_AVRO,
@@ -32,6 +28,10 @@ from hopsworks_common.core.constants import (
     great_expectations_not_installed_message,
     initialise_expectation_suite_for_single_expectation_api_message,
 )
+
+TIME_TRAVEL_HUDI = "HUDI"
+TIME_TRAVEL_DELTA = "DELTA"
+TIME_TRAVEL_NONE = "NONE"
 
 
 __all__ = [
