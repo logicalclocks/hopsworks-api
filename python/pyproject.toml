@@ -265,6 +265,7 @@ ignore_kwargs = true
 [tool.coverage.run]
 source = ["hopsworks", "hsfs", "hsml", "hopsworks_common"]
 omit = ["*/tests/*"]
+relative_files = true
 
 [tool.coverage.report]
 show_missing = true
