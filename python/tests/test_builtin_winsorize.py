@@ -60,7 +60,9 @@ def test_winsorize_default_thresholds():
     expected = pd.Series([1.0, 1.0, 50.0, 99.0, 99.0, math.nan])
     expected.name = "winsorize_col_0_"
 
-    for got, want in zip(result["winsorize_col_0_"].tolist(), expected.tolist()):
+    for got, want in zip(
+        result["winsorize_col_0_"].tolist(), expected.tolist(), strict=False
+    ):
         assert math.isnan(got) and math.isnan(want) or got == want
 
 
@@ -100,5 +102,7 @@ def test_winsorize_context_override():
     expected = pd.Series([5.0, 5.0, 95.0, 95.0, math.nan])
     expected.name = "winsorize_col_0_"
 
-    for got, want in zip(result["winsorize_col_0_"].tolist(), expected.tolist()):
+    for got, want in zip(
+        result["winsorize_col_0_"].tolist(), expected.tolist(), strict=False
+    ):
         assert math.isnan(got) and math.isnan(want) or got == want

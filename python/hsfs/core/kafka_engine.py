@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_common import client
 from hopsworks_common.core.constants import (
@@ -52,6 +52,8 @@ elif HAS_AVRO:
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 

@@ -76,6 +76,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     for output_column_name, return_type in zip(
                         tf.hopsworks_udf.output_column_names,
                         tf.hopsworks_udf.return_types,
+                        strict=False,
                     )
                     if output_column_name
                     not in feature_names  # Don't add features that are already in the feature group. Feature names can already be in the feature group if the user explicitly added them in the feature group creation or if the feature group drop

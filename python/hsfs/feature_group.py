@@ -4380,7 +4380,7 @@ class FeatureGroup(FeatureGroupBase):
                     json_dict["sinkJob"]
                 )
             return cls(**json_decamelized)
-        for raw_fg, fg in zip(json_dict, json_decamelized):
+        for raw_fg, fg in zip(json_dict, json_decamelized, strict=False):
             if "type" in fg:
                 fg["stream"] = fg["type"] == "streamFeatureGroupDTO"
             _ = fg.pop("type", None)

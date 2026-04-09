@@ -85,7 +85,9 @@ class TestPythonSparkTransformationFunctions:
             data=df,
         )
         assert list(result.columns) == list(expected_df.columns)
-        for result_dtype, expected_dtype in zip(result.dtypes, expected_df.dtypes):
+        for result_dtype, expected_dtype in zip(
+            result.dtypes, expected_df.dtypes, strict=False
+        ):
             assert str(result_dtype) == str(expected_dtype)
         pd.testing.assert_frame_equal(
             result, expected_df, check_dtype=False, check_exact=True

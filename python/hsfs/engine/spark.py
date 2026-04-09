@@ -1748,7 +1748,10 @@ class Engine:
             *[
                 fun(*feature).alias(output_col_name)
                 for fun, feature, output_col_name in zip(
-                    transformations, transformation_features, output_col_names
+                    transformations,
+                    transformation_features,
+                    output_col_names,
+                    strict=False,
                 )
             ],
         ).select(*untransformed_columns, *explode_name)

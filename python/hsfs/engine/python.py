@@ -721,7 +721,7 @@ class Engine:
             if HAS_POLARS and (
                 isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
             ):
-                stats[col] = dict(zip(stats["statistic"], stats[col]))
+                stats[col] = dict(zip(stats["statistic"], stats[col], strict=False))
             # set data type
             arrow_type = arrow_schema.field(col).type
             if (
@@ -1760,6 +1760,7 @@ class Engine:
                         zip(
                             transformed_features.columns,
                             hopsworks_udf.output_column_names,
+                            strict=False,
                         )
                     )
                 )
@@ -1868,6 +1869,7 @@ class Engine:
         for row, online_flag in zip(
             row_iterator,
             online_flags if online_flags is not None else itertools.repeat(None),
+            strict=False,
         ):
             if isinstance(dataframe, pd.DataFrame):
                 # itertuples returns Python NamedTuple; convert to dict to serialize via Avro
@@ -2705,14 +2707,16 @@ class Engine:
 
             if log_vectors is None:
                 log_vectors = [
-                    dict(zip(feature_names, row)) if not isinstance(row, dict) else row
+                    dict(zip(feature_names, row, strict=False))
+                    if not isinstance(row, dict)
+                    else row
                     for row in data
                 ]
             # If one of the logging components has only one row and the other has multiple rows, we repeat the single row to match the length of the other component.
             elif len(data) == 1:
                 for log_vector in log_vectors:
                     log_vector.update(
-                        dict(zip(feature_names, data[0]))
+                        dict(zip(feature_names, data[0], strict=False))
                         if not isinstance(data[0], dict)
                         else data[0]
                     )
@@ -2722,9 +2726,9 @@ class Engine:
                         f"Length of `{log_component_name}` provided do not match other arguments. Please check the logging data to make sure that all arguments have the same length."
                     )
             else:
-                for log_vector, row in zip(log_vectors, data):
+                for log_vector, row in zip(log_vectors, data, strict=False):
                     log_vector.update(
-                        dict(zip(feature_names, row))
+                        dict(zip(feature_names, row, strict=False))
                         if not isinstance(row, dict)
                         else row
                     )
@@ -2745,7 +2749,7 @@ class Engine:
             # Get any request parameters that the user passed explicitly.
             if request_parameter_data is not None:
                 request_parameter_data = [
-                    dict(zip(request_parameter_names, row))
+                    dict(zip(request_parameter_names, row, strict=False))
                     if not isinstance(row, dict)
                     else row
                     for row in request_parameter_data
@@ -2754,7 +2758,9 @@ class Engine:
                 request_parameter_data = [{} for _ in range(len(log_vectors))]
 
             # Iterate through the log vectors and try to parse request parameters from the log vector if they are not explicitly passed by the user.
-            for log_vector, passed_rp_data in zip(log_vectors, request_parameter_data):
+            for log_vector, passed_rp_data in zip(
+                log_vectors, request_parameter_data, strict=False
+            ):
                 for col in request_parameter_names:
                     if col not in passed_rp_data and col in log_vector:
                         passed_rp_data[col] = log_vector[col]

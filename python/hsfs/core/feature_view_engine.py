@@ -293,7 +293,9 @@ class FeatureViewEngine:
                             label=True,
                         )
                         for transformed_label_name, output_type in zip(
-                            tf.output_column_names, tf.hopsworks_udf.return_types
+                            tf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                            strict=False,
                         )
                     ]
                 )
@@ -307,7 +309,9 @@ class FeatureViewEngine:
                             label=False,
                         )
                         for transformed_feature_name, output_type in zip(
-                            tf.output_column_names, tf.hopsworks_udf.return_types
+                            tf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                            strict=False,
                         )
                     ]
                 )

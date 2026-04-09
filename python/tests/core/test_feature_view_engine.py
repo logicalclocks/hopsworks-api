@@ -685,7 +685,7 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -823,7 +823,9 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -892,7 +894,7 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1029,7 +1031,9 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1379,7 +1383,7 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_compute_training_dataset.call_count == 1
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1503,7 +1507,9 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_compute_training_dataset.call_count == 1
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1792,7 +1798,7 @@ class TestFeatureViewEngine:
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1920,7 +1926,9 @@ class TestFeatureViewEngine:
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label

@@ -22,10 +22,8 @@ import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Literal,
     TypeVar,
-    Union,
 )
 
 import humps
@@ -69,6 +67,7 @@ from hsfs.transformation_function import TransformationFunction, TransformationT
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import date, datetime
 
     from hopsworks_common.alert import Alert, FeatureViewAlert
@@ -90,32 +89,29 @@ if HAS_NUMPY:
 _logger = logging.getLogger(__name__)
 
 # TODO: Rework TrainingDatasetDataFrameTypes
-TrainingDatasetDataFrameTypes = Union[
-    pd.DataFrame,
-    TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-    TypeVar("pyspark.RDD"),  # noqa: F821
-    np.ndarray,
-    list[list[Any]],
-]
+TrainingDatasetDataFrameTypes = (
+    pd.DataFrame
+    | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
+    | TypeVar("pyspark.RDD")  # noqa: F821
+    | np.ndarray
+    | list[list[Any]]
+)
 
 if HAS_POLARS:
     import polars as pl
 
-    TrainingDatasetDataFrameTypes = Union[
-        TrainingDatasetDataFrameTypes,
-        pl.DataFrame,
-    ]
+    TrainingDatasetDataFrameTypes = TrainingDatasetDataFrameTypes | pl.DataFrame
 
 
 # TODO: Rework SplineDataFrameTypes
-SplineDataFrameTypes = Union[
-    pd.DataFrame,
-    TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-    TypeVar("pyspark.RDD"),  # noqa: F821
-    np.ndarray,
-    list[list[Any]],
-    TypeVar("SplineGroup"),  # noqa: F821
-]
+SplineDataFrameTypes = (
+    pd.DataFrame
+    | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
+    | TypeVar("pyspark.RDD")  # noqa: F821
+    | np.ndarray
+    | list[list[Any]]
+    | TypeVar("SplineGroup")  # noqa: F821
+)
 
 
 _logger = logging.getLogger(__name__)

@@ -412,6 +412,7 @@ class OnlineStoreRestClientEngine:
                         self.ordered_feature_names,
                         row_feature_values,
                         self.is_inference_helpers_list,
+                        strict=False,
                     )
                     if (
                         name not in failed_read_feature_names
@@ -435,7 +436,9 @@ class OnlineStoreRestClientEngine:
                 return {
                     name: None
                     for (name, is_helper) in zip(
-                        self.ordered_feature_names, self.is_inference_helpers_list
+                        self.ordered_feature_names,
+                        self.is_inference_helpers_list,
+                        strict=False,
                     )
                     if is_helper is inference_helpers_only
                 }
@@ -450,6 +453,7 @@ class OnlineStoreRestClientEngine:
                         self.ordered_feature_names,
                         row_feature_values,
                         self.is_inference_helpers_list,
+                        strict=False,
                     )
                     if (
                         name not in failed_read_feature_names
@@ -464,6 +468,7 @@ class OnlineStoreRestClientEngine:
                     self.ordered_feature_names,
                     row_feature_values,
                     self.is_inference_helpers_list,
+                    strict=False,
                 )
                 if is_helper is inference_helpers_only
             }
