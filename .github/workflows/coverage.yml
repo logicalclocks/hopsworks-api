@@ -49,7 +49,8 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest python/tests \
-            --cov=hopsworks --cov=hsfs --cov=hsml --cov=hopsworks_common
+            --cov=hopsworks --cov=hsfs --cov=hsml --cov=hopsworks_common \
+            --cov-config=python/pyproject.toml
 
       - name: Coverage comment
         id: coverage_comment
