@@ -67,7 +67,9 @@ class DeltaEngine:
             # In Spark Connect mode, Delta extensions must be set at session
             # creation time (they are static configs). Verify they are present.
             try:
-                ext = self._spark_session.conf.get("spark.sql.extensions", "")
+                ext = str(
+                    self._spark_session.conf.get("spark.sql.extensions", "")
+                )
             except Exception:
                 ext = ""
             if "DeltaSparkSessionExtension" not in ext:
