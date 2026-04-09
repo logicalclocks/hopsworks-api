@@ -76,8 +76,6 @@ class DeltaEngine:
         self._project_api = project_api.ProjectApi()
         self._setup_delta_rs()
 
-    _ALLOWED_OPERATIONS = ("insert", "upsert")
-
     def save_delta_fg(
         self,
         dataset: pd.DataFrame | pa.Table | pl.DataFrame,
@@ -85,12 +83,7 @@ class DeltaEngine:
         validation_id: int | None = None,
         operation: str = "upsert",
     ) -> feature_group_commit.FeatureGroupCommit:
-        operation = operation.lower()
-        if operation not in self._ALLOWED_OPERATIONS:
-            raise ValueError(
-                f"Unsupported operation '{operation}'. "
-                f"Allowed values are: {self._ALLOWED_OPERATIONS}."
-            )
+        operation = operation.lower() if operation else "upsert"
         if self._spark_session is not None:
             _logger.debug(
                 f"Saving Delta dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"

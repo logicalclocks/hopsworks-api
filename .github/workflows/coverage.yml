@@ -1,0 +1,67 @@
+name: coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
+      - name: Set Timezone
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
+
+      - uses: actions/checkout@v4
+
+      - name: Copy README
+        run: cp README.md python/
+
+      - uses: actions/setup-python@v5
+        name: Setup Python
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          activate-environment: true
+          working-directory: python
+
+      - name: Install dependencies
+        run: uv sync --extra dev --project python
+
+      - name: Set PYSPARK_SUBMIT_ARGS for Avro support
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
+
+      - name: Run tests with coverage
+        run: |
+          pytest python/tests \
+            --cov=hopsworks --cov=hsfs --cov=hsml --cov=hopsworks_common \
+            --cov-config=python/pyproject.toml
+
+      - name: Coverage comment
+        id: coverage_comment
+        if: always()
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Store PR comment to be posted
+        uses: actions/upload-artifact@v4
+        if: always() && steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        with:
+          name: python-coverage-comment-action
+          path: python-coverage-comment-action.txt
