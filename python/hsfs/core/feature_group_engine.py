@@ -162,7 +162,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_dataframe,
                 (
                     hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                    if feature_group.time_travel_format in ["HUDI", "DELTA"]
+                    if feature_group.time_travel_format
+                    in [fg.TIME_TRAVEL_HUDI, fg.TIME_TRAVEL_DELTA]
                     else None
                 ),
                 feature_group.online_enabled,
@@ -327,7 +328,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def commit_details(self, feature_group, wallclock_time, limit):
         if (
             feature_group._time_travel_format is None
-            or feature_group._time_travel_format.upper() not in ["HUDI", "DELTA"]
+            or feature_group._time_travel_format.upper()
+            not in [fg.TIME_TRAVEL_HUDI, fg.TIME_TRAVEL_DELTA]
         ):
             raise exceptions.FeatureStoreException(
                 "commit_details can only be used on time travel enabled feature groups"
@@ -364,7 +366,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         spark_session, spark_context = (
             FeatureGroupEngine._get_spark_session_and_context()
         )
-        if feature_group.time_travel_format == "DELTA":
+        if feature_group.time_travel_format == fg.TIME_TRAVEL_DELTA:
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
@@ -384,7 +386,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
-        if feature_group.time_travel_format == "DELTA":
+        if feature_group.time_travel_format == fg.TIME_TRAVEL_DELTA:
             spark_session, spark_context = (
                 FeatureGroupEngine._get_spark_session_and_context()
             )
@@ -573,7 +575,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     engine.get_instance().create_empty_df(dataframe),
                     (
                         hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                        if feature_group.time_travel_format == "HUDI"
+                        if feature_group.time_travel_format == fg.TIME_TRAVEL_HUDI
                         else None
                     ),
                     feature_group.online_enabled,
@@ -732,7 +734,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # the subsequent writes in python can refer to that schema.
         if (
             feature_group.time_travel_format is not None
-            and feature_group.time_travel_format.upper() == "DELTA"
+            and feature_group.time_travel_format.upper() == fg.TIME_TRAVEL_DELTA
         ):
             spark_session, spark_context = (
                 FeatureGroupEngine._get_spark_session_and_context()

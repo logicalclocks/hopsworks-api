@@ -539,7 +539,7 @@ class Engine:
             if (
                 # Only `FeatureGroup class has time_travel_format property
                 isinstance(feature_group, fg_mod.FeatureGroup)
-                and feature_group.time_travel_format == "DELTA"
+                and feature_group.time_travel_format == fg_mod.TIME_TRAVEL_DELTA
                 and storage in [None, "offline"]
             ):
                 self._check_duplicate_records(dataframe, feature_group)
@@ -632,7 +632,7 @@ class Engine:
         write_options,
         validation_id=None,
     ):
-        if feature_group.time_travel_format == "HUDI":
+        if feature_group.time_travel_format == fg_mod.TIME_TRAVEL_HUDI:
             hudi_engine_instance = hudi_engine.HudiEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
@@ -644,7 +644,7 @@ class Engine:
             hudi_engine_instance.save_hudi_fg(
                 dataframe, self.APPEND, operation, write_options, validation_id
             )
-        elif feature_group.time_travel_format == "DELTA":
+        elif feature_group.time_travel_format == fg_mod.TIME_TRAVEL_DELTA:
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
@@ -1517,7 +1517,7 @@ class Engine:
     ):
         features = []
 
-        using_hudi = time_travel_format == "HUDI"
+        using_hudi = time_travel_format == fg_mod.TIME_TRAVEL_HUDI
         for feat in dataframe.schema:
             name = util.autofix_feature_name(feat.name)
             try:
@@ -1625,7 +1625,7 @@ class Engine:
         return bool(isinstance(dataframe, DataFrame))
 
     def update_table_schema(self, feature_group):
-        if feature_group.time_travel_format == "DELTA":
+        if feature_group.time_travel_format == fg_mod.TIME_TRAVEL_DELTA:
             self._add_cols_to_delta_table(feature_group)
         else:
             self._save_empty_dataframe(feature_group)

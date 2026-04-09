@@ -1134,7 +1134,7 @@ class Engine:
         if (
             # Only `FeatureGroup` class has time_travel_format property
             isinstance(feature_group, FeatureGroup)
-            and feature_group.time_travel_format == "DELTA"
+            and feature_group.time_travel_format == fg_mod.TIME_TRAVEL_DELTA
             and storage in [None, "offline"]
         ):
             self._check_duplicate_records(dataframe, feature_group)
@@ -1156,7 +1156,7 @@ class Engine:
         if (
             storage in [None, "offline"]
             and not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
-            and feature_group.time_travel_format == "DELTA"
+            and feature_group.time_travel_format == fg_mod.TIME_TRAVEL_DELTA
         ):
             # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
             delta_engine_instance = delta_engine.DeltaEngine(

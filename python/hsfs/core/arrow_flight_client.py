@@ -132,7 +132,8 @@ def is_data_format_supported(data_format: str, read_options: dict[str, Any] | No
 def _is_query_supported_rec(query: query.Query):
     hudi_no_time_travel = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
-        and query._left_feature_group.time_travel_format in ["HUDI", "DELTA"]
+        and query._left_feature_group.time_travel_format
+        in [feature_group.TIME_TRAVEL_HUDI, feature_group.TIME_TRAVEL_DELTA]
         and (
             query._left_feature_group_start_time is None
             or query._left_feature_group_start_time == 0
@@ -146,7 +147,8 @@ def _is_query_supported_rec(query: query.Query):
     )
     delta_data_sources = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
-        and query._left_feature_group.time_travel_format == "DELTA"
+        and query._left_feature_group.time_travel_format
+        == feature_group.TIME_TRAVEL_DELTA
         and query._left_feature_group.data_source.storage_connector
         and (
             query._left_feature_group.data_source.storage_connector.type

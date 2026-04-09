@@ -15,6 +15,11 @@
 #
 from __future__ import annotations
 
+
+TIME_TRAVEL_HUDI = "HUDI"
+TIME_TRAVEL_DELTA = "DELTA"
+TIME_TRAVEL_NONE = "NONE"
+
 import copy
 import json
 import logging
@@ -2820,7 +2825,7 @@ class FeatureGroup(FeatureGroupBase):
         features: list[feature.Feature | dict[str, Any]] | None = None,
         location: str | None = None,
         online_enabled: bool = False,
-        time_travel_format: str | None = None,
+        time_travel_format: str | None = TIME_TRAVEL_DELTA,
         statistics_config: StatisticsConfig | dict[str, Any] | None = None,
         online_topic_name: str | None = None,
         topic_name: str | None = None,
@@ -2918,7 +2923,7 @@ class FeatureGroup(FeatureGroupBase):
             ]
             if (
                 time_travel_format is not None
-                and time_travel_format.upper() == "HUDI"
+                and time_travel_format.upper() == TIME_TRAVEL_HUDI
                 and self._features
             ):
                 # hudi precombine key is always a single feature
@@ -2947,10 +2952,7 @@ class FeatureGroup(FeatureGroupBase):
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
-                and (
-                    self._time_travel_format is None
-                    or self._time_travel_format == "HUDI"
-                )
+                and (self._time_travel_format == TIME_TRAVEL_HUDI)
                 else None
             )
             self.statistics_config = statistics_config
@@ -3083,18 +3085,20 @@ class FeatureGroup(FeatureGroupBase):
     ) -> bool | None:
         # If stream is explicitly set to True, use it.
         # Otherwise, only DELTA format disables stream by default.
-        return stream or time_travel_format != "DELTA"
+        return stream or time_travel_format != TIME_TRAVEL_DELTA
 
     @staticmethod
     def _resolve_time_travel_format(
         time_travel_format: str | None,
     ) -> str:
         """Resolve only the time travel format string."""
-        fmt = time_travel_format.upper() if time_travel_format is not None else None
-        if fmt is None:
-            if not FeatureGroup._has_deltalake():
-                return "HUDI"
-            return "DELTA"
+        if time_travel_format is None:
+            return TIME_TRAVEL_NONE
+        fmt = time_travel_format.upper()
+        if fmt == TIME_TRAVEL_DELTA and not FeatureGroup._has_deltalake():
+            raise FeatureStoreException(
+                "Cannot use time_travel_format='DELTA': delta library is not installed."
+            )
         return fmt
 
     @staticmethod
@@ -3491,7 +3495,7 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 "Sink cannot be enabled for the feature group without a data source."
             )
-        if self._sink_enabled and self.time_travel_format != "DELTA":
+        if self._sink_enabled and self.time_travel_format != TIME_TRAVEL_DELTA:
             raise FeatureStoreException(
                 "Sink can only be enabled for feature groups with time travel format DELTA."
             )
@@ -3501,7 +3505,7 @@ class FeatureGroup(FeatureGroupBase):
         if all(
             [
                 not self._id,
-                self.time_travel_format == "DELTA",
+                self.time_travel_format == TIME_TRAVEL_DELTA,
                 write_options.get("delta.enableChangeDataFeed") != "false",
             ]
         ):
@@ -3758,7 +3762,7 @@ class FeatureGroup(FeatureGroupBase):
         if all(
             [
                 not self._id,
-                self.time_travel_format == "DELTA",
+                self.time_travel_format == TIME_TRAVEL_DELTA,
                 write_options.get("delta.enableChangeDataFeed") != "false",
             ]
         ):
@@ -4117,8 +4121,9 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        if self.time_travel_format == "HUDI" and not engine.get_type().startswith(
-            "spark"
+        if (
+            self.time_travel_format == TIME_TRAVEL_HUDI
+            and not engine.get_type().startswith("spark")
         ):
             raise NotImplementedError(
                 "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
@@ -4506,7 +4511,7 @@ class FeatureGroup(FeatureGroupBase):
         """Whether time-travel is enabled or not."""
         return (
             self._time_travel_format is not None
-            and self._time_travel_format.upper() != "NONE"
+            and self._time_travel_format.upper() != TIME_TRAVEL_NONE
         )
 
     def execute_odts(
