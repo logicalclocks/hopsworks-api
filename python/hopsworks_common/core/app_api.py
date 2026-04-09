@@ -18,9 +18,14 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
+
+
+if TYPE_CHECKING:
+    from hopsworks_common import app
 
 
 @public("hopsworks.core.app_api.AppApi")
@@ -30,7 +35,7 @@ class AppApi:
 
     @public
     @usage.method_logger
-    def get_apps(self) -> list:
+    def get_apps(self) -> list[app.App]:
         """Get all apps in the project.
 
         Returns:
@@ -46,7 +51,7 @@ class AppApi:
 
     @public
     @usage.method_logger
-    def get_app(self, name: str):
+    def get_app(self, name: str) -> app.App | None:
         """Get an app by name.
 
         Parameters:
@@ -70,7 +75,7 @@ class AppApi:
         environment: str = "python-app-pipeline",
         memory: int = 2048,
         cores: float = 1.0,
-    ):
+    ) -> app.App | None:
         """Create a new Streamlit app.
 
         Example:
@@ -153,7 +158,7 @@ class AppApi:
         ]
         headers = {"content-type": "application/json"}
         _client._send_request(
-            "PUT", path_params, headers=headers, data={"state": "stopped"}
+            "PUT", path_params, headers=headers, data=json.dumps({"state": "stopped"})
         )
 
     def _delete(self, app_name: str):

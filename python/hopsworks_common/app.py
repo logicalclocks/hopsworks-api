@@ -177,7 +177,7 @@ class App:
             Self, with updated state.
 
         Raises:
-            hopsworks.client.exceptions.JobExecutionException: If the app fails to start.
+            hopsworks.client.exceptions.JobExecutionException: If the app fails to start or the serving timeout is exceeded.
         """
         print(f"Starting app: {self._name}")
         self._app_api._start(self._name)
@@ -243,7 +243,11 @@ class App:
         return self
 
     def _wait_for_serving(self) -> App:
-        """Poll until the app reaches Serving state or fails."""
+        """Poll until the app reaches Serving state or fails.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If the app reaches an error state or the serving timeout is exceeded.
+        """
         elapsed = 0.0
         while elapsed < SERVING_TIMEOUT:
             self._refresh()
@@ -259,8 +263,10 @@ class App:
             time.sleep(SERVING_POLL_INTERVAL)
             elapsed += SERVING_POLL_INTERVAL
 
-        _logger.warning("Timed out waiting for app to reach Serving state.")
-        return self
+        raise JobExecutionException(
+            f"Timed out waiting for app to reach Serving state after {SERVING_TIMEOUT}s. "
+            f"Current state: {self._state}"
+        )
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
