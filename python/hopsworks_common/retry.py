@@ -19,8 +19,9 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, TypeVar
 
+
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable  # noqa: TC003
 
 
 T = TypeVar("T")
