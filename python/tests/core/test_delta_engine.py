@@ -19,6 +19,7 @@ import types
 from unittest import mock
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
@@ -946,3 +947,133 @@ class TestDeltaEngine:
         assert fg_commit.rows_updated == 0
         assert fg_commit.rows_deleted == 0
         assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
+
+    def _setup_fake_deltalake_insert(self, mocker):
+        """Minimal fake deltalake module for operation=insert tests.
+
+        Only sets up write_deltalake and a table that exists — no merge builder chain needed.
+        """
+        fake_write = mocker.Mock()
+
+        class _FakeTableNotFoundError(Exception):
+            pass
+
+        fake_deltalake = types.SimpleNamespace(
+            DeltaTable=mocker.Mock(return_value=mocker.Mock()),
+            write_deltalake=fake_write,
+        )
+        fake_exceptions = types.SimpleNamespace(
+            TableNotFoundError=_FakeTableNotFoundError,
+        )
+        mocker.patch.dict(
+            sys.modules,
+            {"deltalake": fake_deltalake, "deltalake.exceptions": fake_exceptions},
+        )
+        return fake_write
+
+    def test_write_delta_rs_insert_operation_skips_merge(self, mocker):
+        # Arrange: existing table, operation="insert" should append directly, bypassing merge
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        fake_write = self._setup_fake_deltalake_insert(mocker)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hdfs://nn/p"
+        )
+        mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value=mock.Mock()
+        )
+
+        dataset = pa.table({"id": [1]})
+
+        # Act
+        engine._write_delta_rs_dataset(dataset, operation="insert")
+
+        # Assert - plain append used
+        fake_write.assert_called_once()
+        assert fake_write.call_args.kwargs.get("mode") == "append"
+
+    def test_write_delta_dataset_insert_operation_skips_merge(
+        self, mocker, monkeypatch
+    ):
+        # Arrange: existing Spark delta table, operation="insert" should use append not merge
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = []
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta_table_cls.isDeltaTable.return_value = True
+
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        mocker.patch.object(engine, "_get_last_commit_metadata", return_value="commit")
+
+        dataset = mocker.MagicMock()
+
+        # Act
+        result = engine._write_delta_dataset(
+            dataset, write_options={}, operation="insert"
+        )
+
+        # Assert - append write used, merge builder never invoked
+        assert result == "commit"
+        dataset.write.format.return_value.options.return_value.mode.assert_called_with(
+            "append"
+        )
+        fake_delta_table_cls.forPath.assert_not_called()
+
+    def test_save_delta_fg_passes_operation_spark(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        write_mock = mocker.patch.object(
+            engine, "_write_delta_dataset", return_value=mock.Mock()
+        )
+
+        # Act
+        engine.save_delta_fg(
+            dataset=mock.Mock(),
+            write_options={},
+            validation_id=None,
+            operation="insert",
+        )
+
+        # Assert - operation forwarded to _write_delta_dataset
+        write_mock.assert_called_once()
+        assert write_mock.call_args.args[2] == "insert"
+
+    def test_save_delta_fg_passes_operation_rs(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        write_mock = mocker.patch.object(
+            engine, "_write_delta_rs_dataset", return_value=mock.Mock()
+        )
+
+        # Act
+        engine.save_delta_fg(
+            dataset=mock.Mock(),
+            write_options=None,
+            validation_id=None,
+            operation="insert",
+        )
+
+        # Assert - operation forwarded to _write_delta_rs_dataset
+        write_mock.assert_called_once()
+        assert write_mock.call_args.kwargs.get("operation") == "insert"

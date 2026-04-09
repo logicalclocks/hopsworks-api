@@ -47,6 +47,7 @@ class DeltaEngine:
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
     DELTA_DOT_PREFIX = "delta."
+    APPEND = "append"
 
     def __init__(
         self,
@@ -80,18 +81,19 @@ class DeltaEngine:
         dataset: pd.DataFrame | pa.Table | pl.DataFrame,
         write_options: dict[str, Any] | None,
         validation_id: int | None = None,
+        operation: str = "upsert",
     ) -> feature_group_commit.FeatureGroupCommit:
         if self._spark_session is not None:
             _logger.debug(
                 f"Saving Delta dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
             )
-            fg_commit = self._write_delta_dataset(dataset, write_options)
+            fg_commit = self._write_delta_dataset(dataset, write_options, operation)
         else:
             _logger.debug(
                 f"Saving Delta dataset using delta-rs to feature group {self._feature_group.name} v{self._feature_group.version}"
             )
             fg_commit = self._write_delta_rs_dataset(
-                dataset, write_options=write_options
+                dataset, write_options=write_options, operation=operation
             )
         fg_commit.validation_id = validation_id
         return self._feature_group_api.commit(self._feature_group, fg_commit)
@@ -232,7 +234,7 @@ class DeltaEngine:
         fg_commit = self._get_last_commit_metadata(self._spark_session, location)
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
-    def _write_delta_dataset(self, dataset, write_options):
+    def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
         try:
             from delta.tables import DeltaTable
         except ImportError as e:
@@ -254,6 +256,16 @@ class DeltaEngine:
                     else []
                 )
                 .mode("append")
+                .save(location)
+            )
+        elif operation == "insert":
+            _logger.debug(
+                f"Insert operation requested for {location}. Using append mode, skipping merge."
+            )
+            (
+                dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
+                .options(**write_options)
+                .mode(self.APPEND)
                 .save(location)
             )
         else:
@@ -326,7 +338,10 @@ class DeltaEngine:
             return location
 
     def _write_delta_rs_dataset(
-        self, dataset, write_options: dict[str, Any] | None = None
+        self,
+        dataset,
+        write_options: dict[str, Any] | None = None,
+        operation: str = "upsert",
     ):
         """Write a dataset to a Delta table using delta-rs.
 
@@ -399,6 +414,16 @@ class DeltaEngine:
                         )
                     }
                 )
+            if operation == "insert":
+                _logger.debug(
+                    f"Insert operation requested for {location}. Using append mode, skipping merge."
+                )
+                deltars_write(
+                    location,
+                    dataset,
+                    mode=self.APPEND,
+                )
+                return self._get_last_commit_metadata(self._spark_session, location)
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
             )
