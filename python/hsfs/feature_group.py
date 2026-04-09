@@ -3092,7 +3092,9 @@ class FeatureGroup(FeatureGroupBase):
             return TIME_TRAVEL_NONE
         fmt = time_travel_format.upper()
         if fmt == TIME_TRAVEL_DELTA and not FeatureGroup._has_deltalake():
-            return TIME_TRAVEL_HUDI
+            raise FeatureStoreException(
+                "Cannot use time_travel_format='DELTA': delta library is not installed."
+            )
         return fmt
 
     @staticmethod
