@@ -97,3 +97,109 @@ class TestTag:
         # Act & Assert
         with pytest.raises(ValueError, match="Tag value cannot be None"):
             tag.Tag.normalize([{"name": "test_name", "value": None}])
+
+    # merge
+
+    def test_merge_no_overlap(self):
+        # Arrange
+        base = [tag.Tag("a", 1), tag.Tag("b", 2)]
+        overrides = [tag.Tag("c", 3)]
+
+        # Act
+        result = tag.Tag.merge(base, overrides)
+
+        # Assert
+        names = {t.name for t in result}
+        assert names == {"a", "b", "c"}
+
+    def test_merge_override_replaces_base_by_name(self):
+        # Arrange
+        base = [tag.Tag("a", "old"), tag.Tag("b", 2)]
+        overrides = [tag.Tag("a", "new")]
+
+        # Act
+        result = tag.Tag.merge(base, overrides)
+
+        # Assert
+        by_name = {t.name: t for t in result}
+        assert by_name["a"].value == "new"
+        assert len(result) == 2
+
+    def test_merge_empty_base(self):
+        # Arrange
+        overrides = [tag.Tag("x", 10)]
+
+        # Act
+        result = tag.Tag.merge([], overrides)
+
+        # Assert
+        assert len(result) == 1
+        assert result[0].name == "x"
+
+    def test_merge_empty_overrides(self):
+        # Arrange
+        base = [tag.Tag("x", 10)]
+
+        # Act
+        result = tag.Tag.merge(base, [])
+
+        # Assert
+        assert len(result) == 1
+        assert result[0].value == 10
+
+    # diff
+
+    def test_diff_added(self):
+        # Arrange
+        before = [tag.Tag("a", 1)]
+        after = [tag.Tag("a", 1), tag.Tag("b", 2)]
+
+        # Act
+        added, removed, changed = tag.Tag.diff(before, after)
+
+        # Assert
+        assert len(added) == 1
+        assert added[0].name == "b"
+        assert removed == []
+        assert changed == []
+
+    def test_diff_removed(self):
+        # Arrange
+        before = [tag.Tag("a", 1), tag.Tag("b", 2)]
+        after = [tag.Tag("a", 1)]
+
+        # Act
+        added, removed, changed = tag.Tag.diff(before, after)
+
+        # Assert
+        assert added == []
+        assert len(removed) == 1
+        assert removed[0].name == "b"
+        assert changed == []
+
+    def test_diff_changed(self):
+        # Arrange
+        before = [tag.Tag("a", "old")]
+        after = [tag.Tag("a", "new")]
+
+        # Act
+        added, removed, changed = tag.Tag.diff(before, after)
+
+        # Assert
+        assert added == []
+        assert removed == []
+        assert len(changed) == 1
+        assert changed[0].value == "new"
+
+    def test_diff_no_change(self):
+        # Arrange
+        before = [tag.Tag("a", 1)]
+        after = [tag.Tag("a", 1)]
+
+        # Act
+        added, removed, changed = tag.Tag.diff(before, after)
+
+        # Assert
+        assert added == []
+        assert removed == []
+        assert changed == []

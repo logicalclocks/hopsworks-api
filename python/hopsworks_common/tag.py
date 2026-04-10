@@ -108,6 +108,48 @@ class Tag:
             return None
         return {"count": len(tags), "items": [t.to_dict() for t in tags]}
 
+    @staticmethod
+    def merge(base: list[Tag], overrides: list[Tag]) -> list[Tag]:
+        """Merge two tag lists, with overrides replacing base tags of the same name.
+
+        Parameters:
+            base: Starting tags.
+            overrides: Tags that replace matching base tags by name.
+
+        Returns:
+            Merged list where each override tag shadows any base tag with the same name.
+        """
+        merged = {t.name: t for t in base}
+        for t in overrides:
+            merged[t.name] = t
+        return list(merged.values())
+
+    @staticmethod
+    def diff(
+        before: list[Tag], after: list[Tag]
+    ) -> tuple[list[Tag], list[Tag], list[Tag]]:
+        """Compute the added, removed, and changed tags between two tag lists.
+
+        Parameters:
+            before: Original tag list.
+            after: Updated tag list.
+
+        Returns:
+            A three-tuple of (added, removed, changed), where added contains tags
+            only in `after`, removed contains tags only in `before`, and changed
+            contains tags present in both but with a different value.
+        """
+        before_map = {t.name: t for t in before}
+        after_map = {t.name: t for t in after}
+        added = [t for name, t in after_map.items() if name not in before_map]
+        removed = [t for name, t in before_map.items() if name not in after_map]
+        changed = [
+            t
+            for name, t in after_map.items()
+            if name in before_map and before_map[name].value != t.value
+        ]
+        return added, removed, changed
+
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
