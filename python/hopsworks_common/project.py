@@ -145,9 +145,6 @@ class Project:
 
         The home directory is located at `/Projects/<project_name>/Users/<username>`
         and is created automatically when a user joins a project.
-
-        Returns:
-            The absolute HopsFS path to the current user's home directory.
         """
         _client = client.get_instance()
         if hasattr(_client, "_username") and _client._username:

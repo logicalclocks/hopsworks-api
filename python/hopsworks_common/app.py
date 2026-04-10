@@ -224,7 +224,11 @@ class App:
 
     @public
     def get_url(self) -> str:
-        """Get URL to view the app in Hopsworks UI."""
+        """Get URL to view the app in Hopsworks UI.
+
+        Returns:
+            The URL to the app page in the Hopsworks UI.
+        """
         _client = client.get_instance()
         return util.get_hostname_replaced_url(
             "/p/" + str(_client._project_id) + "/apps"
