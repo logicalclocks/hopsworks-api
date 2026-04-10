@@ -226,10 +226,9 @@ class Job:
         """
         if self._is_materialization_running(args):
             return None
-        is_python_app = self._job_type == "PYTHON_APP"
         print(f"Launching job: {self.name}")
         execution = self._execution_api._start(self, args=args)
-        if is_python_app:
+        if self._job_type == "PYTHON_APP":
             print("Python App started, waiting for it to become ready...")
             execution = self._execution_engine.wait_for_running(self, execution)
             if execution.app_url:

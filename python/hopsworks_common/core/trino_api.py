@@ -245,7 +245,6 @@ class TrinoApi:
             schema: Database schema within the catalog.
             verify: Whether to verify SSL certificates.
                     Set verify="/path/to/cert.crt" if you want to verify the ssl cert.
-            **kwargs: Additional arguments forwarded to `trino.dbapi.connect`.
 
         Returns:
             A connection object implementing the Python DB API 2.0 specification.
@@ -312,7 +311,6 @@ class TrinoApi:
             schema: Database schema within the catalog.
             verify: Whether to verify SSL certificates.
                     Set verify="/path/to/cert.crt" if you want to verify the ssl cert.
-            **kwargs: Additional arguments forwarded as `connect_args` to `trino.dbapi.connect`.
 
         Returns:
             A SQLAlchemy engine for executing queries against Trino.

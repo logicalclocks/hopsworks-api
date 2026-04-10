@@ -237,13 +237,12 @@ class App:
     def _refresh(self) -> App:
         """Re-fetch app state from the backend."""
         updated = self._app_api.get_app(self._name)
-        if updated:
-            self._state = updated._state
-            self._final_status = updated._final_status
-            self._serving = updated._serving
-            self._app_url = updated._app_url
-            self._execution_id = updated._execution_id
-            self._execution_start = updated._execution_start
+        self._state = updated._state
+        self._final_status = updated._final_status
+        self._serving = updated._serving
+        self._app_url = updated._app_url
+        self._execution_id = updated._execution_id
+        self._execution_start = updated._execution_start
         return self
 
     def _wait_for_serving(self) -> App:

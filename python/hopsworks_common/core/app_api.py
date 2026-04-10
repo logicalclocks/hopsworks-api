@@ -51,20 +51,25 @@ class AppApi:
 
     @public
     @usage.method_logger
-    def get_app(self, name: str) -> app.App | None:
+    def get_app(self, name: str) -> app.App:
         """Get an app by name.
 
         Parameters:
             name: Name of the app.
 
         Returns:
-            App object, or None if not found.
+            App object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the app does not exist or the backend encounters an error.
         """
-        apps = self.get_apps()
-        for a in apps:
-            if a.name == name:
-                return a
-        return None
+        from hopsworks_common import app
+
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "apps", name]
+        headers = {"content-type": "application/json"}
+        response = _client._send_request("GET", path_params, headers=headers)
+        return app.App.from_response_json(response)
 
     @public
     @usage.method_logger
@@ -75,7 +80,7 @@ class AppApi:
         environment: str = "python-app-pipeline",
         memory: int = 2048,
         cores: float = 1.0,
-    ) -> app.App | None:
+    ) -> app.App:
         """Create a new Streamlit app.
 
         Example:
@@ -103,7 +108,6 @@ class AppApi:
 
         Returns:
             The created App object.
-            None if the app is not yet visible from the backend after creation.
         """
         _client = client.get_instance()
 

@@ -98,6 +98,7 @@ class TestApp:
 
     def test_run_waits_for_serving(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.app.time.sleep")
         mock_api = mocker.patch(
             "hopsworks_common.core.app_api.AppApi",
         )
