@@ -59,7 +59,6 @@ if TYPE_CHECKING:
     from hopsworks_common import project
     from sqlalchemy.engine import Engine
     from trino.dbapi import Connection
-    from trino.transaction import IsolationLevel  # noqa: TC004
 
 
 _logger = logging.getLogger(__name__)
@@ -232,40 +231,21 @@ class TrinoApi:
         source: str = DEFAULT_SOURCE,
         catalog: str = DEFAULT_CATALOG,
         schema: str = DEFAULT_SCHEMA,
-        session_properties: dict | None = None,
-        http_headers: dict | None = None,
-        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
-        isolation_level: IsolationLevel = AUTOCOMMIT,
         verify: bool | str = True,
-        http_session: Any = None,
-        client_tags: list[str] | None = None,
-        legacy_primitive_types: bool = False,
-        legacy_prepared_statements: bool | None = None,
-        roles: dict | None = None,
-        timezone: str | None = None,
-        encoding: str | list[str] | None = None,
+        **kwargs: Any,
     ) -> Connection:
         """Connect to Trino using the native DBAPI interface.
+
+        Hopsworks automatically handles authentication, host resolution, and TLS.
+        Any additional keyword arguments are forwarded directly to `trino.dbapi.connect`.
 
         Parameters:
             source: Source identifier for Trino queries.
             catalog: Trino catalog to connect to.
             schema: Database schema within the catalog.
-            session_properties: Dictionary of Trino session properties.
-            http_headers: Additional HTTP headers for the connection.
-            max_attempts: Maximum number of retry attempts for failed requests.
-            request_timeout: Timeout in seconds for each HTTP request.
-            isolation_level: Transaction isolation level.
             verify: Whether to verify SSL certificates.
-                    Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
-            http_session: Custom HTTP session for connection pooling.
-            client_tags: Tags to identify the client in Trino query logs.
-            legacy_primitive_types: Whether to use legacy primitive type handling.
-            legacy_prepared_statements: Whether to use legacy prepared statement handling.
-            roles: Dictionary mapping catalog names to role names.
-            timezone: Timezone for the session.
-            encoding: Character encoding for the connection.
+                    Set verify="/path/to/cert.crt" if you want to verify the ssl cert.
+            **kwargs: Additional arguments forwarded to `trino.dbapi.connect`.
 
         Returns:
             A connection object implementing the Python DB API 2.0 specification.
@@ -306,18 +286,7 @@ class TrinoApi:
             auth=basic_auth,
             http_scheme=HTTPS,
             verify=self._get_ca_chain_path(verify),
-            session_properties=session_properties,
-            http_headers=http_headers,
-            max_attempts=max_attempts,
-            request_timeout=request_timeout,
-            isolation_level=isolation_level,
-            http_session=http_session,
-            client_tags=client_tags,
-            legacy_primitive_types=legacy_primitive_types,
-            legacy_prepared_statements=legacy_prepared_statements,
-            roles=roles,
-            timezone=timezone,
-            encoding=encoding,
+            **kwargs,
         )
 
     @uses_trino
@@ -328,40 +297,22 @@ class TrinoApi:
         source: str = DEFAULT_SQLALCHEMY_SOURCE,
         catalog: str = DEFAULT_CATALOG,
         schema: str = DEFAULT_SCHEMA,
-        session_properties: dict | None = None,
-        http_headers: dict | None = None,
-        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
-        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
-        isolation_level: IsolationLevel = AUTOCOMMIT,
         verify: bool | str = True,
-        http_session: Any = None,
-        client_tags: list[str] | None = None,
-        legacy_primitive_types: bool = False,
-        legacy_prepared_statements: bool | None = None,
-        roles: dict | None = None,
-        timezone: str | None = None,
-        encoding: str | list[str] | None = None,
+        **kwargs: Any,
     ) -> Engine:
         """Create a SQLAlchemy engine for Trino.
+
+        Hopsworks automatically handles authentication, host resolution, and TLS.
+        Any additional keyword arguments are forwarded as `connect_args` to the
+        underlying `trino.dbapi.connect` call.
 
         Parameters:
             source: Source identifier for Trino queries.
             catalog: Trino catalog to connect to.
             schema: Database schema within the catalog.
-            session_properties: Dictionary of Trino session properties.
-            http_headers: Additional HTTP headers for the connection.
-            max_attempts: Maximum number of retry attempts for failed requests.
-            request_timeout: Timeout in seconds for each HTTP request.
-            isolation_level: Transaction isolation level.
             verify: Whether to verify SSL certificates.
-                    Set verify="/path/to/cert.crt" if you want to verify the ssl cert (default: True).
-            http_session: Custom HTTP session for connection pooling.
-            client_tags: Tags to identify the client in Trino query logs.
-            legacy_primitive_types: Whether to use legacy primitive type handling.
-            legacy_prepared_statements: Whether to use legacy prepared statement handling.
-            roles: Dictionary mapping catalog names to role names.
-            timezone: Timezone for the session.
-            encoding: Character encoding for the connection.
+                    Set verify="/path/to/cert.crt" if you want to verify the ssl cert.
+            **kwargs: Additional arguments forwarded as `connect_args` to `trino.dbapi.connect`.
 
         Returns:
             A SQLAlchemy engine for executing queries against Trino.
@@ -406,17 +357,6 @@ class TrinoApi:
             "http_scheme": HTTPS,
             "verify": self._get_ca_chain_path(verify),
             "source": source,
-            "session_properties": session_properties,
-            "http_headers": http_headers,
-            "client_tags": client_tags,
-            "legacy_primitive_types": legacy_primitive_types,
-            "legacy_prepared_statements": legacy_prepared_statements,
-            "roles": roles,
-            "timezone": timezone,
-            "encoding": encoding,
-            "max_attempts": max_attempts,
-            "request_timeout": request_timeout,
-            "isolation_level": isolation_level,
-            "http_session": http_session,
+            **kwargs,
         }
         return create_engine(connection_url, connect_args=connect_args)
