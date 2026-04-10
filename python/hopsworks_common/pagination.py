@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-@public("hopsworks_common.pagination.Page")
+@public
 class Page:
     """A single page of results from a paginated API response.
 
@@ -85,7 +85,7 @@ class Page:
         return f"Page(offset={self._offset}, count={self._count}, total={self._total})"
 
 
-@public("hopsworks_common.pagination.Paginator")
+@public
 class Paginator:
     """Iterates lazily over all pages returned by a paginated fetch function.
 
