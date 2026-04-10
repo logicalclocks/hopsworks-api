@@ -1014,9 +1014,7 @@ class Engine:
         # Convert only the key columns to Arrow — avoids transcoding all feature columns
         # (including costly numpy-U → UTF-8 re-encoding) for a check that only needs keys.
         if isinstance(dataset, pd.DataFrame):
-            key_table = pa.Table.from_pandas(
-                dataset[key_columns], preserve_index=False
-            )
+            key_table = pa.Table.from_pandas(dataset[key_columns], preserve_index=False)
         elif HAS_POLARS and isinstance(dataset, pl.DataFrame):
             key_table = dataset.select(key_columns).to_arrow()
         else:
