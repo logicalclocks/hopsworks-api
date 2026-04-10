@@ -70,7 +70,7 @@ DEFAULT_SQLALCHEMY_SOURCE = "hopsworks-trino-sqlalchemy"
 HTTPS = "https"
 
 
-@public("hopsworks.core.trino_api.TrinoAPI")
+@public("hopsworks.core.trino_api.TrinoApi")
 class TrinoApi:
     """API for connecting to Trino from within Hopsworks.
 
