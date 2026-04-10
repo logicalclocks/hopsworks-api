@@ -593,3 +593,17 @@ class TestExecution:
 
         # Act + Assert
         assert ex.app_url is None
+
+    def test_app_url_not_running(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        ex = execution.Execution(
+            id=1,
+            state="KILLED",
+            monitoring={"appUrl": "pythonapp/proj/myapp/"},
+            job=mocker.Mock(),
+        )
+
+        # Act + Assert
+        assert ex.app_url is None
