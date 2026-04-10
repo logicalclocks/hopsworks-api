@@ -1971,7 +1971,12 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="test", version=1, featurestore_id=99, primary_key=[], id=10
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            id=10,
+            time_travel_format="NONE",
         )
         fg.feature_store = mocker.Mock()
 
@@ -2028,6 +2033,7 @@ class TestSpark:
             partition_key=[],
             id=10,
             features=[f, f1],
+            time_travel_format="NONE",
         )
 
         mock_df = mocker.Mock()

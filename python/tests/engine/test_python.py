@@ -1795,6 +1795,7 @@ class TestPython:
             partition_key=[],
             id=10,
             stream=False,
+            time_travel_format="NONE",
         )
 
         # Act

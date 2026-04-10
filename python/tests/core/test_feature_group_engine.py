@@ -639,6 +639,7 @@ class TestFeatureGroupEngine:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="NONE",
         )
 
         # Act
@@ -785,6 +786,7 @@ class TestFeatureGroupEngine:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="HUDI",
         )
 
         # Act
