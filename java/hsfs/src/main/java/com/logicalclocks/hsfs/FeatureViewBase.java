@@ -1516,8 +1516,7 @@ public abstract class FeatureViewBase<T extends FeatureViewBase, T3 extends Feat
   public void delete(Boolean force) throws FeatureStoreException, IOException {
     LOGGER.warn("JobWarning: All jobs associated to feature view `" + name + "`, version `"
         + version + "` will be removed.");
-    boolean resolvedForce = Boolean.TRUE.equals(force);
-    featureViewApi.delete(this.featureStore, this.name, this.version, resolvedForce);
+    featureViewApi.delete(this.featureStore, this.name, this.version, force);
   }
 
   /**
