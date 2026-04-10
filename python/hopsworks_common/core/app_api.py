@@ -103,6 +103,7 @@ class AppApi:
 
         Returns:
             The created App object.
+            None if the app is not yet visible from the backend after creation.
         """
         _client = client.get_instance()
 
