@@ -72,6 +72,7 @@ class StorageConnector(ABC):
     OPENSEARCH = "OPENSEARCH"
     CRM = "CRM"
     REST = "REST"
+    ORACLE = "ORACLE"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -106,6 +107,7 @@ class StorageConnector(ABC):
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
+        | OracleConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -129,6 +131,7 @@ class StorageConnector(ABC):
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
+        | OracleConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -3007,3 +3010,152 @@ class RestConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
+
+
+class OracleConnector(StorageConnector):
+    type = StorageConnector.ORACLE
+    JDBC_FORMAT = "jdbc"
+
+    def __init__(
+        self,
+        id: int | None = None,
+        name: str | None = None,
+        featurestore_id: int | None = None,
+        description: str | None = None,
+        # members specific to type of connector
+        host: str | None = None,
+        port: int | None = None,
+        database: str | None = None,
+        user: str | None = None,
+        password: str | None = None,
+        schema: str | None = None,
+        table: str | None = None,
+        arguments: list[dict[str, Any]] | str | None = None,
+        **kwargs,
+    ):
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port or 1521
+        self._database = database
+        self._user = user
+        self._password = password
+        self._schema = schema
+        self._table = table
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else arguments
+        )
+
+    @property
+    def host(self) -> str | None:
+        """Oracle host address."""
+        return self._host
+
+    @property
+    def port(self) -> int | None:
+        """Oracle port number."""
+        return self._port
+
+    @property
+    def database(self) -> str | None:
+        """Oracle service name / database."""
+        return self._database
+
+    @property
+    def user(self) -> str | None:
+        """Oracle user."""
+        return self._user
+
+    @property
+    def password(self) -> str | None:
+        """Oracle password."""
+        return self._password
+
+    @property
+    def schema(self) -> str | None:
+        """Oracle schema."""
+        return self._schema
+
+    @property
+    def table(self) -> str | None:
+        """Oracle table."""
+        return self._table
+
+    @property
+    def arguments(self) -> list[dict[str, Any]] | str | None:
+        """Additional connection arguments."""
+        return self._arguments
+
+    def spark_options(self) -> dict[str, Any]:
+        return {
+            "url": f"jdbc:oracle:thin:@{self._host}:{self._port}/{self._database}",
+            "driver": "oracle.jdbc.driver.OracleDriver",
+            "user": self._user,
+            "password": self._password,
+        }
+
+    def connector_options(self) -> dict[str, Any]:
+        """Return options to be passed to an Oracle connector library (e.g. oracledb / cx_Oracle).
+
+        Returns:
+            A dictionary with the needed arguments to connect to an Oracle database.
+        """
+        props = {
+            "host": self._host,
+            "port": self._port,
+            "service_name": self._database,
+            "user": self._user,
+            "password": self._password,
+        }
+        if self._arguments:
+            props.update(
+                {arg["name"]: arg["value"] for arg in self._arguments}
+                if isinstance(self._arguments, list)
+                else self._arguments if isinstance(self._arguments, dict) else {}
+            )
+        return props
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Reads a query into a dataframe using the storage connector.
+
+        Parameters:
+            query: A SQL query to be read.
+            data_format: Not relevant for Oracle connectors.
+            options: Any additional key/value options to be passed to the connector.
+            path: Not relevant for Oracle connectors.
+            dataframe_type: str, optional. The type of the returned dataframe.
+                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
+                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        Returns:
+            `DataFrame`.
+        """
+        self.refetch()
+        options = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if query:
+            options["query"] = query
+
+        return engine.get_instance().read(
+            self, self.JDBC_FORMAT, options, None, dataframe_type
+        )

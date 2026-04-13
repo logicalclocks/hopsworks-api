@@ -574,5 +574,58 @@
             "temporaryCredentials": true
         },
         "headers": null
+    },
+    "get_oracle": {
+        "response": {
+            "type": "featurestoreOracleConnectorDTO",
+            "description": "Oracle connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_oracle",
+            "storageConnectorType": "ORACLE",
+            "host": "test_host",
+            "port": 1521,
+            "database": "test_database",
+            "user": "test_user",
+            "password": "test_password",
+            "schema": "test_schema",
+            "table": "test_table",
+            "arguments": [{"name": "test_name", "value": "test_value"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_oracle"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_oracle_basic_info": {
+        "response": {
+            "type": "featurestoreOracleConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_oracle",
+            "storageConnectorType": "ORACLE"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_oracle"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
     }
 }

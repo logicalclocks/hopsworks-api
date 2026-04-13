@@ -1170,3 +1170,77 @@ class TestSqlConnector:
 
         # Assert: the explicit driver wins
         assert options["driver"] == "com.mysql.cj.jdbc.Driver"
+
+
+class TestOracleConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_oracle"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_oracle"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Oracle connector description"
+        assert sc._host == "test_host"
+        assert sc._port == 1521
+        assert sc._database == "test_database"
+        assert sc._user == "test_user"
+        assert sc._password == "test_password"
+        assert sc._schema == "test_schema"
+        assert sc._table == "test_table"
+        assert sc._arguments == {"test_name": "test_value"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_oracle_basic_info"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_oracle"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc._host is None
+        assert sc._port == 1521
+        assert sc._database is None
+
+    def test_spark_options(self):
+        sc = storage_connector.OracleConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        opts = sc.spark_options()
+        assert opts["url"] == "jdbc:oracle:thin:@myhost:1521/ORCL"
+        assert opts["driver"] == "oracle.jdbc.driver.OracleDriver"
+        assert opts["user"] == "scott"
+        assert opts["password"] == "tiger"
+
+    def test_connector_options(self):
+        sc = storage_connector.OracleConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        opts = sc.connector_options()
+        assert opts["host"] == "myhost"
+        assert opts["port"] == 1521
+        assert opts["service_name"] == "ORCL"
+        assert opts["user"] == "scott"
+        assert opts["password"] == "tiger"
