@@ -3112,7 +3112,9 @@ class OracleConnector(StorageConnector):
             props.update(
                 {arg["name"]: arg["value"] for arg in self._arguments}
                 if isinstance(self._arguments, list)
-                else self._arguments if isinstance(self._arguments, dict) else {}
+                else self._arguments
+                if isinstance(self._arguments, dict)
+                else {}
             )
         return props
 
