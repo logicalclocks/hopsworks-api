@@ -7308,6 +7308,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
