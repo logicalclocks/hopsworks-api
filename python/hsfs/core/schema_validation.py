@@ -92,7 +92,7 @@ class DataFrameValidator:
 
         # Handle errors
         if is_pk_null or (
-            is_string_length_exceeded and (feature_group.id or feature_group.features)
+            is_string_length_exceeded and (feature_group.id or feature_group.columns)
         ):
             self._raise_validation_error(errors)
         elif is_string_length_exceeded:
@@ -188,9 +188,9 @@ class PandasValidator(DataFrameValidator):
             currentmax = df[col].str.len().max()
             col_max_len = (
                 self.get_online_varchar_length(
-                    self.get_feature_from_list(col, feature_group.features)
+                    self.get_feature_from_list(col, feature_group.columns)
                 )
-                if feature_group.features
+                if feature_group.columns
                 else 100
             )
 
@@ -225,9 +225,9 @@ class PolarsValidator(DataFrameValidator):
             currentmax = df[col].str.len_chars().max()
             col_max_len = (
                 self.get_online_varchar_length(
-                    self.get_feature_from_list(col, feature_group.features)
+                    self.get_feature_from_list(col, feature_group.columns)
                 )
-                if feature_group.features
+                if feature_group.columns
                 else 100
             )
 
@@ -293,9 +293,9 @@ class PySparkValidator(DataFrameValidator):
 
             col_max_len = (
                 self.get_online_varchar_length(
-                    self.get_feature_from_list(col, feature_group.features)
+                    self.get_feature_from_list(col, feature_group.columns)
                 )
-                if feature_group.features
+                if feature_group.columns
                 else 100
             )
 

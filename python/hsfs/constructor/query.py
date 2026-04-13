@@ -930,12 +930,12 @@ class Query:
 
         # search for feature by name and collect fg objects
         featuregroup_features = {}
-        for feat in self._left_feature_group.features:
+        for feat in self._left_feature_group.columns:
             featuregroup_features[feat.name] = featuregroup_features.get(
                 feat.name, []
             ) + [self._left_feature_group]
         for join_obj in self.joins:
-            for feat in join_obj.query._left_feature_group.features:
+            for feat in join_obj.query._left_feature_group.columns:
                 featuregroup_features[feat.name] = featuregroup_features.get(
                     feat.name, []
                 ) + [join_obj.query._left_feature_group]
