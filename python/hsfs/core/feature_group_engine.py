@@ -273,9 +273,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(
-                feature_group.columns, dataframe_features
-            )
+            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
 
         # ge validation on python and non stream feature groups on spark
         ge_report = feature_group._great_expectation_engine.validate(
@@ -583,9 +581,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(
-                feature_group.columns, dataframe_features
-            )
+            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
 
         if not feature_group.stream:
             warnings.warn(
@@ -618,9 +614,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._features = dataframe_features
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
-            self._verify_schema_compatibility(
-                feature_group.columns, dataframe_features
-            )
+            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
 
         # set primary, foreign and partition key columns
         # we should move this to the backend

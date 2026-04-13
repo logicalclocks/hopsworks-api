@@ -3367,8 +3367,7 @@ class FeatureGroup(FeatureGroupBase):
             options=options,
         )
         return [
-            (result[0], [result[1][f.name] for f in self.columns])
-            for result in results
+            (result[0], [result[1][f.name] for f in self.columns]) for result in results
         ]
 
     @public
@@ -5244,8 +5243,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             options=options,
         )
         return [
-            (result[0], [result[1][f.name] for f in self.columns])
-            for result in results
+            (result[0], [result[1][f.name] for f in self.columns]) for result in results
         ]
 
     @classmethod
