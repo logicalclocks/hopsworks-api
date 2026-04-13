@@ -590,7 +590,7 @@ class Engine:
         self._validate_dataframe_type(dataframe_type)
 
         results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
-        feature_names = [f.name for f in feature_group.features]
+        feature_names = [f.name for f in feature_group.columns]
         if dataframe_type == "polars":
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)

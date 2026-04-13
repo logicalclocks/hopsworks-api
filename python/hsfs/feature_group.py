@@ -2536,7 +2536,7 @@ class FeatureGroupBase:
         Returns:
             A list of feature names that have complex data types.
         """
-        return [f.name for f in self.features if f.is_complex()]
+        return [f.name for f in self.columns if f.is_complex()]
 
     def _get_encoded_avro_schema(self) -> str:
         complex_features = self.get_complex_features()
@@ -3367,8 +3367,7 @@ class FeatureGroup(FeatureGroupBase):
             options=options,
         )
         return [
-            (result[0], [result[1][f.name] for f in self.features])
-            for result in results
+            (result[0], [result[1][f.name] for f in self.columns]) for result in results
         ]
 
     @public
@@ -5244,8 +5243,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             options=options,
         )
         return [
-            (result[0], [result[1][f.name] for f in self.features])
-            for result in results
+            (result[0], [result[1][f.name] for f in self.columns]) for result in results
         ]
 
     @classmethod

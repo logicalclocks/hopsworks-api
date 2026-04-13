@@ -201,7 +201,7 @@ class FeatureGroupTools:
                     primary=f.primary,
                     event_time=fg.event_time == f.name,
                 )
-                for f in fg.features
+                for f in fg.columns
             ],
             key=lambda feature: feature.name,
         )

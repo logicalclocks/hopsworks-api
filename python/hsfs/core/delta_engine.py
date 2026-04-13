@@ -85,8 +85,6 @@ class DeltaEngine:
         self._project_api = project_api.ProjectApi()
         self._setup_delta_rs()
 
-    _ALLOWED_OPERATIONS = ("insert", "upsert")
-
     def save_delta_fg(
         self,
         dataset: pd.DataFrame | pa.Table | pl.DataFrame,
@@ -94,12 +92,7 @@ class DeltaEngine:
         validation_id: int | None = None,
         operation: str = "upsert",
     ) -> feature_group_commit.FeatureGroupCommit:
-        operation = operation.lower()
-        if operation not in self._ALLOWED_OPERATIONS:
-            raise ValueError(
-                f"Unsupported operation '{operation}'. "
-                f"Allowed values are: {self._ALLOWED_OPERATIONS}."
-            )
+        operation = operation.lower() if operation else "upsert"
         if self._spark_session is not None:
             _logger.debug(
                 f"Saving Delta dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
@@ -694,7 +687,7 @@ class DeltaEngine:
         """
         # Build DDL schema string from features
         ddl_fields = []
-        for _feature in self._feature_group.features:
+        for _feature in self._feature_group.columns:
             if _feature.type:
                 ddl_fields.append(f"{_feature.name} {_feature.type}")
             else:
@@ -734,7 +727,7 @@ class DeltaEngine:
 
         # Build PyArrow schema directly from features
         pyarrow_fields = []
-        for _feature in self._feature_group.features:
+        for _feature in self._feature_group.columns:
             if not _feature.type:
                 raise FeatureStoreException(
                     f"Feature '{_feature.name}' does not have a type defined. "

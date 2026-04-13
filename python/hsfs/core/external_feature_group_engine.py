@@ -37,7 +37,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 "A data source needs to be provided when creating an external feature group."
             )
 
-        if feature_group.features is None or len(feature_group.features) == 0:
+        if feature_group.columns is None or len(feature_group.columns) == 0:
             if (
                 feature_group.data_source.database and feature_group.data_source.table
             ) or (
@@ -73,7 +73,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         # set primary, foreign and partition key columns
         # we should move this to the backend
         util.verify_attribute_key_names(feature_group, True)
-        for feat in feature_group.features:
+        for feat in feature_group.columns:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
             if feat.name in feature_group.foreign_key:
@@ -102,11 +102,11 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
 
         if not feature_group._id:
             # only save metadata if feature group does not exist
-            feature_group.features = schema
+            feature_group.columns = schema
             self.save(feature_group)
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.features, schema)
+            self._verify_schema_compatibility(feature_group.columns, schema)
 
         # ge validation on python and non stream feature groups on spark
         ge_report = feature_group._great_expectation_engine.validate(
@@ -146,7 +146,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         # the user object in corrupted state
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
-        copy_feature_group.features = features
+        copy_feature_group.columns = features
         self._feature_group_api.update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
@@ -175,7 +175,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         """
         self._update_features_metadata(
             feature_group,
-            feature_group.features + new_features,  # todo allows for duplicates
+            feature_group.columns + new_features,  # todo allows for duplicates
         )
 
     def update_description(self, feature_group: FeatureGroup, description: str):
