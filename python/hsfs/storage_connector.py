@@ -3031,6 +3031,7 @@ class OracleConnector(StorageConnector):
         schema: str | None = None,
         table: str | None = None,
         arguments: list[dict[str, Any]] | str | None = None,
+        wallet_path: str | None = None,
         **kwargs,
     ):
         super().__init__(id, name, description, featurestore_id)
@@ -3046,6 +3047,7 @@ class OracleConnector(StorageConnector):
             if isinstance(arguments, list)
             else arguments
         )
+        self._wallet_path = wallet_path
 
     @property
     def host(self) -> str | None:
@@ -3087,13 +3089,21 @@ class OracleConnector(StorageConnector):
         """Additional connection arguments."""
         return self._arguments
 
+    @property
+    def wallet_path(self) -> str | None:
+        """Path to Oracle wallet zip file for mTLS connections."""
+        return self._wallet_path
+
     def spark_options(self) -> dict[str, Any]:
-        return {
+        opts = {
             "url": f"jdbc:oracle:thin:@{self._host}:{self._port}/{self._database}",
             "driver": "oracle.jdbc.driver.OracleDriver",
             "user": self._user,
             "password": self._password,
         }
+        if self._wallet_path:
+            opts["wallet_path"] = self._wallet_path
+        return opts
 
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an Oracle connector library (e.g. oracledb / cx_Oracle).
@@ -3108,6 +3118,8 @@ class OracleConnector(StorageConnector):
             "user": self._user,
             "password": self._password,
         }
+        if self._wallet_path:
+            props["wallet_path"] = self._wallet_path
         if self._arguments:
             props.update(
                 {arg["name"]: arg["value"] for arg in self._arguments}
