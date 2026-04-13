@@ -1050,7 +1050,7 @@ class FeatureView:
                 continue
             vector_db_features = self._vector_db_client.read(
                 fg.id,
-                fg.features,
+                fg.columns,
                 keys=fg_entry,
                 index_name=fg.embedding_index.index_name,
             )
