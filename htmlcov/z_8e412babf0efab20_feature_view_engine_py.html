@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_great_expectation_engine_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-13 08:59 +0000
+            created at 2026-04-13 09:57 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -438,7 +438,7 @@
     <p class="mis mis2 show_mis"><span class="n"><a id="t356" href="#t356">356</a></span><span class="t">                    <span class="nam">spine</span><span class="op">.</span><span class="nam">dataframe</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t357" href="#t357">357</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t358" href="#t358">358</a></span><span class="t">                <span class="nam">spine</span><span class="op">.</span><span class="nam">_feature_group_engine</span><span class="op">.</span><span class="nam">_verify_schema_compatibility</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t359" href="#t359">359</a></span><span class="t">                    <span class="nam">query</span><span class="op">.</span><span class="nam">_left_feature_group</span><span class="op">.</span><span class="nam">features</span><span class="op">,</span> <span class="nam">dataframe_features</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t359" href="#t359">359</a></span><span class="t">                    <span class="nam">query</span><span class="op">.</span><span class="nam">_left_feature_group</span><span class="op">.</span><span class="nam">columns</span><span class="op">,</span> <span class="nam">dataframe_features</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t360" href="#t360">360</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t361" href="#t361">361</a></span><span class="t">                <span class="nam">query</span><span class="op">.</span><span class="nam">_left_feature_group</span> <span class="op">=</span> <span class="nam">spine</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t362" href="#t362">362</a></span><span class="t">            <span class="key">elif</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">query</span><span class="op">.</span><span class="nam">_left_feature_group</span><span class="op">,</span> <span class="nam">feature_group</span><span class="op">.</span><span class="nam">SpineGroup</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -1250,7 +1250,7 @@
     <p class="run"><span class="n"><a id="t1168" href="#t1168">1168</a></span><span class="t">            <span class="nam">sub_query_feature_group</span> <span class="op">=</span> <span class="nam">sub_query</span><span class="op">.</span><span class="nam">_left_feature_group</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1169" href="#t1169">1169</a></span><span class="t">            <span class="nam">sub_query_pk_names</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1170" href="#t1170">1170</a></span><span class="t">                <span class="nam">feature</span><span class="op">.</span><span class="nam">name</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1171" href="#t1171">1171</a></span><span class="t">                <span class="key">for</span> <span class="nam">feature</span> <span class="key">in</span> <span class="nam">sub_query_feature_group</span><span class="op">.</span><span class="nam">features</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1171" href="#t1171">1171</a></span><span class="t">                <span class="key">for</span> <span class="nam">feature</span> <span class="key">in</span> <span class="nam">sub_query_feature_group</span><span class="op">.</span><span class="nam">columns</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1172" href="#t1172">1172</a></span><span class="t">                <span class="key">if</span> <span class="nam">feature</span><span class="op">.</span><span class="nam">primary</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1173" href="#t1173">1173</a></span><span class="t">            <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1174" href="#t1174">1174</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -1329,7 +1329,7 @@
     <p class="run"><span class="n"><a id="t1247" href="#t1247">1247</a></span><span class="t">        <span class="nam">root_feature_group</span> <span class="op">=</span> <span class="nam">query</span><span class="op">.</span><span class="nam">_left_feature_group</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1248" href="#t1248">1248</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1249" href="#t1249">1249</a></span><span class="t">        <span class="nam">root_feature_group_primary_keys_names</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1250" href="#t1250">1250</a></span><span class="t">            <span class="nam">feature</span><span class="op">.</span><span class="nam">name</span> <span class="key">for</span> <span class="nam">feature</span> <span class="key">in</span> <span class="nam">root_feature_group</span><span class="op">.</span><span class="nam">features</span> <span class="key">if</span> <span class="nam">feature</span><span class="op">.</span><span class="nam">primary</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1250" href="#t1250">1250</a></span><span class="t">            <span class="nam">feature</span><span class="op">.</span><span class="nam">name</span> <span class="key">for</span> <span class="nam">feature</span> <span class="key">in</span> <span class="nam">root_feature_group</span><span class="op">.</span><span class="nam">columns</span> <span class="key">if</span> <span class="nam">feature</span><span class="op">.</span><span class="nam">primary</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1251" href="#t1251">1251</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1252" href="#t1252">1252</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1253" href="#t1253">1253</a></span><span class="t">        <span class="nam">pk_names</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
@@ -1771,7 +1771,7 @@
     <p class="run run2"><span class="n"><a id="t1689" href="#t1689">1689</a></span><span class="t">                <span class="nam">logging_meta_data</span><span class="op">.</span><span class="nam">event_time</span> <span class="key">if</span> <span class="nam">event_time</span> <span class="key">is</span> <span class="key">None</span> <span class="key">else</span> <span class="nam">event_time</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1690" href="#t1690">1690</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1691" href="#t1691">1691</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1692" href="#t1692">1692</a></span><span class="t">        <span class="nam">logging_feature_group_features</span> <span class="op">=</span> <span class="nam">list</span><span class="op">(</span><span class="nam">logging_feature_group</span><span class="op">.</span><span class="nam">features</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1692" href="#t1692">1692</a></span><span class="t">        <span class="nam">logging_feature_group_features</span> <span class="op">=</span> <span class="nam">list</span><span class="op">(</span><span class="nam">logging_feature_group</span><span class="op">.</span><span class="nam">columns</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1693" href="#t1693">1693</a></span><span class="t">        <span class="nam">logging_feature_group_feature_names</span> <span class="op">=</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1694" href="#t1694">1694</a></span><span class="t">            <span class="nam">feature</span><span class="op">.</span><span class="nam">name</span> <span class="key">for</span> <span class="nam">feature</span> <span class="key">in</span> <span class="nam">logging_feature_group_features</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1695" href="#t1695">1695</a></span><span class="t">        <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -2077,7 +2077,7 @@
             <a class="nav" href="z_8e412babf0efab20_great_expectation_engine_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-13 08:59 +0000
+            created at 2026-04-13 09:57 +0000
         </p>
     </div>
 </footer>
