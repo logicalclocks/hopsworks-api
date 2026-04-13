@@ -678,7 +678,7 @@ class DeltaEngine:
         """
         # Build DDL schema string from features
         ddl_fields = []
-        for _feature in self._feature_group.features:
+        for _feature in self._feature_group.columns:
             if _feature.type:
                 ddl_fields.append(f"{_feature.name} {_feature.type}")
             else:
@@ -718,7 +718,7 @@ class DeltaEngine:
 
         # Build PyArrow schema directly from features
         pyarrow_fields = []
-        for _feature in self._feature_group.features:
+        for _feature in self._feature_group.columns:
             if not _feature.type:
                 raise FeatureStoreException(
                     f"Feature '{_feature.name}' does not have a type defined. "

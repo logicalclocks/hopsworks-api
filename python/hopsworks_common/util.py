@@ -321,7 +321,7 @@ def verify_attribute_key_names(
     feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
 ) -> None:
-    feature_names = {feat.name for feat in feature_group_obj.features}
+    feature_names = {feat.name for feat in feature_group_obj.columns}
     if feature_group_obj.primary_key:
         diff = set(feature_group_obj.primary_key) - feature_names
         if diff:

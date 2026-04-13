@@ -223,7 +223,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe,
             feature_group.time_travel_format,
-            features=feature_group.features,
+            features=feature_group.columns,
         )
 
         # Currently on-demand transformation functions not supported in external feature groups.
@@ -274,7 +274,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         else:
             # else, just verify that feature group schema matches user-provided dataframe
             self._verify_schema_compatibility(
-                feature_group.features, dataframe_features
+                feature_group.columns, dataframe_features
             )
 
         # ge validation on python and non stream feature groups on spark
@@ -416,7 +416,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # perform changes on copy in case the update fails, so we don't leave
         # the user object in corrupted state
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
-        copy_feature_group.features = features
+        copy_feature_group.columns = features
         self._feature_group_api.update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
@@ -447,7 +447,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         self._update_features_metadata(
             feature_group,
-            feature_group.features + new_features,  # todo allows for duplicates
+            feature_group.columns + new_features,  # todo allows for duplicates
         )
 
         # write empty dataframe to update parquet schema
@@ -584,7 +584,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         else:
             # else, just verify that feature group schema matches user-provided dataframe
             self._verify_schema_compatibility(
-                feature_group.features, dataframe_features
+                feature_group.columns, dataframe_features
             )
 
         if not feature_group.stream:
@@ -609,24 +609,24 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         self, feature_group, dataframe_features, write_options
     ):
         feature_schema_available = (
-            feature_group.features is not None and len(feature_group.features) > 0
+            feature_group.columns is not None and len(feature_group.columns) > 0
         )
 
         # this means FG doesn't exist and should create the new one
-        if len(feature_group.features) == 0:
+        if len(feature_group.columns) == 0:
             # User didn't provide a schema; extract it from the dataframe
             feature_group._features = dataframe_features
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
             self._verify_schema_compatibility(
-                feature_group.features, dataframe_features
+                feature_group.columns, dataframe_features
             )
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
         util.verify_attribute_key_names(feature_group)
 
-        for feat in feature_group.features:
+        for feat in feature_group.columns:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
             if feat.name in feature_group.foreign_key:
