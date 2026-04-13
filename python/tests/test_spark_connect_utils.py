@@ -1,5 +1,5 @@
 #
-#   Copyright 2025 Hopsworks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -24,9 +24,27 @@ from hopsworks_common.spark_connect_utils import (
 
 
 class TestIsSparkConnectEnv:
-    def test_env_var_set(self, monkeypatch):
+    def test_env_var_set_1(self, monkeypatch):
         monkeypatch.setenv("SPARK_CONNECT_MODE_ENABLED", "1")
         assert is_spark_connect_env() is True
+
+    def test_env_var_set_true(self, monkeypatch):
+        monkeypatch.setenv("SPARK_CONNECT_MODE_ENABLED", "true")
+        assert is_spark_connect_env() is True
+
+    def test_env_var_set_True(self, monkeypatch):
+        monkeypatch.setenv("SPARK_CONNECT_MODE_ENABLED", "True")
+        assert is_spark_connect_env() is True
+
+    def test_env_var_set_0(self, monkeypatch):
+        monkeypatch.setenv("SPARK_CONNECT_MODE_ENABLED", "0")
+        with patch.dict("sys.modules", {"pyspark.sql.utils": None}):
+            assert is_spark_connect_env() is False
+
+    def test_env_var_set_false(self, monkeypatch):
+        monkeypatch.setenv("SPARK_CONNECT_MODE_ENABLED", "false")
+        with patch.dict("sys.modules", {"pyspark.sql.utils": None}):
+            assert is_spark_connect_env() is False
 
     def test_env_var_not_set(self, monkeypatch):
         monkeypatch.delenv("SPARK_CONNECT_MODE_ENABLED", raising=False)

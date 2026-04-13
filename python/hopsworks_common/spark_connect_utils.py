@@ -1,5 +1,5 @@
 #
-#   Copyright 2025 Hopsworks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ def is_spark_connect_env() -> bool:
     Returns:
         `True` if running in Spark Connect mode, `False` otherwise.
     """
-    if "SPARK_CONNECT_MODE_ENABLED" in os.environ:
+    if os.environ.get("SPARK_CONNECT_MODE_ENABLED", "").lower() in ("1", "true"):
         return True
     try:
         from pyspark.sql.utils import is_remote

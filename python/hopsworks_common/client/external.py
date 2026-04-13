@@ -143,6 +143,10 @@ class Client(base.Client):
             _logger.debug(
                 "Running in Spark environment with no metastore, initializing Spark session"
             )
+            # In Spark Connect mode, Delta extensions are static configs that
+            # must be set before the first getOrCreate() call.
+            # The session created here is reused by the engine, so this is
+            # the only place where these configs take effect.
             from hopsworks_common.spark_connect_utils import is_spark_connect_env
 
             builder = SparkSession.builder

@@ -178,7 +178,7 @@ class Engine:
         except Exception:
             metrics_override = None
         metrics_enabled = (
-            metrics_override == "true"
+            metrics_override.lower() in ("1", "true")
             if metrics_override is not None
             else self._is_connect
         )
