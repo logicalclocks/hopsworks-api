@@ -356,7 +356,7 @@ class FeatureViewEngine:
                     spine.dataframe
                 )
                 spine._feature_group_engine._verify_schema_compatibility(
-                    query._left_feature_group.features, dataframe_features
+                    query._left_feature_group.columns, dataframe_features
                 )
                 query._left_feature_group = spine
             elif isinstance(query._left_feature_group, feature_group.SpineGroup):
@@ -1168,7 +1168,7 @@ class FeatureViewEngine:
             sub_query_feature_group = sub_query._left_feature_group
             sub_query_pk_names = {
                 feature.name
-                for feature in sub_query_feature_group.features
+                for feature in sub_query_feature_group.columns
                 if feature.primary
             }
 
@@ -1247,7 +1247,7 @@ class FeatureViewEngine:
         root_feature_group = query._left_feature_group
 
         root_feature_group_primary_keys_names = {
-            feature.name for feature in root_feature_group.features if feature.primary
+            feature.name for feature in root_feature_group.columns if feature.primary
         }
 
         pk_names = {
@@ -1689,7 +1689,7 @@ class FeatureViewEngine:
                 logging_meta_data.event_time if event_time is None else event_time
             )
 
-        logging_feature_group_features = list(logging_feature_group.features)
+        logging_feature_group_features = list(logging_feature_group.columns)
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]

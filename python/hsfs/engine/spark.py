@@ -187,7 +187,7 @@ class Engine:
         filter: Filter | Logic = None,
     ) -> pd.DataFrame | np.ndarray | list[list[Any]] | TypeVar("pyspark.sql.DataFrame"):
         results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
-        feature_names = [f.name for f in feature_group.features]
+        feature_names = [f.name for f in feature_group.columns]
         dataframe_type = dataframe_type.lower()
         if dataframe_type in ["default", "spark"]:
             if len(results) == 0:
@@ -1635,7 +1635,7 @@ class Engine:
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        for _feature in feature_group.features:
+        for _feature in feature_group.columns:
             if _feature.name not in dataframe.columns:
                 dataframe = dataframe.withColumn(
                     _feature.name, lit(None).cast(_feature.type)
@@ -1660,7 +1660,7 @@ class Engine:
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        for _feature in feature_group.features:
+        for _feature in feature_group.columns:
             if _feature.name not in dataframe.columns:
                 dataframe = dataframe.withColumn(
                     _feature.name, lit(None).cast(_feature.type)
