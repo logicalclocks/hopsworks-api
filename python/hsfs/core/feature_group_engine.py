@@ -803,26 +803,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     ) -> SinkJobConfiguration:
         existing_mappings = sink_job_conf.column_mappings or []
         existing_features = {mapping.feature_name for mapping in existing_mappings}
-        source_columns_by_feature = {}
-        data_source = getattr(feature_group, "data_source", None)
-        if data_source is not None:
-            data_source_data = data_source.get_data()
-            if data_source_data and data_source_data.features:
-                for source_feature in data_source_data.features:
-                    source_name = None
-                    if isinstance(source_feature, dict):
-                        source_name = source_feature.get("name")
-                    else:
-                        source_name = getattr(source_feature, "name", None)
-                    if source_name:
-                        source_columns_by_feature.setdefault(
-                            util.autofix_feature_name(source_name),
-                            source_name,
-                        )
 
         default_mappings = [
             FeatureColumnMapping(
-                source_column=source_columns_by_feature.get(feature.name, feature.name),
+                source_column=getattr(feature, "original_name", feature.name),
                 feature_name=feature.name,
             )
             for feature in feature_group.columns
