@@ -158,7 +158,8 @@ class JobApi:
     @public
     @usage.method_logger
     def get_configuration(
-        self, type: Literal["SPARK", "PYSPARK", "PYTHON", "DOCKER", "FLINK"]
+        self,
+        type: Literal["SPARK", "PYSPARK", "PYTHON", "PYTHON_APP", "DOCKER", "FLINK"],
     ) -> dict:
         """Get configuration for the specific job type.
 

@@ -101,6 +101,48 @@ class ExecutionEngine:
                     raise e
         return download_path
 
+    def wait_for_running(self, job, execution, timeout: float = 120) -> Execution:
+        """Wait until a Python App execution reaches RUNNING state.
+
+        Parameters:
+            job: Job of the execution.
+            execution: Execution to monitor.
+            timeout: Maximum waiting time in seconds (default 120).
+
+        Returns:
+            The updated execution once it reaches RUNNING, a final state, or when the timeout is exceeded.
+            On timeout the execution may still be in an intermediate state.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If the execution reaches an error state before RUNNING.
+        """
+        from hopsworks_common import constants
+
+        start_time = datetime.now()
+        MAX_LAG = 3.0
+        updated_execution = self._execution_api._get(job, execution.id)
+        while (
+            updated_execution.state not in ["RUNNING"]
+            and updated_execution.state not in constants.JOBS.ERROR_STATES
+            and updated_execution.state not in constants.JOBS.SUCCESS_STATES
+        ):
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed + MAX_LAG >= timeout:
+                self._log.info("Timed out waiting for app to reach RUNNING state.")
+                return updated_execution
+            time.sleep(MAX_LAG)
+            updated_execution = self._execution_api._get(job, execution.id)
+            self._log.info(
+                f"Waiting for Python App to start. Current state: {updated_execution.state}"
+            )
+
+        if updated_execution.state in constants.JOBS.ERROR_STATES:
+            raise JobExecutionException(
+                f"Python App failed to start. State: {updated_execution.state}"
+            )
+
+        return updated_execution
+
     def wait_until_finished(
         self, job, execution, timeout: float | None = None
     ) -> Execution | None:
