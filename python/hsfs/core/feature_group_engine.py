@@ -685,6 +685,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         is_new_feature_group = feature_group.id is None
         requested_sink_job_conf = feature_group.sink_job_conf
+        pre_save_features = list(feature_group.columns) if feature_group.columns else []
         pre_save_rest_endpoint = (
             feature_group.data_source.rest_endpoint
             if feature_group.data_source
@@ -701,6 +702,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             new_fg,
             is_new_feature_group,
             sink_job_conf=requested_sink_job_conf,
+            source_features=pre_save_features,
         )
 
         if feature_schema_available:
@@ -765,6 +767,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         feature_group: fg.FeatureGroup,
         is_new_feature_group: bool,
         sink_job_conf: SinkJobConfiguration | None = None,
+        source_features: list[feature.Feature] | None = None,
     ) -> None:
         if not is_new_feature_group or not feature_group.sink_enabled:
             return
@@ -772,7 +775,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             sink_job_conf or feature_group.sink_job_conf or SinkJobConfiguration()
         )
         sink_job_conf = self._merge_default_sink_column_mappings(
-            feature_group,
+            source_features or feature_group.columns,
             sink_job_conf,
         )
         job_name = sink_job_conf.name
@@ -798,7 +801,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     @staticmethod
     def _merge_default_sink_column_mappings(
-        feature_group: fg.FeatureGroup,
+        features: list[feature.Feature],
         sink_job_conf: SinkJobConfiguration,
     ) -> SinkJobConfiguration:
         existing_mappings = sink_job_conf.column_mappings or []
@@ -809,7 +812,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 source_column=getattr(feature, "original_name", feature.name),
                 feature_name=feature.name,
             )
-            for feature in feature_group.columns
+            for feature in features
             if not feature.on_demand and feature.name not in existing_features
         ]
         sink_job_conf.column_mappings = existing_mappings + default_mappings
