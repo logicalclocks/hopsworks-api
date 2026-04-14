@@ -1487,9 +1487,9 @@ public abstract class FeatureViewBase<T extends FeatureViewBase, T3 extends Feat
   
   /**
    * Delete current feature view, all associated metadata and training data.
-   * By default,the feature view will not be deleted if there are
+   * By default, the feature view will not be deleted if there are
    * models associated to it.
-   * If set force is set to {@code true}, forces deletion of the feature view even
+   * If {@code force} is set to {@code true}, the feature view is deleted even
    * if there are models associated to it.
    *
    * <pre>

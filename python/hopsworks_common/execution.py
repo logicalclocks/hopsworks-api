@@ -193,6 +193,28 @@ class Execution:
         return None
 
     @public
+    @property
+    def app_url(self) -> str | None:
+        """URL to the Python App UI (Streamlit) if the execution is running.
+
+        Returns the full URL to access the Streamlit application through the Hopsworks proxy,
+        or None if the execution is not running or the app URL is not available.
+        """
+        if (
+            self._state == "RUNNING"
+            and self._monitoring
+            and isinstance(self._monitoring, dict)
+            and self._monitoring.get("appUrl")
+        ):
+            _client = client.get_instance()
+            return (
+                _client._base_url.rstrip("/")
+                + "/hopsworks-api/"
+                + self._monitoring["appUrl"]
+            )
+        return None
+
+    @public
     def download_logs(self, path: str | None = None) -> tuple[str | None, str | None]:
         """Download stdout and stderr logs for the execution.
 

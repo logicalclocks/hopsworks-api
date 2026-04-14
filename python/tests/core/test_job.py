@@ -419,3 +419,191 @@ class TestJob:
 
         # Assert
         assert str(e_info.value) == "The Hopsworks Job was stopped"
+
+    # --- PYTHON_APP tests ---
+
+    def test_run_python_app_waits_for_running(self, mocker, backend_fixtures):
+        # Arrange — PYTHON_APP calls wait_for_running, not wait_until_finished
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_engine = mocker.patch(
+            "hopsworks_common.engine.execution_engine.ExecutionEngine",
+        )
+
+        python_app_job_mock = mocker.Mock()
+        python_app_job_mock.job_type = "PYTHON_APP"
+        started_execution = execution.Execution(
+            id=1,
+            state="INITIALIZING",
+            job=python_app_job_mock,
+            monitoring={"appUrl": "pythonapp/proj/myapp/"},
+        )
+        running_execution = execution.Execution(
+            id=1,
+            state="RUNNING",
+            job=python_app_job_mock,
+            monitoring={"appUrl": "pythonapp/proj/myapp/"},
+        )
+        mock_execution_api.return_value._start.return_value = started_execution
+        mock_execution_engine.return_value.wait_for_running.return_value = (
+            running_execution
+        )
+
+        j = job.Job(
+            id="test_id",
+            name="myapp",
+            creation_time=None,
+            config={},
+            job_type="PYTHON_APP",
+            creator=None,
+        )
+
+        # Act
+        result = j.run()
+
+        # Assert — wait_for_running called, wait_until_finished NOT called
+        assert mock_execution_engine.return_value.wait_for_running.call_count == 1
+        assert mock_execution_engine.return_value.wait_until_finished.call_count == 0
+        assert result.state == "RUNNING"
+
+    def test_run_python_app_does_not_await_termination(self, mocker, backend_fixtures):
+        # Arrange — PYTHON_APP ignores await_termination flag
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_engine = mocker.patch(
+            "hopsworks_common.engine.execution_engine.ExecutionEngine",
+        )
+
+        python_app_job_mock = mocker.Mock()
+        python_app_job_mock.job_type = "PYTHON_APP"
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            id=1, state="INITIALIZING", job=python_app_job_mock
+        )
+        mock_execution_engine.return_value.wait_for_running.return_value = (
+            execution.Execution(id=1, state="RUNNING", job=python_app_job_mock)
+        )
+
+        j = job.Job(
+            id="test_id",
+            name="myapp",
+            creation_time=None,
+            config={},
+            job_type="PYTHON_APP",
+            creator=None,
+        )
+
+        # Act — even with await_termination=True, should not call wait_until_finished
+        j.run(await_termination=True)
+
+        # Assert
+        assert mock_execution_engine.return_value.wait_until_finished.call_count == 0
+
+    def test_run_python_app_raises_on_failure(self, mocker, backend_fixtures):
+        # Arrange — PYTHON_APP that fails during startup
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_engine = mocker.patch(
+            "hopsworks_common.engine.execution_engine.ExecutionEngine",
+        )
+
+        python_app_job_mock = mocker.Mock()
+        python_app_job_mock.job_type = "PYTHON_APP"
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            id=1, state="INITIALIZING", job=python_app_job_mock
+        )
+        mock_execution_engine.return_value.wait_for_running.side_effect = (
+            exceptions.JobExecutionException(
+                "Python App failed to start. State: FAILED"
+            )
+        )
+
+        j = job.Job(
+            id="test_id",
+            name="myapp",
+            creation_time=None,
+            config={},
+            job_type="PYTHON_APP",
+            creator=None,
+        )
+
+        # Act + Assert
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
+            j.run()
+
+        assert "Python App failed to start" in str(e_info.value)
+
+
+class TestExecution:
+    def test_app_url_with_monitoring(self, mocker):
+        # Arrange
+        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client.return_value._base_url = "https://myhost:443"
+
+        ex = execution.Execution(
+            id=1,
+            state="RUNNING",
+            monitoring={"appUrl": "pythonapp/proj/myapp/"},
+            job=mocker.Mock(),
+        )
+
+        # Act + Assert
+        assert ex.app_url == "https://myhost:443/hopsworks-api/pythonapp/proj/myapp/"
+
+    def test_app_url_without_monitoring(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        ex = execution.Execution(
+            id=1, state="RUNNING", monitoring=None, job=mocker.Mock()
+        )
+
+        # Act + Assert
+        assert ex.app_url is None
+
+    def test_app_url_with_empty_monitoring(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        ex = execution.Execution(
+            id=1, state="RUNNING", monitoring={}, job=mocker.Mock()
+        )
+
+        # Act + Assert
+        assert ex.app_url is None
+
+    def test_app_url_monitoring_without_app_url_key(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        ex = execution.Execution(
+            id=1,
+            state="RUNNING",
+            monitoring={"sparkUrl": "some/spark/url"},
+            job=mocker.Mock(),
+        )
+
+        # Act + Assert
+        assert ex.app_url is None
+
+    def test_app_url_not_running(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        ex = execution.Execution(
+            id=1,
+            state="KILLED",
+            monitoring={"appUrl": "pythonapp/proj/myapp/"},
+            job=mocker.Mock(),
+        )
+
+        # Act + Assert
+        assert ex.app_url is None
