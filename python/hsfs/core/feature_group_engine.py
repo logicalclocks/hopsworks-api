@@ -44,11 +44,6 @@ if TYPE_CHECKING:
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
-    @staticmethod
-    def _get_source_column_names(dataframe) -> list[str] | None:
-        columns = getattr(dataframe, "columns", None)
-        return list(columns) if columns is not None else None
-
     def __init__(self, feature_store_id: int):
         super().__init__(feature_store_id)
 
@@ -110,11 +105,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
         )
-        source_column_names = (
-            self._get_source_column_names(feature_dataframe)
-            if feature_group.sink_enabled
-            else None
-        )
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(
                 feature_group=feature_group, features=dataframe_features
@@ -155,7 +145,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group,
             dataframe_features,
             write_options,
-            source_column_names=source_column_names,
         )
 
         # ge validation on python and non stream feature groups on spark
@@ -631,7 +620,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         feature_group,
         dataframe_features,
         write_options,
-        source_column_names: list[str] | None = None,
     ):
         feature_schema_available = (
             feature_group.columns is not None and len(feature_group.columns) > 0
@@ -713,7 +701,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             new_fg,
             is_new_feature_group,
             sink_job_conf=requested_sink_job_conf,
-            source_column_names=source_column_names,
         )
 
         if feature_schema_available:
@@ -778,7 +765,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         feature_group: fg.FeatureGroup,
         is_new_feature_group: bool,
         sink_job_conf: SinkJobConfiguration | None = None,
-        source_column_names: list[str] | None = None,
     ) -> None:
         if not is_new_feature_group or not feature_group.sink_enabled:
             return
@@ -788,7 +774,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         sink_job_conf = self._merge_default_sink_column_mappings(
             feature_group,
             sink_job_conf,
-            source_column_names=source_column_names,
         )
         job_name = sink_job_conf.name
         job_name = job_name or self._get_default_ingestion_job_name(feature_group)
@@ -815,18 +800,25 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def _merge_default_sink_column_mappings(
         feature_group: fg.FeatureGroup,
         sink_job_conf: SinkJobConfiguration,
-        source_column_names: list[str] | None = None,
     ) -> SinkJobConfiguration:
         existing_mappings = sink_job_conf.column_mappings or []
         existing_features = {mapping.feature_name for mapping in existing_mappings}
         source_columns_by_feature = {}
-
-        if source_column_names:
-            for source_column in source_column_names:
-                source_columns_by_feature.setdefault(
-                    util.autofix_feature_name(source_column),
-                    source_column,
-                )
+        data_source = getattr(feature_group, "data_source", None)
+        if data_source is not None:
+            data_source_data = data_source.get_data()
+            if data_source_data and data_source_data.features:
+                for source_feature in data_source_data.features:
+                    source_name = None
+                    if isinstance(source_feature, dict):
+                        source_name = source_feature.get("name")
+                    else:
+                        source_name = getattr(source_feature, "name", None)
+                    if source_name:
+                        source_columns_by_feature.setdefault(
+                            util.autofix_feature_name(source_name),
+                            source_name,
+                        )
 
         default_mappings = [
             FeatureColumnMapping(

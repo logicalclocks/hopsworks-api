@@ -20,6 +20,7 @@ from hsfs import feature, feature_group, feature_group_commit, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
 from hsfs.core.data_source import DataSource
+from hsfs.core.data_source_data import DataSourceData
 from hsfs.hopsworks_udf import udf
 from hsfs.storage_connector import (
     BigQueryConnector,
@@ -1566,6 +1567,9 @@ class TestFeatureGroupEngine:
             sink_job_conf={"name": "custom_sink_job"},
             data_source=DataSource(storage_connector=storage_connector),
         )
+        fg.data_source.get_data = mocker.Mock(
+            return_value=DataSourceData(features=[{"name": "f"}])
+        )
 
         dataframe_feature = feature.Feature(name="f", type="str")
 
@@ -1627,6 +1631,11 @@ class TestFeatureGroupEngine:
             sink_enabled=True,
             data_source=DataSource(storage_connector=storage_connector),
         )
+        fg.data_source.get_data = mocker.Mock(
+            return_value=DataSourceData(
+                features=[{"name": "First Name"}, {"name": "Age"}]
+            )
+        )
 
         dataframe_features = [
             feature.Feature(name="First Name", type="str"),
@@ -1638,7 +1647,6 @@ class TestFeatureGroupEngine:
             feature_group=fg,
             dataframe_features=dataframe_features,
             write_options=None,
-            source_column_names=["First Name", "Age"],
         )
 
         # Assert
@@ -1702,6 +1710,11 @@ class TestFeatureGroupEngine:
             },
             data_source=DataSource(storage_connector=storage_connector),
         )
+        fg.data_source.get_data = mocker.Mock(
+            return_value=DataSourceData(
+                features=[{"name": "First Name"}, {"name": "Age"}]
+            )
+        )
 
         dataframe_features = [
             feature.Feature(name="First Name", type="str"),
@@ -1713,7 +1726,6 @@ class TestFeatureGroupEngine:
             feature_group=fg,
             dataframe_features=dataframe_features,
             write_options=None,
-            source_column_names=["First Name", "Age"],
         )
 
         # Assert
