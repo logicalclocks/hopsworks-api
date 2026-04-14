@@ -44,6 +44,11 @@ if TYPE_CHECKING:
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
+    @staticmethod
+    def _get_source_column_names(dataframe) -> list[str] | None:
+        columns = getattr(dataframe, "columns", None)
+        return list(columns) if columns is not None else None
+
     def __init__(self, feature_store_id: int):
         super().__init__(feature_store_id)
 
@@ -105,7 +110,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
         )
-        source_column_names = list(feature_dataframe.columns)
+        source_column_names = (
+            self._get_source_column_names(feature_dataframe)
+            if feature_group.sink_enabled
+            else None
+        )
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(
                 feature_group=feature_group, features=dataframe_features
@@ -232,7 +241,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.time_travel_format,
             features=feature_group.columns,
         )
-        source_column_names = list(feature_dataframe.columns)
+        source_column_names = (
+            self._get_source_column_names(feature_dataframe)
+            if feature_group.sink_enabled
+            else None
+        )
 
         # Currently on-demand transformation functions not supported in external feature groups.
         if (
@@ -548,7 +561,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             dataframe, feature_group.time_travel_format
         )
-        source_column_names = list(dataframe.columns)
+        source_column_names = (
+            self._get_source_column_names(dataframe)
+            if feature_group.sink_enabled
+            else None
+        )
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(
                 feature_group=feature_group, features=dataframe_features
