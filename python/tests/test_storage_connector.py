@@ -1124,7 +1124,7 @@ class TestSqlConnector:
 
     def test_unsupported_database_type_raises(self):
         with pytest.raises(ValueError, match="Unsupported database_type"):
-            self._make_connector("ORACLE")
+            self._make_connector("UNSUPPORTED_DB")
 
     def test_spark_options_includes_arguments(self):
         # Arrange
@@ -1181,10 +1181,12 @@ class TestOracleConnector:
         sc = storage_connector.StorageConnector.from_response_json(json)
 
         # Assert
+        assert isinstance(sc, storage_connector.SqlConnector)
         assert sc.id == 1
         assert sc.name == "test_oracle"
         assert sc._featurestore_id == 67
         assert sc.description == "Oracle connector description"
+        assert sc.database_type == "ORACLE"
         assert sc._host == "test_host"
         assert sc._port == 1521
         assert sc._database == "test_database"
@@ -1204,19 +1206,21 @@ class TestOracleConnector:
         sc = storage_connector.StorageConnector.from_response_json(json)
 
         # Assert
+        assert isinstance(sc, storage_connector.SqlConnector)
         assert sc.id == 1
         assert sc.name == "test_oracle"
         assert sc._featurestore_id == 67
         assert sc.description is None
+        assert sc.database_type == "ORACLE"
         assert sc._host is None
-        assert sc._port == 1521
         assert sc._database is None
 
     def test_spark_options(self):
-        sc = storage_connector.OracleConnector(
+        sc = storage_connector.SqlConnector(
             id=1,
             name="test",
             featurestore_id=1,
+            database_type="ORACLE",
             host="myhost",
             port=1521,
             database="ORCL",
@@ -1230,10 +1234,11 @@ class TestOracleConnector:
         assert opts["password"] == "tiger"
 
     def test_connector_options(self):
-        sc = storage_connector.OracleConnector(
+        sc = storage_connector.SqlConnector(
             id=1,
             name="test",
             featurestore_id=1,
+            database_type="ORACLE",
             host="myhost",
             port=1521,
             database="ORCL",
@@ -1246,3 +1251,20 @@ class TestOracleConnector:
         assert opts["service_name"] == "ORCL"
         assert opts["user"] == "scott"
         assert opts["password"] == "tiger"
+
+    def test_backward_compat_oracle_connector_class(self):
+        """OracleConnector should still work as a backward-compat wrapper."""
+        sc = storage_connector.OracleConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        assert isinstance(sc, storage_connector.SqlConnector)
+        assert sc.database_type == "ORACLE"
+        opts = sc.spark_options()
+        assert opts["url"] == "jdbc:oracle:thin:@myhost:1521/ORCL"

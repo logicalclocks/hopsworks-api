@@ -180,7 +180,6 @@ class ArrowFlightClient:
         StorageConnector.REDSHIFT,
         StorageConnector.SQL,
         StorageConnector.GCS,
-        StorageConnector.ORACLE,
     ]
     READ_ERROR = "Could not read data using Hopsworks Query Service."
     WRITE_ERROR = 'Could not write data using Hopsworks Query Service. If the issue persists, use write_options={"use_spark": True} instead.'

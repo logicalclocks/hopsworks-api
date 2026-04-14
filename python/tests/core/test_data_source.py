@@ -111,7 +111,7 @@ class TestDataSource:
         ds.group = "test_group"
         ds.table = "test_table"
 
-        sc = storage_connector.OracleConnector(1, "test", 100)
+        sc = storage_connector.SqlConnector(1, "test", 100, database_type="ORACLE")
 
         # Act
         ds._update_storage_connector(sc)

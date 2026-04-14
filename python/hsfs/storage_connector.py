@@ -107,7 +107,6 @@ class StorageConnector(ABC):
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
-        | OracleConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -131,7 +130,6 @@ class StorageConnector(ABC):
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
-        | OracleConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -2324,14 +2322,17 @@ class SqlConnector(StorageConnector):
 
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
+    ORACLE = "ORACLE"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
         POSTGRESQL: "org.postgresql.Driver",
+        ORACLE: "oracle.jdbc.driver.OracleDriver",
     }
     _JDBC_SCHEMES = {
         MYSQL: "mysql",
         POSTGRESQL: "postgresql",
+        ORACLE: "oracle:thin",
     }
 
     def __init__(
@@ -2347,7 +2348,12 @@ class SqlConnector(StorageConnector):
         database: str | None = None,
         user: str | None = None,
         password: str | None = None,
-        arguments: dict[str, Any] | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | str | None = None,
+        # Oracle-specific optional fields
+        schema: str | None = None,
+        table: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -2365,8 +2371,17 @@ class SqlConnector(StorageConnector):
         self._user = user
         self._password = password
         self._arguments = (
-            {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else arguments
+            if isinstance(arguments, dict)
+            else {}
         )
+        # Oracle-specific fields
+        self._schema = schema
+        self._table = table
+        self._wallet_path = wallet_path
+        self._wallet_password = wallet_password
 
     @property
     def database_type(self) -> str | None:
@@ -2398,18 +2413,55 @@ class SqlConnector(StorageConnector):
         """Additional options."""
         return self._arguments
 
+    @property
+    def schema(self) -> str | None:
+        """Oracle schema (only relevant when database_type is ORACLE)."""
+        return self._schema
+
+    @property
+    def table(self) -> str | None:
+        """Oracle table (only relevant when database_type is ORACLE)."""
+        return self._table
+
+    @property
+    def wallet_path(self) -> str | None:
+        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
+        return self._wallet_path
+
     def spark_options(self) -> dict[str, Any]:
-        return {
-            **self._arguments,
+        opts = {
+            **(self._arguments if self._arguments else {}),
             "user": self.user,
             "password": self.password,
             "driver": self._DRIVERS.get(
                 self._database_type, self._DRIVERS[self.POSTGRESQL]
             ),
         }
+        if self._database_type == self.ORACLE:
+            opts["url"] = f"jdbc:oracle:thin:@{self._host}:{self._port}/{self._database}"
+            if self._wallet_path:
+                opts["wallet_path"] = self._wallet_path
+        return opts
 
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external SQL connector library."""
+        if self._database_type == self.ORACLE:
+            props = {
+                "host": self.host,
+                "port": self.port,
+                "service_name": self.database,
+                "user": self.user,
+                "password": self.password,
+            }
+            if self._wallet_path:
+                props["wallet_path"] = self._wallet_path
+            if self._arguments:
+                props.update(
+                    self._arguments
+                    if isinstance(self._arguments, dict)
+                    else {}
+                )
+            return props
         props = {
             "host": self.host,
             "port": self.port,
@@ -2462,10 +2514,14 @@ class SqlConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        scheme = self._JDBC_SCHEMES.get(
-            self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
-        )
-        options["url"] = f"jdbc:{scheme}://{self.host}:{self.port}/{self.database}"
+        if self._database_type == self.ORACLE:
+            # Oracle JDBC URL uses @ instead of ://
+            options["url"] = f"jdbc:oracle:thin:@{self.host}:{self.port}/{self.database}"
+        else:
+            scheme = self._JDBC_SCHEMES.get(
+                self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
+            )
+            options["url"] = f"jdbc:{scheme}://{self.host}:{self.port}/{self.database}"
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
@@ -3012,164 +3068,13 @@ class RestConnector(StorageConnector):
         return {}
 
 
-class OracleConnector(StorageConnector):
-    type = StorageConnector.ORACLE
-    JDBC_FORMAT = "jdbc"
+class OracleConnector(SqlConnector):
+    """Deprecated: Use SqlConnector with database_type='ORACLE' instead.
 
-    def __init__(
-        self,
-        id: int | None = None,
-        name: str | None = None,
-        featurestore_id: int | None = None,
-        description: str | None = None,
-        # members specific to type of connector
-        host: str | None = None,
-        port: int | None = None,
-        database: str | None = None,
-        user: str | None = None,
-        password: str | None = None,
-        schema: str | None = None,
-        table: str | None = None,
-        arguments: list[dict[str, Any]] | str | None = None,
-        wallet_path: str | None = None,
-        **kwargs,
-    ):
-        super().__init__(id, name, description, featurestore_id)
-        self._host = host
-        self._port = port or 1521
-        self._database = database
-        self._user = user
-        self._password = password
-        self._schema = schema
-        self._table = table
-        self._arguments = (
-            {opt["name"]: opt["value"] for opt in arguments}
-            if isinstance(arguments, list)
-            else arguments
-        )
-        self._wallet_path = wallet_path
+    This class is kept for backward compatibility only. New code should use
+    ``SqlConnector(database_type="ORACLE", ...)``.
+    """
 
-    @property
-    def host(self) -> str | None:
-        """Oracle host address."""
-        return self._host
-
-    @property
-    def port(self) -> int | None:
-        """Oracle port number."""
-        return self._port
-
-    @property
-    def database(self) -> str | None:
-        """Oracle service name / database."""
-        return self._database
-
-    @property
-    def user(self) -> str | None:
-        """Oracle user."""
-        return self._user
-
-    @property
-    def password(self) -> str | None:
-        """Oracle password."""
-        return self._password
-
-    @property
-    def schema(self) -> str | None:
-        """Oracle schema."""
-        return self._schema
-
-    @property
-    def table(self) -> str | None:
-        """Oracle table."""
-        return self._table
-
-    @property
-    def arguments(self) -> list[dict[str, Any]] | str | None:
-        """Additional connection arguments."""
-        return self._arguments
-
-    @property
-    def wallet_path(self) -> str | None:
-        """Path to Oracle wallet zip file for mTLS connections."""
-        return self._wallet_path
-
-    def spark_options(self) -> dict[str, Any]:
-        opts = {
-            "url": f"jdbc:oracle:thin:@{self._host}:{self._port}/{self._database}",
-            "driver": "oracle.jdbc.driver.OracleDriver",
-            "user": self._user,
-            "password": self._password,
-        }
-        if self._wallet_path:
-            opts["wallet_path"] = self._wallet_path
-        return opts
-
-    def connector_options(self) -> dict[str, Any]:
-        """Return options to be passed to an Oracle connector library (e.g. oracledb / cx_Oracle).
-
-        Returns:
-            A dictionary with the needed arguments to connect to an Oracle database.
-        """
-        props = {
-            "host": self._host,
-            "port": self._port,
-            "service_name": self._database,
-            "user": self._user,
-            "password": self._password,
-        }
-        if self._wallet_path:
-            props["wallet_path"] = self._wallet_path
-        if self._arguments:
-            props.update(
-                {arg["name"]: arg["value"] for arg in self._arguments}
-                if isinstance(self._arguments, list)
-                else self._arguments
-                if isinstance(self._arguments, dict)
-                else {}
-            )
-        return props
-
-    @public
-    def read(
-        self,
-        query: str | None = None,
-        data_format: str | None = None,
-        options: dict[str, Any] | None = None,
-        path: str | None = None,
-        dataframe_type: Literal[
-            "default", "spark", "pandas", "polars", "numpy", "python"
-        ] = "default",
-    ) -> (
-        TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | pd.DataFrame
-        | np.ndarray
-        | pl.DataFrame
-    ):
-        """Reads a query into a dataframe using the storage connector.
-
-        Parameters:
-            query: A SQL query to be read.
-            data_format: Not relevant for Oracle connectors.
-            options: Any additional key/value options to be passed to the connector.
-            path: Not relevant for Oracle connectors.
-            dataframe_type: str, optional. The type of the returned dataframe.
-                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
-                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-
-        Returns:
-            `DataFrame`.
-        """
-        self.refetch()
-        options = (
-            {**self.spark_options(), **options}
-            if options is not None
-            else self.spark_options()
-        )
-        if query:
-            options["query"] = query
-
-        return engine.get_instance().read(
-            self, self.JDBC_FORMAT, options, None, dataframe_type
-        )
+    def __init__(self, id=None, name=None, featurestore_id=None, **kwargs):
+        kwargs.setdefault("database_type", "ORACLE")
+        super().__init__(id=id, name=name, featurestore_id=featurestore_id, **kwargs)
