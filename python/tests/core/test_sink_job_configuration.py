@@ -174,9 +174,7 @@ class TestSinkJobConfiguration:
 
     def test_column_mappings_are_sanitized_from_dicts(self):
         config = sink_job_configuration.SinkJobConfiguration(
-            column_mappings=[
-                {"source_column": "source_a", "feature_name": "Feature A"}
-            ]
+            column_mappings=[{"source_column": "source_a", "feature_name": "Feature A"}]
         )
 
         assert len(config.column_mappings) == 1
