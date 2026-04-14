@@ -143,7 +143,22 @@ class Client(base.Client):
             _logger.debug(
                 "Running in Spark environment with no metastore, initializing Spark session"
             )
-            _spark_session = SparkSession.builder.getOrCreate()
+            # In Spark Connect mode, Delta extensions are static configs that
+            # must be set before the first getOrCreate() call.
+            # The session created here is reused by the engine, so this is
+            # the only place where these configs take effect.
+            from hopsworks_common.spark_connect_utils import is_spark_connect_env
+
+            builder = SparkSession.builder
+            if is_spark_connect_env():
+                builder = builder.config(
+                    "spark.sql.extensions",
+                    "io.delta.sql.DeltaSparkSessionExtension",
+                ).config(
+                    "spark.sql.catalog.spark_catalog",
+                    "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+                )
+            _spark_session = builder.getOrCreate()
             self.download_certs()
 
             # Set credentials location in the Spark configuration
@@ -160,8 +175,14 @@ class Client(base.Client):
                 "hops.ipc.server.ssl.enabled": "true",
             }
 
-            for conf_key, conf_value in configuration_dict.items():
-                _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
+            from hopsworks_common.spark_connect_utils import is_spark_connect_session
+
+            if is_spark_connect_session(_spark_session):
+                for conf_key, conf_value in configuration_dict.items():
+                    _spark_session.conf.set(f"spark.hadoop.{conf_key}", conf_value)
+            else:
+                for conf_key, conf_value in configuration_dict.items():
+                    _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
         elif self._engine == "spark-delta":
             _logger.debug(

@@ -19,7 +19,7 @@ import datetime
 import json
 import logging
 import sys
-from unittest.mock import MagicMock, PropertyMock, call
+from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
 import hopsworks_common
 import numpy
@@ -11011,3 +11011,123 @@ class TestSpark:
                 r for r in result.collect() if r["user_id"] == 1 and r["item_id"] == 10
             )
             assert row["val"] == "new"
+
+
+class TestSparkConnectMode:
+    """Tests for Spark Connect compatibility guards."""
+
+    @staticmethod
+    def _make_connect_engine():
+        """Create a spark.Engine instance configured for Connect mode."""
+        engine = spark.Engine.__new__(spark.Engine)
+        engine._spark_session = MagicMock()
+        engine._spark_context = None
+        engine._jvm = None
+        engine._is_connect = True
+        engine._metrics = None
+        engine._dataset_api = MagicMock()
+        return engine
+
+    def test_set_job_group_noop_in_connect(self):
+        engine = self._make_connect_engine()
+        # Should not raise even though sparkContext is None
+        engine.set_job_group("group1", "description")
+
+    def test_set_hadoop_conf_uses_spark_conf(self):
+        engine = self._make_connect_engine()
+        engine._set_hadoop_conf("fs.s3a.access.key", "my-key")
+        engine._spark_session.conf.set.assert_called_once_with(
+            "spark.hadoop.fs.s3a.access.key", "my-key"
+        )
+
+    def test_set_hadoop_conf_classic_mode(self):
+        engine = spark.Engine.__new__(spark.Engine)
+        engine._spark_session = MagicMock()
+        engine._spark_context = MagicMock()
+        engine._jvm = MagicMock()
+        engine._is_connect = False
+        engine._set_hadoop_conf("fs.s3a.access.key", "my-key")
+        engine._spark_context._jsc.hadoopConfiguration().set.assert_called_once_with(
+            "fs.s3a.access.key", "my-key"
+        )
+
+    def test_unset_hadoop_conf_connect(self):
+        engine = self._make_connect_engine()
+        engine._unset_hadoop_conf("fs.gs.encryption.algorithm")
+        engine._spark_session.conf.unset.assert_called_once_with(
+            "spark.hadoop.fs.gs.encryption.algorithm"
+        )
+
+    def test_create_empty_df(self):
+        engine = self._make_connect_engine()
+        mock_streaming_df = MagicMock()
+        mock_streaming_df.schema = StructType([StructField("col1", StringType())])
+        engine.create_empty_df(mock_streaming_df)
+        engine._spark_session.createDataFrame.assert_called_once_with(
+            [], mock_streaming_df.schema
+        )
+
+    def test_save_offline_dataframe_blocks_hudi(self):
+        engine = self._make_connect_engine()
+        fg = MagicMock()
+        fg.time_travel_format = "HUDI"
+        df = MagicMock()
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Hudi"):
+            engine._save_offline_dataframe(fg, df, "upsert", {})
+
+    def test_convert_to_default_dataframe_blocks_rdd(self):
+        from pyspark.rdd import RDD
+
+        engine = self._make_connect_engine()
+        mock_rdd = MagicMock(spec=RDD)
+
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="RDD input is not supported"
+        ):
+            engine.convert_to_default_dataframe(mock_rdd)
+
+    def test_add_file_skips_spark_context(self, tmp_path):
+        from unittest.mock import patch as mock_patch
+
+        engine = self._make_connect_engine()
+
+        with mock_patch("hsfs.engine.spark.client") as mock_client:
+            mock_client._is_external.return_value = False
+            mock_response = MagicMock()
+            mock_response.content = b"file-content"
+            engine._dataset_api.read_content.return_value = mock_response
+
+            with (
+                mock_patch("hsfs.engine.spark.util") as mock_util,
+                mock_patch("builtins.open", mock_open()),
+            ):
+                mock_util.get_dataset_type.return_value = "DATASET"
+                result = engine.add_file("hdfs:///path/to/file.jks", distribute=True)
+
+        # Should not have called sparkContext.addFile
+        assert engine._spark_context is None
+        assert result.endswith("file.jks")
+
+    def test_create_spark_session_connect_skips_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=True),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.getOrCreate.assert_called_once()
+            mock_spark.builder.enableHiveSupport.assert_not_called()
+
+    def test_create_spark_session_classic_enables_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=False),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.enableHiveSupport.assert_called_once()

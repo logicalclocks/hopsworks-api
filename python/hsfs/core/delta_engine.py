@@ -63,11 +63,20 @@ class DeltaEngine:
         self._feature_group = feature_group
         self._spark_context = spark_context
         self._spark_session = spark_session
-        if self._spark_session:
-            self._spark_session.conf.set(
-                "spark.sql.catalog.spark_catalog",
-                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-            )
+        if self._spark_session and self._spark_context is None:
+            # In Spark Connect mode, Delta extensions must be set at session
+            # creation time (they are static configs). Verify they are present.
+            try:
+                ext = str(self._spark_session.conf.get("spark.sql.extensions", ""))
+            except Exception:
+                ext = ""
+            if "DeltaSparkSessionExtension" not in ext:
+                _logger.warning(
+                    "Delta SQL extension not configured on this SparkSession. "
+                    "Delta operations such as VACUUM may fail. "
+                    "Set spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension "
+                    "on the SparkSession builder."
+                )
         self._feature_store_id = feature_store_id
         self._feature_store_name = feature_store_name
 
