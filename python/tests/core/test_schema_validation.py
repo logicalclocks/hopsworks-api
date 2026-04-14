@@ -88,19 +88,22 @@ def spark_df():
 def feature_group_data():
     with mock.patch("hopsworks_common.client.get_instance"):
         engine.init("python")
-    return feature_group.FeatureGroup(
-        name="test_fg",
-        version=1,
-        online_enabled=True,
-        partition_key=[],
-        featurestore_id=1,
-        primary_key=["primary_key"],
-        features=[
-            Feature("primary_key", "int", online_type="varchar(10)"),
-            Feature("event_time", "string", online_type="varchar(10)"),
-            Feature("string_col", "string", online_type="varchar(200)"),
-        ],
-    )
+    with mock.patch(
+        "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+    ):
+        return feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            online_enabled=True,
+            partition_key=[],
+            featurestore_id=1,
+            primary_key=["primary_key"],
+            features=[
+                Feature("primary_key", "int", online_type="varchar(10)"),
+                Feature("event_time", "string", online_type="varchar(10)"),
+                Feature("string_col", "string", online_type="varchar(200)"),
+            ],
+        )
 
 
 @pytest.fixture

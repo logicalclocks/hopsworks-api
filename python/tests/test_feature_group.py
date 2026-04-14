@@ -71,6 +71,12 @@ test_feature_group = get_test_feature_group()
 
 
 class TestFeatureGroup:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
     def test_from_response_json(self, backend_fixtures):
         # Arrange
         json = backend_fixtures["feature_group"]["get"]["response"]
@@ -1445,6 +1451,12 @@ class TestExternalFeatureGroup:
 
 
 class TestFeatureGroupExecuteOdts:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
     def test_execute_odts_with_transformations(self, mocker):
         import pandas as pd
         from hsfs.hopsworks_udf import udf
@@ -1689,6 +1701,12 @@ class TestFeatureGroupExecuteOdts:
 
 
 class TestFeatureGroupRead:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
     def test_read_with_start_time_no_event_time_raises(self):
         # Arrange
         fg = feature_group.FeatureGroup(

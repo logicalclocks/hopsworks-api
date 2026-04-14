@@ -2070,6 +2070,9 @@ class TestPython:
         mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        mocker.patch(
             "hsfs.engine.python.Engine.convert_to_default_dataframe",
             side_effect=lambda x: x,
         )
@@ -2222,6 +2225,9 @@ class TestPython:
         mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        mocker.patch(
             "hsfs.engine.python.Engine.convert_to_default_dataframe",
             side_effect=lambda x: x,
         )
@@ -2293,6 +2299,9 @@ class TestPython:
 
         mocker.patch.dict(sys.modules, {"pyarrow": _FakePa("pyarrow")})
         mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         python_engine = python.Engine()
 
@@ -9305,6 +9314,9 @@ class TestPython:
         @pytest.fixture(autouse=True)
         def patch_engine_type(self, mocker):
             mocker.patch("hsfs.engine.get_type", return_value="python")
+            mocker.patch(
+                "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+            )
 
         def _make_fg(self, primary_key, event_time=None, ttl=None, ttl_enabled=None):
             return feature_group.FeatureGroup(

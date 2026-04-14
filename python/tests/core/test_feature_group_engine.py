@@ -32,6 +32,12 @@ from hsfs.storage_connector import (
 
 
 class TestFeatureGroupEngine:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
     @pytest.mark.parametrize(
         "connector,sink_enabled,expected_sink_enabled",
         [
