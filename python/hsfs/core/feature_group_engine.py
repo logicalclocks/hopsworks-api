@@ -18,7 +18,10 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client import exceptions
-from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
+from hopsworks_common.core.sink_job_configuration import (
+    FeatureColumnMapping,
+    SinkJobConfiguration,
+)
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.core import (
@@ -102,6 +105,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
         )
+        source_column_names = list(feature_dataframe.columns)
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(
                 feature_group=feature_group, features=dataframe_features
@@ -139,7 +143,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         self.save_feature_group_metadata(
-            feature_group, dataframe_features, write_options
+            feature_group,
+            dataframe_features,
+            write_options,
+            source_column_names=source_column_names,
         )
 
         # ge validation on python and non stream feature groups on spark
@@ -225,6 +232,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.time_travel_format,
             features=feature_group.columns,
         )
+        source_column_names = list(feature_dataframe.columns)
 
         # Currently on-demand transformation functions not supported in external feature groups.
         if (
@@ -269,7 +277,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if not feature_group._id:
             # only save metadata if feature group does not exist
             self.save_feature_group_metadata(
-                feature_group, dataframe_features, write_options
+                feature_group,
+                dataframe_features,
+                write_options,
+                source_column_names=source_column_names,
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
@@ -563,7 +574,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if not feature_group._id:
             self.save_feature_group_metadata(
-                feature_group, dataframe_features, write_options
+                feature_group,
+                dataframe_features,
+                write_options,
+                source_column_names=source_column_names,
             )
 
             if not feature_group.stream:
@@ -607,7 +621,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
     def save_feature_group_metadata(
-        self, feature_group, dataframe_features, write_options
+        self,
+        feature_group,
+        dataframe_features,
+        write_options,
+        source_column_names: list[str] | None = None,
     ):
         feature_schema_available = (
             feature_group.columns is not None and len(feature_group.columns) > 0
@@ -686,7 +704,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
         self._create_sink_job_if_needed(
-            new_fg, is_new_feature_group, sink_job_conf=requested_sink_job_conf
+            new_fg,
+            is_new_feature_group,
+            sink_job_conf=requested_sink_job_conf,
+            source_column_names=source_column_names,
         )
 
         if feature_schema_available:
@@ -751,11 +772,17 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         feature_group: fg.FeatureGroup,
         is_new_feature_group: bool,
         sink_job_conf: SinkJobConfiguration | None = None,
+        source_column_names: list[str] | None = None,
     ) -> None:
         if not is_new_feature_group or not feature_group.sink_enabled:
             return
         sink_job_conf = (
             sink_job_conf or feature_group.sink_job_conf or SinkJobConfiguration()
+        )
+        sink_job_conf = self._merge_default_sink_column_mappings(
+            feature_group,
+            sink_job_conf,
+            source_column_names=source_column_names,
         )
         job_name = sink_job_conf.name
         job_name = job_name or self._get_default_ingestion_job_name(feature_group)
@@ -777,6 +804,34 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._job_api.create_or_update_schedule_job(
                 job_name, sink_job_conf.schedule_config
             )
+
+    @staticmethod
+    def _merge_default_sink_column_mappings(
+        feature_group: fg.FeatureGroup,
+        sink_job_conf: SinkJobConfiguration,
+        source_column_names: list[str] | None = None,
+    ) -> SinkJobConfiguration:
+        existing_mappings = sink_job_conf.column_mappings or []
+        existing_features = {mapping.feature_name for mapping in existing_mappings}
+        source_columns_by_feature = {}
+
+        if source_column_names:
+            for source_column in source_column_names:
+                source_columns_by_feature.setdefault(
+                    util.autofix_feature_name(source_column),
+                    source_column,
+                )
+
+        default_mappings = [
+            FeatureColumnMapping(
+                source_column=source_columns_by_feature.get(feature.name, feature.name),
+                feature_name=feature.name,
+            )
+            for feature in feature_group.columns
+            if not feature.on_demand and feature.name not in existing_features
+        ]
+        sink_job_conf.column_mappings = existing_mappings + default_mappings
+        return sink_job_conf
 
     def _get_default_ingestion_job_name(self, feature_group: fg.FeatureGroup) -> str:
         return f"{feature_group.storage_connector.name}_to_{util.feature_group_name(feature_group)}"
