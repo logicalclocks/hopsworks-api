@@ -168,6 +168,66 @@ class TestApp:
 
         mock_api.return_value._delete.assert_called_once_with("my_app")
 
+    def test_run_without_await_serving(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+
+        refreshed = App(name="my_app", state="RUNNING", serving=False)
+        mock_api.return_value.get_app.return_value = refreshed
+
+        app = App(name="my_app", state="STOPPED")
+        app._app_api = mock_api.return_value
+
+        result = app.run(await_serving=False)
+
+        mock_api.return_value._start.assert_called_once_with("my_app")
+        assert result._state == "RUNNING"
+
+    def test_stop_when_not_running(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+
+        app = App(name="my_app", state="STOPPED", execution_id=None)
+        app._app_api = mock_api.return_value
+
+        result = app.stop()
+
+        mock_api.return_value._stop.assert_not_called()
+        assert result is app
+
+    def test_wait_for_serving_timeout(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.app.time.sleep")
+        mocker.patch("hopsworks_common.app.SERVING_TIMEOUT", 6.0)
+        mocker.patch("hopsworks_common.app.SERVING_POLL_INTERVAL", 3.0)
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+
+        not_serving = App(name="my_app", state="RUNNING", serving=False)
+        mock_api.return_value.get_app.return_value = not_serving
+
+        app = App(name="my_app", state="RUNNING")
+        app._app_api = mock_api.return_value
+
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
+            app._wait_for_serving()
+
+        assert "Timed out" in str(e_info.value)
+
+    def test_wait_for_serving_killed_state(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+
+        killed = App(name="my_app", state="KILLED", serving=False)
+        mock_api.return_value.get_app.return_value = killed
+
+        app = App(name="my_app", state="RUNNING")
+        app._app_api = mock_api.return_value
+
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
+            app._wait_for_serving()
+
+        assert "App failed to start" in str(e_info.value)
+
     def test_str_repr(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
 
