@@ -241,11 +241,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.time_travel_format,
             features=feature_group.columns,
         )
-        source_column_names = (
-            self._get_source_column_names(feature_dataframe)
-            if feature_group.sink_enabled
-            else None
-        )
 
         # Currently on-demand transformation functions not supported in external feature groups.
         if (
@@ -293,7 +288,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group,
                 dataframe_features,
                 write_options,
-                source_column_names=source_column_names,
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
@@ -561,11 +555,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             dataframe, feature_group.time_travel_format
         )
-        source_column_names = (
-            self._get_source_column_names(dataframe)
-            if feature_group.sink_enabled
-            else None
-        )
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(
                 feature_group=feature_group, features=dataframe_features
@@ -595,7 +584,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group,
                 dataframe_features,
                 write_options,
-                source_column_names=source_column_names,
             )
 
             if not feature_group.stream:
