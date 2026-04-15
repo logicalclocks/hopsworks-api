@@ -18,7 +18,10 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client import exceptions
-from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
+from hopsworks_common.core.sink_job_configuration import (
+    FeatureColumnMapping,
+    SinkJobConfiguration,
+)
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.core import (
@@ -138,7 +141,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         self.save_feature_group_metadata(
-            feature_group, dataframe_features, write_options
+            feature_group,
+            dataframe_features,
+            write_options,
         )
 
         # ge validation on python and non stream feature groups on spark
@@ -268,7 +273,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if not feature_group._id:
             # only save metadata if feature group does not exist
             self.save_feature_group_metadata(
-                feature_group, dataframe_features, write_options
+                feature_group,
+                dataframe_features,
+                write_options,
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
@@ -559,7 +566,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if not feature_group._id:
             self.save_feature_group_metadata(
-                feature_group, dataframe_features, write_options
+                feature_group,
+                dataframe_features,
+                write_options,
             )
 
             if not feature_group.stream:
@@ -605,7 +614,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
     def save_feature_group_metadata(
-        self, feature_group, dataframe_features, write_options
+        self,
+        feature_group,
+        dataframe_features,
+        write_options,
     ):
         feature_schema_available = (
             feature_group.features is not None and len(feature_group.features) > 0
@@ -673,6 +685,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         is_new_feature_group = feature_group.id is None
         requested_sink_job_conf = feature_group.sink_job_conf
+        pre_save_features = list(feature_group.columns) if feature_group.columns else []
         pre_save_rest_endpoint = (
             feature_group.data_source.rest_endpoint
             if feature_group.data_source
@@ -686,7 +699,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
         self._create_sink_job_if_needed(
-            new_fg, is_new_feature_group, sink_job_conf=requested_sink_job_conf
+            new_fg,
+            is_new_feature_group,
+            sink_job_conf=requested_sink_job_conf,
+            source_features=pre_save_features,
         )
 
         if feature_schema_available:
@@ -751,11 +767,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         feature_group: fg.FeatureGroup,
         is_new_feature_group: bool,
         sink_job_conf: SinkJobConfiguration | None = None,
+        source_features: list[feature.Feature] | None = None,
     ) -> None:
         if not is_new_feature_group or not feature_group.sink_enabled:
             return
         sink_job_conf = (
             sink_job_conf or feature_group.sink_job_conf or SinkJobConfiguration()
+        )
+        sink_job_conf = self._merge_default_sink_column_mappings(
+            source_features or feature_group.columns,
+            sink_job_conf,
         )
         job_name = sink_job_conf.name
         job_name = job_name or self._get_default_ingestion_job_name(feature_group)
@@ -777,6 +798,25 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._job_api.create_or_update_schedule_job(
                 job_name, sink_job_conf.schedule_config
             )
+
+    @staticmethod
+    def _merge_default_sink_column_mappings(
+        features: list[feature.Feature],
+        sink_job_conf: SinkJobConfiguration,
+    ) -> SinkJobConfiguration:
+        existing_mappings = sink_job_conf.column_mappings or []
+        existing_features = {mapping.feature_name for mapping in existing_mappings}
+
+        default_mappings = [
+            FeatureColumnMapping(
+                source_column=getattr(feat, "original_name", feat.name),
+                feature_name=feat.name,
+            )
+            for feat in features
+            if not feat.on_demand and feat.name not in existing_features
+        ]
+        sink_job_conf.column_mappings = existing_mappings + default_mappings
+        return sink_job_conf
 
     def _get_default_ingestion_job_name(self, feature_group: fg.FeatureGroup) -> str:
         return f"{feature_group.storage_connector.name}_to_{util.feature_group_name(feature_group)}"
