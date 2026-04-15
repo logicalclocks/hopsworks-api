@@ -172,6 +172,21 @@ class TestSinkJobConfiguration:
             "enabled": False,
         }
 
+    def test_column_mappings_are_sanitized_from_dicts(self):
+        config = sink_job_configuration.SinkJobConfiguration(
+            column_mappings=[{"source_column": "source_a", "feature_name": "Feature A"}]
+        )
+
+        assert len(config.column_mappings) == 1
+        assert isinstance(
+            config.column_mappings[0], sink_job_configuration.FeatureColumnMapping
+        )
+        assert config.column_mappings[0].source_column == "source_a"
+        assert config.column_mappings[0].feature_name == "feature_a"
+        assert config.to_dict()["columnMappings"] == [
+            {"sourceColumn": "source_a", "featureName": "feature_a"}
+        ]
+
     def test_set_extra_params(self):
         config = sink_job_configuration.SinkJobConfiguration(name="old_name")
 

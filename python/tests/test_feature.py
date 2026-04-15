@@ -103,6 +103,12 @@ class TestFeature:
         assert upper_feature.name == "col1"
         assert both_feature.name == "bravo_col"
 
+    def test_original_name_preserved(self):
+        feature_obj = feature.Feature(name="Bravo Col")
+
+        assert feature_obj.original_name == "Bravo Col"
+        assert feature_obj.name == "bravo_col"
+
     def test_get_fully_qualified_feature_name_without_prefix_and_without_use_fqn(self):
         # Arrange
         f = feature.Feature("feature_name")
