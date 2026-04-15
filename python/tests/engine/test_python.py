@@ -1247,6 +1247,42 @@ class TestPython:
         not HAS_POLARS,
         reason="Polars is not installed.",
     )
+    def test_profile_polars_with_complex_column_in_relevant_columns(self, mocker):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.return_value = {
+            "dataType": "String",
+            "test_key": "test_value",
+        }
+        python_engine = python.Engine()
+        df = pl.DataFrame({"col_int": [1, 2], "col_list": [[1, 2, 3], [4, 5, 6]]})
+
+        # Act — relevant_columns contains only the complex column; must not raise
+        # KeyError: 'statistic' from the Polars zip-conversion path
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=["col_list"],
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — complex column bypasses the Polars zip-conversion and gets empty stats
+        assert mock_python_engine_convert_pandas_statistics.call_count == 1
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[0][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            '"column": "col_list", "completeness": 1}]}'
+        )
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars_with_null_column(self, mocker):
         # Arrange
         mock_python_engine_convert_pandas_statistics = mocker.patch(
@@ -1352,6 +1388,155 @@ class TestPython:
             '"column": "col3", "completeness": 1}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 2
+
+    @pytest.mark.parametrize(
+        "col_name,col_values",
+        [
+            pytest.param("col_list", [[1, 2, 3], [4, 5, 6]], id="list"),
+            pytest.param("col_struct", [{"a": 1}, {"a": 2}], id="struct"),
+            # numpy array columns arise when reading parquet files with list<struct<>> columns
+            pytest.param(
+                "col_array",
+                [
+                    np.array([{"a": 1, "b": "x"}], dtype=object),
+                    np.array([{"a": 2, "b": "y"}], dtype=object),
+                ],
+                id="numpy_array",
+            ),
+        ],
+    )
+    def test_profile_pandas_with_complex_column(self, mocker, col_name, col_values):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.side_effect = [
+            {"dataType": "Integral", "test_key": "test_value"},
+            {"dataType": "String", "test_key": "test_value"},
+        ]
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
+
+        # Act
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=None,
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — complex column must not hang and must produce empty stats
+        assert mock_python_engine_convert_pandas_statistics.call_count == 2
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[1][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
+            '"column": "col_int", "completeness": 1}, '
+            '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            f'"column": "{col_name}", "completeness": 1}}]}}'
+        )
+
+    @pytest.mark.parametrize(
+        "col_name,col_values",
+        [
+            pytest.param("col_list", [[1, 2, 3], [4, 5, 6]], id="list"),
+            pytest.param("col_struct", [{"a": 1}, {"a": 2}], id="struct"),
+            # numpy array columns arise when reading parquet files with list<struct<>> columns
+            pytest.param(
+                "col_array",
+                [
+                    np.array([{"a": 1, "b": "x"}], dtype=object),
+                    np.array([{"a": 2, "b": "y"}], dtype=object),
+                ],
+                id="numpy_array",
+            ),
+        ],
+    )
+    def test_profile_pandas_with_complex_column_in_relevant_columns(
+        self, mocker, col_name, col_values
+    ):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.return_value = {
+            "dataType": "String",
+            "test_key": "test_value",
+        }
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
+
+        # Act — relevant_columns contains only the complex column; must not hang
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=[col_name],
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — _convert_pandas_statistics called once with empty stats
+        assert mock_python_engine_convert_pandas_statistics.call_count == 1
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[0][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            f'"column": "{col_name}", "completeness": 1}}]}}'
+        )
+
+    @pytest.mark.parametrize(
+        "col_name,col_values",
+        [
+            pytest.param("col_list", [[1, 2, 3], [4, 5, 6]], id="list"),
+            pytest.param("col_struct", [{"a": 1}, {"a": 2}], id="struct"),
+            # numpy array columns arise when reading parquet files with list<struct<>> columns
+            pytest.param(
+                "col_array",
+                [
+                    np.array([{"a": 1, "b": "x"}], dtype=object),
+                    np.array([{"a": 2, "b": "y"}], dtype=object),
+                ],
+                id="numpy_array",
+            ),
+        ],
+    )
+    def test_profile_pandas_with_mixed_relevant_columns(
+        self, mocker, col_name, col_values
+    ):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.side_effect = [
+            {"dataType": "Integral", "test_key": "test_value"},
+            {"dataType": "String", "test_key": "test_value"},
+        ]
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
+
+        # Act — relevant_columns contains both a non-complex and a complex column
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=["col_int", col_name],
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — col_int goes through describe(); complex column is pre-populated with {}
+        assert mock_python_engine_convert_pandas_statistics.call_count == 2
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[1][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
+            '"column": "col_int", "completeness": 1}, '
+            '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            f'"column": "{col_name}", "completeness": 1}}]}}'
+        )
 
     def test_convert_pandas_statistics(self):
         # Arrange
