@@ -741,6 +741,7 @@ class Engine:
         for col in relevant_columns:
             if HAS_POLARS and (
                 isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+                and isinstance(stats[col], list)
             ):
                 stats[col] = dict(zip(stats["statistic"], stats[col], strict=False))
             # set data type

@@ -1247,6 +1247,42 @@ class TestPython:
         not HAS_POLARS,
         reason="Polars is not installed.",
     )
+    def test_profile_polars_with_complex_column_in_relevant_columns(self, mocker):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.return_value = {
+            "dataType": "String",
+            "test_key": "test_value",
+        }
+        python_engine = python.Engine()
+        df = pl.DataFrame({"col_int": [1, 2], "col_list": [[1, 2, 3], [4, 5, 6]]})
+
+        # Act — relevant_columns contains only the complex column; must not raise
+        # KeyError: 'statistic' from the Polars zip-conversion path
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=["col_list"],
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — complex column bypasses the Polars zip-conversion and gets empty stats
+        assert mock_python_engine_convert_pandas_statistics.call_count == 1
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[0][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            '"column": "col_list", "completeness": 1}]}'
+        )
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars_with_null_column(self, mocker):
         # Arrange
         mock_python_engine_convert_pandas_statistics = mocker.patch(
