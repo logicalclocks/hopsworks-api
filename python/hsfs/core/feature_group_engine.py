@@ -809,11 +809,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         default_mappings = [
             FeatureColumnMapping(
-                source_column=getattr(feature, "original_name", feature.name),
-                feature_name=feature.name,
+                source_column=getattr(feat, "original_name", feat.name),
+                feature_name=feat.name,
             )
-            for feature in features
-            if not feature.on_demand and feature.name not in existing_features
+            for feat in features
+            if not feat.on_demand and feat.name not in existing_features
         ]
         sink_job_conf.column_mappings = existing_mappings + default_mappings
         return sink_job_conf
