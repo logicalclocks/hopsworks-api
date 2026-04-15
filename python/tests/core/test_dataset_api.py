@@ -14,9 +14,9 @@
 #   limitations under the License.
 #
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core.dataset_api import Chunk, DatasetApi
 
