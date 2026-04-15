@@ -17,9 +17,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_apigen import public
