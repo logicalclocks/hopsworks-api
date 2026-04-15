@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -30,7 +29,7 @@ from hopsworks_common.job_schedule import JobSchedule
 
 
 if TYPE_CHECKING:
-    pass
+    from collections.abc import Sequence
 else:
     from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 
