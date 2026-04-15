@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 import humps
 from hopsworks_apigen import public
@@ -262,7 +262,7 @@ class SinkJobConfiguration:
         max_upload_batch_size_mb: int | None = 128,
         sql_table_num_partitions: int | None = 2,
         loading_config: LoadingConfig | dict | None = None,
-        column_mappings: list[FeatureColumnMapping] | list[dict] | None = None,
+        column_mappings: Sequence[FeatureColumnMapping | dict] | None = None,
         endpoint_config: dict | RestEndpointConfig | None = None,
         schedule_config: JobSchedule | dict | None = None,
     ):
@@ -484,12 +484,12 @@ class SinkJobConfiguration:
 
     @public
     @property
-    def column_mappings(self) -> list[FeatureColumnMapping] | list[dict] | None:
+    def column_mappings(self) -> list[FeatureColumnMapping]:
         return self._column_mappings
 
     @column_mappings.setter
     def column_mappings(
-        self, column_mappings: list[FeatureColumnMapping] | list[dict] | None
+        self, column_mappings: Sequence[FeatureColumnMapping | dict] | None
     ) -> None:
         self._column_mappings = (
             [self._coerce_column_mapping(mapping) for mapping in column_mappings]
