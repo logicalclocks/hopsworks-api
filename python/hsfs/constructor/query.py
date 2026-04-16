@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
     import numpy as np
+    import polars as pl
     import pandas as pd
     from hsfs.constructor.fs_query import FsQuery
     from hsfs.feature import Feature
@@ -249,6 +250,7 @@ class Query:
         end_time: str | int | date | datetime | None = None,
     ) -> (
         pd.DataFrame
+        | pl.DataFrame
         | np.ndarray
         | list[list[Any]]
         | TypeVar("pyspark.sql.DataFrame")
@@ -257,7 +259,7 @@ class Query:
         """Read the specified query into a DataFrame.
 
         It is possible to specify the storage (online/offline) to read from and the
-        type of the output DataFrame (Spark, Pandas, Numpy, Python Lists).
+        type of the output DataFrame (Spark, Pandas, Polars, Numpy, Python Lists).
 
         Warning: External Feature Group Engine Support
             **Spark only**
