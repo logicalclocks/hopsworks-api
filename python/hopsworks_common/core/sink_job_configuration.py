@@ -29,7 +29,7 @@ from hopsworks_common.job_schedule import JobSchedule
 
 
 if TYPE_CHECKING:
-    pass
+    from collections.abc import Sequence
 else:
     from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 
@@ -82,7 +82,7 @@ class FeatureColumnMapping:
 
     @feature_name.setter
     def feature_name(self, feature_name: str) -> None:
-        self._feature_name = feature_name
+        self._feature_name = util.autofix_feature_name(feature_name, warn=True)
 
 
 @public("hopsworks.core.FullLoadConfig")
@@ -262,7 +262,7 @@ class SinkJobConfiguration:
         max_upload_batch_size_mb: int | None = 128,
         sql_table_num_partitions: int | None = 2,
         loading_config: LoadingConfig | dict | None = None,
-        column_mappings: list[FeatureColumnMapping] | list[dict] | None = None,
+        column_mappings: Sequence[FeatureColumnMapping | dict] | None = None,
         endpoint_config: dict | RestEndpointConfig | None = None,
         schedule_config: JobSchedule | dict | None = None,
     ):
@@ -279,17 +279,7 @@ class SinkJobConfiguration:
         else:
             self._loading_config = loading_config or LoadingConfig()
 
-        if column_mappings:
-            self._column_mappings = [
-                (
-                    FeatureColumnMapping.from_response_json(mapping)
-                    if isinstance(mapping, dict)
-                    else mapping
-                )
-                for mapping in column_mappings
-            ]
-        else:
-            self._column_mappings = []
+        self.column_mappings = column_mappings
         self._featuregroup_id = None
         self._featurestore_id = None
         self._storage_connector_id = None
@@ -357,6 +347,25 @@ class SinkJobConfiguration:
         if source_column is not None and feature_name is not None:
             return {"sourceColumn": source_column, "featureName": feature_name}
         return mapping
+
+    @staticmethod
+    def _coerce_column_mapping(mapping) -> FeatureColumnMapping:
+        if isinstance(mapping, FeatureColumnMapping):
+            return mapping
+        if isinstance(mapping, dict):
+            return FeatureColumnMapping.from_response_json(mapping)
+
+        source_column = getattr(mapping, "source_column", None)
+        feature_name = getattr(mapping, "feature_name", None)
+        if source_column is not None and feature_name is not None:
+            return FeatureColumnMapping(
+                source_column=source_column,
+                feature_name=feature_name,
+            )
+
+        raise TypeError(
+            "column_mappings entries must provide source_column and feature_name."
+        )
 
     def json(self):
         return json.dumps(self.to_dict())
@@ -475,14 +484,18 @@ class SinkJobConfiguration:
 
     @public
     @property
-    def column_mappings(self) -> list[FeatureColumnMapping] | list[dict] | None:
+    def column_mappings(self) -> list[FeatureColumnMapping]:
         return self._column_mappings
 
     @column_mappings.setter
     def column_mappings(
-        self, column_mappings: list[FeatureColumnMapping] | list[dict] | None
+        self, column_mappings: Sequence[FeatureColumnMapping | dict] | None
     ) -> None:
-        self._column_mappings = column_mappings
+        self._column_mappings = (
+            [self._coerce_column_mapping(mapping) for mapping in column_mappings]
+            if column_mappings
+            else []
+        )
 
     @public
     @property

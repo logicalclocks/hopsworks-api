@@ -692,13 +692,34 @@ class Engine:
                     )
                     df[field.name] = df[field.name].astype(str)
 
+        # complex columns — pandas describe() hangs on unhashable types; identify upfront
+        complex_cols = {
+            field.name
+            for field in arrow_schema
+            if (
+                pa.types.is_list(field.type)
+                or pa.types.is_large_list(field.type)
+                or pa.types.is_fixed_size_list(field.type)
+                or pa.types.is_struct(field.type)
+                or pa.types.is_map(field.type)
+            )
+        }
         if relevant_columns is None or len(relevant_columns) == 0:
-            stats = df.describe().to_dict()
             relevant_columns = df.columns
+            describe_cols = [col for col in relevant_columns if col not in complex_cols]
+            stats = df[describe_cols].describe().to_dict() if describe_cols else {}
         else:
-            target_cols = [col for col in df.columns if col in relevant_columns]
+            target_cols = [
+                col
+                for col in df.columns
+                if col in relevant_columns and col not in complex_cols
+            ]
             _logger.debug(f"Target columns for describe: {target_cols}")
-            stats = df[target_cols].describe().to_dict()
+            stats = df[target_cols].describe().to_dict() if target_cols else {}
+        # pre-populate empty stats for complex columns so describe() is never called on them
+        for col in complex_cols:
+            if col in relevant_columns:
+                stats[col] = {}
         _logger.debug(f"Column stats computed via describe for: {stats.keys()}")
         # df.describe() does not compute stats for all col types (e.g., string)
         # we need to compute stats for the rest of the cols iteratively
@@ -720,6 +741,7 @@ class Engine:
         for col in relevant_columns:
             if HAS_POLARS and (
                 isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+                and isinstance(stats[col], list)
             ):
                 stats[col] = dict(zip(stats["statistic"], stats[col], strict=False))
             # set data type
@@ -728,7 +750,9 @@ class Engine:
                 pa.types.is_null(arrow_type)
                 or pa.types.is_list(arrow_type)
                 or pa.types.is_large_list(arrow_type)
+                or pa.types.is_fixed_size_list(arrow_type)
                 or pa.types.is_struct(arrow_type)
+                or pa.types.is_map(arrow_type)
                 or PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None)
                 in ["timestamp", "date", "binary", "string"]
             ):
@@ -989,6 +1013,10 @@ class Engine:
         if feature_group_instance.partition_key:
             key_columns.update(feature_group_instance.partition_key)
 
+        # Materialize as a sorted list so downstream .select()/.group_by() get a
+        # deterministic, ordered sequence instead of a set.
+        key_columns = sorted(key_columns)
+
         # Verify all key columns exist against the original dataframe — no conversion needed.
         if isinstance(dataset, pd.DataFrame) or (
             HAS_POLARS and isinstance(dataset, pl.DataFrame)
@@ -1010,9 +1038,7 @@ class Engine:
         # Convert only the key columns to Arrow — avoids transcoding all feature columns
         # (including costly numpy-U → UTF-8 re-encoding) for a check that only needs keys.
         if isinstance(dataset, pd.DataFrame):
-            key_table = pa.Table.from_pandas(
-                dataset[list(key_columns)], preserve_index=False
-            )
+            key_table = pa.Table.from_pandas(dataset[key_columns], preserve_index=False)
         elif HAS_POLARS and isinstance(dataset, pl.DataFrame):
             key_table = dataset.select(key_columns).to_arrow()
         else:

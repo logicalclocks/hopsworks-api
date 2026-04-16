@@ -33,3 +33,14 @@ class TestFeatureColumnMapping:
         )
         assert parsed.source_column == "source_b"
         assert parsed.feature_name == "feature_b"
+
+    def test_feature_name_is_sanitized(self):
+        mapping = sink_job_configuration.FeatureColumnMapping(
+            source_column="source_a", feature_name="Feature A"
+        )
+
+        assert mapping.feature_name == "feature_a"
+        assert mapping.to_dict() == {
+            "sourceColumn": "source_a",
+            "featureName": "feature_a",
+        }

@@ -62,6 +62,7 @@ class Feature:
         use_fully_qualified_name=False,
         **kwargs,
     ) -> None:
+        self._original_name = name
         self._name = util.autofix_feature_name(name, warn=True)
         self._type = type
         self._description = description
@@ -176,6 +177,12 @@ class Feature:
             True if the feature type is a complex type, False otherwise.
         """
         return any(map(self._type.upper().startswith, self.COMPLEX_TYPES))
+
+    @public
+    @property
+    def original_name(self) -> str:
+        """Original feature name before client-side sanitization."""
+        return self._original_name
 
     @public
     @property

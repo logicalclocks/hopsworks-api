@@ -777,7 +777,15 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mock_engine = mocker.MagicMock()
+        mock_engine._spark_session = mocker.MagicMock()
+        mock_engine._spark_context = mocker.MagicMock()
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine"
+            "._get_spark_session_and_context",
+            return_value=(mock_engine._spark_session, mock_engine._spark_context),
+        )
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
@@ -800,6 +808,35 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_hudi_engine.return_value.delete_record.call_count == 1
+
+    def test_commit_delete_blocks_hudi_in_connect_mode(self, mocker):
+        """Hudi deletes require JVM; Connect mode must raise early."""
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mock_engine = mocker.MagicMock()
+        mock_engine._spark_session = mocker.MagicMock()
+        mock_engine._spark_context = None
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+        )
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Hudi"):
+            fg_engine.commit_delete(
+                feature_group=fg, delete_df=None, write_options=None
+            )
 
     def test_clean_delta(self, mocker):
         # Arrange
@@ -1550,6 +1587,149 @@ class TestFeatureGroupEngine:
         job_name, job_conf = mock_job_api.create.call_args[0]
         assert job_name == "custom_sink_job"
         assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
+        assert job_conf.to_dict()["columnMappings"] == [
+            {"sourceColumn": "f", "featureName": "f"}
+        ]
+
+    def test_save_feature_group_metadata_creates_default_sink_column_mappings(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+        mock_job_api.create.return_value = mocker.Mock(name="sink_job")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            data_source=DataSource(storage_connector=storage_connector),
+        )
+
+        dataframe_features = [
+            feature.Feature(name="First Name", type="str"),
+            feature.Feature(name="Age", type="int"),
+        ]
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg,
+            dataframe_features=dataframe_features,
+            write_options=None,
+        )
+
+        # Assert
+        _, job_conf = mock_job_api.create.call_args[0]
+        assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
+        assert job_conf.to_dict()["columnMappings"] == [
+            {"sourceColumn": "First Name", "featureName": "first_name"},
+            {"sourceColumn": "Age", "featureName": "age"},
+        ]
+
+    def test_save_feature_group_metadata_preserves_user_sink_column_mappings(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+        mock_job_api.create.return_value = mocker.Mock(name="sink_job")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            sink_job_conf={
+                "name": "custom_sink_job",
+                "column_mappings": [
+                    {
+                        "source_column": "Custom Source",
+                        "feature_name": "First Name",
+                    }
+                ],
+            },
+            data_source=DataSource(storage_connector=storage_connector),
+        )
+
+        dataframe_features = [
+            feature.Feature(name="First Name", type="str"),
+            feature.Feature(name="Age", type="int"),
+        ]
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg,
+            dataframe_features=dataframe_features,
+            write_options=None,
+        )
+
+        # Assert
+        job_name, job_conf = mock_job_api.create.call_args[0]
+        assert job_name == "custom_sink_job"
+        assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
+        assert job_conf.to_dict()["columnMappings"] == [
+            {"sourceColumn": "Custom Source", "featureName": "first_name"},
+            {"sourceColumn": "Age", "featureName": "age"},
+        ]
 
     def test_save_feature_group_metadata_skips_sink_job_when_disabled(self, mocker):
         # Arrange
