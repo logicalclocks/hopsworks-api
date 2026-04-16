@@ -74,9 +74,7 @@ class DeltaEngine:
                 # Spark Connect: static config — must be set at builder time.
                 # Verify it is present and warn if not.
                 try:
-                    ext = str(
-                        self._spark_session.conf.get("spark.sql.extensions", "")
-                    )
+                    ext = str(self._spark_session.conf.get("spark.sql.extensions", ""))
                 except Exception:
                     ext = ""
                 if "DeltaSparkSessionExtension" not in ext:
