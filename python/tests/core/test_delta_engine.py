@@ -1491,3 +1491,24 @@ class TestDeltaEngineConnectMode:
         # conf.get should NOT have been called for extensions
         spark_session.conf.get.assert_not_called()
         assert "Delta SQL extension not configured" not in caplog.text
+
+    def test_classic_mode_sets_delta_catalog(self, mocker):
+        """In classic Spark mode, set spark.sql.catalog.spark_catalog at runtime."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_context = mock.MagicMock()
+
+        DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=_make_fg("hdfs:///path"),
+            spark_session=spark_session,
+            spark_context=spark_context,
+        )
+
+        spark_session.conf.set.assert_called_once_with(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
