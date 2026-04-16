@@ -2428,6 +2428,55 @@ class SqlConnector(StorageConnector):
         """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
         return self._wallet_path
 
+    @property
+    def wallet_password(self) -> str | None:
+        """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
+        return self._wallet_password
+
+    @staticmethod
+    def _extract_wallet_zip(zip_path: str) -> str:
+        """Extract a wallet zip and return the directory containing wallet files.
+
+        The zip is extracted to a sibling directory with the ``.zip`` suffix
+        removed.
+        The operation is idempotent — if the directory already exists, extraction
+        is skipped.
+        """
+        import zipfile
+
+        extract_dir = zip_path.rsplit(".", 1)[0]
+        if not os.path.isdir(extract_dir):
+            os.makedirs(extract_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(extract_dir)
+        return extract_dir
+
+    def _prepare_wallet(self) -> str:
+        """Download (if needed) and extract the wallet, returning a local directory.
+
+        For Spark JDBC the Oracle driver runs inside the JVM and needs a local
+        filesystem path to the wallet directory.
+        When the wallet lives in HopsFS the file is first downloaded to the
+        driver via ``engine.add_file`` and then extracted.
+        JDBC reads are single-partition (driver-only) so the wallet does not
+        need to be distributed to executors.
+        """
+        local_path = engine.get_instance().add_file(self._wallet_path, distribute=False)
+        if local_path.endswith(".zip") and os.path.isfile(local_path):
+            return self._extract_wallet_zip(local_path)
+        if os.path.isdir(local_path):
+            return local_path
+        # Already a directory path (e.g. pre-provisioned on cluster nodes).
+        return local_path
+
+    def _oracle_jdbc_url(self) -> str:
+        """Build the Oracle JDBC URL, using tcps when a wallet is configured."""
+        if self._wallet_path:
+            return (
+                f"jdbc:oracle:thin:@tcps://{self._host}:{self._port}/{self._database}"
+            )
+        return f"jdbc:oracle:thin:@{self._host}:{self._port}/{self._database}"
+
     def spark_options(self) -> dict[str, Any]:
         opts = {
             **(self._arguments if self._arguments else {}),
@@ -2438,9 +2487,12 @@ class SqlConnector(StorageConnector):
             ),
         }
         if self._database_type == self.ORACLE:
-            opts["url"] = f"jdbc:oracle:thin:@{self._host}:{self._port}/{self._database}"
-            if self._wallet_path:
-                opts["wallet_path"] = self._wallet_path
+            opts["url"] = self._oracle_jdbc_url()
+        else:
+            scheme = self._JDBC_SCHEMES.get(
+                self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
+            )
+            opts["url"] = f"jdbc:{scheme}://{self._host}:{self._port}/{self._database}"
         return opts
 
     def connector_options(self) -> dict[str, Any]:
@@ -2455,11 +2507,11 @@ class SqlConnector(StorageConnector):
             }
             if self._wallet_path:
                 props["wallet_path"] = self._wallet_path
+            if self._wallet_password:
+                props["wallet_password"] = self._wallet_password
             if self._arguments:
                 props.update(
-                    self._arguments
-                    if isinstance(self._arguments, dict)
-                    else {}
+                    self._arguments if isinstance(self._arguments, dict) else {}
                 )
             return props
         props = {
@@ -2514,14 +2566,13 @@ class SqlConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        if self._database_type == self.ORACLE:
-            # Oracle JDBC URL uses @ instead of ://
-            options["url"] = f"jdbc:oracle:thin:@{self.host}:{self.port}/{self.database}"
-        else:
-            scheme = self._JDBC_SCHEMES.get(
-                self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
+        if self._database_type == self.ORACLE and self._wallet_path:
+            wallet_dir = self._prepare_wallet()
+            options["oracle.net.wallet_location"] = (
+                f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
             )
-            options["url"] = f"jdbc:{scheme}://{self.host}:{self.port}/{self.database}"
+            if self._wallet_password:
+                options["oracle.net.wallet_password"] = self._wallet_password
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
@@ -3071,8 +3122,8 @@ class RestConnector(StorageConnector):
 class OracleConnector(SqlConnector):
     """Deprecated: Use SqlConnector with database_type='ORACLE' instead.
 
-    This class is kept for backward compatibility only. New code should use
-    ``SqlConnector(database_type="ORACLE", ...)``.
+    This class is kept for backward compatibility only.
+    New code should use ``SqlConnector(database_type="ORACLE", ...)``.
     """
 
     def __init__(self, id=None, name=None, featurestore_id=None, **kwargs):

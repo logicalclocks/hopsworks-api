@@ -15,6 +15,7 @@
 #
 
 import base64
+import os
 from pathlib import WindowsPath
 
 import pytest
@@ -1099,6 +1100,7 @@ class TestSqlConnector:
 
         # Assert
         assert options["driver"] == expected_driver
+        assert options["url"] == f"jdbc:{expected_scheme}://localhost:3306/testdb"
 
     @pytest.mark.parametrize(
         "database_type, expected_driver, expected_scheme",
@@ -1268,3 +1270,112 @@ class TestOracleConnector:
         assert sc.database_type == "ORACLE"
         opts = sc.spark_options()
         assert opts["url"] == "jdbc:oracle:thin:@myhost:1521/ORCL"
+
+    def test_spark_options_wallet_uses_tcps(self):
+        """When wallet_path is set, spark_options should use tcps URL."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        opts = sc.spark_options()
+        assert opts["url"] == "jdbc:oracle:thin:@tcps://myhost:1521/ORCL"
+        # Wallet JDBC properties are set in read(), not spark_options()
+        assert "oracle.net.wallet_location" not in opts
+
+    def test_read_wallet_sets_jdbc_properties(self, mocker, tmp_path):
+        """read() should download/extract wallet and set Oracle JDBC wallet properties."""
+        import zipfile
+
+        # Create a local wallet zip to simulate what add_file returns
+        wallet_zip = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+            wallet_password="walletpass",
+        )
+
+        mock_engine = mocker.patch("hsfs.engine.get_instance")
+        mock_engine.return_value.add_file.return_value = str(wallet_zip)
+        mocker.patch.object(sc, "refetch")
+
+        sc.read(query="SELECT 1")
+
+        # Verify add_file was called with distribute=False
+        mock_engine.return_value.add_file.assert_called_once_with(
+            "/Projects/myproj/Resources/wallet.zip", distribute=False
+        )
+
+        # Verify the options passed to engine.read
+        call_options = mock_engine.return_value.read.call_args[0][2]
+        assert call_options["url"] == "jdbc:oracle:thin:@tcps://myhost:1521/ORCL"
+        assert "oracle.net.wallet_location" in call_options
+        expected_dir = str(tmp_path / "wallet")
+        assert expected_dir in call_options["oracle.net.wallet_location"]
+        assert call_options["oracle.net.wallet_password"] == "walletpass"
+        assert os.path.isfile(os.path.join(expected_dir, "cwallet.sso"))
+
+    def test_extract_wallet_zip(self, tmp_path):
+        """_extract_wallet_zip should extract a zip to a sibling directory."""
+        import zipfile
+
+        wallet_zip = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+            zf.writestr("tnsnames.ora", "fake")
+
+        result = storage_connector.SqlConnector._extract_wallet_zip(str(wallet_zip))
+
+        expected_dir = str(tmp_path / "wallet")
+        assert result == expected_dir
+        assert os.path.isfile(os.path.join(expected_dir, "cwallet.sso"))
+        assert os.path.isfile(os.path.join(expected_dir, "tnsnames.ora"))
+
+    def test_extract_wallet_zip_idempotent(self, tmp_path):
+        """Calling _extract_wallet_zip twice should not fail."""
+        import zipfile
+
+        wallet_zip = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+
+        result1 = storage_connector.SqlConnector._extract_wallet_zip(str(wallet_zip))
+        result2 = storage_connector.SqlConnector._extract_wallet_zip(str(wallet_zip))
+        assert result1 == result2
+
+    def test_connector_options_wallet(self):
+        """connector_options should include wallet_path and wallet_password."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+            wallet_password="walletpass",
+        )
+        opts = sc.connector_options()
+        assert opts["wallet_path"] == "/Projects/myproj/Resources/wallet.zip"
+        assert opts["wallet_password"] == "walletpass"
