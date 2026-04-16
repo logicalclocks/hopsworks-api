@@ -831,6 +831,7 @@ class TestFeatureGroupEngine:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="HUDI",
         )
 
         with pytest.raises(exceptions.FeatureStoreException, match="Hudi"):
