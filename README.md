@@ -220,7 +220,7 @@
 | python/hsfs/core/data\_source\_api.py                                            |       48 |       33 |     31% |32-44, 49-60, 67-81, 92-96, 104-118, 134-150, 155-169, 174-188 |
 | python/hsfs/core/data\_source\_data.py                                           |       48 |       10 |     79% |56-61, 67, 79, 85, 91, 97, 103 |
 | python/hsfs/core/dataset\_api/\_\_init\_\_.py                                    |        2 |        0 |    100% |           |
-| python/hsfs/core/delta\_engine.py                                                |      397 |      106 |     73% |71-72, 130-134, 163-177, 183, 203-205, 211, 217-251, 263, 266, 288-298, 307-310, 341-343, 377, 379-388, 390-399, 401-408, 485-487, 503-507, 510-515, 527, 632, 658-663, 689-704, 721-754 |
+| python/hsfs/core/delta\_engine.py                                                |      399 |      106 |     73% |78-79, 137-141, 170-184, 190, 210-212, 218, 224-258, 270, 273, 295-305, 314-317, 348-350, 384, 386-395, 397-406, 408-415, 492-494, 510-514, 517-522, 534, 639, 665-670, 696-711, 728-761 |
 | python/hsfs/core/deltastreamer\_jobconf.py                                       |       16 |        6 |     62% | 30, 37-44 |
 | python/hsfs/core/execution/\_\_init\_\_.py                                       |        2 |        0 |    100% |           |
 | python/hsfs/core/expectation\_api.py                                             |       32 |       19 |     41% |46-61, 74-90, 100-114, 125-139, 149-162 |
@@ -409,7 +409,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **29391** | **10973** | **63%** |           |
+| **TOTAL**                                                                        | **29393** | **10973** | **63%** |           |
 
 
 ## Setup coverage badge
