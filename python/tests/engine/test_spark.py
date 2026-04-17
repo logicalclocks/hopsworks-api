@@ -1294,6 +1294,9 @@ class TestSpark:
         from datetime import datetime
 
         mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         spark_engine = spark.Engine()
 
@@ -1408,6 +1411,9 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
         mock_spark_engine_save_offline_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine._save_offline_dataframe"
         )
@@ -1975,7 +1981,12 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="test", version=1, featurestore_id=99, primary_key=[], id=10
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            id=10,
+            time_travel_format="NONE",
         )
         fg.feature_store = mocker.Mock()
 
@@ -2032,6 +2043,7 @@ class TestSpark:
             partition_key=[],
             id=10,
             features=[f, f1],
+            time_travel_format="NONE",
         )
 
         mock_df = mocker.Mock()
@@ -10799,6 +10811,9 @@ class TestSpark:
         @pytest.fixture(autouse=True)
         def patch_engine_type(self, mocker):
             mocker.patch("hsfs.engine.get_type", return_value="spark")
+            mocker.patch(
+                "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+            )
 
         @pytest.fixture(autouse=True)
         def spark_engine(self):

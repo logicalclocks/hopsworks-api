@@ -27,6 +27,12 @@ if HAS_GREAT_EXPECTATIONS:
 
 
 class TestGreatExpectationEngine:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
     def test_validate(self, mocker):
         # Arrange
         feature_store_id = 99
