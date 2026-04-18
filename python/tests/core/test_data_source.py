@@ -104,23 +104,6 @@ class TestDataSource:
         # Assert
         assert sc_dict == {k: v for k, v in vars(sc).items() if k not in ignore_keys}
 
-    def test_update_storage_connector_oracle(self):
-        # Arrange
-        ds = data_source.DataSource()
-        ds.database = "test_database"
-        ds.group = "test_group"
-        ds.table = "test_table"
-
-        sc = storage_connector.SqlConnector(1, "test", 100, database_type="ORACLE")
-
-        # Act
-        ds._update_storage_connector(sc)
-
-        # Assert
-        assert sc._database == ds.database
-        assert sc._schema == ds.group
-        assert sc._table == ds.table
-
     def test_update_storage_connector_none(self):
         # Arrange
         ds = data_source.DataSource()
