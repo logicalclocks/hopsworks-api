@@ -2481,23 +2481,6 @@ class SqlConnector(StorageConnector):
 
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external SQL connector library."""
-        if self._database_type == self.ORACLE:
-            props = {
-                "host": self.host,
-                "port": self.port,
-                "service_name": self.database,
-                "user": self.user,
-                "password": self.password,
-            }
-            if self._wallet_path:
-                props["wallet_path"] = self._wallet_path
-            if self._wallet_password:
-                props["wallet_password"] = self._wallet_password
-            if self._arguments:
-                props.update(
-                    self._arguments if isinstance(self._arguments, dict) else {}
-                )
-            return props
         props = {
             "host": self.host,
             "port": self.port,
@@ -2508,6 +2491,13 @@ class SqlConnector(StorageConnector):
             props["user"] = self.user
         if self.password:
             props["password"] = self.password
+        if self._database_type == self.ORACLE:
+            # Oracle Python drivers (e.g. oracledb) expect ``service_name``.
+            props["service_name"] = self.database
+            if self._wallet_path:
+                props["wallet_path"] = self._wallet_path
+            if self._wallet_password:
+                props["wallet_password"] = self._wallet_password
         return props
 
     @public
