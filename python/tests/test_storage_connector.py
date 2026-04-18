@@ -1254,23 +1254,6 @@ class TestOracleConnector:
         assert opts["user"] == "scott"
         assert opts["password"] == "tiger"
 
-    def test_backward_compat_oracle_connector_class(self):
-        """OracleConnector should still work as a backward-compat wrapper."""
-        sc = storage_connector.OracleConnector(
-            id=1,
-            name="test",
-            featurestore_id=1,
-            host="myhost",
-            port=1521,
-            database="ORCL",
-            user="scott",
-            password="tiger",
-        )
-        assert isinstance(sc, storage_connector.SqlConnector)
-        assert sc.database_type == "ORACLE"
-        opts = sc.spark_options()
-        assert opts["url"] == "jdbc:oracle:thin:@myhost:1521/ORCL"
-
     def test_spark_options_wallet_uses_tcps(self):
         """When wallet_path is set, spark_options should use tcps URL."""
         sc = storage_connector.SqlConnector(

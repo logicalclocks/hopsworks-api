@@ -3117,15 +3117,3 @@ class RestConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
-
-
-class OracleConnector(SqlConnector):
-    """Deprecated: Use SqlConnector with database_type='ORACLE' instead.
-
-    This class is kept for backward compatibility only.
-    New code should use ``SqlConnector(database_type="ORACLE", ...)``.
-    """
-
-    def __init__(self, id=None, name=None, featurestore_id=None, **kwargs):
-        kwargs.setdefault("database_type", "ORACLE")
-        super().__init__(id=id, name=name, featurestore_id=featurestore_id, **kwargs)
