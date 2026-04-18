@@ -2455,14 +2455,6 @@ class SqlConnector(StorageConnector):
         # Already a directory path (e.g. pre-provisioned on cluster nodes).
         return local_path
 
-    def _oracle_jdbc_url(self) -> str:
-        """Build the Oracle JDBC URL, using tcps when a wallet is configured."""
-        if self._wallet_path:
-            return (
-                f"jdbc:oracle:thin:@tcps://{self._host}:{self._port}/{self._database}"
-            )
-        return f"jdbc:oracle:thin:@{self._host}:{self._port}/{self._database}"
-
     def spark_options(self) -> dict[str, Any]:
         opts = {
             **(self._arguments if self._arguments else {}),
@@ -2472,12 +2464,18 @@ class SqlConnector(StorageConnector):
                 self._database_type, self._DRIVERS[self.POSTGRESQL]
             ),
         }
+        scheme = self._JDBC_SCHEMES.get(
+            self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
+        )
         if self._database_type == self.ORACLE:
-            opts["url"] = self._oracle_jdbc_url()
+            # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
+            # when a wallet is configured for mTLS.
+            if self._wallet_path:
+                host_part = f"tcps://{self._host}:{self._port}"
+            else:
+                host_part = f"{self._host}:{self._port}"
+            opts["url"] = f"jdbc:{scheme}:@{host_part}/{self._database}"
         else:
-            scheme = self._JDBC_SCHEMES.get(
-                self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
-            )
             opts["url"] = f"jdbc:{scheme}://{self._host}:{self._port}/{self._database}"
         return opts
 
