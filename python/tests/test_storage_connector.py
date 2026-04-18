@@ -1124,6 +1124,32 @@ class TestSqlConnector:
         call_options = mock_read.return_value.read.call_args[0][2]
         assert call_options["url"] == f"jdbc:{expected_scheme}://localhost:3306/testdb"
 
+    def test_read_oracle_jdbc_url(self, mocker):
+        """read() should pass the Oracle ``jdbc:oracle:thin:@host:port/service`` URL to the engine."""
+        # Arrange
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        mock_engine = mocker.patch("hsfs.engine.get_instance")
+        mocker.patch.object(connector, "refetch")
+
+        # Act
+        connector.read(query="SELECT 1 FROM DUAL")
+
+        # Assert
+        call_options = mock_engine.return_value.read.call_args[0][2]
+        assert call_options["url"] == "jdbc:oracle:thin:@myhost:1521/ORCL"
+        assert call_options["driver"] == "oracle.jdbc.driver.OracleDriver"
+        assert call_options["query"] == "SELECT 1 FROM DUAL"
+
     def test_unsupported_database_type_raises(self):
         with pytest.raises(ValueError, match="Unsupported database_type"):
             self._make_connector("UNSUPPORTED_DB")
