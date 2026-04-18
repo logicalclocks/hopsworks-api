@@ -589,8 +589,6 @@
             "database": "test_database",
             "user": "test_user",
             "password": "test_password",
-            "schema": "test_schema",
-            "table": "test_table",
             "arguments": [{"name": "test_name", "value": "test_value"}]
         },
         "method": "GET",

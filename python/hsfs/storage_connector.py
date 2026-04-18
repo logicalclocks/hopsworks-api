@@ -2350,8 +2350,6 @@ class SqlConnector(StorageConnector):
         password: str | None = None,
         arguments: list[dict[str, Any]] | dict[str, Any] | str | None = None,
         # Oracle-specific optional fields
-        schema: str | None = None,
-        table: str | None = None,
         wallet_path: str | None = None,
         wallet_password: str | None = None,
         **kwargs,
@@ -2378,8 +2376,6 @@ class SqlConnector(StorageConnector):
             else {}
         )
         # Oracle-specific fields
-        self._schema = schema
-        self._table = table
         self._wallet_path = wallet_path
         self._wallet_password = wallet_password
 
@@ -2412,16 +2408,6 @@ class SqlConnector(StorageConnector):
     def arguments(self) -> dict[str, Any]:
         """Additional options."""
         return self._arguments
-
-    @property
-    def schema(self) -> str | None:
-        """Oracle schema (only relevant when database_type is ORACLE)."""
-        return self._schema
-
-    @property
-    def table(self) -> str | None:
-        """Oracle table (only relevant when database_type is ORACLE)."""
-        return self._table
 
     @property
     def wallet_path(self) -> str | None:

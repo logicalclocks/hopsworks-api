@@ -1220,8 +1220,6 @@ class TestOracleConnector:
         assert sc._database == "test_database"
         assert sc._user == "test_user"
         assert sc._password == "test_password"
-        assert sc._schema == "test_schema"
-        assert sc._table == "test_table"
         assert sc._arguments == {"test_name": "test_value"}
 
     def test_from_response_json_basic_info(self, backend_fixtures):

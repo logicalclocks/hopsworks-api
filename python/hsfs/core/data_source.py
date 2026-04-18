@@ -423,14 +423,5 @@ class DataSource:
                 storage_connector._dataset = self.group
             if self.table:
                 storage_connector._query_table = self.table
-        if storage_connector.type == sc.StorageConnector.SQL:
-            if self.database:
-                storage_connector._database = self.database
-            if (
-                hasattr(storage_connector, "_database_type")
-                and storage_connector._database_type == "ORACLE"
-            ):
-                if self.group:
-                    storage_connector._schema = self.group
-                if self.table:
-                    storage_connector._table = self.table
+        if storage_connector.type == sc.StorageConnector.SQL and self.database:
+            storage_connector._database = self.database
