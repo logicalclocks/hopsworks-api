@@ -3172,6 +3172,20 @@ class FeatureGroup(FeatureGroupBase):
             fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
             ```
 
+        Example: Incremental feature pipeline — let the scheduler supply the window.
+            When the Hopsworks scheduler fires a job, it injects `HOPS_START_TIME`
+            and `HOPS_END_TIME` env vars describing the data interval the run
+            should process. If `start_time` / `end_time` are not passed to `read`,
+            these env vars are used as defaults, so the same feature-pipeline
+            code works whether launched by the scheduler, by a backfill
+            (`Job.run(start_time=..., end_time=...)`), or manually:
+
+            ```python
+            # No explicit time args — falls back to HOPS_START_TIME / HOPS_END_TIME
+            # (scheduler-supplied) if set, otherwise reads the whole feature group.
+            fg.read()
+            ```
+
         Parameters:
             wallclock_time:
                 If specified, retrieves feature group as of specific point in time.
@@ -3192,10 +3206,14 @@ class FeatureGroup(FeatureGroupBase):
                 - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
             start_time:
                 Filter data to only include records where the event_time column is greater than start_time.
+                If not provided, defaults to the `HOPS_START_TIME` environment variable when set
+                (scheduler-supplied data-interval start). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             end_time:
                 Filter data to only include records where the event_time column is less than end_time.
+                If not provided, defaults to the `HOPS_END_TIME` environment variable when set
+                (scheduler-supplied data-interval end). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
@@ -3208,6 +3226,10 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
             hopsworks.client.exceptions.FeatureStoreException: If wallclock_time is used together with start_time or end_time.
         """
+        # Fall back to scheduler-injected HOPS_START_TIME / HOPS_END_TIME env vars when
+        # the caller didn't supply explicit values. Explicit args always win.
+        start_time, end_time = util.apply_scheduler_time_defaults(start_time, end_time)
+
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(
                 "Time travel format is not set for the feature group, cannot read as of specific point in time."
@@ -5077,6 +5099,18 @@ class ExternalFeatureGroup(FeatureGroupBase):
             fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
             ```
 
+        Example: Incremental feature pipeline — let the scheduler supply the window.
+            When the Hopsworks scheduler fires a job, it injects `HOPS_START_TIME`
+            and `HOPS_END_TIME` env vars describing the data interval the run
+            should process. If `start_time` / `end_time` are not passed to `read`,
+            these env vars are used as defaults.
+
+            ```python
+            # No explicit time args — falls back to HOPS_START_TIME / HOPS_END_TIME
+            # (scheduler-supplied) if set, otherwise reads the whole feature group.
+            fg.read()
+            ```
+
         Warning: Engine Support
             **Spark only**
 
@@ -5090,10 +5124,14 @@ class ExternalFeatureGroup(FeatureGroupBase):
             read_options: Additional options as key/value pairs to pass to the spark engine.
             start_time:
                 Filter data to only include records where the event_time column is greater than start_time.
+                If not provided, defaults to the `HOPS_START_TIME` environment variable when set
+                (scheduler-supplied data-interval start). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             end_time:
                 Filter data to only include records where the event_time column is less than end_time.
+                If not provided, defaults to the `HOPS_END_TIME` environment variable when set
+                (scheduler-supplied data-interval end). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
@@ -5106,6 +5144,10 @@ class ExternalFeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.FeatureStoreException: If trying to read an external feature group directly in.
             hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
         """
+        # Fall back to scheduler-injected HOPS_START_TIME / HOPS_END_TIME env vars when
+        # the caller didn't supply explicit values. Explicit args always win.
+        start_time, end_time = util.apply_scheduler_time_defaults(start_time, end_time)
+
         if (
             engine.get_type() == "python"
             and not online

@@ -97,6 +97,46 @@ def parse_features(
     return []
 
 
+HOPS_START_TIME_ENV = "HOPS_START_TIME"
+HOPS_END_TIME_ENV = "HOPS_END_TIME"
+
+
+def apply_scheduler_time_defaults(
+    start_time: Any,
+    end_time: Any,
+) -> tuple[Any, Any]:
+    """Fall back to scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` env vars.
+
+    When a Hopsworks job is triggered by the scheduler (or via a backfill `Job.run(
+    start_time=..., end_time=...)` call), the container receives `HOPS_START_TIME` and
+    `HOPS_END_TIME` as ISO-8601 UTC env vars describing the data interval the run should
+    process. This helper lets feature-store reads pick those up by default:
+
+      * If the caller passed an explicit value for `start_time` / `end_time`, that value
+        wins.
+      * Otherwise, the corresponding env var is read (if set) and returned.
+      * Env vars that fail to parse are ignored — the caller's `None` is preserved.
+
+    Returns the resolved `(start_time, end_time)` tuple.
+    """
+    import os
+
+    resolved_start = start_time
+    resolved_end = end_time
+
+    if start_time is None:
+        env_start = os.environ.get(HOPS_START_TIME_ENV)
+        if env_start:
+            resolved_start = env_start
+
+    if end_time is None:
+        env_end = os.environ.get(HOPS_END_TIME_ENV)
+        if env_end:
+            resolved_end = env_end
+
+    return resolved_start, resolved_end
+
+
 def build_time_filter(
     event_time_feature: feature.Feature,
     start_time: Any,
