@@ -118,21 +118,34 @@ def apply_scheduler_time_defaults(
       * Env vars that fail to parse are ignored — the caller's `None` is preserved.
 
     Returns the resolved `(start_time, end_time)` tuple.
+
+    Prints a one-line notice to stdout when env-var defaults are applied so that the
+    scheduler-injected window is visible in the execution log. The notice is suppressed
+    when both args were explicit or when no env vars are set.
     """
     import os
 
     resolved_start = start_time
     resolved_end = end_time
+    applied: list[str] = []
 
     if start_time is None:
         env_start = os.environ.get(HOPS_START_TIME_ENV)
         if env_start:
             resolved_start = env_start
+            applied.append(f"start_time={env_start} (from ${HOPS_START_TIME_ENV})")
 
     if end_time is None:
         env_end = os.environ.get(HOPS_END_TIME_ENV)
         if env_end:
             resolved_end = env_end
+            applied.append(f"end_time={env_end} (from ${HOPS_END_TIME_ENV})")
+
+    if applied:
+        print(
+            "[hopsworks] Using scheduler-injected data interval: "
+            + ", ".join(applied)
+        )
 
     return resolved_start, resolved_end
 
