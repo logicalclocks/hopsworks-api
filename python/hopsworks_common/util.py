@@ -192,6 +192,12 @@ def extract_zip(zip_path: str) -> str:
     The zip is extracted to a directory with the ``.zip`` suffix removed.
     The operation is idempotent — if the directory already exists, extraction
     is skipped.
+
+    Parameters:
+        zip_path: Path to the zip file to extract.
+
+    Returns:
+        The path to the directory containing the extracted contents.
     """
     import zipfile
 
