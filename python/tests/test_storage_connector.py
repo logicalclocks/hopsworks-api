@@ -1340,34 +1340,6 @@ class TestOracleConnector:
         assert call_options["oracle.net.wallet_password"] == "walletpass"
         assert os.path.isfile(os.path.join(expected_dir, "cwallet.sso"))
 
-    def test_extract_wallet_zip(self, tmp_path):
-        """_extract_wallet_zip should extract a zip to a sibling directory."""
-        import zipfile
-
-        wallet_zip = tmp_path / "wallet.zip"
-        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
-            zf.writestr("cwallet.sso", "fake")
-            zf.writestr("tnsnames.ora", "fake")
-
-        result = storage_connector.SqlConnector._extract_wallet_zip(str(wallet_zip))
-
-        expected_dir = str(tmp_path / "wallet")
-        assert result == expected_dir
-        assert os.path.isfile(os.path.join(expected_dir, "cwallet.sso"))
-        assert os.path.isfile(os.path.join(expected_dir, "tnsnames.ora"))
-
-    def test_extract_wallet_zip_idempotent(self, tmp_path):
-        """Calling _extract_wallet_zip twice should not fail."""
-        import zipfile
-
-        wallet_zip = tmp_path / "wallet.zip"
-        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
-            zf.writestr("cwallet.sso", "fake")
-
-        result1 = storage_connector.SqlConnector._extract_wallet_zip(str(wallet_zip))
-        result2 = storage_connector.SqlConnector._extract_wallet_zip(str(wallet_zip))
-        assert result1 == result2
-
     def test_connector_options_wallet(self):
         """connector_options should include wallet_path and wallet_password."""
         sc = storage_connector.SqlConnector(

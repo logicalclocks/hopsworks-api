@@ -30,7 +30,7 @@ import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_apigen import public
-from hopsworks_common import client
+from hopsworks_common import client, util
 from hopsworks_common.client.exceptions import DataSourceException
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
@@ -2419,25 +2419,7 @@ class SqlConnector(StorageConnector):
         """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
         return self._wallet_password
 
-    @staticmethod
-    def _extract_wallet_zip(zip_path: str) -> str:
-        """Extract a wallet zip and return the directory containing wallet files.
-
-        The zip is extracted to a sibling directory with the ``.zip`` suffix
-        removed.
-        The operation is idempotent — if the directory already exists, extraction
-        is skipped.
-        """
-        import zipfile
-
-        extract_dir = zip_path.rsplit(".", 1)[0]
-        if not os.path.isdir(extract_dir):
-            os.makedirs(extract_dir, exist_ok=True)
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                zf.extractall(extract_dir)
-        return extract_dir
-
-    def _prepare_wallet(self) -> str:
+    def _prepare_wallet(self) -> str | None:
         """Download (if needed) and extract the wallet, returning a local directory.
 
         For Spark JDBC the Oracle driver runs inside the JVM and needs a local
@@ -2446,13 +2428,13 @@ class SqlConnector(StorageConnector):
         driver via ``engine.add_file`` and then extracted.
         JDBC reads are single-partition (driver-only) so the wallet does not
         need to be distributed to executors.
+        Returns ``None`` when no wallet path is configured.
         """
+        if not self._wallet_path:
+            return None
         local_path = engine.get_instance().add_file(self._wallet_path, distribute=False)
         if local_path.endswith(".zip") and os.path.isfile(local_path):
-            return self._extract_wallet_zip(local_path)
-        if os.path.isdir(local_path):
-            return local_path
-        # Already a directory path (e.g. pre-provisioned on cluster nodes).
+            return util.extract_zip(local_path)
         return local_path
 
     def spark_options(self) -> dict[str, Any]:
@@ -2467,16 +2449,14 @@ class SqlConnector(StorageConnector):
         scheme = self._JDBC_SCHEMES.get(
             self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
         )
+        host_port = f"{self._host}:{self._port}"
         if self._database_type == self.ORACLE:
             # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
             # when a wallet is configured for mTLS.
-            if self._wallet_path:
-                host_part = f"tcps://{self._host}:{self._port}"
-            else:
-                host_part = f"{self._host}:{self._port}"
-            opts["url"] = f"jdbc:{scheme}:@{host_part}/{self._database}"
+            prefix = "tcps://" if self._wallet_path else ""
+            opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
         else:
-            opts["url"] = f"jdbc:{scheme}://{self._host}:{self._port}/{self._database}"
+            opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
         return opts
 
     def connector_options(self) -> dict[str, Any]:
@@ -2540,13 +2520,14 @@ class SqlConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        if self._database_type == self.ORACLE and self._wallet_path:
+        if self._database_type == self.ORACLE:
             wallet_dir = self._prepare_wallet()
-            options["oracle.net.wallet_location"] = (
-                f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
-            )
-            if self._wallet_password:
-                options["oracle.net.wallet_password"] = self._wallet_password
+            if wallet_dir:
+                options["oracle.net.wallet_location"] = (
+                    f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                )
+                if self._wallet_password:
+                    options["oracle.net.wallet_password"] = self._wallet_password
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
