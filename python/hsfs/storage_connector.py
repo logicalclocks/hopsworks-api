@@ -2449,12 +2449,25 @@ class SqlConnector(StorageConnector):
         scheme = self._JDBC_SCHEMES.get(
             self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
         )
-        host_port = f"{self._host}:{self._port}"
+        host_port = (
+            f"{self._host}:{self._port}" if self._host and self._port else None
+        )
         if self._database_type == self.ORACLE:
             # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
             # when a wallet is configured for mTLS.
-            prefix = "tcps://" if self._wallet_path else ""
-            opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
+            if host_port:
+                prefix = "tcps://" if self._wallet_path else ""
+                opts["url"] = (
+                    f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
+                )
+            elif self._wallet_path:
+                # Wallet-only: the database field is a TNS alias resolved via
+                # the wallet's tnsnames.ora — the URL carries only the alias.
+                opts["url"] = f"jdbc:{scheme}:@{self._database}"
+            else:
+                raise DataSourceException(
+                    "Oracle connector requires either host+port or a wallet."
+                )
         else:
             opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
         return opts
@@ -2508,6 +2521,12 @@ class SqlConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
+        !!! note "Oracle"
+            The native Python engine reads Oracle only via the Hopsworks Query
+            Service (Arrow Flight). There is no SQLAlchemy / oracledb fallback
+            in `core/util_sql.py` — use the Spark engine or route through
+            Arrow Flight.
+
         Returns:
             `DataFrame`.
         """
@@ -2526,6 +2545,9 @@ class SqlConnector(StorageConnector):
                 options["oracle.net.wallet_location"] = (
                     f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
                 )
+                # For wallet-only connectors the URL is a TNS alias; the JDBC
+                # driver needs tns_admin to find tnsnames.ora inside the wallet.
+                options["oracle.net.tns_admin"] = wallet_dir
                 if self._wallet_password:
                     options["oracle.net.wallet_password"] = self._wallet_password
 

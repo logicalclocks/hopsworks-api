@@ -1220,6 +1220,8 @@ class TestOracleConnector:
         assert sc._database == "test_database"
         assert sc._user == "test_user"
         assert sc._password == "test_password"
+        assert sc._wallet_path == "/Projects/test_project/Resources/wallet.zip"
+        assert sc._wallet_password == "test_wallet_password"
         assert sc._arguments == {"test_name": "test_value"}
 
     def test_from_response_json_basic_info(self, backend_fixtures):
@@ -1337,6 +1339,7 @@ class TestOracleConnector:
         assert "oracle.net.wallet_location" in call_options
         expected_dir = str(tmp_path / "wallet")
         assert expected_dir in call_options["oracle.net.wallet_location"]
+        assert call_options["oracle.net.tns_admin"] == expected_dir
         assert call_options["oracle.net.wallet_password"] == "walletpass"
         assert os.path.isfile(os.path.join(expected_dir, "cwallet.sso"))
 
@@ -1358,3 +1361,34 @@ class TestOracleConnector:
         opts = sc.connector_options()
         assert opts["wallet_path"] == "/Projects/myproj/Resources/wallet.zip"
         assert opts["wallet_password"] == "walletpass"
+
+    def test_spark_options_wallet_only_uses_tns_alias_url(self):
+        """Wallet-only Oracle: URL carries the TNS alias only, no host:port."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="mydb_high",  # TNS alias from tnsnames.ora
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        opts = sc.spark_options()
+        assert opts["url"] == "jdbc:oracle:thin:@mydb_high"
+
+    def test_spark_options_no_host_no_wallet_raises(self):
+        """Oracle connector without host/port AND without wallet is invalid."""
+        from hopsworks_common.client.exceptions import DataSourceException
+
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        with pytest.raises(DataSourceException):
+            sc.spark_options()

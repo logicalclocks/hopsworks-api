@@ -589,6 +589,8 @@
             "database": "test_database",
             "user": "test_user",
             "password": "test_password",
+            "walletPath": "/Projects/test_project/Resources/wallet.zip",
+            "walletPassword": "test_wallet_password",
             "arguments": [{"name": "test_name", "value": "test_value"}]
         },
         "method": "GET",
