@@ -420,8 +420,8 @@ class Job:
         *,
         catchup: bool = False,
         max_active_runs: int = 1,
-        start_time_offset_seconds: int = -3600,
-        end_time_offset_seconds: int = 0,
+        start_time_offset_seconds: int | None = None,
+        end_time_offset_seconds: int | None = None,
         skip_to_date: datetime = None,
         max_catchup_runs: int = None,
     ) -> JobSchedule:
@@ -430,20 +430,18 @@ class Job:
         If a schedule for this job already exists, the method updates it.
 
         ```python
-        # Hourly schedule. The scheduler injects HOPS_START_TIME / HOPS_END_TIME as env vars
-        # into each execution. Offsets are relative to the cron fire time.
-        # Defaults — start=-3600 (1h before fire), end=0 (at fire) — give the
-        # natural "last hour" window on an hourly schedule.
+        # Defaults (None, None): HOPS_START_TIME = last execution time (= previous cron fire),
+        # HOPS_END_TIME = current cron fire. Works on any cron — no per-schedule tuning needed.
         job.schedule(
             cron_expression="0 0 * ? * * *",
             start_time=datetime.datetime.now(tz=timezone.utc),
         )
 
-        # Process the previous 2 hours at every fire (e.g. 08:00 → 10:00 at 10:00 fire):
+        # Fixed 2-hour window ending at the cron fire (e.g. 08:00 → 10:00 at 10:00):
         job.schedule(
             cron_expression="0 0 * ? * * *",
-            start_time_offset_seconds=-2 * 3600,
-            end_time_offset_seconds=0,
+            start_time_offset_seconds=-2 * 3600,   # HOPS_START_TIME = fire - 2h
+            end_time_offset_seconds=0,             # HOPS_END_TIME   = fire
             catchup=True,              # replay all missed intervals on recovery
             max_active_runs=2,         # allow at most 2 concurrent runs
         )
@@ -462,12 +460,17 @@ class Job:
             max_active_runs:
                 Upper bound on concurrent executions for this job. Default 1.
             start_time_offset_seconds:
-                Offset (in seconds) applied to `HOPS_START_TIME` relative to the cron fire time.
-                Negative values look backwards from the fire; positive look forward.
-                Default -3600 (1 h before the fire).
+                Controls `HOPS_START_TIME`. Three modes:
+
+                - `None` (default) — use the previous cron fire (last execution time). Adapts
+                  to any cron naturally.
+                - `int` — `HOPS_START_TIME = cron_fire + seconds`. Negative values look
+                  backwards from the fire; positive look forward.
             end_time_offset_seconds:
-                Offset (in seconds) applied to `HOPS_END_TIME` relative to the cron fire time.
-                Default 0 (at the fire).
+                Controls `HOPS_END_TIME`. Three modes:
+
+                - `None` (default) — use the cron fire time (`HOPS_END_TIME = cron_fire`).
+                - `int` — `HOPS_END_TIME = cron_fire + seconds`.
             skip_to_date:
                 If set, reconciliation skips every missed interval strictly before this date.
             max_catchup_runs:

@@ -46,8 +46,8 @@ class JobSchedule:
         end_date_time=None,
         catchup=False,
         max_active_runs=1,
-        start_time_offset_seconds=0,
-        end_time_offset_seconds=0,
+        start_time_offset_seconds=None,
+        end_time_offset_seconds=None,
         skip_to_date=None,
         max_catchup_runs=None,
         **kwargs,
@@ -62,13 +62,16 @@ class JobSchedule:
         self._max_active_runs = (
             int(max_active_runs) if max_active_runs is not None else 1
         )
+        # None preserved: means "last execution time" for start, "cron fire time" for end.
         self._start_time_offset_seconds = (
             int(start_time_offset_seconds)
             if start_time_offset_seconds is not None
-            else 0
+            else None
         )
         self._end_time_offset_seconds = (
-            int(end_time_offset_seconds) if end_time_offset_seconds is not None else 0
+            int(end_time_offset_seconds)
+            if end_time_offset_seconds is not None
+            else None
         )
         self._skip_to_date = _ms_to_dt(skip_to_date)
         self._max_catchup_runs = (
@@ -149,13 +152,14 @@ class JobSchedule:
     @public
     @property
     def start_time_offset_seconds(self):
-        """Offset in seconds applied to HOPS_START_TIME relative to the data interval start."""
+        """Controls HOPS_START_TIME. `None` = previous cron fire (last execution time);
+        otherwise `cron_fire + seconds` (negative = before, positive = after)."""
         return self._start_time_offset_seconds
 
     @public
     @property
     def end_time_offset_seconds(self):
-        """Offset in seconds applied to HOPS_END_TIME relative to the data interval end."""
+        """Controls HOPS_END_TIME. `None` = cron fire time; otherwise `cron_fire + seconds`."""
         return self._end_time_offset_seconds
 
     @public
