@@ -157,17 +157,22 @@ def build_time_filter(
 ) -> filter.Filter | filter.Logic | None:
     """Build a time filter from start_time and end_time parameters.
 
+    The window is half-open `[start_time, end_time)`: `start_time` is inclusive (>=) and
+    `end_time` is exclusive (<). This guarantees that back-to-back scheduled windows
+    (`[t0, t1)` then `[t1, t2)`) partition the timeline — an event at exactly the boundary
+    `t1` is read by the second window only, never dropped by both and never duplicated.
+
     Parameters:
         event_time_feature: The feature to filter on.
-        start_time: The start time for the filter (exclusive).
-        end_time: The end time for the filter (exclusive).
+        start_time: The start time for the filter (inclusive, >=).
+        end_time: The end time for the filter (exclusive, <).
 
     Returns:
         The built time filter, or `None` if both `start_time` and `end_time` are `None`.
     """
     time_filter = None
     if start_time is not None:
-        time_filter = event_time_feature > start_time
+        time_filter = event_time_feature >= start_time
 
     if end_time is not None:
         end_filter = event_time_feature < end_time

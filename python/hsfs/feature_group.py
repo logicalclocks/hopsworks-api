@@ -3205,13 +3205,15 @@ class FeatureGroup(FeatureGroupBase):
                   For example: `{"arrow_flight_config": {"timeout": 900}}`.
                 - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
             start_time:
-                Filter data to only include records where the event_time column is greater than start_time.
+                Inclusive lower bound on the `event_time` column (`event_time >= start_time`).
                 If not provided, defaults to the `HOPS_START_TIME` environment variable when set
                 (scheduler-supplied data-interval start). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             end_time:
-                Filter data to only include records where the event_time column is less than end_time.
+                Exclusive upper bound on the `event_time` column (`event_time < end_time`). Combined
+                with the inclusive `start_time`, back-to-back scheduled windows partition the
+                timeline — events at the boundary are read exactly once and never dropped.
                 If not provided, defaults to the `HOPS_END_TIME` environment variable when set
                 (scheduler-supplied data-interval end). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
@@ -5123,13 +5125,15 @@ class ExternalFeatureGroup(FeatureGroupBase):
             online: If `True` read from online feature store.
             read_options: Additional options as key/value pairs to pass to the spark engine.
             start_time:
-                Filter data to only include records where the event_time column is greater than start_time.
+                Inclusive lower bound on the `event_time` column (`event_time >= start_time`).
                 If not provided, defaults to the `HOPS_START_TIME` environment variable when set
                 (scheduler-supplied data-interval start). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             end_time:
-                Filter data to only include records where the event_time column is less than end_time.
+                Exclusive upper bound on the `event_time` column (`event_time < end_time`). Combined
+                with the inclusive `start_time`, back-to-back scheduled windows partition the
+                timeline — events at the boundary are read exactly once and never dropped.
                 If not provided, defaults to the `HOPS_END_TIME` environment variable when set
                 (scheduler-supplied data-interval end). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
