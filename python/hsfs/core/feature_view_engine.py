@@ -330,7 +330,13 @@ class FeatureViewEngine:
         training_helper_columns=False,
         training_dataset_version=None,
         spine=None,
+        extra_filter=None,
     ):
+        from hsfs.constructor.filter import Filter, Logic
+
+        if isinstance(extra_filter, Filter):
+            extra_filter = Logic(Logic.SINGLE, left_f=extra_filter)
+
         try:
             query = self._feature_view_api.get_batch_query(
                 feature_view_obj.name,
@@ -344,6 +350,7 @@ class FeatureViewEngine:
                 event_time=event_time,
                 inference_helper_columns=inference_helper_columns,
                 training_helper_columns=training_helper_columns,
+                extra_filter=extra_filter,
             )
             # verify whatever is passed 1. spine group with dataframe contained, or 2. dataframe
             # the schema has to be consistent
@@ -377,7 +384,12 @@ class FeatureViewEngine:
             raise e
 
     def get_batch_query_string(
-        self, feature_view_obj, start_time, end_time, training_dataset_version=None
+        self,
+        feature_view_obj,
+        start_time,
+        end_time,
+        training_dataset_version=None,
+        extra_filter=None,
     ):
         try:
             query_obj = self._feature_view_api.get_batch_query(
@@ -387,6 +399,7 @@ class FeatureViewEngine:
                 util.convert_event_time_to_timestamp(end_time),
                 training_dataset_version=training_dataset_version,
                 is_python_engine=engine.get_type() == "python",
+                extra_filter=extra_filter,
             )
         except exceptions.RestAPIError as e:
             if e.response.json().get("errorCode", "") == 270172:
@@ -962,6 +975,7 @@ class FeatureViewEngine:
         transformed=True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        extra_filter=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -986,6 +1000,7 @@ class FeatureViewEngine:
             training_helper_columns=False,
             training_dataset_version=training_dataset_version,
             spine=spine,
+            extra_filter=extra_filter,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if (transformation_functions and transformed) or logging_data:
             try:
