@@ -36,9 +36,9 @@ class TestVectorDbClient:
         f3 = Feature("f3", feature_group=fg, type="int")
         f_bool = Feature("f_bool", feature_group=fg, type="boolean")
         f_ts = Feature("f_ts", feature_group=fg, type="timestamp")
-        fg.features = [f1, f2, f3, f_bool, f_ts]
+        fg.columns = [f1, f2, f3, f_bool, f_ts]
         fg2 = FeatureGroup("test_fg", 1, 99, id=2)
-        fg2.features = [f1, f2]
+        fg2.columns = [f1, f2]
 
     @pytest.fixture(autouse=True)
     def setup_mocks(self, mocker):
@@ -458,7 +458,7 @@ class TestVectorDbClient:
 
     def test_read_with_keys(self):
         actual = self.target.read(
-            self.fg.id, self.fg.features, keys={"f1": 10, "f2": 20}
+            self.fg.id, self.fg.columns, keys={"f1": 10, "f2": 20}
         )
 
         expected_query = {
@@ -472,7 +472,7 @@ class TestVectorDbClient:
         assert actual == expected
 
     def test_read_with_pk(self):
-        actual = self.target.read(self.fg.id, self.fg.features, pk="f1")
+        actual = self.target.read(self.fg.id, self.fg.columns, pk="f1")
 
         expected_query = {
             "query": {"bool": {"must": [{"exists": {"field": "f1"}}]}},
@@ -487,4 +487,4 @@ class TestVectorDbClient:
 
     def test_read_without_pk_or_keys(self):
         with pytest.raises(FeatureStoreException):
-            self.target.read(self.fg.id, self.fg.features)
+            self.target.read(self.fg.id, self.fg.columns)
