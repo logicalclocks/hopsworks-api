@@ -27,8 +27,8 @@ from hsfs.storage_connector import (
     CRMSource,
     RedshiftConnector,
     RestConnector,
-    SqlConnector,
     SnowflakeConnector,
+    SqlConnector,
 )
 
 
