@@ -186,6 +186,29 @@ def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     return "DATASET"
 
 
+def extract_zip(zip_path: str) -> str:
+    """Extract a zip file into a sibling directory and return the directory path.
+
+    The zip is extracted to a directory with the ``.zip`` suffix removed.
+    The operation is idempotent — if the directory already exists, extraction
+    is skipped.
+
+    Parameters:
+        zip_path: Path to the zip file to extract.
+
+    Returns:
+        The path to the directory containing the extracted contents.
+    """
+    import zipfile
+
+    extract_dir = zip_path.rsplit(".", 1)[0]
+    if not os.path.isdir(extract_dir):
+        os.makedirs(extract_dir, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(extract_dir)
+    return extract_dir
+
+
 @also_available_as("hopsworks.util.check_timestamp_format_from_date_string")
 def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     date_format_patterns = {

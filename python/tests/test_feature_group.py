@@ -96,8 +96,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -133,8 +133,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -168,7 +168,7 @@ class TestFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert len(fg.features) == 2
+        assert len(fg.columns) == 2
         assert fg.location is None
         assert fg.online_enabled is False
         assert fg.time_travel_format == "DELTA"
@@ -201,7 +201,7 @@ class TestFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert len(fg.features) == 2
+        assert len(fg.columns) == 2
         assert fg.location is None
         assert fg.online_enabled is False
         assert fg.time_travel_format == "DELTA"
@@ -235,8 +235,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -272,8 +272,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -307,7 +307,7 @@ class TestFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert len(fg.features) == 0
+        assert len(fg.columns) == 0
         assert fg.location is None
         assert fg.online_enabled is False
         assert fg.time_travel_format == "DELTA"
@@ -1123,8 +1123,8 @@ class TestExternalFeatureGroup:
         assert fg.created == "2022-08-16T07:19:12Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 14
-        assert len(fg.features) == 3
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 3
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/test_project_featurestore.db/external_fg_test_1"
@@ -1159,8 +1159,8 @@ class TestExternalFeatureGroup:
         assert fg.created == "2022-08-16T07:19:12Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 14
-        assert len(fg.features) == 3
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 3
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/test_project_featurestore.db/external_fg_test_1"
@@ -1193,7 +1193,7 @@ class TestExternalFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert fg.features == []
+        assert fg.columns == []
         assert fg.location is None
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg.event_time is None
@@ -1336,8 +1336,8 @@ class TestExternalFeatureGroup:
         )
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -1445,9 +1445,9 @@ class TestExternalFeatureGroup:
         # Assert
         assert new_fg.event_time == "event_time"
         assert new_fg.primary_key == ["primarykey"]
-        assert new_fg.features[0].name == "primarykey"
-        assert new_fg.features[1].name == "event_time"
-        assert new_fg.features[2].name == "feat"
+        assert new_fg.columns[0].name == "primarykey"
+        assert new_fg.columns[1].name == "event_time"
+        assert new_fg.columns[2].name == "feat"
 
 
 class TestFeatureGroupExecuteOdts:

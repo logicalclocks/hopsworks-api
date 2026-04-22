@@ -3425,7 +3425,7 @@ class TestPython:
         fg = feature_group.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
         )
-        q = query.Query(fg, fg.features)
+        q = query.Query(fg, fg.columns)
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -3469,7 +3469,7 @@ class TestPython:
         fg = feature_group.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
         )
-        q = query.Query(fg, fg.features)
+        q = query.Query(fg, fg.columns)
 
         td = training_dataset.TrainingDataset(
             name="test",

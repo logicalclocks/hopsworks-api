@@ -709,7 +709,7 @@ class TestQuery:
 
         q = query.Query(
             left_feature_group=TestQuery.fg_spine,
-            left_features=TestQuery.fg_spine.features,
+            left_features=TestQuery.fg_spine.columns,
         )
 
         q._prep_read(online=False, read_options={})
@@ -735,7 +735,7 @@ class TestQuery:
 
         q = query.Query(
             left_feature_group=TestQuery.fg1,
-            left_features=TestQuery.fg1.features,
+            left_features=TestQuery.fg1.columns,
         )
 
         q._prep_read(online=False, read_options={})
@@ -847,7 +847,7 @@ class TestQueryRead:
         with mock.patch("hsfs.engine.get_type", return_value="python"):
             q = query.Query(
                 left_feature_group=fg_without_event_time,
-                left_features=fg_without_event_time.features,
+                left_features=fg_without_event_time.columns,
             )
 
             # Act & Assert
@@ -876,7 +876,7 @@ class TestQueryRead:
         with mock.patch("hsfs.engine.get_type", return_value="python"):
             q = query.Query(
                 left_feature_group=fg_without_event_time,
-                left_features=fg_without_event_time.features,
+                left_features=fg_without_event_time.columns,
             )
 
             # Act & Assert
@@ -905,7 +905,7 @@ class TestQueryRead:
         with mock.patch("hsfs.engine.get_type", return_value="python"):
             q = query.Query(
                 left_feature_group=fg_without_event_time,
-                left_features=fg_without_event_time.features,
+                left_features=fg_without_event_time.columns,
             )
             filtered_q = q.filter(fg_without_event_time.get_feature("value") > 10)
 

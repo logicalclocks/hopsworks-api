@@ -54,8 +54,8 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert not mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_save_arrowflight(self, mocker):
         # Arrange
@@ -87,8 +87,8 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert not mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_save_arrowflight_query(self, mocker):
         # Arrange
@@ -120,8 +120,8 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert not mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_save_primary_key(self, mocker):
         # Arrange
@@ -154,8 +154,8 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_save_features(self, mocker):
         # Arrange
@@ -186,8 +186,8 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert not mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_update_features_metadata(self, mocker):
         # Arrange
@@ -233,8 +233,7 @@ class TestExternalFeatureGroupEngine:
             == external_fg.id
         )
         assert (
-            mock_fg_api.return_value.update_metadata.call_args[0][1].features
-            == features
+            mock_fg_api.return_value.update_metadata.call_args[0][1].columns == features
         )
 
     def test_update_features(self, mocker):
@@ -446,10 +445,10 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 2
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 2
         assert (
             mock_fg_api.return_value.save.call_args[0][0].data_source.storage_connector
             == fg.data_source.storage_connector
         )
-        assert mock_fg_api.return_value.save.call_args[0][0].features == features
+        assert mock_fg_api.return_value.save.call_args[0][0].columns == features
         assert mock_fg_api.return_value.save.call_args[0][0].id == fg.id
