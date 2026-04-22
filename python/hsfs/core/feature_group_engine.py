@@ -685,7 +685,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         is_new_feature_group = feature_group.id is None
         requested_sink_job_conf = feature_group.sink_job_conf
-        pre_save_features = list(feature_group.columns) if feature_group.columns else []
+        pre_save_features = list(feature_group.features) if feature_group.features else []
         pre_save_rest_endpoint = (
             feature_group.data_source.rest_endpoint
             if feature_group.data_source
@@ -775,7 +775,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             sink_job_conf or feature_group.sink_job_conf or SinkJobConfiguration()
         )
         sink_job_conf = self._merge_default_sink_column_mappings(
-            source_features or feature_group.columns,
+            source_features or feature_group.features,
             sink_job_conf,
         )
         job_name = sink_job_conf.name
