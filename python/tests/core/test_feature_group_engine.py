@@ -27,6 +27,7 @@ from hsfs.storage_connector import (
     CRMSource,
     RedshiftConnector,
     RestConnector,
+    SqlConnector,
     SnowflakeConnector,
 )
 
@@ -65,6 +66,26 @@ class TestFeatureGroupEngine:
                 True,
             ),
             (
+                SqlConnector(
+                    id=1,
+                    name="mysql",
+                    featurestore_id=1,
+                    database_type=SqlConnector.MYSQL,
+                ),
+                True,
+                True,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="postgres",
+                    featurestore_id=1,
+                    database_type=SqlConnector.POSTGRESQL,
+                ),
+                True,
+                True,
+            ),
+            (
                 SnowflakeConnector(id=1, name="snowflake", featurestore_id=1),
                 False,
                 False,
@@ -76,6 +97,26 @@ class TestFeatureGroupEngine:
             ),
             (
                 BigQueryConnector(id=1, name="bigquery", featurestore_id=1),
+                False,
+                False,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="oracle",
+                    featurestore_id=1,
+                    database_type=SqlConnector.ORACLE,
+                ),
+                True,
+                True,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="mysql",
+                    featurestore_id=1,
+                    database_type=SqlConnector.MYSQL,
+                ),
                 False,
                 False,
             ),
