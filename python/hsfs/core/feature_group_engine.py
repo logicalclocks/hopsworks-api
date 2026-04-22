@@ -685,7 +685,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         is_new_feature_group = feature_group.id is None
         requested_sink_job_conf = feature_group.sink_job_conf
-        pre_save_features = list(feature_group.features) if feature_group.features else []
+        pre_save_features = (
+            list(feature_group.features) if feature_group.features else []
+        )
         pre_save_rest_endpoint = (
             feature_group.data_source.rest_endpoint
             if feature_group.data_source
