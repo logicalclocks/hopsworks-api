@@ -233,8 +233,7 @@ class TestExternalFeatureGroupEngine:
             == external_fg.id
         )
         assert (
-            mock_fg_api.return_value.update_metadata.call_args[0][1].columns
-            == features
+            mock_fg_api.return_value.update_metadata.call_args[0][1].columns == features
         )
 
     def test_update_features(self, mocker):

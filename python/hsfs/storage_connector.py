@@ -2449,17 +2449,13 @@ class SqlConnector(StorageConnector):
         scheme = self._JDBC_SCHEMES.get(
             self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
         )
-        host_port = (
-            f"{self._host}:{self._port}" if self._host and self._port else None
-        )
+        host_port = f"{self._host}:{self._port}" if self._host and self._port else None
         if self._database_type == self.ORACLE:
             # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
             # when a wallet is configured for mTLS.
             if host_port:
                 prefix = "tcps://" if self._wallet_path else ""
-                opts["url"] = (
-                    f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
-                )
+                opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
             elif self._wallet_path:
                 # Wallet-only: the database field is a TNS alias resolved via
                 # the wallet's tnsnames.ora — the URL carries only the alias.
