@@ -187,6 +187,7 @@ class ModelServing:
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
+        env_vars: dict | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -228,6 +229,7 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
+            env_vars: Additional environment variables to use
 
         Returns:
             The predictor metadata object.
@@ -248,6 +250,7 @@ class ModelServing:
             api_protocol=api_protocol,
             environment=environment,
             scaling_configuration=scaling_configuration,
+            env_vars=env_vars,
         )
 
     @public
@@ -337,6 +340,7 @@ class ModelServing:
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
+        env_vars: dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -366,6 +370,7 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
+            env_vars: Additional environment variables to use
 
         Returns:
             The predictor metadata object.
@@ -380,6 +385,7 @@ class ModelServing:
             api_protocol=api_protocol,
             environment=environment,
             scaling_configuration=scaling_configuration,
+            env_vars=env_vars,
         )
 
     @public

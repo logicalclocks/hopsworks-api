@@ -103,7 +103,7 @@ class PredictorState:
     @public
     @property
     def available_predictor_instances(self):
-        """Available predicotr instances."""
+        """Available predictor instances."""
         return self._available_predictor_instances
 
     @public
