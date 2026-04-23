@@ -3018,14 +3018,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3261,14 +3261,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3534,14 +3534,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3749,14 +3749,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments for list version
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3928,14 +3928,14 @@ class TestFeatureViewEngine:
         assert (
             call_args[1]["logging_data"] is None
         )  # Should be None since all the data is in the metadata
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -4163,14 +4163,14 @@ class TestFeatureViewEngine:
         assert (
             call_args[1]["logging_data"] is None
         )  # Should be None since all the data is in the metadata
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )

@@ -30,7 +30,7 @@ import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_apigen import public
-from hopsworks_common import client
+from hopsworks_common import client, util
 from hopsworks_common.client.exceptions import DataSourceException
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
@@ -72,6 +72,7 @@ class StorageConnector(ABC):
     OPENSEARCH = "OPENSEARCH"
     CRM = "CRM"
     REST = "REST"
+    ORACLE = "ORACLE"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -2321,14 +2322,17 @@ class SqlConnector(StorageConnector):
 
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
+    ORACLE = "ORACLE"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
         POSTGRESQL: "org.postgresql.Driver",
+        ORACLE: "oracle.jdbc.driver.OracleDriver",
     }
     _JDBC_SCHEMES = {
         MYSQL: "mysql",
         POSTGRESQL: "postgresql",
+        ORACLE: "oracle:thin",
     }
 
     def __init__(
@@ -2344,7 +2348,10 @@ class SqlConnector(StorageConnector):
         database: str | None = None,
         user: str | None = None,
         password: str | None = None,
-        arguments: dict[str, Any] | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | str | None = None,
+        # Oracle-specific optional fields
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -2362,8 +2369,15 @@ class SqlConnector(StorageConnector):
         self._user = user
         self._password = password
         self._arguments = (
-            {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else arguments
+            if isinstance(arguments, dict)
+            else {}
         )
+        # Oracle-specific fields
+        self._wallet_path = wallet_path
+        self._wallet_password = wallet_password
 
     @property
     def database_type(self) -> str | None:
@@ -2395,15 +2409,64 @@ class SqlConnector(StorageConnector):
         """Additional options."""
         return self._arguments
 
+    @property
+    def wallet_path(self) -> str | None:
+        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
+        return self._wallet_path
+
+    @property
+    def wallet_password(self) -> str | None:
+        """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
+        return self._wallet_password
+
+    def _prepare_wallet(self) -> str | None:
+        """Download (if needed) and extract the wallet, returning a local directory.
+
+        For Spark JDBC the Oracle driver runs inside the JVM and needs a local
+        filesystem path to the wallet directory.
+        When the wallet lives in HopsFS the file is first downloaded to the
+        driver via ``engine.add_file`` and then extracted.
+        JDBC reads are single-partition (driver-only) so the wallet does not
+        need to be distributed to executors.
+        Returns ``None`` when no wallet path is configured.
+        """
+        if not self._wallet_path:
+            return None
+        local_path = engine.get_instance().add_file(self._wallet_path, distribute=False)
+        if local_path.endswith(".zip") and os.path.isfile(local_path):
+            return util.extract_zip(local_path)
+        return local_path
+
     def spark_options(self) -> dict[str, Any]:
-        return {
-            **self._arguments,
+        opts = {
+            **(self._arguments if self._arguments else {}),
             "user": self.user,
             "password": self.password,
             "driver": self._DRIVERS.get(
                 self._database_type, self._DRIVERS[self.POSTGRESQL]
             ),
         }
+        scheme = self._JDBC_SCHEMES.get(
+            self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
+        )
+        host_port = f"{self._host}:{self._port}" if self._host and self._port else None
+        if self._database_type == self.ORACLE:
+            # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
+            # when a wallet is configured for mTLS.
+            if host_port:
+                prefix = "tcps://" if self._wallet_path else ""
+                opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
+            elif self._wallet_path:
+                # Wallet-only: the database field is a TNS alias resolved via
+                # the wallet's tnsnames.ora — the URL carries only the alias.
+                opts["url"] = f"jdbc:{scheme}:@{self._database}"
+            else:
+                raise DataSourceException(
+                    "Oracle connector requires either host+port or a wallet."
+                )
+        else:
+            opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
+        return opts
 
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external SQL connector library."""
@@ -2417,6 +2480,13 @@ class SqlConnector(StorageConnector):
             props["user"] = self.user
         if self.password:
             props["password"] = self.password
+        if self._database_type == self.ORACLE:
+            # Oracle Python drivers (e.g. oracledb) expect ``service_name``.
+            props["service_name"] = self.database
+            if self._wallet_path:
+                props["wallet_path"] = self._wallet_path
+            if self._wallet_password:
+                props["wallet_password"] = self._wallet_password
         return props
 
     @public
@@ -2447,6 +2517,12 @@ class SqlConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
+        !!! note "Oracle"
+            The native Python engine reads Oracle only via the Hopsworks Query
+            Service (Arrow Flight). There is no SQLAlchemy / oracledb fallback
+            in `core/util_sql.py` — use the Spark engine or route through
+            Arrow Flight.
+
         Returns:
             `DataFrame`.
         """
@@ -2459,10 +2535,17 @@ class SqlConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        scheme = self._JDBC_SCHEMES.get(
-            self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
-        )
-        options["url"] = f"jdbc:{scheme}://{self.host}:{self.port}/{self.database}"
+        if self._database_type == self.ORACLE:
+            wallet_dir = self._prepare_wallet()
+            if wallet_dir:
+                options["oracle.net.wallet_location"] = (
+                    f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                )
+                # For wallet-only connectors the URL is a TNS alias; the JDBC
+                # driver needs tns_admin to find tnsnames.ora inside the wallet.
+                options["oracle.net.tns_admin"] = wallet_dir
+                if self._wallet_password:
+                    options["oracle.net.wallet_password"] = self._wallet_password
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type

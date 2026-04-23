@@ -3030,6 +3030,16 @@ class FeatureGroup(FeatureGroupBase):
         type supports sink.
         """
         requested_sink = self._sink_enabled
+        supported_sql_connector = (
+            self.storage_connector is not None
+            and self.storage_connector.type == sc.StorageConnector.SQL
+            and getattr(self.storage_connector, "database_type", None)
+            in [
+                sc.SqlConnector.MYSQL,
+                sc.SqlConnector.POSTGRESQL,
+                sc.SqlConnector.ORACLE,
+            ]
+        )
         supported_sink_connector = (
             self.storage_connector is not None
             and self.storage_connector.type
@@ -3040,7 +3050,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.REDSHIFT,
                 sc.StorageConnector.BIGQUERY,
             ]
-        )
+        ) or supported_sql_connector
 
         if (
             validate_requested_sink
@@ -3061,7 +3071,8 @@ class FeatureGroup(FeatureGroupBase):
             )
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
-                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY."
+                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY, "
+                "and SQL connectors with database_type MYSQL, POSTGRESQL, or ORACLE."
             )
 
         # CRM/REST connectors always have sink enabled.
