@@ -56,10 +56,15 @@ dependencies = [
     "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
     "packaging",                     # ^21.0
     "hopsworks-apigen>=1.0.4,<2.0.0",
+    "click>=8.1",
+    "tomli>=2.0; python_version < '3.11'",
+    "tomli-w>=1.0",
 ]
 
 [project.scripts]
 hopsworks-mcp = "hopsworks.mcp:run_server_command"
+hops = "hopsworks.cli.main:main"
+hopsworks = "hopsworks.cli.main:main"
 
 [project.optional-dependencies]
 python = [
@@ -146,6 +151,9 @@ include = [
     "hsml*",
     "hopsworks_common*",
 ]
+
+[tool.setuptools.package-data]
+"hopsworks.cli.templates" = ["*.md"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks_common.version.__version__" }
