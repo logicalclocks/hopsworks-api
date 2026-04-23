@@ -145,6 +145,67 @@ class TestS3Connector:
         assert result == "s3://test-bucket/abc/def/some/location"
 
 
+class TestUnityCatalogConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_unity_catalog"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Unity Catalog connector description"
+        assert sc.type == storage_connector.StorageConnector.UNITY_CATALOG
+        assert sc.workspace_url == "https://test.cloud.databricks.com"
+        assert sc.access_token == "dapi-test-token"
+        assert sc.default_catalog == "test_catalog"
+        assert sc.arguments == {"arg1": "val1"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog_basic_info"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_unity_catalog"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.workspace_url is None
+        assert sc.access_token is None
+        assert sc.default_catalog is None
+        assert sc.arguments == {}
+
+    def test_connector_options(self):
+        sc = storage_connector.UnityCatalogConnector(
+            id=1,
+            name="uc",
+            featurestore_id=1,
+            workspace_url="https://ws.cloud.databricks.com",
+            access_token="dapi-xyz",
+            default_catalog="sales",
+        )
+        opts = sc.connector_options()
+        assert opts["workspace_url"] == "https://ws.cloud.databricks.com"
+        assert opts["default_catalog"] == "sales"
+
+    def test_spark_options_not_supported(self):
+        sc = storage_connector.UnityCatalogConnector(
+            id=1, name="uc", featurestore_id=1, workspace_url="https://x.com"
+        )
+        import pytest
+
+        with pytest.raises(NotImplementedError):
+            sc.spark_options()
+
+
 class TestRedshiftConnector:
     def test_from_response_json(self, backend_fixtures):
         # Arrange

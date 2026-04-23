@@ -135,6 +135,55 @@
         },
         "headers": null
     },
+    "get_unity_catalog": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "description": "Unity Catalog connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog",
+            "storageConnectorType": "UNITY_CATALOG",
+            "workspace_url": "https://test.cloud.databricks.com",
+            "access_token": "dapi-test-token",
+            "default_catalog": "test_catalog",
+            "arguments": [{"name": "arg1", "value": "val1"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_unity_catalog_basic_info": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog",
+            "storageConnectorType": "UNITY_CATALOG"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
     "get_redshift_basic_info": {
         "response": {
             "type": "featurestoreRedshiftConnectorDTO",
