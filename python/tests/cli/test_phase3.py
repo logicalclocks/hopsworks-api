@@ -171,6 +171,36 @@ def test_dataset_mkdir(mock_project):
     api.mkdir.assert_called_with("/Projects/demo/newdir")
 
 
+def test_dataset_upload_strips_matching_basename(mock_project, tmp_path):
+    api = mock.MagicMock()
+    api.upload.return_value = "Resources/key.json"
+    mock_project.get_dataset_api.return_value = api
+    src = tmp_path / "key.json"
+    src.write_text("{}")
+    result = CliRunner().invoke(
+        cli, ["dataset", "upload", str(src), "Resources/key.json"]
+    )
+    assert result.exit_code == 0, result.output
+    api.upload.assert_called_with(
+        local_path=str(src), upload_path="Resources", overwrite=False
+    )
+
+
+def test_dataset_upload_keeps_parent_when_basename_differs(mock_project, tmp_path):
+    api = mock.MagicMock()
+    api.upload.return_value = "Resources/folder/key.json"
+    mock_project.get_dataset_api.return_value = api
+    src = tmp_path / "key.json"
+    src.write_text("{}")
+    result = CliRunner().invoke(
+        cli, ["dataset", "upload", str(src), "Resources/folder"]
+    )
+    assert result.exit_code == 0, result.output
+    api.upload.assert_called_with(
+        local_path=str(src), upload_path="Resources/folder", overwrite=False
+    )
+
+
 def test_dataset_remove(mock_project):
     api = mock.MagicMock()
     mock_project.get_dataset_api.return_value = api
