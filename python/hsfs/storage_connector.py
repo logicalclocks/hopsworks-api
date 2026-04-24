@@ -2851,6 +2851,7 @@ class UnityCatalogConnector(StorageConnector):
         workspace_url: str | None = None,
         access_token: str | None = None,
         default_catalog: str | None = None,
+        aws_region: str | None = None,
         arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
@@ -2858,6 +2859,7 @@ class UnityCatalogConnector(StorageConnector):
         self._workspace_url = workspace_url
         self._access_token = access_token
         self._default_catalog = default_catalog
+        self._aws_region = aws_region
         if isinstance(arguments, list):
             self._arguments = {a["name"]: a["value"] for a in arguments}
         else:
@@ -2883,6 +2885,16 @@ class UnityCatalogConnector(StorageConnector):
 
     @public
     @property
+    def aws_region(self) -> str | None:
+        """Optional explicit AWS region for the managed storage backing this Unity Catalog.
+
+        When unset, the Arrow Flight read path guesses the region from the STS
+        session-token Databricks returns with temporary table credentials.
+        """
+        return self._aws_region
+
+    @public
+    @property
     def arguments(self) -> dict[str, Any]:
         """Additional Unity Catalog connection arguments passed through to the Arrow Flight server."""
         return self._arguments
@@ -2893,6 +2905,7 @@ class UnityCatalogConnector(StorageConnector):
         return {
             "workspace_url": self._workspace_url,
             "default_catalog": self._default_catalog,
+            "aws_region": self._aws_region,
         }
 
     def spark_options(self) -> dict[str, Any]:

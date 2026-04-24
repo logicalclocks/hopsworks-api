@@ -146,6 +146,7 @@
             "workspace_url": "https://test.cloud.databricks.com",
             "access_token": "dapi-test-token",
             "default_catalog": "test_catalog",
+            "aws_region": "us-west-2",
             "arguments": [{"name": "arg1", "value": "val1"}]
         },
         "method": "GET",

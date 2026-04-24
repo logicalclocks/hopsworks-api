@@ -162,6 +162,7 @@ class TestUnityCatalogConnector:
         assert sc.workspace_url == "https://test.cloud.databricks.com"
         assert sc.access_token == "dapi-test-token"
         assert sc.default_catalog == "test_catalog"
+        assert sc.aws_region == "us-west-2"
         assert sc.arguments == {"arg1": "val1"}
 
     def test_from_response_json_basic_info(self, backend_fixtures):
@@ -181,6 +182,7 @@ class TestUnityCatalogConnector:
         assert sc.workspace_url is None
         assert sc.access_token is None
         assert sc.default_catalog is None
+        assert sc.aws_region is None
         assert sc.arguments == {}
 
     def test_connector_options(self):
