@@ -30,9 +30,7 @@ class TestApplyDataIntervalDefaults:
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",
         }
         with patch.dict("os.environ", env, clear=False):
-            start, end = util.apply_scheduler_time_defaults(
-                "2024-06-01", "2024-07-01"
-            )
+            start, end = util.apply_scheduler_time_defaults("2024-06-01", "2024-07-01")
         assert start == "2024-06-01"
         assert end == "2024-07-01"
         assert capsys.readouterr().out == ""

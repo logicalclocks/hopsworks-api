@@ -3260,7 +3260,9 @@ class FeatureGroup(FeatureGroupBase):
         # populate start/end behind their back and then raise the mutually-exclusive guard
         # below — even though they never set those args themselves.
         if wallclock_time is None:
-            start_time, end_time = util.apply_scheduler_time_defaults(start_time, end_time)
+            start_time, end_time = util.apply_scheduler_time_defaults(
+                start_time, end_time
+            )
 
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(

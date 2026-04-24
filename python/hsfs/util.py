@@ -151,8 +151,7 @@ def apply_scheduler_time_defaults(
 
     if applied:
         print(
-            "[hopsworks] Using scheduler-injected data interval: "
-            + ", ".join(applied)
+            "[hopsworks] Using scheduler-injected data interval: " + ", ".join(applied)
         )
 
     return resolved_start, resolved_end
