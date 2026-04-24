@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,10 @@ def test_save_round_trip_preserves_values(tmp_home):
     assert loaded.feature_store_id == 67
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="NTFS does not honor POSIX 0o600 permission bits",
+)
 def test_save_writes_0600_permissions(tmp_home):
     config.save(config.HopsConfig(host="h", api_key="k"))
     mode = stat.S_IMODE(os.stat(config.CONFIG_PATH).st_mode)
