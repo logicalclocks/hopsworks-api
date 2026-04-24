@@ -85,12 +85,13 @@ class DashboardApi:
         )
 
     @public
-    def update_dashboard(self, dashboard_id: int, **fields: Any) -> dict[str, Any]:
+    def update_dashboard(self, dashboard_id: int, **fields: Any) -> dict[str, Any]:  # noqa: D417
         """Update selected fields of a dashboard.
+
+        Accepts ``name`` and/or ``charts`` as keyword arguments.
 
         Args:
             dashboard_id: Dashboard identifier.
-            **fields: Any subset of ``name``, ``charts``.
 
         Returns:
             The updated dashboard dict.
