@@ -125,11 +125,20 @@ def apply_scheduler_time_defaults(
     input, which is more useful for diagnosing scheduler misconfiguration than silently
     falling back to "read whole feature group".
 
-    Returns the resolved `(start_time, end_time)` tuple.
-
     Prints a one-line notice to stdout when env-var defaults are applied so that the
     scheduler-injected window is visible in the execution log. The notice is suppressed
     when both args were explicit or when no env vars are set.
+
+    Parameters:
+        start_time: Caller-supplied start of the data window, or `None` to fall back to
+            `HOPS_START_TIME`.
+        end_time: Caller-supplied end of the data window, or `None` to fall back to
+            `HOPS_END_TIME`.
+
+    Returns:
+        The resolved `(start_time, end_time)` tuple. Each side is the caller's value
+        when it was not `None`, otherwise the corresponding env var (if set and
+        non-empty), otherwise `None`.
     """
     import os
 
