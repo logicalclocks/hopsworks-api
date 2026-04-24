@@ -114,8 +114,16 @@ def apply_scheduler_time_defaults(
 
       * If the caller passed an explicit value for `start_time` / `end_time`, that value
         wins.
-      * Otherwise, the corresponding env var is read (if set) and returned.
-      * Env vars that fail to parse are ignored — the caller's `None` is preserved.
+      * Otherwise, the corresponding env var is read and returned as-is when non-empty.
+      * Empty env vars (`""`) and unset env vars are treated as "not provided" — the
+        caller's `None` is preserved.
+
+    This function does not validate the env-var string format. Any non-empty value is
+    returned verbatim and is parsed downstream by `convert_event_time_to_timestamp` /
+    `get_timestamp_from_date_string` at the point the time filter is built. A malformed
+    env var therefore raises there, not here — with a message that names the offending
+    input, which is more useful for diagnosing scheduler misconfiguration than silently
+    falling back to "read whole feature group".
 
     Returns the resolved `(start_time, end_time)` tuple.
 

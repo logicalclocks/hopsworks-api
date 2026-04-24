@@ -168,7 +168,7 @@ class Job:
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         logical_date: datetime | None = None,
-        env_vars: dict | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> Execution:
         """Run the job.
 
@@ -434,7 +434,7 @@ class Job:
         # HOPS_END_TIME = current cron fire. Works on any cron — no per-schedule tuning needed.
         job.schedule(
             cron_expression="0 0 * ? * * *",
-            start_time=datetime.datetime.now(tz=timezone.utc),
+            start_time=datetime.now(tz=timezone.utc),
         )
 
         # Fixed 2-hour window ending at the cron fire (e.g. 08:00 → 10:00 at 10:00):
@@ -515,7 +515,7 @@ class Job:
             id=self._job_schedule.id,
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
-            end_time=self._job_schedule.end_date_time,
+            end_date_time=self._job_schedule.end_date_time,
             enabled=False,
         )
         return self._update_schedule(job_schedule)
@@ -531,7 +531,7 @@ class Job:
             id=self._job_schedule.id,
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
-            end_time=self._job_schedule.end_date_time,
+            end_date_time=self._job_schedule.end_date_time,
             enabled=True,
         )
         return self._update_schedule(job_schedule)

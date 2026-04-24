@@ -3202,6 +3202,10 @@ class FeatureGroup(FeatureGroupBase):
                 If specified, retrieves feature group as of specific point in time.
                 If not specified, returns as of most recent time.
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Mutually exclusive with `start_time` / `end_time` (time-travel vs
+                event-time filter are different operations). An explicit `wallclock_time`
+                takes precedence over the scheduler-injected `HOPS_START_TIME` /
+                `HOPS_END_TIME` env vars: when it is set, those defaults are ignored.
             online: If `True`, read from online feature store.
             dataframe_type:
                 The type of the returned dataframe.
@@ -3217,18 +3221,30 @@ class FeatureGroup(FeatureGroupBase):
                 - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
             start_time:
                 Inclusive lower bound on the `event_time` column (`event_time >= start_time`).
-                If not provided, defaults to the `HOPS_START_TIME` environment variable when set
-                (scheduler-supplied data-interval start). An explicit value always takes precedence.
+                If not provided and `wallclock_time` is also not set, defaults to the
+                `HOPS_START_TIME` environment variable when set (scheduler-supplied
+                data-interval start). When `wallclock_time` is set the env-var fallback is
+                skipped — wallclock_time takes precedence. An explicit `start_time` always
+                wins over both. If neither `start_time` nor `HOPS_START_TIME` is set, no
+                lower bound is applied (the whole feature group is read).
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
-                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
             end_time:
                 Exclusive upper bound on the `event_time` column (`event_time < end_time`). Combined
                 with the inclusive `start_time`, back-to-back scheduled windows partition the
                 timeline — events at the boundary are read exactly once and never dropped.
-                If not provided, defaults to the `HOPS_END_TIME` environment variable when set
-                (scheduler-supplied data-interval end). An explicit value always takes precedence.
+                If not provided and `wallclock_time` is also not set, defaults to the
+                `HOPS_END_TIME` environment variable when set (scheduler-supplied
+                data-interval end). When `wallclock_time` is set the env-var fallback is
+                skipped — wallclock_time takes precedence. An explicit `end_time` always
+                wins over both. If neither `end_time` nor `HOPS_END_TIME` is set, no upper
+                bound is applied (the whole feature group is read).
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
-                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
 
         Returns:
             A dataframe in the requested format containing the feature group data.
@@ -3239,9 +3255,12 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
             hopsworks.client.exceptions.FeatureStoreException: If wallclock_time is used together with start_time or end_time.
         """
-        # Fall back to scheduler-injected HOPS_START_TIME / HOPS_END_TIME env vars when
-        # the caller didn't supply explicit values. Explicit args always win.
-        start_time, end_time = util.apply_scheduler_time_defaults(start_time, end_time)
+        # Scheduler env-var defaults apply only on the start_time/end_time path. If the caller
+        # asked for time-travel via wallclock_time, leaving scheduler injection in place would
+        # populate start/end behind their back and then raise the mutually-exclusive guard
+        # below — even though they never set those args themselves.
+        if wallclock_time is None:
+            start_time, end_time = util.apply_scheduler_time_defaults(start_time, end_time)
 
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(
@@ -3261,6 +3280,9 @@ class FeatureGroup(FeatureGroupBase):
                     "for this feature group. Set event_time when creating the feature group "
                     "to enable time-based filtering."
                 )
+            # Reaching this branch with wallclock_time set means the caller passed BOTH
+            # explicit start/end and wallclock_time (env-var defaults are skipped above
+            # when wallclock_time is not None). That combination is still user error.
             if wallclock_time is not None:
                 raise FeatureStoreException(
                     "Cannot use wallclock_time together with start_time/end_time. "
@@ -5140,7 +5162,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 If not provided, defaults to the `HOPS_START_TIME` environment variable when set
                 (scheduler-supplied data-interval start). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
-                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
             end_time:
                 Exclusive upper bound on the `event_time` column (`event_time < end_time`). Combined
                 with the inclusive `start_time`, back-to-back scheduled windows partition the
@@ -5148,7 +5172,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 If not provided, defaults to the `HOPS_END_TIME` environment variable when set
                 (scheduler-supplied data-interval end). An explicit value always takes precedence.
                 Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
-                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
 
         Returns:
             A dataframe in the requested format containing the feature group data.

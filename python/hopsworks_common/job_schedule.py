@@ -29,8 +29,18 @@ def _ms_to_dt(v):
 
 
 def _dt_to_ms(v):
+    """Serialise a datetime to epoch milliseconds.
+
+    Naive datetimes are treated as UTC — the backend JobSchedule model stores instants
+    in UTC, and `datetime.timestamp()` on a naive value would otherwise interpret it
+    in the client machine's local timezone and silently shift scheduled times by the
+    local offset on any client outside UTC. Mirrors the `_to_iso` convention in
+    `execution_api.py`.
+    """
     if v is None:
         return None
+    if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
+        v = v.replace(tzinfo=timezone.utc)
     return int(v.timestamp() * 1000.0)
 
 
@@ -152,8 +162,11 @@ class JobSchedule:
     @public
     @property
     def start_time_offset_seconds(self):
-        """Controls HOPS_START_TIME. `None` = previous cron fire (last execution time);
-        otherwise `cron_fire + seconds` (negative = before, positive = after)."""
+        """Controls HOPS_START_TIME.
+
+        `None` = previous cron fire (last execution time); otherwise `cron_fire + seconds`
+        (negative = before, positive = after).
+        """
         return self._start_time_offset_seconds
 
     @public
