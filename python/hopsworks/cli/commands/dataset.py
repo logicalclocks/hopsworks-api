@@ -85,16 +85,28 @@ def dataset_upload(
 ) -> None:
     """Upload a local file to HopsFS.
 
+    ``REMOTE_PATH`` is the destination path (``cp``/``scp``-style), not the
+    parent directory. When its basename matches the local file's basename
+    the parent is used as the SDK's ``upload_path``; otherwise the remote
+    path is passed through unchanged and the SDK treats it as a directory
+    (file lands under ``REMOTE_PATH/<local basename>``).
+
     Args:
         ctx: Click context.
         local_path: Local source file.
         remote_path: HopsFS destination path.
         overwrite: Pass-through to the SDK's upload call.
     """
+    import os
+
+    upload_path = remote_path
+    if os.path.basename(remote_path) == os.path.basename(local_path):
+        upload_path = os.path.dirname(remote_path) or "."
+
     project = session.get_project(ctx)
     try:
         uploaded = project.get_dataset_api().upload(
-            local_path=local_path, upload_path=remote_path, overwrite=overwrite
+            local_path=local_path, upload_path=upload_path, overwrite=overwrite
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Upload failed: {exc}") from exc
