@@ -160,7 +160,16 @@ class Job:
 
     @public
     @usage.method_logger
-    def run(self, args: str | None = None, await_termination: bool = True) -> Execution:
+    def run(
+        self,
+        args: str | None = None,
+        await_termination: bool = True,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        logical_date: datetime | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> Execution:
         """Run the job.
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
@@ -217,6 +226,19 @@ class Job:
             args: Optional runtime arguments for the job.
             await_termination: Identifies if the client should wait for the job to complete.
                 Ignored for Python App jobs which wait for RUNNING state instead.
+            start_time:
+                Optional. If set, injects `HOPS_START_TIME` (and `HOPS_END_TIME` if `end_time` is
+                also set) as env vars on this one-shot execution. Useful for manual backfills
+                without creating a schedule. Overrides any scheduler-computed value for this run.
+            end_time:
+                Optional. Paired with `start_time`; sets `HOPS_END_TIME` and also serves as the
+                run's `data_interval_end` for reconciliation purposes.
+            logical_date:
+                Optional. If set, overrides the run's logical date (data interval start). Usually
+                inferred from `start_time` / the schedule.
+            env_vars:
+                Optional dict of arbitrary env vars to inject into this execution. Values take
+                precedence over anything with the same name from the job config or the scheduler.
 
         Returns:
             The execution object for the submitted run.
@@ -227,7 +249,14 @@ class Job:
         if self._is_materialization_running(args):
             return None
         print(f"Launching job: {self.name}")
-        execution = self._execution_api._start(self, args=args)
+        execution = self._execution_api._start(
+            self,
+            args=args,
+            start_time=start_time,
+            end_time=end_time,
+            logical_date=logical_date,
+            env_vars=env_vars,
+        )
         if self._job_type == "PYTHON_APP":
             print("Python App started, waiting for it to become ready...")
             execution = self._execution_engine.wait_for_running(self, execution)
@@ -388,42 +417,80 @@ class Job:
         cron_expression: str,
         start_time: datetime = None,
         end_time: datetime = None,
+        *,
+        catchup: bool = False,
+        max_active_runs: int = 1,
+        start_time_offset_seconds: int | None = None,
+        end_time_offset_seconds: int | None = None,
+        skip_to_date: datetime = None,
+        max_catchup_runs: int = None,
     ) -> JobSchedule:
         """Schedule the execution of the job.
 
         If a schedule for this job already exists, the method updates it.
 
         ```python
-        # Schedule the job
+        # Defaults (None, None): HOPS_START_TIME = last execution time (= previous cron fire),
+        # HOPS_END_TIME = current cron fire. Works on any cron — no per-schedule tuning needed.
         job.schedule(
-            cron_expression="0 */5 * ? * * *",
-            start_time=datetime.datetime.now(tz=timezone.utc)
+            cron_expression="0 0 * ? * * *",
+            start_time=datetime.now(tz=timezone.utc),
         )
 
-        # Retrieve the next execution time
-        print(job.job_schedule.next_execution_date_time)
+        # Fixed 2-hour window ending at the cron fire (e.g. 08:00 → 10:00 at 10:00):
+        job.schedule(
+            cron_expression="0 0 * ? * * *",
+            start_time_offset_seconds=-2 * 3600,   # HOPS_START_TIME = fire - 2h
+            end_time_offset_seconds=0,             # HOPS_END_TIME   = fire
+            catchup=True,              # replay all missed intervals on recovery
+            max_active_runs=2,         # allow at most 2 concurrent runs
+        )
         ```
 
         Parameters:
             cron_expression: The quartz cron expression.
             start_time:
-                The schedule start time in UTC.
-                If `None`, the current time is used.
-                The `start_time` can be a value in the past.
+                The schedule start time in UTC. If `None`, the current time is used.
+                Can be in the past.
             end_time:
-                The schedule end time in UTC.
-                If `None`, the schedule will continue running indefinitely.
-                The `end_time` can be a value in the past.
+                The schedule end time in UTC. If `None`, runs indefinitely. Can be in the past.
+            catchup:
+                If True and the scheduler missed fires (outage, etc.), create one execution per
+                missed interval on recovery. If False (default), only create the most recent.
+            max_active_runs:
+                Upper bound on concurrent executions for this job. Default 1.
+            start_time_offset_seconds:
+                Controls `HOPS_START_TIME`. Three modes:
+
+                - `None` (default) — use the previous cron fire (last execution time). Adapts
+                  to any cron naturally.
+                - `int` — `HOPS_START_TIME = cron_fire + seconds`. Negative values look
+                  backwards from the fire; positive look forward.
+            end_time_offset_seconds:
+                Controls `HOPS_END_TIME`. Three modes:
+
+                - `None` (default) — use the cron fire time (`HOPS_END_TIME = cron_fire`).
+                - `int` — `HOPS_END_TIME = cron_fire + seconds`.
+            skip_to_date:
+                If set, reconciliation skips every missed interval strictly before this date.
+            max_catchup_runs:
+                Upper bound on missed intervals created during reconciliation (keeps most recent).
 
         Returns:
-            The schedule of the job
+            The schedule of the job.
         """
         job_schedule = JobSchedule(
             id=self._job_schedule.id if self._job_schedule else None,
             start_date_time=start_time if start_time else datetime.now(tz=timezone.utc),
             cron_expression=cron_expression,
-            end_time=end_time,
+            end_date_time=end_time,
             enabled=True,
+            catchup=catchup,
+            max_active_runs=max_active_runs,
+            start_time_offset_seconds=start_time_offset_seconds,
+            end_time_offset_seconds=end_time_offset_seconds,
+            skip_to_date=skip_to_date,
+            max_catchup_runs=max_catchup_runs,
         )
         self._job_schedule = self._job_api._schedule_job(
             self._name, job_schedule.to_dict()
@@ -448,7 +515,7 @@ class Job:
             id=self._job_schedule.id,
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
-            end_time=self._job_schedule.end_date_time,
+            end_date_time=self._job_schedule.end_date_time,
             enabled=False,
         )
         return self._update_schedule(job_schedule)
@@ -464,7 +531,7 @@ class Job:
             id=self._job_schedule.id,
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
-            end_time=self._job_schedule.end_date_time,
+            end_date_time=self._job_schedule.end_date_time,
             enabled=True,
         )
         return self._update_schedule(job_schedule)

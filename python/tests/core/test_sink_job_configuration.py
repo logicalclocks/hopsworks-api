@@ -108,6 +108,12 @@ class TestSinkJobConfiguration:
                 "endDateTime": 2000,
                 "cronExpression": "0 0 * * *",
                 "enabled": True,
+                "catchup": False,
+                "maxActiveRuns": 1,
+                "startTimeOffsetSeconds": None,
+                "endTimeOffsetSeconds": None,
+                "skipToDate": None,
+                "maxCatchupRuns": None,
             },
         }
 
@@ -170,6 +176,12 @@ class TestSinkJobConfiguration:
             "endDateTime": 4000,
             "cronExpression": "0 * * * *",
             "enabled": False,
+            "catchup": False,
+            "maxActiveRuns": 1,
+            "startTimeOffsetSeconds": None,
+            "endTimeOffsetSeconds": None,
+            "skipToDate": None,
+            "maxCatchupRuns": None,
         }
 
     def test_column_mappings_are_sanitized_from_dicts(self):
