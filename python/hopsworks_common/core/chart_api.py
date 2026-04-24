@@ -120,13 +120,14 @@ class ChartApi:
         )
 
     @public
-    def update_chart(self, chart_id: int, **fields: Any) -> dict[str, Any]:
+    def update_chart(self, chart_id: int, **fields: Any) -> dict[str, Any]:  # noqa: D417
         """Update selected fields of a chart.
+
+        Accepts any subset of ``title``, ``description``, ``url``, ``width``,
+        ``height``, ``x``, ``y``, ``job`` as keyword arguments.
 
         Args:
             chart_id: Chart identifier.
-            **fields: Any subset of ``title``, ``description``, ``url``,
-                ``width``, ``height``, ``x``, ``y``, ``job``.
 
         Returns:
             The updated chart dict.
