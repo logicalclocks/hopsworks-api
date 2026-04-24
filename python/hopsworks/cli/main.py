@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import click
 from hopsworks.cli import config, output
+from hopsworks.cli.commands.app import app_group
 from hopsworks.cli.commands.chart import chart_group
 from hopsworks.cli.commands.connector import connector_group
 from hopsworks.cli.commands.context import context_cmd
@@ -87,6 +88,7 @@ cli.add_command(td_group)
 cli.add_command(model_group)
 cli.add_command(deployment_group)
 cli.add_command(job_group)
+cli.add_command(app_group)
 cli.add_command(dataset_group)
 cli.add_command(transformation_group)
 cli.add_command(chart_group)
