@@ -204,7 +204,7 @@ class ModelRegistry:
         selected_formats: list[str] | None = None,
         selected_variants: list[str] | None = None,
         selected_filenames: list[str] | None = None,
-        timeout: int = 3600,
+        timeout: int = 36000,
         poll_interval: int = 5,
     ) -> model.Model:
         """Import a model from HuggingFace into this Model Registry.
