@@ -250,6 +250,42 @@ class ModelRegistryException(Exception):
     """Generic model registry exception."""
 
 
+@also_available_as("hsml.client.exceptions.HuggingFaceImportException")
+class HuggingFaceImportException(ModelRegistryException):
+    """Raised when an asynchronous HuggingFace model import does not complete successfully.
+
+    Carries the stable error code emitted by the backend so callers can branch on it.
+    The backend codes are:
+
+    - ``auth_required`` — the supplied HuggingFace access token was rejected (invalid,
+      expired, or missing the gated-repo grant). Retry with a different token.
+    - ``not_found_or_auth_required`` — no token was supplied and HuggingFace returned
+      401 for the repo. Either the model id is wrong or the repo is private/gated;
+      HuggingFace deliberately hides which.
+    - ``model_not_found`` — HuggingFace returned 404 for the repo.
+    - ``no_disk_space`` — HopsFS storage quota was exhausted while downloading.
+    - ``download_failed: <file>`` — a specific file failed to download (network etc.).
+    - ``invalid_filename: <name>`` — a file in the repo had a name disallowed by the
+      path-safety check (``..`` segments, absolute paths, …).
+    - ``registration_failed: ...`` — files downloaded but the final registration step
+      failed.
+    - ``fetch_failed`` — generic upstream / metadata error talking to HuggingFace.
+    """
+
+    # Stable error keys returned by the backend. Match these against
+    # ``HuggingFaceImportException.error_code`` rather than substring-checking the message.
+    AUTH_REQUIRED = "auth_required"
+    NOT_FOUND_OR_AUTH_REQUIRED = "not_found_or_auth_required"
+    MODEL_NOT_FOUND = "model_not_found"
+    NO_DISK_SPACE = "no_disk_space"
+    FETCH_FAILED = "fetch_failed"
+
+    def __init__(self, error_code: str, message: str | None = None):
+        self.error_code = error_code
+        self.message = message or error_code
+        super().__init__(self.message)
+
+
 @also_available_as("hsml.client.exceptions.ModelServingException")
 class ModelServingException(Exception):
     """Generic model serving exception."""
