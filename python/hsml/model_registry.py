@@ -34,6 +34,7 @@ from hsml.python import signature as python_signature  # noqa: F401
 from hsml.sklearn import signature as sklearn_signature  # noqa: F401
 from hsml.tensorflow import signature as tensorflow_signature  # noqa: F401
 from hsml.torch import signature as torch_signature  # noqa: F401
+from tqdm.auto import tqdm
 
 
 if TYPE_CHECKING:
@@ -282,19 +283,57 @@ class ModelRegistry:
                 "Backend did not return a jobId for the HuggingFace import.",
             )
 
+        print(
+            f"Importing '{hugging_face_model_id}' (job {job_id}). "
+            f"Polling every {poll_interval}s for up to {timeout}s."
+        )
+
         deadline = time.time() + timeout
         last_status: dict = {}
-        while time.time() < deadline:
-            last_status = self._huggingface_api.get_status(
-                self.model_registry_id, job_id
-            )
-            status = (last_status or {}).get("status")
-            if status == "COMPLETED":
-                return self._resolve_imported_model(hugging_face_model_id, last_status)
-            if status in ("FAILED", "CANCELLED"):
-                error = last_status.get("error") or "unknown_error"
-                raise self._build_hf_exception(error)
-            time.sleep(poll_interval)
+        pbar: tqdm | None = None
+        last_completed = 0
+        try:
+            while time.time() < deadline:
+                last_status = self._huggingface_api.get_status(
+                    self.model_registry_id, job_id
+                )
+                status = (last_status or {}).get("status")
+                total = int(last_status.get("totalFiles") or 0)
+                done = int(last_status.get("completedFiles") or 0)
+                current_file = last_status.get("currentFile")
+
+                # Lazy-init the progress bar once the backend reports a file count.
+                if pbar is None and total > 0:
+                    pbar = tqdm(total=total, unit="file", desc="HF import")
+                if pbar is not None:
+                    if done > last_completed:
+                        pbar.update(done - last_completed)
+                        last_completed = done
+                    if current_file:
+                        pbar.set_postfix_str(current_file, refresh=False)
+
+                if status == "COMPLETED":
+                    if pbar is not None:
+                        if total > last_completed:
+                            pbar.update(total - last_completed)
+                        pbar.close()
+                    print(
+                        f"✔ HuggingFace import succeeded: "
+                        f"'{hugging_face_model_id}' downloaded "
+                        f"({done}/{total} files)."
+                    )
+                    return self._resolve_imported_model(
+                        hugging_face_model_id, last_status
+                    )
+                if status in ("FAILED", "CANCELLED"):
+                    if pbar is not None:
+                        pbar.close()
+                    error = last_status.get("error") or "unknown_error"
+                    raise self._build_hf_exception(error)
+                time.sleep(poll_interval)
+        finally:
+            if pbar is not None:
+                pbar.close()
 
         # Timed out — best-effort cancel so the partial dir doesn't linger.
         with contextlib.suppress(Exception):

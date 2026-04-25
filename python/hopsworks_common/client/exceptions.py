@@ -250,6 +250,7 @@ class ModelRegistryException(Exception):
     """Generic model registry exception."""
 
 
+@public("hopsworks.client.exceptions.HuggingFaceImportException")
 @also_available_as("hsml.client.exceptions.HuggingFaceImportException")
 class HuggingFaceImportException(ModelRegistryException):
     """Raised when an asynchronous HuggingFace model import does not complete successfully.
