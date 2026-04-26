@@ -100,6 +100,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.spark_connect_utils import (
     is_spark_connect_env,
     is_spark_connect_session,
+    is_spark_dataframe,
 )
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
@@ -335,7 +336,7 @@ class Engine:
             return dataframe
 
         # Converting to pandas dataframe if return type is not spark
-        if isinstance(dataframe, DataFrame):
+        if is_spark_dataframe(dataframe):
             dataframe = dataframe.toPandas()
 
         if dataframe_type.lower() == "pandas":
@@ -364,7 +365,7 @@ class Engine:
                 )
             dataframe = dataframe.toDF()
 
-        if isinstance(dataframe, DataFrame):
+        if is_spark_dataframe(dataframe):
             upper_case_features = [
                 c for c in dataframe.columns if util.contains_uppercase(c)
             ]
@@ -394,9 +395,11 @@ class Engine:
                 nullable_schema = copy.deepcopy(lowercase_dataframe.schema)
                 for struct_field in nullable_schema:
                     struct_field.nullable = True
-                lowercase_dataframe = self._spark_session.createDataFrame(
-                    lowercase_dataframe.rdd, nullable_schema
-                )
+                # ``DataFrame.to(schema)`` (PySpark 3.4+) reconciles rows to the
+                # target schema by name and cast — same semantic as the previous
+                # ``createDataFrame(df.rdd, schema)`` round-trip but without
+                # touching the JVM, so it works under Spark Connect too.
+                lowercase_dataframe = lowercase_dataframe.to(nullable_schema)
 
             return lowercase_dataframe
         if dataframe == "spine":
@@ -1732,7 +1735,7 @@ class Engine:
         return path
 
     def is_spark_dataframe(self, dataframe):
-        return bool(isinstance(dataframe, DataFrame))
+        return is_spark_dataframe(dataframe)
 
     def update_table_schema(self, feature_group):
         if feature_group.time_travel_format == "DELTA":
@@ -2462,7 +2465,7 @@ class Engine:
         Returns:
             `True` if the dataframe is supported, `False` otherwise.
         """
-        if isinstance(dataframe, (DataFrame, pd.DataFrame)):
+        if is_spark_dataframe(dataframe) or isinstance(dataframe, pd.DataFrame):
             return True
         return None
 
