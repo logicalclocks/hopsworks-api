@@ -414,11 +414,19 @@ class Engine:
                 nullable_schema = copy.deepcopy(lowercase_dataframe.schema)
                 for struct_field in nullable_schema:
                     struct_field.nullable = True
-                # ``DataFrame.to(schema)`` (PySpark 3.4+) reconciles rows to the
-                # target schema by name and cast — same semantic as the previous
-                # ``createDataFrame(df.rdd, schema)`` round-trip but without
-                # touching the JVM, so it works under Spark Connect too.
-                lowercase_dataframe = lowercase_dataframe.to(nullable_schema)
+                # ``DataFrame.to(schema)`` (PySpark 3.4+) reconciles rows to
+                # the target schema by name and cast — same semantic as the
+                # previous ``createDataFrame(df.rdd, schema)`` round-trip but
+                # without touching the JVM, so it works under Spark Connect.
+                # On older PySpark (3.3 and earlier) ``.to()`` doesn't exist;
+                # fall back to the RDD path, which is fine because older
+                # PySpark also doesn't have Spark Connect.
+                if hasattr(lowercase_dataframe, "to"):
+                    lowercase_dataframe = lowercase_dataframe.to(nullable_schema)
+                else:
+                    lowercase_dataframe = self._spark_session.createDataFrame(
+                        lowercase_dataframe.rdd, nullable_schema
+                    )
 
             return lowercase_dataframe
         if dataframe == "spine":

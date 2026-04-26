@@ -197,7 +197,13 @@ def setup_cmd(
 
     api_key = completed.get("apiKey")
     project = completed.get("workspaceUsername")
-    server_key_name = completed.get("apiKeyName") or key_name
+    # Older Hopsworks releases do not return ``apiKeyName`` from
+    # ``/token-flow/wait`` and ignore the ``key_name`` we sent on ``/create``;
+    # in that case the server names the key ``cli-<timestamp>`` regardless of
+    # the user's input. Persist only what the server actually confirms — leave
+    # ``api_key_name`` unset rather than misrepresent the suggested name as
+    # the real one. The ``hops project info`` line will then say "(unnamed)".
+    server_key_name = completed.get("apiKeyName")
 
     if not api_key:
         raise click.ClickException("Server did not return an API key.")
@@ -227,7 +233,7 @@ def setup_cmd(
     output.info(
         "Token written to %s with api-key name %s",
         config.CONFIG_PATH,
-        server_key_name,
+        server_key_name or "(server-assigned)",
     )
 
 
