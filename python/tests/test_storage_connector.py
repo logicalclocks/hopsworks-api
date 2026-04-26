@@ -202,8 +202,6 @@ class TestUnityCatalogConnector:
         sc = storage_connector.UnityCatalogConnector(
             id=1, name="uc", featurestore_id=1, workspace_url="https://x.com"
         )
-        import pytest
-
         with pytest.raises(NotImplementedError):
             sc.spark_options()
 
