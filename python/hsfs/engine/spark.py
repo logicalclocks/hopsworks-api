@@ -351,6 +351,25 @@ class Engine:
         )
 
     def convert_to_default_dataframe(self, dataframe, column_names=None):
+        """Normalize ``dataframe`` to a Spark DataFrame ready for ingestion.
+
+        Accepts ``list``, ``numpy.ndarray``, ``pandas.DataFrame``, ``RDD``,
+        and Spark DataFrames. Both classic ``pyspark.sql.DataFrame`` and
+        Spark Connect ``pyspark.sql.connect.dataframe.DataFrame`` are
+        supported via ``is_spark_dataframe``; the all-nullable schema
+        rebuild uses ``DataFrame.to(schema)`` which works in both modes.
+
+        ``RDD`` inputs are rejected when running under Spark Connect — the
+        client has no JVM bridge to materialize them.
+
+        Parameters:
+            dataframe: The input dataframe to normalize.
+            column_names: Optional column names for list/ndarray inputs.
+
+        Returns:
+            A Spark DataFrame with lowercased, sanitized column names and an
+            all-nullable schema, or ``None`` for the spine sentinel.
+        """
         if isinstance(dataframe, list):
             dataframe = self.convert_list_to_spark_dataframe(dataframe, column_names)
         elif HAS_NUMPY and isinstance(dataframe, np.ndarray):
@@ -1735,6 +1754,19 @@ class Engine:
         return path
 
     def is_spark_dataframe(self, dataframe):
+        """Return True for any Spark DataFrame, classic or Spark Connect.
+
+        Delegates to the shared predicate in
+        ``hopsworks_common.spark_connect_utils`` so a single rule decides
+        what counts as a Spark DataFrame across the codebase.
+
+        Parameters:
+            dataframe: The object to type-test.
+
+        Returns:
+            True for both ``pyspark.sql.DataFrame`` and
+            ``pyspark.sql.connect.dataframe.DataFrame``; False otherwise.
+        """
         return is_spark_dataframe(dataframe)
 
     def update_table_schema(self, feature_group):
