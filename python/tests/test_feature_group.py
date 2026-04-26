@@ -1767,6 +1767,61 @@ class TestFeatureGroupRead:
         ):
             fg.read(wallclock_time="2024-01-01", end_time="2024-01-31")
 
+    def test_read_no_event_time_ignores_scheduler_env_vars(self, mocker):
+        # The scheduler always injects HOPS_START_TIME / HOPS_END_TIME, including for jobs
+        # whose feature groups have no event_time column.
+        # Promoting those env vars into start/end args would then trip the no-event_time
+        # guard on a read() the caller invoked with no time args at all — which is what
+        # broke the fraud_online tutorial pipeline under the scheduler.
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+        fake_query = mock.MagicMock()
+        mocker.patch.object(fg, "select_all", return_value=fake_query)
+        mocker.patch("hsfs.engine.get_instance")
+        env = {
+            "HOPS_START_TIME": "2026-01-01T00:00:00Z",
+            "HOPS_END_TIME": "2026-02-01T00:00:00Z",
+        }
+
+        with mock.patch.dict("os.environ", env, clear=False):
+            fg.read()
+
+        # No filter() should have been applied — the env-injected window must not bleed in.
+        fake_query.filter.assert_not_called()
+        fake_query.read.assert_called_once()
+
+    def test_read_explicit_start_time_no_event_time_still_raises_under_scheduler(self):
+        # Even when scheduler env vars are set, an *explicit* time arg from the caller on
+        # a no-event_time FG is genuine user error and must still raise. Only the env-var
+        # fallback is silenced for no-event_time FGs.
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+        env = {
+            "HOPS_START_TIME": "2026-01-01T00:00:00Z",
+            "HOPS_END_TIME": "2026-02-01T00:00:00Z",
+        }
+        with (
+            mock.patch.dict("os.environ", env, clear=False),
+            pytest.raises(FeatureStoreException, match="no event_time column"),
+        ):
+            fg.read(start_time="2024-01-01")
+
 
 class TestExternalFeatureGroupRead:
     def test_read_with_start_time_no_event_time_raises(self, backend_fixtures):
@@ -1790,3 +1845,26 @@ class TestExternalFeatureGroupRead:
             # Act & Assert
             with pytest.raises(FeatureStoreException, match="no event_time column"):
                 fg.read(end_time="2024-01-31")
+
+    def test_read_no_event_time_ignores_scheduler_env_vars(
+        self, mocker, backend_fixtures
+    ):
+        # Same scheduler-injection issue as for FeatureGroup: env-injected HOPS_* vars
+        # must not be promoted into args on no-event_time FGs.
+        json = backend_fixtures["external_feature_group"]["get"]["response"]
+        fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+        fg._event_time = None
+        fake_query = mock.MagicMock()
+        mocker.patch.object(fg, "select_all", return_value=fake_query)
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine.get_instance")
+        env = {
+            "HOPS_START_TIME": "2026-01-01T00:00:00Z",
+            "HOPS_END_TIME": "2026-02-01T00:00:00Z",
+        }
+
+        with mock.patch.dict("os.environ", env, clear=False):
+            fg.read()
+
+        fake_query.filter.assert_not_called()
+        fake_query.read.assert_called_once()
