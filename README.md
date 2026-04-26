@@ -133,7 +133,7 @@
 | python/hopsworks\_common/core/dataset.py                                         |       31 |       14 |     55% |33-37, 41-44, 48, 52, 56, 60, 64 |
 | python/hopsworks\_common/core/dataset\_api.py                                    |      326 |      241 |     26% |44-47, 103-165, 213-284, 296-362, 374-399, 402, 413-417, 446, 461-462, 475, 488-490, 503, 529-538, 566-584, 610-628, 646-669, 701-720, 741-758, 774-789, 805-809, 838-890, 909, 933, 956-968, 981-991, 1007-1023 |
 | python/hopsworks\_common/core/environment\_api.py                                |       41 |       22 |     46% |63-86, 108-113, 146-151, 163-173 |
-| python/hopsworks\_common/core/execution\_api.py                                  |       52 |       40 |     23% |42-76, 84-95, 100-106, 114-123, 126-136, 146-151 |
+| python/hopsworks\_common/core/execution\_api.py                                  |       53 |       18 |     66% |65, 89-100, 105-111, 119-128, 131-141, 153-155 |
 | python/hopsworks\_common/core/flink\_cluster\_api.py                             |       93 |       63 |     32% |43, 76-88, 91-107, 136-147, 176-179, 208-211, 237-240, 268-277, 306-312, 338-357, 393-422, 464-476 |
 | python/hopsworks\_common/core/git\_api.py                                        |      177 |      130 |     27% |87-122, 135-142, 157, 176, 208-211, 228-254, 257-265, 268-291, 294-316, 321-344, 347-380, 383-410, 413-440, 443-470, 473-499, 502-529, 532-556, 559-572, 578-584 |
 | python/hopsworks\_common/core/git\_op\_execution\_api.py                         |        9 |        4 |     56% |     24-36 |
@@ -143,7 +143,7 @@
 | python/hopsworks\_common/core/ingestion\_job.py                                  |       19 |        0 |    100% |           |
 | python/hopsworks\_common/core/ingestion\_job\_conf.py                            |       39 |       14 |     64% |33-36, 40, 44, 48, 52, 56, 60, 64, 68, 71, 74 |
 | python/hopsworks\_common/core/inode.py                                           |       41 |        6 |     85% |51, 55, 59, 67, 71, 75 |
-| python/hopsworks\_common/core/job\_api.py                                        |       98 |       57 |     42% |78-91, 108-116, 131-138, 155-156, 175-185, 193-200, 212-219, 227-232, 239-242, 257-261, 269-272, 283-289, 300-305, 313-316 |
+| python/hopsworks\_common/core/job\_api.py                                        |       99 |       54 |     45% |78-91, 108-116, 131-138, 155-156, 175-185, 193-200, 212-219, 227-232, 239-242, 257-261, 287-293, 304-309, 317-320 |
 | python/hopsworks\_common/core/job\_configuration.py                              |       21 |        1 |     95% |        75 |
 | python/hopsworks\_common/core/kafka\_api.py                                      |       98 |       56 |     43% |70-82, 128-149, 165-170, 183-186, 196-204, 213-223, 236-243, 259-275, 292-296, 305-316, 321-330, 340, 369-389 |
 | python/hopsworks\_common/core/library\_api.py                                    |       10 |        4 |     60% |     41-54 |
@@ -409,7 +409,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **29531** | **10888** | **63%** |           |
+| **TOTAL**                                                                        | **29533** | **10863** | **63%** |           |
 
 
 ## Setup coverage badge
