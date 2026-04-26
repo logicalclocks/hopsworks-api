@@ -43,9 +43,13 @@ def is_spark_connect_env() -> bool:
 def is_spark_connect_session(spark_session) -> bool:
     """Detect whether *spark_session* is a Spark Connect session.
 
-    Uses :func:`is_spark_connect_env` first.
-    As a last resort, attempts to access ``spark_session.sparkContext`` which
-    raises ``PySparkNotImplementedError`` in Connect mode.
+    Uses :func:`is_spark_connect_env` first. If that's inconclusive, prefer a
+    direct module-class check (Connect's ``SparkSession`` lives in
+    ``pyspark.sql.connect.session``) before falling back to probing
+    ``spark_session.sparkContext`` — which raises various PySpark exception
+    classes in Connect mode (``PySparkNotImplementedError``,
+    ``PySparkAttributeError``, …) that do not all subclass the stdlib
+    ``NotImplementedError``/``AttributeError``.
 
     Parameters:
         spark_session: The SparkSession instance to check.
@@ -55,10 +59,21 @@ def is_spark_connect_session(spark_session) -> bool:
     """
     if is_spark_connect_env():
         return True
+    # Direct check: Connect's SparkSession lives in a different module.
+    try:
+        from pyspark.sql.connect.session import SparkSession as ConnectSession
+
+        if isinstance(spark_session, ConnectSession):
+            return True
+    except ImportError:
+        pass
+    # Fallback probe: classic SparkSession exposes ``sparkContext``; Connect
+    # raises a PySpark-specific exception. Catch broadly so a future PySpark
+    # exception class does not leak through and make us claim "classic".
     try:
         _ = spark_session.sparkContext
         return False
-    except (NotImplementedError, AttributeError):
+    except Exception:  # noqa: BLE001 - intentionally broad; Connect raises a moving target
         return True
 
 

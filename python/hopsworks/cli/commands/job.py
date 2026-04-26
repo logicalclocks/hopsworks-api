@@ -7,10 +7,14 @@ follows the same memoized-session pattern as the rest of the CLI.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
+
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @click.group("job")
@@ -257,17 +261,33 @@ def job_history(ctx: click.Context, name: str) -> None:
 @job_group.command("schedule")
 @click.argument("name")
 @click.argument("cron")
-@click.option("--start-time", help="ISO timestamp; first trigger.")
-@click.option("--end-time", help="ISO timestamp; last trigger.")
+@click.option(
+    "--start-time",
+    type=click.DateTime(
+        formats=["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
+    ),
+    help="ISO timestamp for the first trigger (e.g. 2026-04-26T09:00:00).",
+)
+@click.option(
+    "--end-time",
+    type=click.DateTime(
+        formats=["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
+    ),
+    help="ISO timestamp for the last trigger.",
+)
 @click.pass_context
 def job_schedule(
     ctx: click.Context,
     name: str,
     cron: str,
-    start_time: str | None,
-    end_time: str | None,
+    start_time: datetime | None,
+    end_time: datetime | None,
 ) -> None:
     """Attach a Quartz cron schedule to a job.
+
+    The CLI parses ``--start-time`` / ``--end-time`` into ``datetime`` objects
+    so they can flow through to ``JobSchedule._dt_to_ms()`` which dereferences
+    ``tzinfo`` and would crash on raw strings.
 
     Args:
         ctx: Click context.

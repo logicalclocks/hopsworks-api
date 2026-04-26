@@ -20,8 +20,7 @@ from hopsworks.cli import auth, config, output
 )
 @click.option("--project", "project_flag", help="Default project to attach to.")
 @click.option(
-    "--save-key",
-    is_flag=True,
+    "--save-key/--no-save-key",
     default=True,
     help="Persist the API key to ~/.hops.toml. On by default; use --no-save-key to skip.",
 )

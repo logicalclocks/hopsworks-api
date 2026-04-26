@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -97,6 +98,8 @@ def parse_features(
     return []
 
 
+_logger = logging.getLogger(__name__)
+
 HOPS_START_TIME_ENV = "HOPS_START_TIME"
 HOPS_END_TIME_ENV = "HOPS_END_TIME"
 
@@ -125,8 +128,10 @@ def apply_scheduler_time_defaults(
     input, which is more useful for diagnosing scheduler misconfiguration than silently
     falling back to "read whole feature group".
 
-    Prints a one-line notice to stdout when env-var defaults are applied so that the
-    scheduler-injected window is visible in the execution log. The notice is suppressed
+    Logs a one-line ``info`` message via the standard ``logging`` module when env-var
+    defaults are applied so that the scheduler-injected window is visible in the
+    execution log without polluting stdout (which would surface as noise in CLI
+    ``--json`` output and SDK callers that capture stdout). The notice is suppressed
     when both args were explicit or when no env vars are set.
 
     Parameters:
@@ -159,9 +164,10 @@ def apply_scheduler_time_defaults(
             applied.append(f"end_time={env_end} (from ${HOPS_END_TIME_ENV})")
 
     if applied:
-        print(
-            "[hopsworks] Using scheduler-injected data interval: " + ", ".join(applied)
-        )
+        # Use ``info``-level logging instead of ``print()`` so SDK callers
+        # (and CLI ``--json`` output) do not get an unexpected stdout line.
+        # Job logs still surface this through the standard logging handlers.
+        _logger.info("Using scheduler-injected data interval: %s", ", ".join(applied))
 
     return resolved_start, resolved_end
 
