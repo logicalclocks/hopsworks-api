@@ -3,6 +3,7 @@ import re
 
 import pandas as pd
 from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks_common.spark_connect_utils import is_spark_dataframe
 
 
 logger = logging.getLogger(__name__)
@@ -27,13 +28,8 @@ class DataFrameValidator:
             if isinstance(df, pl.DataFrame):
                 return PolarsValidator()
 
-        try:
-            from pyspark.sql import DataFrame as SparkDataFrame
-
-            if isinstance(df, SparkDataFrame):
-                return PySparkValidator()
-        except ImportError:
-            pass
+        if is_spark_dataframe(df):
+            return PySparkValidator()
 
         return None
 
