@@ -3258,8 +3258,10 @@ class FeatureGroup(FeatureGroupBase):
         # Scheduler env-var defaults apply only on the start_time/end_time path. If the caller
         # asked for time-travel via wallclock_time, leaving scheduler injection in place would
         # populate start/end behind their back and then raise the mutually-exclusive guard
-        # below — even though they never set those args themselves.
-        if wallclock_time is None:
+        # below — even though they never set those args themselves. Likewise, if the FG has
+        # no event_time column there is nothing to filter on, so the env vars must stay a
+        # no-op rather than be promoted into args that then trip the no-event_time guard.
+        if wallclock_time is None and self.event_time is not None:
             start_time, end_time = util.apply_scheduler_time_defaults(
                 start_time, end_time
             )
@@ -5188,8 +5190,14 @@ class ExternalFeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
         """
         # Fall back to scheduler-injected HOPS_START_TIME / HOPS_END_TIME env vars when
-        # the caller didn't supply explicit values. Explicit args always win.
-        start_time, end_time = util.apply_scheduler_time_defaults(start_time, end_time)
+        # the caller didn't supply explicit values. Explicit args always win. If the FG
+        # has no event_time column there is nothing to filter on, so the env vars must
+        # stay a no-op rather than be promoted into args that then trip the no-event_time
+        # guard below.
+        if self.event_time is not None:
+            start_time, end_time = util.apply_scheduler_time_defaults(
+                start_time, end_time
+            )
 
         if (
             engine.get_type() == "python"
