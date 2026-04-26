@@ -49,8 +49,15 @@ class ExecutionApi:
             or env_vars is not None
         )
         if not use_json:
+            # The backend has two @POST handlers on this path (text/plain for legacy
+            # args and application/json for logical-time params); without an explicit
+            # Content-Type Jersey can't dispatch and returns 415.
+            headers = {"content-type": "text/plain"}
             return execution.Execution.from_response_json(
-                _client._send_request("POST", path_params, data=args), job
+                _client._send_request(
+                    "POST", path_params, headers=headers, data=args
+                ),
+                job,
             )
 
         # Merge start/end_time into envVars if supplied separately; the backend treats the
