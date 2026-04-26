@@ -20,6 +20,7 @@ from unittest.mock import Mock
 
 import pytest
 from hopsworks_common.core.execution_api import ExecutionApi
+from hopsworks_common.core.job_api import JobApi
 
 
 class TestExecutionApiStart:
@@ -88,3 +89,29 @@ class TestExecutionApiStart:
         }
         assert body["logicalDate"] == logical_date.isoformat()
         assert body["dataIntervalEnd"] == end_time.isoformat()
+
+
+class TestJobApiLaunch:
+    @pytest.fixture
+    def mock_client(self, mocker):
+        client_mock = Mock()
+        client_mock._project_id = 42
+        client_mock._send_request.return_value = {}
+        mocker.patch(
+            "hopsworks_common.core.job_api.client.get_instance",
+            return_value=client_mock,
+        )
+        return client_mock
+
+    def test_launch_sets_text_plain_content_type(self, mock_client):
+        # Same dual-@POST dispatch issue as ExecutionApi._start: without an
+        # explicit Content-Type Jersey can't pick between the text/plain and
+        # application/json handlers and returns 415.
+        JobApi().launch("my_job", args="--flag value")
+
+        mock_client._send_request.assert_called_once_with(
+            "POST",
+            ["project", 42, "jobs", "my_job", "executions"],
+            headers={"content-type": "text/plain"},
+            data="--flag value",
+        )
