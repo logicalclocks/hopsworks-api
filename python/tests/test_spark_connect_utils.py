@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 from hopsworks_common.spark_connect_utils import (
     is_spark_connect_env,
     is_spark_connect_session,
+    is_spark_dataframe,
 )
 
 
@@ -94,3 +95,55 @@ class TestIsSparkConnectSession:
         )
         with patch.dict("sys.modules", {"pyspark.sql.utils": None}):
             assert is_spark_connect_session(session) is True
+
+
+class TestIsSparkDataframe:
+    """``is_spark_dataframe`` accepts both classic and Connect DataFrames.
+
+    The classic class is a real import (``pyspark`` is a dev dep). The Connect
+    class only exists as a stub here so the test does not require a Spark
+    Connect server in CI.
+    """
+
+    def test_classic_dataframe_returns_true(self):
+        from pyspark.sql import DataFrame as ClassicDataFrame
+
+        instance = ClassicDataFrame.__new__(ClassicDataFrame)
+        assert is_spark_dataframe(instance) is True
+
+    def test_connect_dataframe_returns_true(self):
+        # Stand up a fake ``pyspark.sql.connect.dataframe`` module exposing a
+        # marker DataFrame class, then verify the predicate accepts an
+        # instance of it. This mirrors what a real Spark Connect session
+        # would produce without requiring a live Connect server.
+        import sys
+        import types
+
+        connect_pkg = types.ModuleType("pyspark.sql.connect")
+        connect_dataframe_mod = types.ModuleType("pyspark.sql.connect.dataframe")
+
+        class _FakeConnectDataFrame:
+            pass
+
+        connect_dataframe_mod.DataFrame = _FakeConnectDataFrame
+        connect_pkg.dataframe = connect_dataframe_mod
+
+        with patch.dict(
+            sys.modules,
+            {
+                "pyspark.sql.connect": connect_pkg,
+                "pyspark.sql.connect.dataframe": connect_dataframe_mod,
+            },
+        ):
+            assert is_spark_dataframe(_FakeConnectDataFrame()) is True
+
+    def test_pandas_dataframe_returns_false(self):
+        import pandas as pd
+
+        assert is_spark_dataframe(pd.DataFrame({"a": [1]})) is False
+
+    def test_list_returns_false(self):
+        assert is_spark_dataframe([1, 2, 3]) is False
+
+    def test_none_returns_false(self):
+        assert is_spark_dataframe(None) is False
