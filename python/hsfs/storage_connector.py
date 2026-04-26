@@ -395,6 +395,12 @@ class StorageConnector(ABC):
             elif self.type == StorageConnector.SQL:
                 database = self.database
             elif self.type == StorageConnector.UNITY_CATALOG:
+                if not self.default_catalog:
+                    raise ValueError(
+                        "Database name is required for Unity Catalog connectors. "
+                        "Set a default catalog on the connector or pass an "
+                        "explicit `database` to get_tables()."
+                    )
                 database = self.default_catalog
             else:
                 raise ValueError(
@@ -2861,7 +2867,14 @@ class UnityCatalogConnector(StorageConnector):
         self._default_catalog = default_catalog
         self._aws_region = aws_region
         if isinstance(arguments, list):
-            self._arguments = {a["name"]: a["value"] for a in arguments}
+            # Match the other connectors in this file: tolerate name-only entries
+            # and skip entries without a name. Backend serialises these as a list
+            # of {name, value} dicts but `value` is permitted to be missing.
+            self._arguments = {
+                a["name"]: a.get("value")
+                for a in arguments
+                if a.get("name") is not None
+            }
         else:
             self._arguments = arguments or {}
 
