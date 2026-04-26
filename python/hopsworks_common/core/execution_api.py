@@ -54,9 +54,7 @@ class ExecutionApi:
             # Content-Type Jersey can't dispatch and returns 415.
             headers = {"content-type": "text/plain"}
             return execution.Execution.from_response_json(
-                _client._send_request(
-                    "POST", path_params, headers=headers, data=args
-                ),
+                _client._send_request("POST", path_params, headers=headers, data=args),
                 job,
             )
 
