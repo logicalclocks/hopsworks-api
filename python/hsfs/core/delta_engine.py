@@ -42,6 +42,37 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _delta_table_class(spark_session):
+    """Return the ``DeltaTable`` class compatible with *spark_session*.
+
+    Spark Connect sessions cannot use ``delta.tables.DeltaTable``: every method
+    in that class reaches ``spark_session._sc._jvm``, and Spark Connect deliberately
+    does not expose ``_sc``.
+    ``delta-spark`` ships a parallel ``delta.connect.tables.DeltaTable`` that goes
+    through the Spark Connect protocol instead, so Connect sessions must use it.
+    """
+    from hopsworks_common.spark_connect_utils import is_spark_connect_session
+
+    if is_spark_connect_session(spark_session):
+        try:
+            from delta.connect.tables import DeltaTable
+            return DeltaTable
+        except ImportError as e:
+            raise ImportError(
+                "Spark Connect session detected but delta-spark's Connect "
+                "submodule is unavailable. Install delta-spark>=3.3 with Spark "
+                "Connect support."
+            ) from e
+    try:
+        from delta.tables import DeltaTable
+        return DeltaTable
+    except ImportError as e:
+        raise ImportError(
+            "Delta Lake (delta-spark) is required for Spark operations. "
+            "Install 'delta-spark' or include it in your environment."
+        ) from e
+
+
 class DeltaEngine:
     DELTA_SPARK_FORMAT = "delta"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
@@ -200,13 +231,7 @@ class DeltaEngine:
     def delete_record(self, delete_df):
         storage_options = None
         if self._spark_session is not None:
-            try:
-                from delta.tables import DeltaTable
-            except ImportError as e:
-                raise ImportError(
-                    "Delta Lake (delta-spark) is required for Spark operations. "
-                    "Install 'delta-spark' or include it in your environment."
-                ) from e
+            DeltaTable = _delta_table_class(self._spark_session)
             location = self._feature_group.prepare_spark_location()
             fg_source_table = DeltaTable.forPath(self._spark_session, location)
             is_delta_table = DeltaTable.isDeltaTable(self._spark_session, location)
@@ -258,13 +283,7 @@ class DeltaEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
-        try:
-            from delta.tables import DeltaTable
-        except ImportError as e:
-            raise ImportError(
-                "Delta Lake (delta-spark) is required for Spark operations. "
-                "Install 'delta-spark' or include it in your environment."
-            ) from e
+        DeltaTable = _delta_table_class(self._spark_session)
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
@@ -824,13 +843,7 @@ class DeltaEngine:
 
         # --- Get commit history ---
         if spark_context is not None:
-            try:
-                from delta.tables import DeltaTable
-            except ImportError as e:
-                raise ImportError(
-                    "Delta Lake (delta-spark) is required to read commit metadata. "
-                    "Install 'delta-spark' or include it in your environment."
-                ) from e
+            DeltaTable = _delta_table_class(spark_context)
             # Spark DeltaTable (returns Spark DataFrame)
             fg_source_table = DeltaTable.forPath(spark_context, base_path)
             history = fg_source_table.history()
