@@ -871,9 +871,14 @@ class DeltaEngine:
 
         # --- Get commit history ---
         if spark_context is not None:
-            # Spark DeltaTable (returns Spark DataFrame)
-            fg_source_table = _delta_table_for_path(spark_context, base_path)
-            history = fg_source_table.history()
+            # ``DESCRIBE HISTORY delta.`<path>``` returns the same row schema as
+            # ``DeltaTable.forPath(...).history()`` and works on both classic
+            # Spark and Spark Connect — the latter has no ``_sc._jvm`` for the
+            # classic ``DeltaTable`` handle and delta-spark<4.0 ships no Connect
+            # equivalent.
+            history = spark_context.sql(
+                f"DESCRIBE HISTORY delta.`{base_path}`"
+            )
             history_records = [r.asDict() for r in history.collect()]
             _logger.debug(f"history_records for {base_path}: {history_records}")
         else:

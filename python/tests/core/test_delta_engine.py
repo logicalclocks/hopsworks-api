@@ -742,17 +742,6 @@ class TestDeltaEngine:
         spark.sql.assert_called_once()
         assert "VACUUM '/loc' RETAIN 24 HOURS" in spark.sql.call_args[0][0]
 
-    def test_get_last_commit_metadata_importerror_spark(self, monkeypatch):
-        # Arrange
-        _force_missing_delta_spark(monkeypatch)
-
-        # Act & Assert
-        with pytest.raises(ImportError) as e:
-            DeltaEngine._get_last_commit_metadata(
-                spark_context=mock.Mock(), base_path="/p"
-            )
-        assert "delta-spark" in str(e.value)
-
     def test_get_last_commit_metadata_delta_rs_importerror(self, monkeypatch):
         # Arrange
         _force_missing_deltalake(monkeypatch)
@@ -779,25 +768,26 @@ class TestDeltaEngine:
             mocker.MagicMock(asDict=lambda row=row: row) for row in mock_history_data
         ]
 
-        # Mock Spark DataFrame
+        # Mock Spark DataFrame returned by ``spark.sql("DESCRIBE HISTORY ...")``.
         mock_spark_df = mocker.MagicMock()
         mock_spark_df.collect.return_value = mock_rows
-
-        # Mock DeltaTable
-        mock_delta_table = mocker.MagicMock()
-        mock_delta_table.history.return_value = mock_spark_df
 
         mocker_get_delta_feature_group_commit = mocker.patch(
             "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
             return_value="result",
         )
 
-        # Patch DeltaTable
-        mocker.patch("delta.tables.DeltaTable.forPath", return_value=mock_delta_table)
+        # Mock the Spark session so ``sql(...)`` returns our DataFrame.
+        mock_spark = mocker.MagicMock()
+        mock_spark.sql.return_value = mock_spark_df
 
         # Act
-        result = DeltaEngine._get_last_commit_metadata(
-            mocker.MagicMock(), "s3://some/path"
+        result = DeltaEngine._get_last_commit_metadata(mock_spark, "s3://some/path")
+
+        # Assert SQL probe shape — ``DESCRIBE HISTORY delta.`<path>``` is the
+        # Connect-safe replacement for ``DeltaTable.forPath(...).history()``.
+        mock_spark.sql.assert_called_once_with(
+            "DESCRIBE HISTORY delta.`s3://some/path`"
         )
 
         # Assert
