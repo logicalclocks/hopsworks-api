@@ -269,7 +269,11 @@ class JobApi:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "executions"]
 
-        _client._send_request("POST", path_params, data=args)
+        # The backend has two @POST handlers on this path (text/plain for legacy
+        # args and application/json for logical-time params); without an explicit
+        # Content-Type Jersey can't dispatch and returns 415.
+        headers = {"content-type": "text/plain"}
+        _client._send_request("POST", path_params, headers=headers, data=args)
 
     @usage.method_logger
     def get(self, name: str) -> job.Job:
