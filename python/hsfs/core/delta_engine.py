@@ -42,35 +42,61 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
-def _delta_table_class(spark_session):
-    """Return the ``DeltaTable`` class compatible with *spark_session*.
+def _is_delta_table_at(spark_session, path: str) -> bool:
+    """Return True iff *path* contains a Delta table.
 
-    Spark Connect sessions cannot use ``delta.tables.DeltaTable``: every method
-    in that class reaches ``spark_session._sc._jvm``, and Spark Connect deliberately
-    does not expose ``_sc``.
-    ``delta-spark`` ships a parallel ``delta.connect.tables.DeltaTable`` that goes
-    through the Spark Connect protocol instead, so Connect sessions must use it.
+    The classic ``delta.tables.DeltaTable.isDeltaTable`` reaches
+    ``spark._sc._jvm`` internally, which Spark Connect sessions don't expose.
+    For Connect, probe via ``DESCRIBE DETAIL delta.<path>`` instead — it
+    succeeds only when *path* is a Delta table and otherwise raises an
+    AnalysisException that we treat as "not a Delta table".
+    """
+    from hopsworks_common.spark_connect_utils import is_spark_connect_session
+
+    if is_spark_connect_session(spark_session):
+        try:
+            spark_session.sql(f"DESCRIBE DETAIL delta.`{path}`").take(1)
+            return True
+        except Exception:  # noqa: BLE001 - any failure means not a Delta table here
+            return False
+    try:
+        from delta.tables import DeltaTable
+    except ImportError as e:
+        raise ImportError(
+            "Delta Lake (delta-spark) is required for Spark operations. "
+            "Install 'delta-spark' or include it in your environment."
+        ) from e
+    return DeltaTable.isDeltaTable(spark_session, path)
+
+
+def _delta_table_for_path(spark_session, path: str):
+    """Return a ``DeltaTable`` handle for *path*.
+
+    On classic Spark, defers to ``delta.tables.DeltaTable.forPath``.
+    On Spark Connect, requires ``delta.connect.tables`` (delta-spark 4.0+);
+    older delta-spark versions do not support Connect-mode handle ops like
+    merge/history, so we raise a clear error pointing at the upgrade path.
     """
     from hopsworks_common.spark_connect_utils import is_spark_connect_session
 
     if is_spark_connect_session(spark_session):
         try:
             from delta.connect.tables import DeltaTable
-            return DeltaTable
         except ImportError as e:
             raise ImportError(
-                "Spark Connect session detected but delta-spark's Connect "
-                "submodule is unavailable. Install delta-spark>=3.3 with Spark "
-                "Connect support."
+                "Spark Connect mode requires delta-spark>=4.0 for merge / "
+                "history / forPath operations (delta.connect.tables). The "
+                "currently installed delta-spark does not provide it."
             ) from e
+        return DeltaTable.forPath(spark_session, path)
     try:
         from delta.tables import DeltaTable
-        return DeltaTable
     except ImportError as e:
         raise ImportError(
             "Delta Lake (delta-spark) is required for Spark operations. "
             "Install 'delta-spark' or include it in your environment."
         ) from e
+    return DeltaTable.forPath(spark_session, path)
 
 
 class DeltaEngine:
@@ -231,10 +257,13 @@ class DeltaEngine:
     def delete_record(self, delete_df):
         storage_options = None
         if self._spark_session is not None:
-            DeltaTable = _delta_table_class(self._spark_session)
             location = self._feature_group.prepare_spark_location()
-            fg_source_table = DeltaTable.forPath(self._spark_session, location)
-            is_delta_table = DeltaTable.isDeltaTable(self._spark_session, location)
+            is_delta_table = _is_delta_table_at(self._spark_session, location)
+            fg_source_table = (
+                _delta_table_for_path(self._spark_session, location)
+                if is_delta_table
+                else None
+            )
         else:
             location = self._get_delta_rs_location()
             storage_options = self._get_delta_rs_storage_options()
@@ -283,12 +312,11 @@ class DeltaEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
-        DeltaTable = _delta_table_class(self._spark_session)
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
 
-        if not DeltaTable.isDeltaTable(self._spark_session, location):
+        if not _is_delta_table_at(self._spark_session, location):
             (
                 dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
                 .options(**write_options)
@@ -311,7 +339,7 @@ class DeltaEngine:
                 .save(location)
             )
         else:
-            fg_source_table = DeltaTable.forPath(self._spark_session, location)
+            fg_source_table = _delta_table_for_path(self._spark_session, location)
 
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
@@ -843,9 +871,8 @@ class DeltaEngine:
 
         # --- Get commit history ---
         if spark_context is not None:
-            DeltaTable = _delta_table_class(spark_context)
             # Spark DeltaTable (returns Spark DataFrame)
-            fg_source_table = DeltaTable.forPath(spark_context, base_path)
+            fg_source_table = _delta_table_for_path(spark_context, base_path)
             history = fg_source_table.history()
             history_records = [r.asDict() for r in history.collect()]
             _logger.debug(f"history_records for {base_path}: {history_records}")
