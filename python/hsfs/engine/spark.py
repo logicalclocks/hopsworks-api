@@ -240,8 +240,15 @@ class Engine:
         return False  # we do not support flyingduck on pyspark clients
 
     def _sql_offline(self, sql_query, feature_store):
-        # set feature store
-        self._spark_session.sql(f"USE {feature_store}")
+        # ``USE <feature_store>`` switches the active database in Spark's
+        # catalog. On Hopsworks the catalog is backed by Hive, so on the Spark
+        # Connect server (HopsFS-only, no Hive client provisioned) this call
+        # explodes with ``HiveException: Unable to instantiate
+        # SessionHiveMetaStoreClient``. Skip it in Connect mode — Delta and
+        # Hudi feature groups are already registered as session-global temp
+        # views by the query planner, which the SQL references unqualified.
+        if not self._is_connect:
+            self._spark_session.sql(f"USE {feature_store}")
         return self._spark_session.sql(sql_query)
 
     def show(self, sql_query, feature_store, n, online_conn, read_options=None):
