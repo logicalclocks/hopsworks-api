@@ -176,7 +176,9 @@ class Environment:
 
     @public
     @usage.method_logger
-    def uninstall(self, library_name: str, await_uninstallation: bool | None = True):
+    def uninstall(
+        self, library_name: str, await_uninstallation: bool | None = True
+    ) -> None:
         """Uninstall a library from the environment.
 
         ```python
