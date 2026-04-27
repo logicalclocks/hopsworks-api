@@ -120,6 +120,37 @@ class Deployment:
 
     @public
     @usage.method_logger
+    def restart(
+        self,
+        await_stopped: int | None = 600,
+        await_running: int | None = 600,
+        fail_if_stopped: bool = False,
+    ):
+        """Restart the deployment so it picks up the latest code and environment state.
+
+        If the deployment is already stopped, it is started in place by default.
+        Pass `fail_if_stopped=True` to require that the deployment is currently running.
+
+        Parameters:
+            await_stopped: Awaiting time (seconds) for the deployment to stop.
+            await_running: Awaiting time (seconds) for the deployment to start again.
+            fail_if_stopped: Raise instead of starting in place when the deployment is not running.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If `fail_if_stopped` is `True` and the deployment is not running.
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        if self.is_stopped():
+            if fail_if_stopped:
+                raise ModelServingException(
+                    "Cannot restart a deployment that is not running"
+                )
+        else:
+            self.stop(await_stopped=await_stopped)
+        self.start(await_running=await_running)
+
+    @public
+    @usage.method_logger
     def delete(self, force: bool = False):
         """Delete the deployment.
 

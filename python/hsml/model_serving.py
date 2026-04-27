@@ -20,8 +20,11 @@ from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
 from hopsworks_common import usage, util
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import PREDICTOR_STATE
+from hopsworks_common.core import dataset_api as _dataset_api
+from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
 from hsml.deployment import Deployment
 from hsml.predictor import Predictor
@@ -384,6 +387,110 @@ class ModelServing:
 
     @public
     @usage.method_logger
+    def deploy_agent(
+        self,
+        entry: str,
+        name: str,
+        requirements: str | None = None,
+        environment: str | None = None,
+        description: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        inference_logger: InferenceLogger | dict | str | None = None,
+        inference_batcher: InferenceBatcher | dict | None = None,
+        api_protocol: str | None = IE.API_PROTOCOL_REST,
+        scaling_configuration: PredictorScalingConfig | dict | None = None,
+    ) -> Deployment:
+        """Deploy a Python script or package as an agent.
+
+        The agent is created on first call and updated on subsequent calls.
+        Each call uploads the latest local code and refreshes the Python environment.
+        The deployment's running state is left untouched; call `start()` after the first deploy and `restart()` to roll a running agent onto the new code.
+        Works the same whether invoked from outside or inside a Hopsworks cluster.
+
+        Pass either a `.py` script or a directory containing a `pyproject.toml`.
+        For a script, the file is uploaded and run directly.
+        For a package, a wheel is built locally with the project's PEP 517 backend, uploaded, and installed; a small runner module invokes the package via `runpy.run_module`.
+
+        ```python
+        ms = project.get_model_serving()
+
+        agent = ms.deploy_agent(entry="my_agent.py", name="my_agent")
+        agent.start() # or agent.restart()
+
+        # iterate: edit code locally, push, then roll the running agent onto it
+        agent = ms.deploy_agent(entry="my_agent.py", name="my_agent")
+        agent.restart()
+        ```
+
+        Parameters:
+            entry: Local path to a `.py` script or to a directory containing `pyproject.toml`.
+            name: Name of the deployment, also used as the default Python environment name.
+            requirements: Local path to a `requirements.txt` to install into the environment.
+            environment: Name of the Python environment to use; defaults to `name`. Created if it does not exist.
+            description: Description of the deployment.
+            resources: Resources to be allocated for the predictor.
+            inference_logger: Inference logger configuration.
+            inference_batcher: Inference batcher configuration.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
+            scaling_configuration: Scaling configuration for the predictor.
+
+        Returns:
+            The deployment metadata object.
+
+        Raises:
+            ValueError: If `entry` is neither a `.py` file nor a directory with `pyproject.toml`.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        entry_abs = os.path.abspath(entry)
+        is_script = os.path.isfile(entry_abs) and entry_abs.endswith(".py")
+        is_package = os.path.isdir(entry_abs) and os.path.isfile(
+            os.path.join(entry_abs, "pyproject.toml")
+        )
+        if not (is_script or is_package):
+            raise ValueError(
+                f"entry must be a .py file or a directory containing pyproject.toml: {entry}"
+            )
+
+        env_name = environment or name
+        agent_dir = f"Resources/agents/{name}"
+
+        ds_api = _dataset_api.DatasetApi()
+        env_api = _environment_api.EnvironmentApi()
+
+        _ensure_dataset_dir(ds_api, agent_dir)
+
+        env = env_api.get_environment(env_name) or env_api.create_environment(env_name)
+
+        if is_script:
+            script_file = ds_api.upload(entry_abs, agent_dir, overwrite=True)
+        else:
+            script_file = _build_and_install_package(ds_api, env, entry_abs, agent_dir)
+
+        if requirements is not None:
+            req_remote = ds_api.upload(
+                os.path.abspath(requirements), agent_dir, overwrite=True
+            )
+            env.install_requirements(req_remote)
+
+        existing = self.get_deployment(name)
+        if existing is not None:
+            return existing
+
+        predictor = Predictor.for_server(
+            name=name,
+            script_file=script_file,
+            description=description,
+            resources=resources,
+            inference_logger=inference_logger,
+            inference_batcher=inference_batcher,
+            api_protocol=api_protocol,
+            environment=env_name,
+            scaling_configuration=scaling_configuration,
+        )
+        return predictor.deploy()
+
+    @public
+    @usage.method_logger
     def create_deployment(
         self,
         predictor: Predictor,
@@ -479,3 +586,64 @@ class ModelServing:
 
     def __repr__(self):
         return f"ModelServing(project: {self._project_name!r})"
+
+
+def _ensure_dataset_dir(ds_api, path: str) -> None:
+    """Create `path` in the Hopsworks Filesystem if missing, creating parents as needed."""
+    if ds_api.exists(path):
+        return
+    parent, _, _ = path.rpartition("/")
+    if parent:
+        _ensure_dataset_dir(ds_api, parent)
+    ds_api.mkdir(path)
+
+
+def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) -> str:
+    """Build a wheel from `package_dir`, upload it, install it into `env`, and upload a runner script.
+
+    Returns the remote path of the runner script to use as `script_file`.
+    """
+    import tempfile
+
+    from build import ProjectBuilder
+
+    pkg_name = _read_package_name(package_dir)
+
+    with tempfile.TemporaryDirectory() as build_dir:
+        wheel_local = ProjectBuilder(package_dir).build("wheel", build_dir)
+        wheel_remote = ds_api.upload(wheel_local, agent_dir, overwrite=True)
+
+        # Force a reinstall: pip skips a same-version wheel, so we uninstall first.
+        # On first deploy the package is not installed yet — that 404 is expected.
+        try:
+            env.uninstall(pkg_name)
+        except RestAPIError as e:
+            if e.response.status_code != 404:
+                raise
+
+        env.install_wheel(wheel_remote)
+
+        runner_local = os.path.join(build_dir, "runner.py")
+        with open(runner_local, "w") as f:
+            f.write(
+                f"import runpy\nrunpy.run_module({pkg_name!r}, run_name='__main__')\n"
+            )
+        return ds_api.upload(runner_local, agent_dir, overwrite=True)
+
+
+def _read_package_name(package_dir: str) -> str:
+    """Read `[project].name` from the package's `pyproject.toml`."""
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+
+    with open(os.path.join(package_dir, "pyproject.toml"), "rb") as f:
+        pyproject = tomllib.load(f)
+    project = pyproject.get("project") or {}
+    pkg_name = project.get("name")
+    if not isinstance(pkg_name, str):
+        raise ValueError(
+            f"Cannot read [project].name as a static string from {package_dir}/pyproject.toml"
+        )
+    return pkg_name
