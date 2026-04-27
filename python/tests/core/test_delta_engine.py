@@ -768,26 +768,37 @@ class TestDeltaEngine:
             mocker.MagicMock(asDict=lambda row=row: row) for row in mock_history_data
         ]
 
-        # Mock Spark DataFrame returned by ``spark.sql("DESCRIBE HISTORY ...")``.
-        mock_spark_df = mocker.MagicMock()
-        mock_spark_df.collect.return_value = mock_rows
+        # Mock the projected DataFrame returned at the end of the chain.
+        mock_projected_df = mocker.MagicMock()
+        mock_projected_df.collect.return_value = mock_rows
+
+        # Mock the raw _delta_log/*.json read; needs ``commitInfo`` in columns
+        # and a chainable ``.withColumn().filter().withColumn().select()``.
+        mock_log_df = mocker.MagicMock()
+        mock_log_df.columns = ["commitInfo", "metaData", "add"]
+        # Each chained call returns a MagicMock that ultimately yields the
+        # projected DataFrame on ``.select(...)``.
+        chained = mocker.MagicMock()
+        mock_log_df.withColumn.return_value = chained
+        chained.filter.return_value = chained
+        chained.withColumn.return_value = chained
+        chained.select.return_value = mock_projected_df
 
         mocker_get_delta_feature_group_commit = mocker.patch(
             "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
             return_value="result",
         )
 
-        # Mock the Spark session so ``sql(...)`` returns our DataFrame.
+        # Mock the Spark session so ``read.json(...)`` returns our log DataFrame.
         mock_spark = mocker.MagicMock()
-        mock_spark.sql.return_value = mock_spark_df
+        mock_spark.read.json.return_value = mock_log_df
 
         # Act
         result = DeltaEngine._get_last_commit_metadata(mock_spark, "s3://some/path")
 
-        # Assert SQL probe shape — ``DESCRIBE HISTORY delta.`<path>``` is the
-        # Connect-safe replacement for ``DeltaTable.forPath(...).history()``.
-        mock_spark.sql.assert_called_once_with(
-            "DESCRIBE HISTORY delta.`s3://some/path`"
+        # Assert: the engine read ``_delta_log/*.json`` (Hive-free, Connect-safe).
+        mock_spark.read.json.assert_called_once_with(
+            "s3://some/path/_delta_log/*.json"
         )
 
         # Assert

@@ -871,15 +871,47 @@ class DeltaEngine:
 
         # --- Get commit history ---
         if spark_context is not None:
-            # ``DESCRIBE HISTORY delta.`<path>``` returns the same row schema as
-            # ``DeltaTable.forPath(...).history()`` and works on both classic
-            # Spark and Spark Connect — the latter has no ``_sc._jvm`` for the
-            # classic ``DeltaTable`` handle and delta-spark<4.0 ships no Connect
-            # equivalent.
-            history = spark_context.sql(
-                f"DESCRIBE HISTORY delta.`{base_path}`"
-            )
-            history_records = [r.asDict() for r in history.collect()]
+            # Read ``_delta_log/*.json`` directly via ``spark.read.json`` rather
+            # than ``DESCRIBE HISTORY`` / ``DeltaTable.history()``. Both of
+            # those route through the Spark catalog, which on Hopsworks routes
+            # through the Hive Metastore and fails on the Spark Connect server
+            # whose Hive client is not provisioned. ``spark.read.json`` only
+            # touches the underlying filesystem (HopsFS) and works on classic
+            # Spark and Spark Connect alike.
+            #
+            # Limitation: commits older than the most recent Delta checkpoint
+            # are stored in ``<n>.checkpoint.parquet`` and are not surfaced
+            # here. Hopsworks calls this function right after a write to read
+            # the latest commit, so checkpoint coverage is unnecessary.
+            from pyspark.sql import functions as F  # noqa: PLC0415
+
+            log_glob = f"{base_path.rstrip('/')}/_delta_log/*.json"
+            log_df = spark_context.read.json(log_glob)
+            if "commitInfo" not in log_df.columns:
+                history_records = []
+            else:
+                history_records = [
+                    r.asDict()
+                    for r in (
+                        log_df.withColumn("_file", F.input_file_name())
+                        .filter(F.col("commitInfo").isNotNull())
+                        .withColumn(
+                            "version",
+                            F.regexp_extract(
+                                F.col("_file"), r"(\d+)\.json", 1
+                            ).cast("long"),
+                        )
+                        .select(
+                            "version",
+                            F.col("commitInfo.timestamp").alias("timestamp"),
+                            F.col("commitInfo.operation").alias("operation"),
+                            F.col("commitInfo.operationMetrics").alias(
+                                "operationMetrics"
+                            ),
+                        )
+                        .collect()
+                    )
+                ]
             _logger.debug(f"history_records for {base_path}: {history_records}")
         else:
             try:
