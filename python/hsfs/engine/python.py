@@ -739,11 +739,19 @@ class Engine:
                 stats[col] = {}
         final_stats = []
         for col in relevant_columns:
+            # Polars 1.36+ ``DataFrame.describe().to_dict()`` returns each
+            # column as a ``pl.Series`` rather than a Python list. The old
+            # ``isinstance(stats[col], list)`` guard fell through for Series,
+            # leaving the raw Series in place; downstream code then evaluated
+            # ``"count" in stat`` which routes through ``pl.Series.__contains__``
+            # and raises ``InvalidOperationError``. Accept both shapes.
             if HAS_POLARS and (
                 isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
-                and isinstance(stats[col], list)
+                and isinstance(stats[col], (list, pl.Series))
             ):
-                stats[col] = dict(zip(stats["statistic"], stats[col], strict=False))
+                stats[col] = dict(
+                    zip(stats["statistic"], stats[col], strict=False)
+                )
             # set data type
             arrow_type = arrow_schema.field(col).type
             if (
