@@ -103,21 +103,15 @@ def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
     Returns:
         A list of dicts with at least ``id``/``name``/``version`` keys.
     """
-    from hopsworks_common import client
+    from hopsworks_common.core import rest
 
-    _client = client.get_instance()
     fs_id = getattr(fs, "id", None)
     if fs_id is None:
         return []
-    path_params = [
-        "project",
-        _client._project_id,
-        "featurestores",
-        fs_id,
-        "featureview",
-    ]
     try:
-        payload = _client._send_request("GET", path_params)
+        payload = rest.send_request(
+            "GET", rest.project_path("featurestores", fs_id, "featureview")
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list feature views: {exc}") from exc
     items = payload.get("items") if isinstance(payload, dict) else payload

@@ -59,29 +59,54 @@ def login(
     api_key_value: str | None = None,
     project: str | None = None,
     engine: str | None = None,
+    internal: bool = False,
 ) -> Project:
     """Call ``hopsworks.login()`` with a stable argument shape.
 
     Separated from ``hopsworks.login`` so the CLI can swap in test doubles and
     so the heavy SDK import stays lazy.
 
+    Internal-mode behaviour: when ``internal`` is true (the CLI is running
+    inside a Hopsworks pod), call ``hopsworks.login()`` with no host/port/key
+    arguments so the SDK's own env-var detection (``REST_ENDPOINT`` +
+    ``$SECRETS_DIR/token.jwt``) takes the auth path. Passing ``host``/``port``
+    explicitly works in current SDK versions because it ignores them when
+    ``REST_ENDPOINT`` is set, but relying on that is a footgun: a future SDK
+    refactor that honours the explicit args would silently break in-pod auth.
+
     Args:
-        host: Hopsworks host; ``https://`` prefix and trailing paths are tolerated.
+        host: Hopsworks host; ``https://`` prefix and trailing paths tolerated.
+            Defaults port to 443 for ``https://`` (or no scheme), 80 for
+            ``http://``.
         api_key_value: API key; omit to let the SDK pick up its own env/cache.
         project: Default project to attach to.
         engine: Optional SDK engine override (``python``, ``spark``, …).
+        internal: When True, call ``hopsworks.login()`` with no args so the
+            SDK reads its in-pod credentials from environment variables.
 
     Returns:
         The authenticated SDK ``Project`` object.
     """
-    parsed = urllib.parse.urlparse(host if "://" in host else "https://" + host)
-    netloc = parsed.netloc or parsed.path
-    port = parsed.port or 443
-    hostname = netloc.split(":")[0]
-
     import hopsworks  # noqa: PLC0415 - intentionally lazy
 
-    kwargs: dict[str, Any] = {
+    if internal:
+        # Let the SDK do its own ``REST_ENDPOINT`` + ``$SECRETS_DIR/token.jwt``
+        # discovery. ``project``/``engine`` still apply at the SDK layer.
+        kwargs: dict[str, Any] = {}
+        if project:
+            kwargs["project"] = project
+        if engine:
+            kwargs["engine"] = engine
+        return hopsworks.login(**kwargs)
+
+    parsed = urllib.parse.urlparse(host if "://" in host else "https://" + host)
+    scheme = (parsed.scheme or "https").lower()
+    netloc = parsed.netloc or parsed.path
+    default_port = 80 if scheme == "http" else 443
+    port = parsed.port or default_port
+    hostname = netloc.split(":")[0]
+
+    kwargs = {
         "host": hostname,
         "port": port,
     }

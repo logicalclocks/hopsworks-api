@@ -75,21 +75,15 @@ def connector_info(ctx: click.Context, name: str) -> None:
 
 
 def _list_connectors(fs: Any) -> list[dict[str, Any]]:
-    from hopsworks_common import client
+    from hopsworks_common.core import rest
 
-    _client = client.get_instance()
     fs_id = getattr(fs, "id", None)
     if fs_id is None:
         return []
-    path_params = [
-        "project",
-        _client._project_id,
-        "featurestores",
-        fs_id,
-        "storageconnectors",
-    ]
     try:
-        payload = _client._send_request("GET", path_params)
+        payload = rest.send_request(
+            "GET", rest.project_path("featurestores", fs_id, "storageconnectors")
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list connectors: {exc}") from exc
     if isinstance(payload, list):
@@ -306,19 +300,15 @@ def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
     if not yes and not output.JSON_MODE:
         click.confirm(f"Delete connector '{name}'?", abort=True)
 
-    from hopsworks_common import client
+    from hopsworks_common.core import rest
 
-    _client = client.get_instance()
-    path = [
-        "project",
-        _client._project_id,
-        "featurestores",
-        getattr(fs, "id", None),
-        "storageconnectors",
-        name,
-    ]
     try:
-        _client._send_request("DELETE", path)
+        rest.send_request(
+            "DELETE",
+            rest.project_path(
+                "featurestores", getattr(fs, "id", None), "storageconnectors", name
+            ),
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted connector %s", name)
@@ -396,25 +386,16 @@ def connector_preview(ctx: click.Context, name: str) -> None:
 
 
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
-    import json as _json
-
     fs = session.get_feature_store(ctx)
-    from hopsworks_common import client
+    from hopsworks_common.core import rest
 
-    _client = client.get_instance()
-    path = [
-        "project",
-        _client._project_id,
-        "featurestores",
-        getattr(fs, "id", None),
-        "storageconnectors",
-    ]
     try:
-        _client._send_request(
+        rest.send_request(
             "POST",
-            path,
-            headers={"content-type": "application/json"},
-            data=_json.dumps(body),
+            rest.project_path(
+                "featurestores", getattr(fs, "id", None), "storageconnectors"
+            ),
+            json_body=body,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Create failed: {exc}") from exc

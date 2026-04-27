@@ -67,12 +67,19 @@ class HopsConfig:
     def is_authenticated(self) -> bool:
         """Check whether enough credentials are available to call ``hopsworks.login()``.
 
+        Internal mode counts as authenticated regardless of cached fields:
+        the SDK will read ``REST_ENDPOINT`` and ``$SECRETS_DIR/token.jwt``
+        from the pod environment when invoked with no args. External mode
+        needs both ``host`` and a non-empty API key.
+
         Returns:
-            True when host and either an API key or JWT token are present.
+            True when the SDK can reach a usable login configuration.
         """
+        if self.internal:
+            return True
         if not self.host:
             return False
-        return bool(self.api_key or self.jwt_token)
+        return bool(self.api_key)
 
 
 def _detect_internal() -> tuple[bool, str | None]:
