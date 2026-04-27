@@ -168,7 +168,9 @@ class TestDeployAgentScript:
         ms.deploy_agent(entry=str(script), name="my_agent")
 
         # Assert
-        env_api.create_environment.assert_called_once_with("my_agent")
+        env_api.create_environment.assert_called_once_with(
+            "my_agent", base_environment_name="minimal-inference-pipeline"
+        )
 
     def test_custom_environment_name_overrides_default(
         self, ms, mocker, tmp_path, stub_apis
