@@ -125,7 +125,7 @@ class Deployment:
         await_stopped: int | None = 600,
         await_running: int | None = 600,
         fail_if_stopped: bool = False,
-    ):
+    ) -> None:
         """Restart the deployment so it picks up the latest code and environment state.
 
         If the deployment is already stopped, it is started in place by default.
