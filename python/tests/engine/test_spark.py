@@ -853,6 +853,51 @@ class TestSpark:
         for column in list(result_df):
             assert result_df[column].equals(result_df[column])
 
+    def test_convert_to_default_dataframe_returns_all_nullable(self):
+        """Convert path produces an all-nullable schema.
+
+        ``df.to(schema)`` is the Spark Connect-compatible replacement for
+        ``createDataFrame(df.rdd, nullable_schema)``; this confirms it still
+        produces an all-nullable schema on a classic Spark session.
+        """
+        # Arrange
+        spark_engine = spark.Engine()
+        original = spark_engine._spark_session.createDataFrame(
+            [(1, "a"), (2, "b")], ["id", "name"]
+        )
+
+        # Act
+        result = spark_engine.convert_to_default_dataframe(dataframe=original)
+
+        # Assert — every field is nullable, regardless of source nullability.
+        for field in result.schema.fields:
+            assert field.nullable is True
+
+    def test_convert_to_default_dataframe_does_not_call_rdd(self, mocker):
+        """Convert path must not touch ``DataFrame.rdd``.
+
+        ``df.rdd`` raises ``PySparkNotImplementedError`` under Spark Connect,
+        so the conversion must use ``DataFrame.to`` instead.
+        """
+        # Arrange
+        spark_engine = spark.Engine()
+        original = spark_engine._spark_session.createDataFrame(
+            [(1, "a")], ["id", "name"]
+        )
+
+        # Spy on the ``rdd`` property; if anyone touches it, the test fails.
+        rdd_spy = mocker.patch.object(
+            type(original),
+            "rdd",
+            new_callable=mocker.PropertyMock,
+        )
+
+        # Act
+        spark_engine.convert_to_default_dataframe(dataframe=original)
+
+        # Assert — the conversion path no longer touches ``.rdd``.
+        rdd_spy.assert_not_called()
+
     def test_convert_to_default_dataframe_pyspark_rdd(self):
         # Arrange
         spark_engine = spark.Engine()

@@ -43,9 +43,13 @@ def is_spark_connect_env() -> bool:
 def is_spark_connect_session(spark_session) -> bool:
     """Detect whether *spark_session* is a Spark Connect session.
 
-    Uses :func:`is_spark_connect_env` first.
-    As a last resort, attempts to access ``spark_session.sparkContext`` which
-    raises ``PySparkNotImplementedError`` in Connect mode.
+    Uses :func:`is_spark_connect_env` first. If that's inconclusive, prefer a
+    direct module-class check (Connect's ``SparkSession`` lives in
+    ``pyspark.sql.connect.session``) before falling back to probing
+    ``spark_session.sparkContext`` — which raises various PySpark exception
+    classes in Connect mode (``PySparkNotImplementedError``,
+    ``PySparkAttributeError``, …) that do not all subclass the stdlib
+    ``NotImplementedError``/``AttributeError``.
 
     Parameters:
         spark_session: The SparkSession instance to check.
@@ -55,8 +59,54 @@ def is_spark_connect_session(spark_session) -> bool:
     """
     if is_spark_connect_env():
         return True
+    # Direct check: Connect's SparkSession lives in a different module.
+    try:
+        from pyspark.sql.connect.session import SparkSession as ConnectSession
+
+        if isinstance(spark_session, ConnectSession):
+            return True
+    except ImportError:
+        pass
+    # Fallback probe: classic SparkSession exposes ``sparkContext``; Connect
+    # raises a PySpark-specific exception. Catch broadly so a future PySpark
+    # exception class does not leak through and make us claim "classic".
     try:
         _ = spark_session.sparkContext
         return False
-    except (NotImplementedError, AttributeError):
+    except Exception:  # noqa: BLE001 - intentionally broad; Connect raises a moving target
         return True
+
+
+def is_spark_dataframe(obj) -> bool:
+    """Return True for both classic and Spark Connect DataFrames.
+
+    The classic ``pyspark.sql.DataFrame`` and the Spark Connect
+    ``pyspark.sql.connect.dataframe.DataFrame`` are API-compatible but
+    distinct classes, so a single ``isinstance`` against the classic class
+    rejects Connect DataFrames. This helper checks both.
+
+    Both imports are wrapped in ``try``/``except ImportError`` to handle
+    older PySparks that don't ship the ``connect`` submodule and environments
+    where pyspark is not installed at all.
+
+    Parameters:
+        obj: Any object to type-test.
+
+    Returns:
+        `True` if *obj* is a Spark DataFrame in either mode, `False` otherwise.
+    """
+    try:
+        from pyspark.sql import DataFrame as ClassicDataFrame
+
+        if isinstance(obj, ClassicDataFrame):
+            return True
+    except ImportError:
+        pass
+    try:
+        from pyspark.sql.connect.dataframe import DataFrame as ConnectDataFrame
+
+        if isinstance(obj, ConnectDataFrame):
+            return True
+    except ImportError:
+        pass
+    return False
