@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
@@ -390,9 +391,10 @@ class ModelServing:
     def deploy_agent(
         self,
         entry: str,
-        name: str,
+        name: str | None = None,
         requirements: str | None = None,
         environment: str | None = None,
+        upload_dir: str = "Resources/agents",
         description: str | None = None,
         resources: PredictorResources | dict | None = None,
         inference_logger: InferenceLogger | dict | str | None = None,
@@ -403,7 +405,7 @@ class ModelServing:
         """Deploy a Python script or package as an agent.
 
         The agent is created on first call and updated on subsequent calls.
-        Each call uploads the latest local code and refreshes the Python environment.
+        Each call uploads the latest local code, refreshes the Python environment, and rewrites the deployment's predictor metadata to reflect the arguments passed in — including any unspecified arguments, which fall back to their defaults.
         The deployment's running state is left untouched; call `start()` after the first deploy and `restart()` to roll a running agent onto the new code.
         Works the same whether invoked from outside or inside a Hopsworks cluster.
 
@@ -414,19 +416,20 @@ class ModelServing:
         ```python
         ms = project.get_model_serving()
 
-        agent = ms.deploy_agent(entry="my_agent.py", name="my_agent")
+        agent = ms.deploy_agent(entry="my_agent.py")
         agent.start() # or agent.restart()
 
         # iterate: edit code locally, push, then roll the running agent onto it
-        agent = ms.deploy_agent(entry="my_agent.py", name="my_agent")
+        agent = ms.deploy_agent(entry="my_agent.py")
         agent.restart()
         ```
 
         Parameters:
             entry: Local path to a `.py` script or to a directory containing `pyproject.toml`.
-            name: Name of the deployment, also used as the default Python environment name.
+            name: Name of the deployment, also used as the default Python environment name. Defaults to the basename of `entry` (without the `.py` extension for scripts). Must match `[A-Za-z0-9_-]+`.
             requirements: Local path to a `requirements.txt` to install into the environment.
-            environment: Name of the Python environment to use; defaults to `name`. Created if it does not exist.
+            environment: Name of the Python environment to use; defaults to `name`. Created if it does not exist. Must match `[A-Za-z0-9_-]+`.
+            upload_dir: Directory in the Hopsworks Filesystem under which agent files are placed; the agent gets its own subdirectory `<upload_dir>/<name>`.
             description: Description of the deployment.
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
@@ -438,7 +441,7 @@ class ModelServing:
             The deployment metadata object.
 
         Raises:
-            ValueError: If `entry` is neither a `.py` file nor a directory with `pyproject.toml`.
+            ValueError: If `entry` is neither a `.py` file nor a directory with `pyproject.toml`, or if `name`/`environment` contain characters outside `[A-Za-z0-9_-]`.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         entry_abs = os.path.abspath(entry)
@@ -451,8 +454,17 @@ class ModelServing:
                 f"entry must be a .py file or a directory containing pyproject.toml: {entry}"
             )
 
+        if name is None:
+            name = os.path.basename(entry_abs)
+            if is_script:
+                name = os.path.splitext(name)[0]
+        _validate_agent_identifier(name, "name")
+
         env_name = environment or name
-        agent_dir = f"Resources/agents/{name}"
+        if environment is not None:
+            _validate_agent_identifier(environment, "environment")
+
+        agent_dir = f"{upload_dir}/{name}"
 
         ds_api = _dataset_api.DatasetApi()
         env_api = _environment_api.EnvironmentApi()
@@ -472,10 +484,6 @@ class ModelServing:
             )
             env.install_requirements(req_remote)
 
-        existing = self.get_deployment(name)
-        if existing is not None:
-            return existing
-
         predictor = Predictor.for_server(
             name=name,
             script_file=script_file,
@@ -487,6 +495,16 @@ class ModelServing:
             environment=env_name,
             scaling_configuration=scaling_configuration,
         )
+
+        existing = self.get_deployment(name)
+        if existing is not None:
+            # Preserve identity so save() updates the existing record instead of creating a new one.
+            predictor._id = existing.predictor.id
+            existing.predictor = predictor
+            existing.description = description
+            existing.save()
+            return existing
+
         return predictor.deploy()
 
     @public
@@ -588,6 +606,22 @@ class ModelServing:
         return f"ModelServing(project: {self._project_name!r})"
 
 
+_AGENT_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_agent_identifier(value: str, field: str) -> None:
+    """Reject identifiers that would be unsafe to interpolate into a dataset path.
+
+    `name` and `environment` flow into both the upload subdirectory and predictor metadata,
+    so disallowing path separators and traversal segments protects against accidental writes
+    outside `<upload_dir>/<name>`.
+    """
+    if not _AGENT_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(
+            f"{field} must match {_AGENT_IDENTIFIER_RE.pattern!r}, got {value!r}"
+        )
+
+
 def _ensure_dataset_dir(ds_api, path: str) -> None:
     """Create `path` in the Hopsworks Filesystem if missing, creating parents as needed."""
     if ds_api.exists(path):
@@ -610,7 +644,11 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
     pkg_name = _read_package_name(package_dir)
 
     with tempfile.TemporaryDirectory() as build_dir:
-        wheel_local = ProjectBuilder(package_dir).build("wheel", build_dir)
+        # `build` returns the wheel filename relative to build_dir on some versions and
+        # an absolute path on others; os.path.join leaves an absolute result untouched.
+        wheel_local = os.path.join(
+            build_dir, ProjectBuilder(package_dir).build("wheel", build_dir)
+        )
         wheel_remote = ds_api.upload(wheel_local, agent_dir, overwrite=True)
 
         # Force a reinstall: pip skips a same-version wheel, so we uninstall first.

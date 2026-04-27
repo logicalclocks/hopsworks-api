@@ -23,9 +23,7 @@ class TestLibraryApi:
         api = library_api.LibraryApi()
         mock_client = mocker.MagicMock()
         mock_client._project_id = 99
-        mocker.patch(
-            "hopsworks_common.client.get_instance", return_value=mock_client
-        )
+        mocker.patch("hopsworks_common.client.get_instance", return_value=mock_client)
 
         # Act
         api._uninstall("matplotlib", "myenv")
