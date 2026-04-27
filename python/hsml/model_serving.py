@@ -426,9 +426,15 @@ class ModelServing:
 
         Parameters:
             entry: Local path to a `.py` script or to a directory containing `pyproject.toml`.
-            name: Name of the deployment, also used as the default Python environment name. Defaults to the basename of `entry` (without the `.py` extension for scripts). Must match `[A-Za-z0-9_-]+`.
+            name:
+                Name of the deployment, also used as the default Python environment name.
+                Defaults to the basename of `entry` (without the `.py` extension for scripts).
+                Must match `[A-Za-z0-9_-]+`.
             requirements: Local path to a `requirements.txt` to install into the environment.
-            environment: Name of the Python environment to use; defaults to `name`. Created if it does not exist. Must match `[A-Za-z0-9_-]+`.
+            environment:
+                Name of the Python environment to use; defaults to `name`.
+                Created if it does not exist.
+                Must match `[A-Za-z0-9_-]+`.
             upload_dir: Directory in the Hopsworks Filesystem under which agent files are placed; the agent gets its own subdirectory `<upload_dir>/<name>`.
             description: Description of the deployment.
             resources: Resources to be allocated for the predictor.
