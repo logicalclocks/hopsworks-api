@@ -742,6 +742,22 @@ class TestDeltaEngine:
         spark.sql.assert_called_once()
         assert "VACUUM '/loc' RETAIN 24 HOURS" in spark.sql.call_args[0][0]
 
+    def test_get_last_commit_metadata_importerror_spark(self, monkeypatch, mocker):
+        # Arrange — classic (non-Connect) Spark session that can't import
+        # delta-spark; the engine should raise a clear ImportError.
+        _force_missing_delta_spark(monkeypatch)
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            return_value=False,
+        )
+
+        # Act & Assert
+        with pytest.raises(ImportError) as e:
+            DeltaEngine._get_last_commit_metadata(
+                spark_context=mock.Mock(), base_path="/p"
+            )
+        assert "delta-spark" in str(e.value)
+
     def test_get_last_commit_metadata_delta_rs_importerror(self, monkeypatch):
         # Arrange
         _force_missing_deltalake(monkeypatch)
@@ -752,7 +768,11 @@ class TestDeltaEngine:
         assert "hops-deltalake" in str(e.value)
 
     def test_get_last_commit_metadata_spark(self, mocker):
-        # Arrange
+        # Arrange — classic Spark path uses ``DeltaTable.forPath(...).history()``.
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            return_value=False,
+        )
         mock_history_data = [
             {"version": 1, "operation": "WRITE", "timestamp": "2024-01-01T00:00:00Z"},
             {"version": 2, "operation": "MERGE", "timestamp": "2024-01-02T00:00:00Z"},
@@ -768,16 +788,64 @@ class TestDeltaEngine:
             mocker.MagicMock(asDict=lambda row=row: row) for row in mock_history_data
         ]
 
-        # Mock the projected DataFrame returned at the end of the chain.
+        # Mock Spark DataFrame
+        mock_spark_df = mocker.MagicMock()
+        mock_spark_df.collect.return_value = mock_rows
+
+        # Mock DeltaTable
+        mock_delta_table = mocker.MagicMock()
+        mock_delta_table.history.return_value = mock_spark_df
+
+        mocker_get_delta_feature_group_commit = mocker.patch(
+            "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
+            return_value="result",
+        )
+
+        # Patch DeltaTable
+        mocker.patch("delta.tables.DeltaTable.forPath", return_value=mock_delta_table)
+
+        # Act
+        result = DeltaEngine._get_last_commit_metadata(
+            mocker.MagicMock(), "s3://some/path"
+        )
+
+        # Assert
+        assert result == "result"
+        mocker_get_delta_feature_group_commit.assert_called_once()
+        mocker_get_delta_feature_group_commit.assert_called_once_with(
+            mock_history_data[1], mock_history_data[0]
+        )
+
+    def test_get_last_commit_metadata_spark_connect(self, mocker):
+        # Arrange — Connect path bypasses Hive by reading ``_delta_log/*.json``.
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            return_value=True,
+        )
+        mock_history_data = [
+            {"version": 1, "operation": "WRITE", "timestamp": "2024-01-01T00:00:00Z"},
+            {"version": 2, "operation": "MERGE", "timestamp": "2024-01-02T00:00:00Z"},
+            {
+                "version": 3,
+                "operation": "OPTIMIZE",
+                "timestamp": "2024-01-03T00:00:00Z",
+            },
+        ]
+
+        # asDict must accept ``recursive=True`` because the engine recurses to
+        # convert nested ``operationMetrics`` structs into dicts.
+        mock_rows = [
+            mocker.MagicMock(
+                asDict=lambda recursive=True, row=row: row  # noqa: ARG005
+            )
+            for row in mock_history_data
+        ]
+
         mock_projected_df = mocker.MagicMock()
         mock_projected_df.collect.return_value = mock_rows
 
-        # Mock the raw _delta_log/*.json read; needs ``commitInfo`` in columns
-        # and a chainable ``.withColumn().filter().withColumn().select()``.
         mock_log_df = mocker.MagicMock()
         mock_log_df.columns = ["commitInfo", "metaData", "add"]
-        # Each chained call returns a MagicMock that ultimately yields the
-        # projected DataFrame on ``.select(...)``.
         chained = mocker.MagicMock()
         mock_log_df.withColumn.return_value = chained
         chained.filter.return_value = chained
@@ -789,16 +857,20 @@ class TestDeltaEngine:
             return_value="result",
         )
 
-        # Mock the Spark session so ``read.json(...)`` returns our log DataFrame.
         mock_spark = mocker.MagicMock()
         mock_spark.read.json.return_value = mock_log_df
 
         # Act
         result = DeltaEngine._get_last_commit_metadata(mock_spark, "s3://some/path")
 
-        # Assert: the engine read ``_delta_log/*.json`` (Hive-free, Connect-safe).
+        # Assert: the engine read ``_delta_log/*.json`` instead of routing
+        # through ``DESCRIBE HISTORY`` (which would hit the Hive Metastore).
         mock_spark.read.json.assert_called_once_with(
             "s3://some/path/_delta_log/*.json"
+        )
+        assert result == "result"
+        mocker_get_delta_feature_group_commit.assert_called_once_with(
+            mock_history_data[1], mock_history_data[0]
         )
 
         # Assert
