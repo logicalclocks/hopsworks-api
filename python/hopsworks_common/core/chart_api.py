@@ -25,11 +25,10 @@ single implementation that follows the codebase's "HTTP calls live in
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from hopsworks_apigen import public
-from hopsworks_common import client
+from hopsworks_common.core import rest
 
 
 @public("hopsworks.core.chart_api.ChartApi")
@@ -39,11 +38,14 @@ class ChartApi:
     The backend returns charts as plain dicts with layout fields
     (``width``/``height``/``x``/``y``) that are NOT NULL; callers creating
     charts must supply them.
+
+    HTTP calls go through :mod:`hopsworks_common.core.rest` so this module
+    does not reach into the SDK's private client surface
+    (``_send_request`` / ``_project_id``).
     """
 
     def _path(self) -> list[Any]:
-        _client = client.get_instance()
-        return ["project", _client._project_id, "charts"]
+        return rest.project_path("charts")
 
     @public
     def list_charts(self) -> list[dict[str, Any]]:
@@ -52,8 +54,7 @@ class ChartApi:
         Returns:
             A list of chart dicts with fields ``id``, ``title``, ``url``, …
         """
-        _client = client.get_instance()
-        payload = _client._send_request("GET", self._path())
+        payload = rest.send_request("GET", self._path())
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict):
@@ -70,8 +71,7 @@ class ChartApi:
         Returns:
             The chart dict as returned by the backend.
         """
-        _client = client.get_instance()
-        return _client._send_request("GET", [*self._path(), chart_id])
+        return rest.send_request("GET", [*self._path(), chart_id])
 
     @public
     def create_chart(
@@ -111,13 +111,7 @@ class ChartApi:
         }
         if job_name:
             body["job"] = {"name": job_name}
-        _client = client.get_instance()
-        return _client._send_request(
-            "POST",
-            self._path(),
-            headers={"content-type": "application/json"},
-            data=json.dumps(body),
-        )
+        return rest.send_request("POST", self._path(), json_body=body)
 
     @public
     def update_chart(self, chart_id: int, **fields: Any) -> dict[str, Any]:  # noqa: D417
@@ -132,13 +126,7 @@ class ChartApi:
         Returns:
             The updated chart dict.
         """
-        _client = client.get_instance()
-        return _client._send_request(
-            "PUT",
-            [*self._path(), chart_id],
-            headers={"content-type": "application/json"},
-            data=json.dumps(fields),
-        )
+        return rest.send_request("PUT", [*self._path(), chart_id], json_body=fields)
 
     @public
     def delete_chart(self, chart_id: int) -> None:
@@ -147,5 +135,4 @@ class ChartApi:
         Args:
             chart_id: Chart identifier.
         """
-        _client = client.get_instance()
-        _client._send_request("DELETE", [*self._path(), chart_id])
+        rest.send_request("DELETE", [*self._path(), chart_id])

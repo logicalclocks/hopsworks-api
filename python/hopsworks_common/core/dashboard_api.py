@@ -22,20 +22,23 @@ dashboard`` CLI and any future SDK callers share a single implementation.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from hopsworks_apigen import public
-from hopsworks_common import client
+from hopsworks_common.core import rest
 
 
 @public("hopsworks.core.dashboard_api.DashboardApi")
 class DashboardApi:
-    """REST wrapper over ``/project/{id}/dashboards``."""
+    """REST wrapper over ``/project/{id}/dashboards``.
+
+    HTTP calls go through :mod:`hopsworks_common.core.rest` so this module
+    does not reach into the SDK's private client surface
+    (``_send_request`` / ``_project_id``).
+    """
 
     def _path(self) -> list[Any]:
-        _client = client.get_instance()
-        return ["project", _client._project_id, "dashboards"]
+        return rest.project_path("dashboards")
 
     @public
     def list_dashboards(self) -> list[dict[str, Any]]:
@@ -45,8 +48,7 @@ class DashboardApi:
             A list of dashboard dicts, each with an ``id``, ``name`` and
             embedded ``charts`` list.
         """
-        _client = client.get_instance()
-        payload = _client._send_request("GET", self._path())
+        payload = rest.send_request("GET", self._path())
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict):
@@ -63,8 +65,7 @@ class DashboardApi:
         Returns:
             The dashboard dict.
         """
-        _client = client.get_instance()
-        return _client._send_request("GET", [*self._path(), dashboard_id])
+        return rest.send_request("GET", [*self._path(), dashboard_id])
 
     @public
     def create_dashboard(self, name: str) -> dict[str, Any]:
@@ -76,12 +77,8 @@ class DashboardApi:
         Returns:
             The created dashboard dict.
         """
-        _client = client.get_instance()
-        return _client._send_request(
-            "POST",
-            self._path(),
-            headers={"content-type": "application/json"},
-            data=json.dumps({"name": name, "charts": []}),
+        return rest.send_request(
+            "POST", self._path(), json_body={"name": name, "charts": []}
         )
 
     @public
@@ -96,13 +93,7 @@ class DashboardApi:
         Returns:
             The updated dashboard dict.
         """
-        _client = client.get_instance()
-        return _client._send_request(
-            "PUT",
-            [*self._path(), dashboard_id],
-            headers={"content-type": "application/json"},
-            data=json.dumps(fields),
-        )
+        return rest.send_request("PUT", [*self._path(), dashboard_id], json_body=fields)
 
     @public
     def delete_dashboard(self, dashboard_id: int) -> None:
@@ -111,8 +102,7 @@ class DashboardApi:
         Args:
             dashboard_id: Dashboard identifier.
         """
-        _client = client.get_instance()
-        _client._send_request("DELETE", [*self._path(), dashboard_id])
+        rest.send_request("DELETE", [*self._path(), dashboard_id])
 
     @public
     def add_chart(self, dashboard_id: int, chart_id: int) -> dict[str, Any]:

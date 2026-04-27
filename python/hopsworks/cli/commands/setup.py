@@ -15,6 +15,7 @@ import re
 import socket
 import time
 import webbrowser
+from typing import Any
 
 import click
 import requests
@@ -59,12 +60,44 @@ def _open_browser(url: str, headless: bool) -> bool:
         return False
 
 
-def _create_flow(api_base: str, key_name: str) -> dict:
+def _resolve_verify(insecure: bool, ca_bundle: str | None) -> Any:
+    """Resolve the ``verify`` argument for token-flow ``requests`` calls.
+
+    The token-flow ``/wait`` response carries a freshly minted API key, so a
+    MITM on the channel can read or replace it. Defaults are conservative:
+
+    * ``--ca-bundle <path>`` → verify against that CA.
+    * Else verify against the system trust store (``True``).
+    * Only ``--insecure`` opts out, with an explicit warning.
+
+    Args:
+        insecure: True when the user passed ``--insecure``.
+        ca_bundle: Path to a CA cert bundle (PEM) when set.
+
+    Returns:
+        Value suitable for ``requests``' ``verify`` parameter.
+    """
+    if ca_bundle:
+        return ca_bundle
+    if insecure:
+        # Disable urllib3's repeated InsecureRequestWarning so a single
+        # warning is enough; the user already opted in explicitly.
+        try:
+            import urllib3  # noqa: PLC0415
+
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+    return True
+
+
+def _create_flow(api_base: str, key_name: str, verify: Any) -> dict:
     resp = requests.post(
         f"{api_base}{TOKEN_FLOW_CREATE}",
         params={"key_name": key_name, "utm_source": "hops-cli"},
         timeout=REQUEST_TIMEOUT_SECONDS,
-        verify=False,  # noqa: S501 - Hopsworks clusters often use self-signed certs
+        verify=verify,
     )
     resp.raise_for_status()
     return resp.json()
@@ -75,6 +108,7 @@ def _wait_for_key(
     flow_id: str,
     wait_secret: str,
     overall_timeout: int,
+    verify: Any,
 ) -> dict:
     """Long-poll the backend until we receive a key or exceed ``overall_timeout`` seconds.
 
@@ -88,7 +122,7 @@ def _wait_for_key(
             f"{api_base}{TOKEN_FLOW_WAIT}/{flow_id}",
             params={"wait_secret": wait_secret, "timeout": POLL_TIMEOUT_SECONDS},
             timeout=POLL_TIMEOUT_SECONDS + 10,
-            verify=False,  # noqa: S501
+            verify=verify,
         )
         resp.raise_for_status()
         body = resp.json()
@@ -123,6 +157,21 @@ def _wait_for_key(
     show_default=True,
     help="Total seconds to wait for browser completion before giving up.",
 )
+@click.option(
+    "--ca-bundle",
+    "ca_bundle",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a custom CA bundle (PEM) for TLS verification.",
+)
+@click.option(
+    "--insecure",
+    is_flag=True,
+    help=(
+        "Skip TLS verification of the token-flow endpoints. "
+        "ONLY for trusted private dev clusters — the /wait response carries "
+        "the API key and is a MITM target."
+    ),
+)
 @click.pass_context
 def setup_cmd(
     ctx: click.Context,
@@ -131,6 +180,8 @@ def setup_cmd(
     force: bool,
     no_browser: bool,
     timeout: int,
+    ca_bundle: str | None,
+    insecure: bool,
 ) -> None:
     """Authenticate with Hopsworks and cache an API key in ``~/.hops.toml``.
 
@@ -146,6 +197,8 @@ def setup_cmd(
         force: When True, skip the cached-key short-circuit.
         no_browser: When True, print the URL instead of opening a browser.
         timeout: Seconds to wait for browser completion before erroring out.
+        ca_bundle: Path to a CA bundle for TLS verification.
+        insecure: When True, skip TLS verification entirely (with warning).
     """
     cfg = config.load(flag_host=host_flag)
 
@@ -170,8 +223,15 @@ def setup_cmd(
             param_hint="--key-name",
         )
 
+    verify = _resolve_verify(insecure=insecure, ca_bundle=ca_bundle)
+    if insecure:
+        output.warn(
+            "TLS verification disabled (--insecure). The /wait response carries "
+            "your API key — only use this on a trusted network."
+        )
+
     try:
-        created = _create_flow(api_base, key_name)
+        created = _create_flow(api_base, key_name, verify)
     except requests.RequestException as exc:
         raise click.ClickException(f"Could not start token flow: {exc}") from exc
 
@@ -191,7 +251,7 @@ def setup_cmd(
     output.info("Waiting for authentication...")
 
     try:
-        completed = _wait_for_key(api_base, flow_id, wait_secret, timeout)
+        completed = _wait_for_key(api_base, flow_id, wait_secret, timeout, verify)
     except requests.RequestException as exc:
         raise click.ClickException(f"Token flow failed: {exc}") from exc
 
@@ -238,9 +298,16 @@ def setup_cmd(
 
 
 def _handle_internal(cfg: config.HopsConfig) -> None:
-    """Internal mode: JWT is already mounted, no browser flow needed."""
+    """Internal mode: JWT is already mounted, no browser flow needed.
+
+    Pass ``internal=True`` so ``auth.login`` invokes ``hopsworks.login()``
+    with no host/port/key — the SDK then reads ``REST_ENDPOINT`` and
+    ``$SECRETS_DIR/token.jwt`` from the pod environment itself. Doing the
+    same lookup at the CLI layer would be duplicative and would silently
+    drift if the SDK ever changes its in-pod auth contract.
+    """
     try:
-        project = auth.login(host=cfg.host or "", project=cfg.project)
+        project = auth.login(host=cfg.host or "", project=cfg.project, internal=True)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Internal login failed: {exc}") from exc
     output.success(

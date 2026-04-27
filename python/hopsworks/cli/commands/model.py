@@ -87,22 +87,16 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
 
 
 def _list_models(project: Any) -> list[dict[str, Any]]:
-    from hopsworks_common import client
+    from hopsworks_common.core import rest
 
-    _client = client.get_instance()
     mr = project.get_model_registry()
     mr_id = getattr(mr, "model_registry_id", None) or getattr(mr, "id", None)
     if mr_id is None:
         return []
-    path_params = [
-        "project",
-        _client._project_id,
-        "modelregistries",
-        mr_id,
-        "models",
-    ]
     try:
-        payload = _client._send_request("GET", path_params)
+        payload = rest.send_request(
+            "GET", rest.project_path("modelregistries", mr_id, "models")
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list models: {exc}") from exc
     if isinstance(payload, list):
