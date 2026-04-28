@@ -99,6 +99,50 @@ cli.add_command(init_cmd)
 cli.add_command(update_cmd)
 
 
+def _json_eager_callback(
+    _ctx: click.Context, _param: click.Parameter, value: bool
+) -> bool:
+    """Toggle JSON mode whenever ``--json`` is parsed, at any command level."""
+    if value:
+        output.set_json_mode(True)
+    return value
+
+
+def _inject_json_option(cmd: click.Command) -> None:
+    """Recursively add ``--json`` to *cmd* and every nested subcommand.
+
+    Click only honours the ``--json`` flag at the level it was declared on. The
+    root ``cli`` group already has it (so ``hops --json fg list`` works), but
+    callers — especially LLM-driven tools that compose commands left-to-right
+    — naturally write ``hops fg list --json``. Walking the registered command
+    tree once at import time and appending an eager ``--json`` to every node
+    that doesn't already have one makes both forms work without touching
+    every command file. ``expose_value=False`` keeps the existing leaf
+    callbacks (which don't take a ``json_flag`` kwarg) source-compatible; the
+    eager callback flips :func:`output.set_json_mode` before the leaf runs.
+    """
+    already_has_json = any(
+        "--json" in (getattr(p, "opts", None) or []) for p in cmd.params
+    )
+    if not already_has_json:
+        cmd.params.append(
+            click.Option(
+                ["--json"],
+                is_flag=True,
+                expose_value=False,
+                is_eager=True,
+                callback=_json_eager_callback,
+                help="Output as JSON (machine-readable; for LLMs and scripts).",
+            )
+        )
+    if isinstance(cmd, click.Group):
+        for sub in cmd.commands.values():
+            _inject_json_option(sub)
+
+
+_inject_json_option(cli)
+
+
 def main() -> None:
     """Console-script entry point referenced by ``pyproject.toml``."""
     cli.main(prog_name="hops")
