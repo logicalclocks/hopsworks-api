@@ -78,10 +78,19 @@ class DataSourceApi:
 
         query_params = {"database": database}
 
-        return ds.DataSource.from_response_json(
+        # ``DataSource.from_response_json`` returns a single ``DataSource`` when
+        # the backend payload has no ``items`` key (some connectors do this for
+        # one-row responses) and ``None`` for an empty body. Normalize both so
+        # the contract matches the type hint and callers can iterate freely.
+        result = ds.DataSource.from_response_json(
             _client._send_request("GET", path_params, query_params),
             storage_connector=storage_connector,
         )
+        if result is None:
+            return []
+        if isinstance(result, ds.DataSource):
+            return [result]
+        return result
 
     def get_no_sql_data(
         self,
