@@ -356,10 +356,13 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
         raise click.ClickException(f"Could not list tables: {exc}") from exc
 
     rows = [
-        [getattr(t, "name", str(t)), getattr(t, "database", database or "-")]
+        [
+            getattr(t, "table", None) or "?",
+            getattr(t, "database", None) or database or "-",
+        ]
         for t in tables or []
     ]
-    output.print_table(["NAME", "DATABASE"], rows)
+    output.print_table(["TABLE", "DATABASE"], rows)
 
 
 @connector_group.command("preview")
