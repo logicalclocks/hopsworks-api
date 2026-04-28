@@ -112,11 +112,15 @@ class StorageConnector(ABC):
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
+        sc_type = json_decamelized.get("storage_connector_type")
         for subcls in cls.__subclasses__():
-            if subcls.type == json_decamelized["storage_connector_type"]:
+            if subcls.type == sc_type:
                 _ = json_decamelized.pop("storage_connector_type")
                 return subcls(**json_decamelized)
-        raise ValueError
+        raise ValueError(
+            f"Unknown storage_connector_type {sc_type!r}; expected one of "
+            f"{sorted({s.type for s in cls.__subclasses__()})}."
+        )
 
     def update_from_response_json(
         self, json_dict: dict[str, Any]
