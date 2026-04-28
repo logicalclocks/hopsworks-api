@@ -3196,3 +3196,45 @@ class RestConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
+
+
+@public
+class UnityCatalogConnector(StorageConnector):
+    """Storage connector for Databricks Unity Catalog.
+
+    The backend ships ``storage_connector_type = "UNITY_CATALOG"`` for
+    Databricks-backed feature groups. This class is the deserialization
+    target so that :func:`StorageConnector.from_response_json` can match the
+    type without raising. Unity-Catalog-specific operations live on the
+    backend and are not yet exposed through the Python SDK; this class only
+    needs to round-trip metadata (id, name, description) and accept any
+    additional fields the backend may send via ``**kwargs``.
+    """
+
+    type = StorageConnector.UNITY_CATALOG
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        # Stash any extra fields the backend sends so to_dict can echo them.
+        self._extra: dict[str, Any] = humps.decamelize(kwargs)
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "id": self._id,
+            "name": self._name,
+            "description": self._description,
+            "featurestoreId": self._featurestore_id,
+            "storageConnectorType": self.type,
+        }
+        payload.update(humps.camelize(self._extra))
+        return payload
