@@ -34,6 +34,7 @@ class TestFeatureGroupCommit:
         assert fg_commit.rows_updated == 2
         assert fg_commit.rows_deleted == 3
         assert fg_commit.validation_id == 77
+        assert fg_commit.row_count == 100
 
     def test_from_response_json_list(self, backend_fixtures):
         # Arrange
@@ -54,6 +55,7 @@ class TestFeatureGroupCommit:
         assert fg_commit.rows_updated == 2
         assert fg_commit.rows_deleted == 3
         assert fg_commit.validation_id == 77
+        assert fg_commit.row_count == 100
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange

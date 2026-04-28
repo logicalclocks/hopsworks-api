@@ -352,6 +352,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 "rowsUpdated": feature_group_commit.rows_updated,
                 "rowsInserted": feature_group_commit.rows_inserted,
                 "rowsDeleted": feature_group_commit.rows_deleted,
+                "rowCount": feature_group_commit.row_count,
             }
         return commit_details
 
