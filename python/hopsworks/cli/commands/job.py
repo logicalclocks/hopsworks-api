@@ -17,6 +17,48 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 
+def _user_label(value: Any) -> str:
+    """Render a Hopsworks user reference (dict / str / object) as one string.
+
+    The REST API returns ``creator`` as a dict (``{username, firstname, ...}``)
+    on some endpoints and as a username string on others. Pick the most useful
+    field; fall back to ``"-"`` rather than the dict's repr.
+    """
+    if not value:
+        return "-"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return (
+            value.get("username")
+            or value.get("email")
+            or f"{value.get('firstname', '')} {value.get('lastname', '')}".strip()
+            or "-"
+        )
+    return (
+        getattr(value, "username", None)
+        or getattr(value, "email", None)
+        or "-"
+    )
+
+
+def _ts_label(value: Any) -> str:
+    """Render a Hopsworks timestamp (epoch ms / ISO string / None) as ISO-8601.
+
+    Job endpoints return ``creationTime`` as epoch milliseconds; some other
+    endpoints return ISO strings. Normalize to ISO-8601 UTC for display.
+    """
+    if value in (None, "", "-"):
+        return "-"
+    if isinstance(value, (int, float)):
+        seconds = value / 1000 if value > 10**12 else value
+        from datetime import datetime as _dt  # noqa: PLC0415
+        from datetime import timezone as _tz
+
+        return _dt.fromtimestamp(seconds, tz=_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return str(value)
+
+
 @click.group("job")
 def job_group() -> None:
     """Job commands."""
@@ -43,8 +85,8 @@ def job_list(ctx: click.Context) -> None:
                 getattr(j, "id", "?"),
                 getattr(j, "name", "?"),
                 getattr(j, "job_type", "-"),
-                getattr(j, "creator", "-"),
-                getattr(j, "creation_time", "-"),
+                _user_label(getattr(j, "creator", None)),
+                _ts_label(getattr(j, "creation_time", None)),
             ]
         )
     output.print_table(["ID", "NAME", "TYPE", "CREATOR", "CREATED"], rows)
@@ -76,19 +118,31 @@ def job_info(ctx: click.Context, name: str) -> None:
         ["ID", getattr(job, "id", "?")],
         ["Name", getattr(job, "name", "?")],
         ["Type", getattr(job, "job_type", "-")],
-        ["Creator", getattr(job, "creator", "-")],
-        ["Created", getattr(job, "creation_time", "-")],
+        ["Creator", _user_label(getattr(job, "creator", None))],
+        ["Created", _ts_label(getattr(job, "creation_time", None))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
 
 def _job_to_dict(job: Any) -> dict[str, Any]:
     config = getattr(job, "config", None)
+    creator = getattr(job, "creator", None)
+    if creator is not None and not isinstance(creator, (str, dict)):
+        creator = {
+            k: v
+            for k, v in (
+                ("username", getattr(creator, "username", None)),
+                ("email", getattr(creator, "email", None)),
+                ("firstname", getattr(creator, "firstname", None)),
+                ("lastname", getattr(creator, "lastname", None)),
+            )
+            if v is not None
+        } or _user_label(creator)
     return {
         "id": getattr(job, "id", None),
         "name": getattr(job, "name", None),
         "type": getattr(job, "job_type", None),
-        "creator": getattr(job, "creator", None),
+        "creator": creator,
         "creation_time": getattr(job, "creation_time", None),
         "config": config.to_dict() if hasattr(config, "to_dict") else config,
     }
