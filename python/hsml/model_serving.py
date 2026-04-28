@@ -470,7 +470,7 @@ class ModelServing:
         if environment is not None:
             _validate_agent_identifier(environment, "environment")
 
-        agent_dir = f"{upload_dir}/{name}"
+        agent_dir = f"{_normalize_upload_dir(upload_dir)}/{name}"
 
         ds_api = _dataset_api.DatasetApi()
         env_api = _environment_api.EnvironmentApi()
@@ -485,6 +485,8 @@ class ModelServing:
             script_file = ds_api.upload(entry_abs, agent_dir, overwrite=True)
         else:
             script_file = _build_and_install_package(ds_api, env, entry_abs, agent_dir)
+        # The serving backend expects the script path under /Projects/<proj>/...
+        script_file = util.convert_to_abs(script_file, self._project_name)
 
         if requirements is not None:
             req_remote = ds_api.upload(
@@ -630,6 +632,25 @@ def _validate_agent_identifier(value: str, field: str) -> None:
         )
 
 
+def _normalize_upload_dir(value: str) -> str:
+    """Normalize `upload_dir` and ensure it stays within the project's dataset root.
+
+    Rejects empty input, absolute paths, and any traversal that resolves to the parent of
+    the project root (e.g. `Resources/../..`).
+    Returns the normalized form for use in path interpolation.
+    """
+    import posixpath
+
+    if not value:
+        raise ValueError("upload_dir must not be empty")
+    normalized = posixpath.normpath(value)
+    if normalized == ".." or normalized.startswith(("/", "../")):
+        raise ValueError(
+            f"upload_dir must be a relative path that stays within the project, got {value!r}"
+        )
+    return normalized
+
+
 def _ensure_dataset_dir(ds_api, path: str) -> None:
     """Create `path` in the Hopsworks Filesystem if missing, creating parents as needed."""
     if ds_api.exists(path):
@@ -648,15 +669,20 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
     import tempfile
 
     from build import ProjectBuilder
+    from build.env import DefaultIsolatedEnv
 
     pkg_name = _read_package_name(package_dir)
 
     with tempfile.TemporaryDirectory() as build_dir:
-        # `build` returns the wheel filename relative to build_dir on some versions and
-        # an absolute path on others; os.path.join leaves an absolute result untouched.
-        wheel_local = os.path.join(
-            build_dir, ProjectBuilder(package_dir).build("wheel", build_dir)
-        )
+        # Use an isolated env so the project's PEP 517 backend (hatchling, setuptools, …)
+        # is installed on the fly rather than required up-front in the caller's env.
+        with DefaultIsolatedEnv() as build_env:
+            builder = ProjectBuilder.from_isolated_env(build_env, package_dir)
+            build_env.install(builder.build_system_requires)
+            build_env.install(builder.get_requires_for_build("wheel"))
+            # `build` returns the wheel filename relative to build_dir on some versions and
+            # an absolute path on others; os.path.join leaves an absolute result untouched.
+            wheel_local = os.path.join(build_dir, builder.build("wheel", build_dir))
         wheel_remote = ds_api.upload(wheel_local, agent_dir, overwrite=True)
 
         # Force a reinstall: pip skips a same-version wheel, so we uninstall first.

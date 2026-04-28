@@ -85,6 +85,26 @@ class TestDeployAgentIdentifierValidation:
         with pytest.raises(ValueError, match="environment must match"):
             ms.deploy_agent(entry=str(script), name="ok", environment=bad)
 
+    @pytest.mark.parametrize("bad", ["", "/abs/path", "..", "../escape", "Resources/../.."])
+    def test_rejects_unsafe_upload_dir(self, ms, script, bad):
+        with pytest.raises(ValueError, match="upload_dir"):
+            ms.deploy_agent(entry=str(script), name="ok", upload_dir=bad)
+
+    def test_normalizes_upload_dir(self, ms, mocker, script, stub_apis):
+        # Trailing slash and intermediate '.'/'..' segments that resolve safely should be allowed
+        # and the result reused as the upload base.
+        ds_api, _, _ = stub_apis
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        ms.deploy_agent(
+            entry=str(script), name="ok", upload_dir="Resources/foo/../agents/"
+        )
+
+        ds_api.upload.assert_called_once_with(
+            str(script.resolve()), "Resources/agents/ok", overwrite=True
+        )
+
 
 class TestDeployAgentScript:
     def test_uploads_script_creates_env_and_predictor(
@@ -113,7 +133,9 @@ class TestDeployAgentScript:
         env.install_requirements.assert_not_called()
         kwargs = mock_for_server.call_args.kwargs
         assert kwargs["name"] == "my_agent"
-        assert kwargs["script_file"] == "Resources/agents/my_agent/my_agent.py"
+        assert (
+            kwargs["script_file"] == "/Projects/proj/Resources/agents/my_agent/my_agent.py"
+        )
         assert kwargs["environment"] == "my_agent"
 
     def test_default_name_from_script_basename(self, ms, mocker, tmp_path, stub_apis):
@@ -151,7 +173,7 @@ class TestDeployAgentScript:
         )
         assert (
             mock_for_server.call_args.kwargs["script_file"]
-            == "Jupyter/agents/agent/agent.py"
+            == "/Projects/proj/Jupyter/agents/agent/agent.py"
         )
 
     def test_creates_env_when_missing(self, ms, mocker, tmp_path, stub_apis):
@@ -255,8 +277,9 @@ class TestDeployAgentPackage:
         return pkg
 
     def _patch_builder(self, mocker, wheel_path):
+        mocker.patch("build.env.DefaultIsolatedEnv")
         mock_builder = mocker.patch("build.ProjectBuilder")
-        mock_builder.return_value.build.return_value = str(wheel_path)
+        mock_builder.from_isolated_env.return_value.build.return_value = str(wheel_path)
         return mock_builder
 
     def _capture_runner(self, ds_api):
@@ -288,8 +311,9 @@ class TestDeployAgentPackage:
         # Act
         ms.deploy_agent(entry=str(pkg), name="my_agent")
 
-        # Assert: wheel was built, uninstalled, then installed.
-        mock_builder.assert_called_once_with(str(pkg.resolve()))
+        # Assert: wheel was built (in an isolated env), uninstalled, then installed.
+        mock_builder.from_isolated_env.assert_called_once()
+        assert mock_builder.from_isolated_env.call_args.args[1] == str(pkg.resolve())
         env.uninstall.assert_called_once_with("my_agent")
         env.install_wheel.assert_called_once_with(
             f"Resources/agents/my_agent/{wheel_local.name}"
@@ -298,7 +322,7 @@ class TestDeployAgentPackage:
         # The runner script was uploaded as the predictor's script_file.
         assert (
             mock_for_server.call_args.kwargs["script_file"]
-            == "Resources/agents/my_agent/runner.py"
+            == "/Projects/proj/Resources/agents/my_agent/runner.py"
         )
         # The runner contains the runpy invocation for the package.
         assert "runpy.run_module('my_agent'" in captured["content"]
@@ -319,8 +343,9 @@ class TestDeployAgentPackage:
             captured_build_dir["dir"] = output_directory
             return wheel_filename  # basename only, as on older `build` versions
 
+        mocker.patch("build.env.DefaultIsolatedEnv")
         mock_builder = mocker.patch("build.ProjectBuilder")
-        mock_builder.return_value.build.side_effect = fake_build
+        mock_builder.from_isolated_env.return_value.build.side_effect = fake_build
 
         captured_uploads = []
         ds_api.upload.side_effect = lambda local, dest, overwrite=False: (
