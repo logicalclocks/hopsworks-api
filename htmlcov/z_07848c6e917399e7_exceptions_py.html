@@ -54,8 +54,8 @@
             </div>
         </aside>
         <h2>
-            <span class="text">111 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">103<span class="text"> run</span></button>
+            <span class="text">123 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">115<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">8<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">2<span class="text"> excluded</span></button>
         </h2>
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_07848c6e917399e7_external_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-29 14:13 +0000
+            created at 2026-04-29 15:49 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -332,23 +332,60 @@
     <p class="pln"><span class="n"><a id="t250" href="#t250">250</a></span><span class="t">    <span class="str">"""Generic model registry exception."""</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t251" href="#t251">251</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t252" href="#t252">252</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t253" href="#t253">253</a></span><span class="t"><span class="op">@</span><span class="nam">also_available_as</span><span class="op">(</span><span class="str">"hsml.client.exceptions.ModelServingException"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t254" href="#t254">254</a></span><span class="t"><span class="key">class</span> <span class="nam">ModelServingException</span><span class="op">(</span><span class="nam">Exception</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t255" href="#t255">255</a></span><span class="t">    <span class="str">"""Generic model serving exception."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t256" href="#t256">256</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t257" href="#t257">257</a></span><span class="t">    <span class="nam">ERROR_CODE_SERVING_NOT_FOUND</span> <span class="op">=</span> <span class="num">240000</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t258" href="#t258">258</a></span><span class="t">    <span class="nam">ERROR_CODE_ILLEGAL_ARGUMENT</span> <span class="op">=</span> <span class="num">240001</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t259" href="#t259">259</a></span><span class="t">    <span class="nam">ERROR_CODE_DUPLICATED_ENTRY</span> <span class="op">=</span> <span class="num">240011</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t253" href="#t253">253</a></span><span class="t"><span class="op">@</span><span class="nam">public</span><span class="op">(</span><span class="str">"hopsworks.client.exceptions.HuggingFaceImportException"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t254" href="#t254">254</a></span><span class="t"><span class="op">@</span><span class="nam">also_available_as</span><span class="op">(</span><span class="str">"hsml.client.exceptions.HuggingFaceImportException"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t255" href="#t255">255</a></span><span class="t"><span class="key">class</span> <span class="nam">HuggingFaceImportException</span><span class="op">(</span><span class="nam">ModelRegistryException</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t256" href="#t256">256</a></span><span class="t">    <span class="str">"""Raised when an asynchronous HuggingFace model import does not complete successfully.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t257" href="#t257">257</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t258" href="#t258">258</a></span><span class="t"><span class="str">    Carries the stable error code emitted by the backend so callers can branch on it.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t259" href="#t259">259</a></span><span class="t"><span class="str">    The backend codes are:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t260" href="#t260">260</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t">    <span class="nam">ERROR_CODE_DEPLOYMENT_NOT_RUNNING</span> <span class="op">=</span> <span class="num">250001</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t"><span class="key">class</span> <span class="nam">DataSourceException</span><span class="op">(</span><span class="nam">Exception</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t265" href="#t265">265</a></span><span class="t">    <span class="str">"""Generic data source exception."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t266" href="#t266">266</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t267" href="#t267">267</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t268" href="#t268">268</a></span><span class="t"><span class="key">class</span> <span class="nam">TrinoException</span><span class="op">(</span><span class="nam">Exception</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t269" href="#t269">269</a></span><span class="t">    <span class="str">"""Generic Trino exception."""</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t"><span class="str">    - ``auth_required`` &#8212; the supplied HuggingFace access token was rejected (invalid,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t"><span class="str">      expired, or missing the gated-repo grant). Retry with a different token.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t"><span class="str">    - ``not_found_or_auth_required`` &#8212; no token was supplied and HuggingFace returned</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t"><span class="str">      401 for the repo. Either the model id is wrong or the repo is private/gated;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t265" href="#t265">265</a></span><span class="t"><span class="str">      HuggingFace deliberately hides which.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t266" href="#t266">266</a></span><span class="t"><span class="str">    - ``model_not_found`` &#8212; HuggingFace returned 404 for the repo.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t267" href="#t267">267</a></span><span class="t"><span class="str">    - ``no_disk_space`` &#8212; HopsFS storage quota was exhausted while downloading.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t268" href="#t268">268</a></span><span class="t"><span class="str">    - ``download_failed: &lt;file>`` &#8212; a specific file failed to download (network etc.).</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t269" href="#t269">269</a></span><span class="t"><span class="str">    - ``invalid_filename: &lt;name>`` &#8212; a file in the repo had a name disallowed by the</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t270" href="#t270">270</a></span><span class="t"><span class="str">      path-safety check (``..`` segments, absolute paths, &#8230;).</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t271" href="#t271">271</a></span><span class="t"><span class="str">    - ``registration_failed: ...`` &#8212; files downloaded but the final registration step</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t272" href="#t272">272</a></span><span class="t"><span class="str">      failed.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t273" href="#t273">273</a></span><span class="t"><span class="str">    - ``fetch_failed`` &#8212; generic upstream / metadata error talking to HuggingFace.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t274" href="#t274">274</a></span><span class="t"><span class="str">    """</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t275" href="#t275">275</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t276" href="#t276">276</a></span><span class="t">    <span class="com"># Stable error keys returned by the backend. Match these against</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t277" href="#t277">277</a></span><span class="t">    <span class="com"># ``HuggingFaceImportException.error_code`` rather than substring-checking the message.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t278" href="#t278">278</a></span><span class="t">    <span class="nam">AUTH_REQUIRED</span> <span class="op">=</span> <span class="str">"auth_required"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t279" href="#t279">279</a></span><span class="t">    <span class="nam">NOT_FOUND_OR_AUTH_REQUIRED</span> <span class="op">=</span> <span class="str">"not_found_or_auth_required"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t280" href="#t280">280</a></span><span class="t">    <span class="nam">MODEL_NOT_FOUND</span> <span class="op">=</span> <span class="str">"model_not_found"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t281" href="#t281">281</a></span><span class="t">    <span class="nam">NO_DISK_SPACE</span> <span class="op">=</span> <span class="str">"no_disk_space"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t282" href="#t282">282</a></span><span class="t">    <span class="nam">FETCH_FAILED</span> <span class="op">=</span> <span class="str">"fetch_failed"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t283" href="#t283">283</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t284" href="#t284">284</a></span><span class="t">    <span class="key">def</span> <span class="nam">__init__</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">error_code</span><span class="op">:</span> <span class="nam">str</span><span class="op">,</span> <span class="nam">message</span><span class="op">:</span> <span class="nam">str</span> <span class="op">|</span> <span class="key">None</span> <span class="op">=</span> <span class="key">None</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t285" href="#t285">285</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">error_code</span> <span class="op">=</span> <span class="nam">error_code</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t286" href="#t286">286</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">message</span> <span class="op">=</span> <span class="nam">message</span> <span class="key">or</span> <span class="nam">error_code</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t287" href="#t287">287</a></span><span class="t">        <span class="nam">super</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">__init__</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">message</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t288" href="#t288">288</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t289" href="#t289">289</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t290" href="#t290">290</a></span><span class="t"><span class="op">@</span><span class="nam">also_available_as</span><span class="op">(</span><span class="str">"hsml.client.exceptions.ModelServingException"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t291" href="#t291">291</a></span><span class="t"><span class="key">class</span> <span class="nam">ModelServingException</span><span class="op">(</span><span class="nam">Exception</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t292" href="#t292">292</a></span><span class="t">    <span class="str">"""Generic model serving exception."""</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t293" href="#t293">293</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t294" href="#t294">294</a></span><span class="t">    <span class="nam">ERROR_CODE_SERVING_NOT_FOUND</span> <span class="op">=</span> <span class="num">240000</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t295" href="#t295">295</a></span><span class="t">    <span class="nam">ERROR_CODE_ILLEGAL_ARGUMENT</span> <span class="op">=</span> <span class="num">240001</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t296" href="#t296">296</a></span><span class="t">    <span class="nam">ERROR_CODE_DUPLICATED_ENTRY</span> <span class="op">=</span> <span class="num">240011</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t297" href="#t297">297</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t298" href="#t298">298</a></span><span class="t">    <span class="nam">ERROR_CODE_DEPLOYMENT_NOT_RUNNING</span> <span class="op">=</span> <span class="num">250001</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t299" href="#t299">299</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t300" href="#t300">300</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t301" href="#t301">301</a></span><span class="t"><span class="key">class</span> <span class="nam">DataSourceException</span><span class="op">(</span><span class="nam">Exception</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t302" href="#t302">302</a></span><span class="t">    <span class="str">"""Generic data source exception."""</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t303" href="#t303">303</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t304" href="#t304">304</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t305" href="#t305">305</a></span><span class="t"><span class="key">class</span> <span class="nam">TrinoException</span><span class="op">(</span><span class="nam">Exception</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t306" href="#t306">306</a></span><span class="t">    <span class="str">"""Generic Trino exception."""</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -358,7 +395,7 @@
             <a class="nav" href="z_07848c6e917399e7_external_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-04-29 14:13 +0000
+            created at 2026-04-29 15:49 +0000
         </p>
     </div>
 </footer>

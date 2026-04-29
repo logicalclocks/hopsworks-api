@@ -11,7 +11,7 @@
 | python/hopsworks/client/\_\_init\_\_.py                                          |       15 |        0 |    100% |           |
 | python/hopsworks/client/auth/\_\_init\_\_.py                                     |        4 |        4 |      0% |       5-8 |
 | python/hopsworks/client/base/\_\_init\_\_.py                                     |        2 |        2 |      0% |       5-6 |
-| python/hopsworks/client/exceptions/\_\_init\_\_.py                               |       16 |        0 |    100% |           |
+| python/hopsworks/client/exceptions/\_\_init\_\_.py                               |       17 |        0 |    100% |           |
 | python/hopsworks/client/external/\_\_init\_\_.py                                 |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/client/hopsworks/\_\_init\_\_.py                                |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/command/\_\_init\_\_.py                                         |        2 |        2 |      0% |       5-6 |
@@ -105,7 +105,7 @@
 | python/hopsworks\_common/client/\_\_init\_\_.py                                  |       67 |       23 |     66% |43-59, 65-67, 74, 77, 83, 92, 98, 107, 113, 120, 129, 135, 143, 149, 157 |
 | python/hopsworks\_common/client/auth.py                                          |       36 |       14 |     61% |39-40, 52, 55-56, 71-72, 77-83 |
 | python/hopsworks\_common/client/base.py                                          |      120 |       52 |     57% |70-75, 83-88, 92, 96, 100-101, 112, 115-116, 155, 183, 187, 212, 217-231, 235-241, 245-251, 255-262, 274-283 |
-| python/hopsworks\_common/client/exceptions.py                                    |      111 |        8 |     93% |48-50, 56, 161-165, 173, 185 |
+| python/hopsworks\_common/client/exceptions.py                                    |      123 |        8 |     93% |48-50, 56, 161-165, 173, 185 |
 | python/hopsworks\_common/client/external.py                                      |      205 |       86 |     58% |63-106, 109-203, 265-288, 386-387, 395-399, 426, 429, 433, 437 |
 | python/hopsworks\_common/client/hopsworks.py                                     |      105 |       63 |     40% |62-88, 92-102, 106, 109, 112, 115, 123-128, 136-141, 144-152, 155-159, 167-174, 185, 188, 192 |
 | python/hopsworks\_common/client/istio/\_\_init\_\_.py                            |       12 |        6 |     50% | 29-34, 39 |
@@ -131,7 +131,7 @@
 | python/hopsworks\_common/core/app\_api.py                                        |       54 |       32 |     41% |44-50, 66-72, 112-137, 141-150, 154-165, 171-178 |
 | python/hopsworks\_common/core/constants.py                                       |       24 |        0 |    100% |           |
 | python/hopsworks\_common/core/dataset.py                                         |       31 |       14 |     55% |33-37, 41-44, 48, 52, 56, 60, 64 |
-| python/hopsworks\_common/core/dataset\_api.py                                    |      326 |      241 |     26% |44-47, 103-165, 213-284, 296-362, 374-399, 402, 413-417, 446, 461-462, 475, 488-490, 503, 529-538, 566-584, 610-628, 646-669, 701-720, 741-758, 774-789, 805-809, 838-890, 909, 933, 956-968, 981-991, 1007-1023 |
+| python/hopsworks\_common/core/dataset\_api.py                                    |      329 |      223 |     32% |106-168, 217-288, 300-366, 388, 405-408, 411, 422-426, 455, 470-471, 484, 497-499, 512, 538-547, 575-593, 619-637, 655-678, 710-729, 750-767, 783-798, 814-818, 847-899, 918, 942, 965-977, 990-1000, 1016-1032 |
 | python/hopsworks\_common/core/environment\_api.py                                |       41 |       22 |     46% |63-86, 108-113, 146-151, 163-173 |
 | python/hopsworks\_common/core/execution\_api.py                                  |       53 |       18 |     66% |65, 89-100, 105-111, 119-128, 131-141, 153-155 |
 | python/hopsworks\_common/core/flink\_cluster\_api.py                             |       93 |       63 |     32% |43, 76-88, 91-107, 136-147, 176-179, 208-211, 237-240, 268-277, 306-312, 338-357, 393-422, 464-476 |
@@ -332,7 +332,7 @@
 | python/hsml/client/\_\_init\_\_.py                                               |        2 |        0 |    100% |           |
 | python/hsml/client/auth/\_\_init\_\_.py                                          |        5 |        5 |      0% |       5-9 |
 | python/hsml/client/base/\_\_init\_\_.py                                          |        2 |        2 |      0% |       5-6 |
-| python/hsml/client/exceptions/\_\_init\_\_.py                                    |       19 |        0 |    100% |           |
+| python/hsml/client/exceptions/\_\_init\_\_.py                                    |       20 |        0 |    100% |           |
 | python/hsml/client/external/\_\_init\_\_.py                                      |        2 |        2 |      0% |       5-6 |
 | python/hsml/client/hopsworks/\_\_init\_\_.py                                     |        2 |        2 |      0% |       5-6 |
 | python/hsml/client/istio/\_\_init\_\_.py                                         |        2 |        0 |    100% |           |
@@ -352,6 +352,7 @@
 | python/hsml/core/dataset\_api/\_\_init\_\_.py                                    |        3 |        0 |    100% |           |
 | python/hsml/core/explicit\_provenance.py                                         |      187 |       86 |     54% |65, 71, 77, 80, 87, 95-109, 138, 176, 179, 195, 198, 206-207, 227-264, 268-297, 313-334, 342-357, 362-387 |
 | python/hsml/core/hdfs\_api.py                                                    |       21 |       12 |     43% |28, 52-76, 88 |
+| python/hsml/core/huggingface\_api.py                                             |       28 |       18 |     36% |37-38, 75-86, 103-104, 119-121 |
 | python/hsml/core/model\_api.py                                                   |       79 |       59 |     25% |38-48, 77-93, 115-143, 151-160, 175-188, 199-210, 224-234, 254-266, 287-311, 330-354 |
 | python/hsml/core/model\_registry\_api.py                                         |       24 |       24 |      0% |     17-62 |
 | python/hsml/core/model\_serving\_api.py                                          |       53 |       20 |     62% |38-46, 51-63, 72-73, 120-127 |
@@ -371,9 +372,9 @@
 | python/hsml/llm/\_\_init\_\_.py                                                  |        0 |        0 |    100% |           |
 | python/hsml/llm/model.py                                                         |       13 |        6 |     54% |     70-75 |
 | python/hsml/llm/predictor.py                                                     |        7 |        3 |     57% |     25-28 |
-| python/hsml/llm/signature.py                                                     |       11 |       11 |      0% |     16-85 |
+| python/hsml/llm/signature.py                                                     |       11 |        4 |     64% |     71-85 |
 | python/hsml/model.py                                                             |      276 |       48 |     83% |138-143, 149-164, 270, 305, 398, 427, 442, 445, 457-461, 464, 467, 491, 501, 511, 521, 531, 541, 551, 555, 565, 575, 579, 585, 589, 601, 611, 623, 633, 643, 652, 661, 670, 676, 680, 685, 688 |
-| python/hsml/model\_registry.py                                                   |       96 |       96 |      0% |    16-225 |
+| python/hsml/model\_registry.py                                                   |      189 |       27 |     86% |79-80, 99-107, 130, 157-166, 172, 178, 184, 313, 318, 330, 357, 409, 424, 436, 442, 448, 454, 460, 463-468 |
 | python/hsml/model\_schema.py                                                     |       20 |        5 |     75% |50, 57, 60-66 |
 | python/hsml/model\_serving.py                                                    |       76 |       27 |     64% |50-53, 79, 106-108, 146-150, 153-161, 170, 235-238, 321, 373, 460, 466, 472, 478, 481 |
 | python/hsml/predictor.py                                                         |      359 |       59 |     84% |49, 167, 254, 262-264, 330-333, 336, 339-373, 415, 425, 435, 445-446, 456, 460, 467, 480-481, 497, 507, 521, 531, 541, 559-562, 572, 582, 588, 592, 602, 704-709 |
@@ -383,23 +384,23 @@
 | python/hsml/python/endpoint.py                                                   |       10 |        0 |    100% |           |
 | python/hsml/python/model.py                                                      |       13 |        6 |     54% |     70-75 |
 | python/hsml/python/predictor.py                                                  |        9 |        5 |     44% |     25-33 |
-| python/hsml/python/signature.py                                                  |       11 |       11 |      0% |     16-85 |
+| python/hsml/python/signature.py                                                  |       11 |        4 |     64% |     71-85 |
 | python/hsml/resources.py                                                         |      153 |       16 |     90% |51, 71, 74, 84, 94, 104, 107, 149, 168, 203, 207, 237, 247, 250, 271, 300 |
 | python/hsml/scaling\_config.py                                                   |      212 |       28 |     87% |105, 109-110, 212-214, 218, 245, 255-264, 276, 286, 296, 306, 316, 326, 336, 339, 367, 381, 409, 419, 424 |
 | python/hsml/schema.py                                                            |       30 |        3 |     90% |72, 79, 82 |
 | python/hsml/sklearn/\_\_init\_\_.py                                              |        0 |        0 |    100% |           |
 | python/hsml/sklearn/model.py                                                     |       13 |        6 |     54% |     70-75 |
 | python/hsml/sklearn/predictor.py                                                 |        7 |        3 |     57% |     25-28 |
-| python/hsml/sklearn/signature.py                                                 |       11 |       11 |      0% |     16-85 |
+| python/hsml/sklearn/signature.py                                                 |       11 |        4 |     64% |     71-85 |
 | python/hsml/tag/\_\_init\_\_.py                                                  |        2 |        0 |    100% |           |
 | python/hsml/tensorflow/\_\_init\_\_.py                                           |        0 |        0 |    100% |           |
 | python/hsml/tensorflow/model.py                                                  |       13 |        6 |     54% |     70-75 |
 | python/hsml/tensorflow/predictor.py                                              |        9 |        5 |     44% |     25-33 |
-| python/hsml/tensorflow/signature.py                                              |       11 |       11 |      0% |     16-85 |
+| python/hsml/tensorflow/signature.py                                              |       11 |        4 |     64% |     71-85 |
 | python/hsml/torch/\_\_init\_\_.py                                                |        0 |        0 |    100% |           |
 | python/hsml/torch/model.py                                                       |       13 |        6 |     54% |     70-75 |
 | python/hsml/torch/predictor.py                                                   |        9 |        5 |     44% |     25-33 |
-| python/hsml/torch/signature.py                                                   |       11 |       11 |      0% |     16-85 |
+| python/hsml/torch/signature.py                                                   |       11 |        4 |     64% |     71-85 |
 | python/hsml/transformer.py                                                       |       55 |        7 |     87% |33, 71, 115-117, 120, 123 |
 | python/hsml/util/\_\_init\_\_.py                                                 |       18 |       18 |      0% |      5-22 |
 | python/hsml/utils/\_\_init\_\_.py                                                |        0 |        0 |    100% |           |
@@ -409,7 +410,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **29575** | **10867** | **63%** |           |
+| **TOTAL**                                                                        | **29713** | **10763** | **64%** |           |
 
 
 ## Setup coverage badge
