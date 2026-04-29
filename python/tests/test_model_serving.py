@@ -15,6 +15,7 @@
 #
 
 import os
+import zipfile
 
 import pytest
 from hopsworks_common.client.exceptions import RestAPIError
@@ -85,7 +86,9 @@ class TestDeployAgentIdentifierValidation:
         with pytest.raises(ValueError, match="environment must match"):
             ms.deploy_agent(entry=str(script), name="ok", environment=bad)
 
-    @pytest.mark.parametrize("bad", ["", "/abs/path", "..", "../escape", "Resources/../.."])
+    @pytest.mark.parametrize(
+        "bad", ["", "/abs/path", "..", "../escape", "Resources/../.."]
+    )
     def test_rejects_unsafe_upload_dir(self, ms, script, bad):
         with pytest.raises(ValueError, match="upload_dir"):
             ms.deploy_agent(entry=str(script), name="ok", upload_dir=bad)
@@ -134,7 +137,8 @@ class TestDeployAgentScript:
         kwargs = mock_for_server.call_args.kwargs
         assert kwargs["name"] == "my_agent"
         assert (
-            kwargs["script_file"] == "/Projects/proj/Resources/agents/my_agent/my_agent.py"
+            kwargs["script_file"]
+            == "/Projects/proj/Resources/agents/my_agent/my_agent.py"
         )
         assert kwargs["environment"] == "my_agent"
 
@@ -276,9 +280,16 @@ class TestDeployAgentPackage:
         )
         return pkg
 
-    def _patch_builder(self, mocker, wheel_path):
-        mocker.patch("build.env.DefaultIsolatedEnv")
-        mock_builder = mocker.patch("build.ProjectBuilder")
+    def _write_wheel(self, wheel_path, top_level="my_agent"):
+        """Write a minimal valid zip to `wheel_path` exposing `<top_level>/__main__.py`."""
+        with zipfile.ZipFile(wheel_path, "w") as z:
+            z.writestr(f"{top_level}/__init__.py", "")
+            z.writestr(f"{top_level}/__main__.py", "")
+
+    def _patch_builder(self, mocker, wheel_path, top_level="my_agent"):
+        self._write_wheel(wheel_path, top_level=top_level)
+        mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
+        mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
         mock_builder.from_isolated_env.return_value.build.return_value = str(wheel_path)
         return mock_builder
 
@@ -302,7 +313,6 @@ class TestDeployAgentPackage:
         ds_api, _, env = stub_apis
         pkg = self._make_package(tmp_path)
         wheel_local = tmp_path / "my_agent-0.1.0-py3-none-any.whl"
-        wheel_local.write_bytes(b"")
         mock_builder = self._patch_builder(mocker, wheel_local)
         captured = self._capture_runner(ds_api)
         mocker.patch.object(ms, "get_deployment", return_value=None)
@@ -341,10 +351,11 @@ class TestDeployAgentPackage:
 
         def fake_build(distribution, output_directory):
             captured_build_dir["dir"] = output_directory
+            self._write_wheel(os.path.join(output_directory, wheel_filename))
             return wheel_filename  # basename only, as on older `build` versions
 
-        mocker.patch("build.env.DefaultIsolatedEnv")
-        mock_builder = mocker.patch("build.ProjectBuilder")
+        mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
+        mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
         mock_builder.from_isolated_env.return_value.build.side_effect = fake_build
 
         captured_uploads = []
@@ -375,8 +386,7 @@ class TestDeployAgentPackage:
         _, env_api, env = stub_apis
         pkg = self._make_package(tmp_path, pkg_name="my_pkg")
         wheel_local = tmp_path / "my_pkg-0.1.0-py3-none-any.whl"
-        wheel_local.write_bytes(b"")
-        self._patch_builder(mocker, wheel_local)
+        self._patch_builder(mocker, wheel_local, top_level="my_pkg")
         mocker.patch.object(ms, "get_deployment", return_value=None)
         mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
@@ -395,7 +405,6 @@ class TestDeployAgentPackage:
         _, _, env = stub_apis
         pkg = self._make_package(tmp_path)
         wheel_local = tmp_path / "my_agent-0.1.0-py3-none-any.whl"
-        wheel_local.write_bytes(b"")
         self._patch_builder(mocker, wheel_local)
 
         not_found = mocker.MagicMock()
@@ -417,7 +426,6 @@ class TestDeployAgentPackage:
         _, _, env = stub_apis
         pkg = self._make_package(tmp_path)
         wheel_local = tmp_path / "my_agent-0.1.0-py3-none-any.whl"
-        wheel_local.write_bytes(b"")
         self._patch_builder(mocker, wheel_local)
 
         server_error = mocker.MagicMock()
@@ -432,6 +440,47 @@ class TestDeployAgentPackage:
         with pytest.raises(RestAPIError):
             ms.deploy_agent(entry=str(pkg), name="my_agent")
         env.install_wheel.assert_not_called()
+
+    def test_runner_uses_importable_module_not_distribution_name(
+        self, ms, mocker, tmp_path, stub_apis
+    ):
+        # Distribution name "my-agent" is not a valid Python identifier; the importable
+        # package is "my_agent". The runner must use the importable name.
+        ds_api, _, env = stub_apis
+        pkg = self._make_package(tmp_path, pkg_name="my-agent")
+        wheel_local = tmp_path / "my_agent-0.1.0-py3-none-any.whl"
+        self._patch_builder(mocker, wheel_local, top_level="my_agent")
+        captured = self._capture_runner(ds_api)
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.deploy_agent(entry=str(pkg), name="myagent")
+
+        # Assert: pip-side uninstall uses the dist name; runpy uses the importable name.
+        env.uninstall.assert_called_once_with("my-agent")
+        assert "runpy.run_module('my_agent'" in captured["content"]
+
+    def test_raises_when_wheel_has_no_runnable_module(
+        self, ms, mocker, tmp_path, stub_apis
+    ):
+        ds_api, _, _ = stub_apis
+        pkg = self._make_package(tmp_path)
+        wheel_local = tmp_path / "my_agent-0.1.0-py3-none-any.whl"
+        # Wheel exists but has no top-level package with __main__.py.
+        with zipfile.ZipFile(wheel_local, "w") as z:
+            z.writestr("my_agent/__init__.py", "")
+
+        mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
+        mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
+        mock_builder.from_isolated_env.return_value.build.return_value = str(
+            wheel_local
+        )
+
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+
+        with pytest.raises(ValueError, match="no top-level package with `__main__.py`"):
+            ms.deploy_agent(entry=str(pkg), name="my_agent")
 
 
 class TestEnsureDatasetDir:

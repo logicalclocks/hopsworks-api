@@ -16,9 +16,14 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import re
+import tempfile
+import zipfile
 from typing import TYPE_CHECKING
 
+from build import ProjectBuilder
+from build.env import DefaultIsolatedEnv
 from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.client.exceptions import RestAPIError
@@ -30,6 +35,12 @@ from hsml.core import serving_api
 from hsml.deployment import Deployment
 from hsml.predictor import Predictor
 from hsml.transformer import Transformer
+
+
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 
 if TYPE_CHECKING:
@@ -639,8 +650,6 @@ def _normalize_upload_dir(value: str) -> str:
     the project root (e.g. `Resources/../..`).
     Returns the normalized form for use in path interpolation.
     """
-    import posixpath
-
     if not value:
         raise ValueError("upload_dir must not be empty")
     normalized = posixpath.normpath(value)
@@ -666,11 +675,6 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
 
     Returns the remote path of the runner script to use as `script_file`.
     """
-    import tempfile
-
-    from build import ProjectBuilder
-    from build.env import DefaultIsolatedEnv
-
     pkg_name = _read_package_name(package_dir)
 
     with tempfile.TemporaryDirectory() as build_dir:
@@ -683,6 +687,12 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
             # `build` returns the wheel filename relative to build_dir on some versions and
             # an absolute path on others; os.path.join leaves an absolute result untouched.
             wheel_local = os.path.join(build_dir, builder.build("wheel", build_dir))
+
+        # The distribution name (`pkg_name`) is what pip uses to install/uninstall, but it
+        # may not be a valid Python identifier (e.g. "my-agent"). The runner needs the
+        # importable module name, which we read from the built wheel's contents.
+        module_name = _find_runnable_module(wheel_local)
+
         wheel_remote = ds_api.upload(wheel_local, agent_dir, overwrite=True)
 
         # Force a reinstall: pip skips a same-version wheel, so we uninstall first.
@@ -698,18 +708,44 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
         runner_local = os.path.join(build_dir, "runner.py")
         with open(runner_local, "w") as f:
             f.write(
-                f"import runpy\nrunpy.run_module({pkg_name!r}, run_name='__main__')\n"
+                f"import runpy\nrunpy.run_module({module_name!r}, run_name='__main__')\n"
             )
         return ds_api.upload(runner_local, agent_dir, overwrite=True)
 
 
+def _find_runnable_module(wheel_path: str) -> str:
+    """Return the top-level package in the wheel that exposes a `__main__.py`.
+
+    Used to generate the runner's `runpy.run_module(<name>, ...)` call.
+    The wheel's contents are authoritative (they reflect what's actually installable and
+    importable), so this works even when the distribution name differs from the importable
+    name (e.g. `my-agent` distribution containing a `my_agent` package).
+    """
+    with zipfile.ZipFile(wheel_path) as wheel:
+        candidates = sorted(
+            {
+                parts[0]
+                for name in wheel.namelist()
+                for parts in [name.split("/")]
+                if len(parts) == 2 and parts[1] == "__main__.py"
+            }
+        )
+    if len(candidates) == 1:
+        return candidates[0]
+    wheel_basename = os.path.basename(wheel_path)
+    if not candidates:
+        raise ValueError(
+            f"{wheel_basename} has no top-level package with `__main__.py`; "
+            "agents deployed as packages must be runnable via `python -m`."
+        )
+    raise ValueError(
+        f"{wheel_basename} has multiple top-level packages with `__main__.py` "
+        f"({', '.join(candidates)}); cannot determine the agent entry point."
+    )
+
+
 def _read_package_name(package_dir: str) -> str:
     """Read `[project].name` from the package's `pyproject.toml`."""
-    try:
-        import tomllib
-    except ImportError:
-        import tomli as tomllib
-
     with open(os.path.join(package_dir, "pyproject.toml"), "rb") as f:
         pyproject = tomllib.load(f)
     project = pyproject.get("project") or {}
