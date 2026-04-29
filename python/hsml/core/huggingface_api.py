@@ -60,6 +60,17 @@ class HuggingFaceApi:
         arguments line up with the JSON request body the UI sends — when the
         backend sees a non-empty ``selectedFilenames`` it imports exactly those
         files and ignores the other selection args.
+
+        Parameters:
+            model_registry_id: id of the model registry to import into
+            hugging_face_model_id: HuggingFace model id (e.g. ``"meta-llama/Llama-3-8B"``)
+            hf_token: optional HuggingFace access token for gated or private models
+            selected_formats: optional list of model formats to import
+            selected_variants: optional list of variants to import
+            selected_filenames: optional list of explicit filenames to import; when set, the other ``selected_*`` args are ignored
+
+        Returns:
+            backend response with the ``jobId`` of the started import
         """
         body: dict = {"huggingFaceModelId": hugging_face_model_id}
         if hf_token:
@@ -80,7 +91,15 @@ class HuggingFaceApi:
         )
 
     def get_status(self, model_registry_id: int, job_id: str) -> dict:
-        """Poll the status of a running or finished HuggingFace import job."""
+        """Poll the status of a running or finished HuggingFace import job.
+
+        Parameters:
+            model_registry_id: id of the model registry the job is running in
+            job_id: id of the import job returned by :py:meth:`start_import`
+
+        Returns:
+            backend response describing the current job status
+        """
         _client = client.get_instance()
         return _client._send_request(
             "GET",
@@ -90,7 +109,13 @@ class HuggingFaceApi:
     def cancel(
         self, model_registry_id: int, job_id: str, cleanup: bool = False
     ) -> None:
-        """Cancel an import. If ``cleanup`` is true, the partial directory is removed."""
+        """Cancel an import. If ``cleanup`` is true, the partial directory is removed.
+
+        Parameters:
+            model_registry_id: id of the model registry the job is running in
+            job_id: id of the import job to cancel
+            cleanup: when true, the backend deletes the partially downloaded model directory
+        """
         _client = client.get_instance()
         query_params = {"cleanup": "true"} if cleanup else None
         _client._send_request(
