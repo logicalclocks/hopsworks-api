@@ -73,6 +73,7 @@ class StorageConnector(ABC):
     CRM = "CRM"
     REST = "REST"
     ORACLE = "ORACLE"
+    UNITY_CATALOG = "UNITY_CATALOG"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -107,6 +108,7 @@ class StorageConnector(ABC):
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
+        | UnityCatalogConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -130,6 +132,7 @@ class StorageConnector(ABC):
         | OpenSearchConnector
         | CRMAndAnalyticsConnector
         | RestConnector
+        | UnityCatalogConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -391,6 +394,14 @@ class StorageConnector(ABC):
                 database = self.query_project
             elif self.type == StorageConnector.SQL:
                 database = self.database
+            elif self.type == StorageConnector.UNITY_CATALOG:
+                if not self.default_catalog:
+                    raise ValueError(
+                        "Database name is required for Unity Catalog connectors. "
+                        "Set a default catalog on the connector or pass an "
+                        "explicit `database` to get_tables()."
+                    )
+                database = self.default_catalog
             else:
                 raise ValueError(
                     "Database name is required for this connector type. "
@@ -2825,6 +2836,97 @@ class CRMAndAnalyticsConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
+
+
+@public
+class UnityCatalogConnector(StorageConnector):
+    """Databricks Unity Catalog storage connector.
+
+    Reads Delta-formatted tables governed by Unity Catalog via the Arrow Flight query service.
+    Direct Spark reads are not supported in this release; use the Arrow Flight path instead.
+    """
+
+    type = StorageConnector.UNITY_CATALOG
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        workspace_url: str | None = None,
+        access_token: str | None = None,
+        default_catalog: str | None = None,
+        aws_region: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._workspace_url = workspace_url
+        self._access_token = access_token
+        self._default_catalog = default_catalog
+        self._aws_region = aws_region
+        if isinstance(arguments, list):
+            # Match the other connectors in this file: tolerate name-only entries
+            # and skip entries without a name. Backend serialises these as a list
+            # of {name, value} dicts but `value` is permitted to be missing.
+            self._arguments = {
+                a["name"]: a.get("value")
+                for a in arguments
+                if a.get("name") is not None
+            }
+        else:
+            self._arguments = arguments or {}
+
+    @public
+    @property
+    def workspace_url(self) -> str | None:
+        """Databricks workspace URL used for API calls."""
+        return self._workspace_url
+
+    @public
+    @property
+    def access_token(self) -> str | None:
+        """Databricks personal access token, decrypted from the Hopsworks secret store on retrieval."""
+        return self._access_token
+
+    @public
+    @property
+    def default_catalog(self) -> str | None:
+        """Optional default Unity Catalog catalog to use when no catalog is explicitly specified."""
+        return self._default_catalog
+
+    @public
+    @property
+    def aws_region(self) -> str | None:
+        """Optional explicit AWS region for the managed storage backing this Unity Catalog.
+
+        When unset, the Arrow Flight read path guesses the region from the STS
+        session-token Databricks returns with temporary table credentials.
+        """
+        return self._aws_region
+
+    @public
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Additional Unity Catalog connection arguments passed through to the Arrow Flight server."""
+        return self._arguments
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return UC connector options shaped for external library use."""
+        return {
+            "workspace_url": self._workspace_url,
+            "default_catalog": self._default_catalog,
+            "aws_region": self._aws_region,
+        }
+
+    def spark_options(self) -> dict[str, Any]:
+        # v1 has no Spark read path — all UC reads go through Arrow Flight.
+        raise NotImplementedError(
+            "Direct Spark reads are not supported for Unity Catalog connectors in this release. "
+            "Reads flow through the Arrow Flight query service."
+        )
 
 
 class RestConnectorHeader:
