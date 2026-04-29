@@ -115,12 +115,17 @@ def _wait_for_key(
     The server responds within ~40s with either a completed payload or
     ``{"timeout": true}``; on timeout we re-issue immediately — Modal does the
     same — so the user sees continuous progress rather than gaps.
+
+    The wait secret travels in the JSON request body, never in the query
+    string. Query parameters routinely end up in proxy access logs, browser
+    history, distributed traces, and crash reporters; the body is confined
+    to the TLS-encrypted payload that the standard log paths do not record.
     """
     deadline = time.monotonic() + overall_timeout
     while time.monotonic() < deadline:
-        resp = requests.get(
+        resp = requests.post(
             f"{api_base}{TOKEN_FLOW_WAIT}/{flow_id}",
-            params={"wait_secret": wait_secret, "timeout": POLL_TIMEOUT_SECONDS},
+            json={"waitSecret": wait_secret, "timeout": POLL_TIMEOUT_SECONDS},
             timeout=POLL_TIMEOUT_SECONDS + 10,
             verify=verify,
         )
@@ -268,22 +273,23 @@ def setup_cmd(
     if not api_key:
         raise click.ClickException("Server did not return an API key.")
 
+    # Verify *before* writing to disk. If the freshly minted key fails
+    # verification we don't want a stale or unintended credential left in
+    # ``~/.hops.toml`` — the user re-runs ``hops setup --force`` and the
+    # config is unchanged.
+    try:
+        auth.verify(host=host, api_key_value=api_key, project=project)
+    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
+        raise click.ClickException(
+            f"Server returned an API key but verification failed: {exc}. "
+            "No changes written to ~/.hops.toml. Re-run `hops setup`."
+        ) from exc
+
     cfg.host = host
     cfg.api_key = api_key
     cfg.api_key_name = server_key_name
     cfg.project = project
     config.save(cfg)
-
-    try:
-        auth.verify(host=host, api_key_value=api_key, project=project)
-    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
-        output.error(
-            "Saved key to %s but verification failed: %s. "
-            "Re-run `hops setup --force` to retry.",
-            config.CONFIG_PATH,
-            exc,
-        )
-        ctx.exit(1)
 
     output.success(
         "✓ Connected to %s as %s",
