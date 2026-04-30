@@ -489,7 +489,7 @@ class ModelServing:
         _ensure_dataset_dir(ds_api, agent_dir)
 
         env = env_api.get_environment(env_name) or env_api.create_environment(
-            env_name, base_environment_name="minimal-inference-pipeline"
+            env_name, base_environment_name="python-agent-pipeline"
         )
 
         if is_script:
