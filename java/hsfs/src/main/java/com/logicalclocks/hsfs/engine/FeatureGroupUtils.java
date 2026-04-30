@@ -258,6 +258,11 @@ public class FeatureGroupUtils {
 
   public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries)
       throws FeatureStoreException, IOException {
+    return getHeaders(featureGroup, numEntries, null);
+  }
+
+  public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries,
+      Map<String, String> options) throws FeatureStoreException, IOException {
     Map<String, byte[]> headerMap = new HashMap<>();
 
     headerMap.put("projectId",
@@ -265,6 +270,11 @@ public class FeatureGroupUtils {
     headerMap.put("featureGroupId", String.valueOf(featureGroup.getId()).getBytes(StandardCharsets.UTF_8));
     headerMap.put("subjectId",
         String.valueOf(featureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
+
+    if (options != null
+        && Boolean.parseBoolean(options.get("online_ingestion_options.upsert_if_newer"))) {
+      headerMap.put("upsertIfNewer", new byte[]{'1'});
+    }
 
     if (featureGroup.getOnlineEnabled()) {
       OnlineIngestion onlineIngestion = new OnlineIngestionApi()

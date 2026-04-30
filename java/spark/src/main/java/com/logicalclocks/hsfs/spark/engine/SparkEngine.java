@@ -530,7 +530,10 @@ public class SparkEngine extends EngineBase {
    *
    * @param featureGroupBase
    * @param dataset
-   * @param writeOptions
+   * @param writeOptions options map; supported keys under {@code "online_ingestion_options.*"} include
+   *     {@code "online_ingestion_options.disable_online_ingestion_count"} (boolean string),
+   *     and {@code "online_ingestion_options.upsert_if_newer"} (boolean string, only updates a row
+   *     if the new value is newer than the existing one)
    * @throws FeatureStoreException
    * @throws IOException
    */
@@ -538,10 +541,11 @@ public class SparkEngine extends EngineBase {
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
     Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
-    Long numEntries = Boolean.parseBoolean(writeOptions.getOrDefault("disable_online_ingestion_count", "false"))
+    Long numEntries = Boolean.parseBoolean(
+        writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
         ? null : dataset.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", getHeader(featureGroupBase, numEntries))
+        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(kafkaConfig)
@@ -557,7 +561,7 @@ public class SparkEngine extends EngineBase {
     queryName = makeQueryName(queryName, featureGroupBase);
     DataStreamWriter<Row> writer =
         onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-            .withColumn("headers", getHeader(featureGroupBase, null))
+            .withColumn("headers", getHeader(featureGroupBase, null, writeOptions))
             .writeStream()
             .format(Constants.KAFKA_FORMAT)
             .outputMode(outputMode)
@@ -576,9 +580,10 @@ public class SparkEngine extends EngineBase {
     return query;
   }
 
-  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries) throws FeatureStoreException, IOException {
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options)
+      throws FeatureStoreException, IOException {
     return array(
-      FeatureGroupUtils.getHeaders(featureGroup, numEntries).entrySet().stream()
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options).entrySet().stream()
       .map(entry -> struct(
         lit(entry.getKey()).as("key"),
         lit(entry.getValue()).as("value")

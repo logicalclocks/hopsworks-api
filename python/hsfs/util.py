@@ -60,7 +60,7 @@ from hsfs.core import feature_group_api
 
 
 if TYPE_CHECKING:
-    from hsfs.constructor import serving_prepared_statement
+    from hsfs.constructor import filter, serving_prepared_statement
 
 
 FeatureStoreEncoder = Encoder
@@ -95,6 +95,109 @@ def parse_features(
     if isinstance(feature_names, list) and len(feature_names) > 0:
         return [validate_feature(feat) for feat in feature_names]
     return []
+
+
+HOPS_START_TIME_ENV = "HOPS_START_TIME"
+HOPS_END_TIME_ENV = "HOPS_END_TIME"
+
+
+def apply_scheduler_time_defaults(
+    start_time: Any,
+    end_time: Any,
+) -> tuple[Any, Any]:
+    """Fall back to scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` env vars.
+
+    When a Hopsworks job is triggered by the scheduler (or via a backfill `Job.run(
+    start_time=..., end_time=...)` call), the container receives `HOPS_START_TIME` and
+    `HOPS_END_TIME` as ISO-8601 UTC env vars describing the data interval the run should
+    process. This helper lets feature-store reads pick those up by default:
+
+      * If the caller passed an explicit value for `start_time` / `end_time`, that value
+        wins.
+      * Otherwise, the corresponding env var is read and returned as-is when non-empty.
+      * Empty env vars (`""`) and unset env vars are treated as "not provided" — the
+        caller's `None` is preserved.
+
+    This function does not validate the env-var string format. Any non-empty value is
+    returned verbatim and is parsed downstream by `convert_event_time_to_timestamp` /
+    `get_timestamp_from_date_string` at the point the time filter is built. A malformed
+    env var therefore raises there, not here — with a message that names the offending
+    input, which is more useful for diagnosing scheduler misconfiguration than silently
+    falling back to "read whole feature group".
+
+    Prints a one-line notice to stdout when env-var defaults are applied so that the
+    scheduler-injected window is visible in the execution log. The notice is suppressed
+    when both args were explicit or when no env vars are set.
+
+    Parameters:
+        start_time: Caller-supplied start of the data window, or `None` to fall back to
+            `HOPS_START_TIME`.
+        end_time: Caller-supplied end of the data window, or `None` to fall back to
+            `HOPS_END_TIME`.
+
+    Returns:
+        The resolved `(start_time, end_time)` tuple. Each side is the caller's value
+        when it was not `None`, otherwise the corresponding env var (if set and
+        non-empty), otherwise `None`.
+    """
+    import os
+
+    resolved_start = start_time
+    resolved_end = end_time
+    applied: list[str] = []
+
+    if start_time is None:
+        env_start = os.environ.get(HOPS_START_TIME_ENV)
+        if env_start:
+            resolved_start = env_start
+            applied.append(f"start_time={env_start} (from ${HOPS_START_TIME_ENV})")
+
+    if end_time is None:
+        env_end = os.environ.get(HOPS_END_TIME_ENV)
+        if env_end:
+            resolved_end = env_end
+            applied.append(f"end_time={env_end} (from ${HOPS_END_TIME_ENV})")
+
+    if applied:
+        print(
+            "[hopsworks] Using scheduler-injected data interval: " + ", ".join(applied)
+        )
+
+    return resolved_start, resolved_end
+
+
+def build_time_filter(
+    event_time_feature: feature.Feature,
+    start_time: Any,
+    end_time: Any,
+) -> filter.Filter | filter.Logic | None:
+    """Build a time filter from start_time and end_time parameters.
+
+    The window is half-open `[start_time, end_time)`: `start_time` is inclusive (>=) and
+    `end_time` is exclusive (<). This guarantees that back-to-back scheduled windows
+    (`[t0, t1)` then `[t1, t2)`) partition the timeline — an event at exactly the boundary
+    `t1` is read by the second window only, never dropped by both and never duplicated.
+
+    Parameters:
+        event_time_feature: The feature to filter on.
+        start_time: The start time for the filter (inclusive, >=).
+        end_time: The end time for the filter (exclusive, <).
+
+    Returns:
+        The built time filter, or `None` if both `start_time` and `end_time` are `None`.
+    """
+    time_filter = None
+    if start_time is not None:
+        time_filter = event_time_feature >= start_time
+
+    if end_time is not None:
+        end_filter = event_time_feature < end_time
+        if time_filter is not None:
+            time_filter = time_filter & end_filter
+        else:
+            time_filter = end_filter
+
+    return time_filter
 
 
 def build_serving_keys_from_prepared_statements(
@@ -157,5 +260,6 @@ __all__ = [
     "verify_attribute_key_names",
     "validate_feature",
     "parse_features",
+    "build_time_filter",
     "build_serving_keys_from_prepared_statements",
 ]

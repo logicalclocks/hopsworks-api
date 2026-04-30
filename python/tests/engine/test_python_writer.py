@@ -26,7 +26,7 @@ from hsfs.engine import python
 
 
 class TestPythonWriter:
-    def test_write_dataframe_kafka(self, mocker, dataframe_fixture_times):
+    def test_run_materialization_job(self, mocker, dataframe_fixture_times):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
@@ -81,10 +81,11 @@ class TestPythonWriter:
         fg._online_topic_name = topic_name
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=dataframe_fixture_times,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -122,7 +123,7 @@ class TestPythonWriter:
         assert reference_record == record
 
     def _setup_kafka_mocks(self, mocker):
-        """Common mock setup for _write_dataframe_kafka tests."""
+        """Common mock setup for _run_materialization_job tests."""
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
@@ -165,7 +166,7 @@ class TestPythonWriter:
         df = pd.DataFrame(data={"col1": [1, 2, 3]})
         return fg, df
 
-    def test_write_dataframe_kafka_sends_num_entries_by_default(self, mocker):
+    def test_run_materialization_job_sends_num_entries_by_default(self, mocker):
         # Arrange
         self._setup_kafka_mocks(mocker)
         mock_init_kafka_resources = mocker.patch(
@@ -176,10 +177,11 @@ class TestPythonWriter:
         fg, df = self._make_feature_group(mocker)
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert - num_entries should be len(dataframe) = 3 when flag is not set
@@ -187,7 +189,7 @@ class TestPythonWriter:
             fg, {"start_offline_materialization": True}, num_entries=3
         )
 
-    def test_write_dataframe_kafka_disable_online_ingestion_count(self, mocker):
+    def test_run_materialization_job_disable_online_ingestion_count(self, mocker):
         # Arrange
         self._setup_kafka_mocks(mocker)
         mock_init_kafka_resources = mocker.patch(
@@ -198,20 +200,21 @@ class TestPythonWriter:
         fg, df = self._make_feature_group(mocker)
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={
-                "disable_online_ingestion_count": True,
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
                 "start_offline_materialization": True,
             },
+            storage=None,
         )
 
         # Assert - num_entries should be None when disable_online_ingestion_count is True
         mock_init_kafka_resources.assert_called_once_with(
             fg,
             {
-                "disable_online_ingestion_count": True,
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
                 "start_offline_materialization": True,
             },
             num_entries=None,

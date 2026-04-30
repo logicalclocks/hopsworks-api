@@ -29,7 +29,7 @@ import threading
 import time
 import warnings
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urljoin, urlparse
 
 import humps
@@ -54,6 +54,8 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs import feature_group
 
 
@@ -182,6 +184,29 @@ def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     if re.match(r"^(?:hdfs://|)/apps/hive/warehouse/*", path):
         return "HIVEDB"
     return "DATASET"
+
+
+def extract_zip(zip_path: str) -> str:
+    """Extract a zip file into a sibling directory and return the directory path.
+
+    The zip is extracted to a directory with the ``.zip`` suffix removed.
+    The operation is idempotent — if the directory already exists, extraction
+    is skipped.
+
+    Parameters:
+        zip_path: Path to the zip file to extract.
+
+    Returns:
+        The path to the directory containing the extracted contents.
+    """
+    import zipfile
+
+    extract_dir = zip_path.rsplit(".", 1)[0]
+    if not os.path.isdir(extract_dir):
+        os.makedirs(extract_dir, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(extract_dir)
+    return extract_dir
 
 
 @also_available_as("hopsworks.util.check_timestamp_format_from_date_string")
@@ -319,7 +344,7 @@ def verify_attribute_key_names(
     feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
 ) -> None:
-    feature_names = {feat.name for feat in feature_group_obj.features}
+    feature_names = {feat.name for feat in feature_group_obj.columns}
     if feature_group_obj.primary_key:
         diff = set(feature_group_obj.primary_key) - feature_names
         if diff:

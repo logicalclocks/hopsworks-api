@@ -33,6 +33,7 @@ from hsfs import (
     util,
 )
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
     query_constructor_api,
@@ -52,7 +53,6 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     from hsfs.constructor.join import Join
-    from hsfs.constructor.query import Query
     from hsfs.core import explicit_provenance
     from hsfs.core.feature_logging import LoggingMetaData
     from hsfs.feature_logger import FeatureLogger
@@ -102,13 +102,24 @@ class FeatureViewEngine:
                 " feature view does not support time travel query.",
                 stacklevel=1,
             )
+
+        # Build feature lookup cache once to avoid rebuilding it for every column.
+        # Only build the cache when there are labels or helper columns to resolve.
+        feature_lookup_cache = None
+        if (
+            feature_view_obj.labels
+            or feature_view_obj.inference_helper_columns
+            or feature_view_obj.training_helper_columns
+        ):
+            feature_lookup_cache = feature_view_obj.query._build_feature_lookup()
+
         if feature_view_obj.labels:
             for label_name in feature_view_obj.labels:
                 (
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(label_name)
+                ) = Query._resolve_feature_from_lookup(label_name, feature_lookup_cache)
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -122,7 +133,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = Query._resolve_feature_from_lookup(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -137,7 +150,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = Query._resolve_feature_from_lookup(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -278,7 +293,9 @@ class FeatureViewEngine:
                             label=True,
                         )
                         for transformed_label_name, output_type in zip(
-                            tf.output_column_names, tf.hopsworks_udf.return_types
+                            tf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                            strict=False,
                         )
                     ]
                 )
@@ -292,7 +309,9 @@ class FeatureViewEngine:
                             label=False,
                         )
                         for transformed_feature_name, output_type in zip(
-                            tf.output_column_names, tf.hopsworks_udf.return_types
+                            tf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                            strict=False,
                         )
                     ]
                 )
@@ -337,7 +356,7 @@ class FeatureViewEngine:
                     spine.dataframe
                 )
                 spine._feature_group_engine._verify_schema_compatibility(
-                    query._left_feature_group.features, dataframe_features
+                    query._left_feature_group.columns, dataframe_features
                 )
                 query._left_feature_group = spine
             elif isinstance(query._left_feature_group, feature_group.SpineGroup):
@@ -1149,7 +1168,7 @@ class FeatureViewEngine:
             sub_query_feature_group = sub_query._left_feature_group
             sub_query_pk_names = {
                 feature.name
-                for feature in sub_query_feature_group.features
+                for feature in sub_query_feature_group.columns
                 if feature.primary
             }
 
@@ -1228,7 +1247,7 @@ class FeatureViewEngine:
         root_feature_group = query._left_feature_group
 
         root_feature_group_primary_keys_names = {
-            feature.name for feature in root_feature_group.features if feature.primary
+            feature.name for feature in root_feature_group.columns if feature.primary
         }
 
         pk_names = {
@@ -1670,7 +1689,7 @@ class FeatureViewEngine:
                 logging_meta_data.event_time if event_time is None else event_time
             )
 
-        logging_feature_group_features = list(logging_feature_group.features)
+        logging_feature_group_features = list(logging_feature_group.columns)
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]

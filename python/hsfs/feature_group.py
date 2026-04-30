@@ -31,7 +31,7 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecation, public
 from hopsworks_common import job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
@@ -2466,8 +2466,10 @@ class FeatureGroupBase:
     @data_source.setter
     def data_source(self, data_source: ds.DataSource) -> None:
         self._data_source = data_source
-        if self._data_source is not None:
-            self._data_source._update_storage_connector(self.storage_connector)
+        if self._data_source is not None and self._data_source.storage_connector:
+            self._data_source._update_storage_connector(
+                self._data_source.storage_connector
+            )
 
     @public
     def prepare_spark_location(self) -> str:
@@ -2534,7 +2536,7 @@ class FeatureGroupBase:
         Returns:
             A list of feature names that have complex data types.
         """
-        return [f.name for f in self.features if f.is_complex()]
+        return [f.name for f in self.columns if f.is_complex()]
 
     def _get_encoded_avro_schema(self) -> str:
         complex_features = self.get_complex_features()
@@ -2560,7 +2562,28 @@ class FeatureGroupBase:
     @public
     @property
     def features(self) -> list[feature.Feature]:
-        """Feature Group schema (alias)."""
+        """Feature Group schema (alias).
+
+        Warning:
+            hsfs.feature_group.FeatureGroupBase.features is deprecated.
+            The function will be removed in a future release of hopsworks."
+            Consider using [`FeatureGroupBase.columns`][hsfs.feature_group.FeatureGroupBase.columns] instead."
+        """
+        warnings.warn(
+            deprecation.generate_deprecation_message(
+                "hsfs.feature_group.FeatureGroupBase.features",
+                "hsfs.feature_group.FeatureGroupBase.columns",
+            ),
+            deprecation.HopsworksDeprecationWarning,
+            stacklevel=2,
+        )
+
+        return self.columns
+
+    @public
+    @property
+    def columns(self) -> list[feature.Feature]:
+        """Feature Group schema as a list of all feature definitions, including name, type, and metadata such as primary key or event time flags."""
         return self._features
 
     @public
@@ -2568,6 +2591,15 @@ class FeatureGroupBase:
     def schema(self) -> list[feature.Feature]:
         """Feature Group schema."""
         return self._features
+
+    @public
+    @property
+    def column_names(self) -> list[str]:
+        """Feature Group column names without type or metadata information, as plain strings.
+
+        The order is the same as in the [`schema`][hsfs.feature_group.FeatureGroupBase.schema] and [`columns`][hsfs.feature_group.FeatureGroupBase.columns].
+        """
+        return [f.name for f in self._features]
 
     def _are_statistics_missing(self, statistics: Statistics) -> bool:
         if not self.statistics_config.enabled:
@@ -2613,7 +2645,20 @@ class FeatureGroupBase:
 
     @features.setter
     def features(self, new_features: list[feature.Feature]) -> None:
-        self._features = new_features
+        warnings.warn(
+            deprecation.generate_deprecation_message(
+                "hsfs.feature_group.FeatureGroupBase.features",
+                "hsfs.feature_group.FeatureGroupBase.columns",
+            ),
+            deprecation.HopsworksDeprecationWarning,
+            stacklevel=2,
+        )
+
+        self.columns = new_features
+
+    @columns.setter
+    def columns(self, new_columns: list[feature.Feature]) -> None:
+        self._features = new_columns
 
     def _get_project_name(self) -> str:
         return util.strip_feature_store_suffix(self.feature_store_name)
@@ -2775,7 +2820,7 @@ class FeatureGroup(FeatureGroupBase):
         features: list[feature.Feature | dict[str, Any]] | None = None,
         location: str | None = None,
         online_enabled: bool = False,
-        time_travel_format: str | None = None,
+        time_travel_format: str | None = "DELTA",
         statistics_config: StatisticsConfig | dict[str, Any] | None = None,
         online_topic_name: str | None = None,
         topic_name: str | None = None,
@@ -2890,12 +2935,10 @@ class FeatureGroup(FeatureGroupBase):
 
         else:
             self._resolve_sink_enabled()
-            # Set time travel format and streaming based on engine type and online status
+            # Set time travel format and streaming based on engine type and sink configuration
             self._init_time_travel_and_stream(
                 stream,
                 time_travel_format,
-                self.online_enabled,  # use the getter of the super class to take into account embedding index
-                self._is_hopsfs_storage(),
             )
 
             self.primary_key = primary_key
@@ -2904,10 +2947,7 @@ class FeatureGroup(FeatureGroupBase):
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
-                and (
-                    self._time_travel_format is None
-                    or self._time_travel_format == "HUDI"
-                )
+                and self._time_travel_format == "HUDI"
                 else None
             )
             self.statistics_config = statistics_config
@@ -2960,8 +3000,6 @@ class FeatureGroup(FeatureGroupBase):
         self,
         stream: bool,
         time_travel_format: str | None,
-        online_enabled: bool,
-        is_hopsfs: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
@@ -2969,16 +3007,12 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._time_travel_format = FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
         )
 
         if engine.get_type() == "python" and not self._sink_enabled:
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
-                is_hopsfs=is_hopsfs,
-                online_enabled=online_enabled,
             )
 
     def _is_hopsfs_storage(self) -> bool:
@@ -2996,6 +3030,16 @@ class FeatureGroup(FeatureGroupBase):
         type supports sink.
         """
         requested_sink = self._sink_enabled
+        supported_sql_connector = (
+            self.storage_connector is not None
+            and self.storage_connector.type == sc.StorageConnector.SQL
+            and getattr(self.storage_connector, "database_type", None)
+            in [
+                sc.SqlConnector.MYSQL,
+                sc.SqlConnector.POSTGRESQL,
+                sc.SqlConnector.ORACLE,
+            ]
+        )
         supported_sink_connector = (
             self.storage_connector is not None
             and self.storage_connector.type
@@ -3006,7 +3050,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.REDSHIFT,
                 sc.StorageConnector.BIGQUERY,
             ]
-        )
+        ) or supported_sql_connector
 
         if (
             validate_requested_sink
@@ -3027,7 +3071,8 @@ class FeatureGroup(FeatureGroupBase):
             )
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
-                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY."
+                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY, "
+                "and SQL connectors with database_type MYSQL, POSTGRESQL, or ORACLE."
             )
 
         # CRM/REST connectors always have sink enabled.
@@ -3043,27 +3088,23 @@ class FeatureGroup(FeatureGroupBase):
     def _resolve_stream_python(
         stream: bool,
         time_travel_format: str,
-        is_hopsfs: bool,
-        online_enabled: bool,
     ) -> bool | None:
-        # If stream is explicitly set stream to True, use it.
-        # Otherwise, resolve it based on time travel format and other flags.
-        return stream or not (
-            is_hopsfs and time_travel_format == "DELTA" and not online_enabled
-        )
+        # If stream is explicitly set to True, use it.
+        # Otherwise, only DELTA format disables stream by default.
+        return stream or time_travel_format != "DELTA"
 
     @staticmethod
     def _resolve_time_travel_format(
         time_travel_format: str | None,
-        online_enabled: bool,
-        is_hopsfs: bool,
     ) -> str:
         """Resolve only the time travel format string."""
-        fmt = time_travel_format.upper() if time_travel_format is not None else None
-        if fmt is None:
-            if not FeatureGroup._has_deltalake():
-                return "HUDI"
-            return "DELTA"
+        if time_travel_format is None:
+            return "NONE"
+        fmt = time_travel_format.upper()
+        if fmt == "DELTA" and not FeatureGroup._has_deltalake():
+            raise FeatureStoreException(
+                "Cannot use time_travel_format='DELTA': delta library is not installed."
+            )
         return fmt
 
     @staticmethod
@@ -3097,6 +3138,8 @@ class FeatureGroup(FeatureGroupBase):
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
         read_options: dict | None = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
     ) -> (
         pd.DataFrame
         | np.ndarray
@@ -3127,11 +3170,42 @@ class FeatureGroup(FeatureGroupBase):
             fg.read("2020-10-20 07:34:11")
             ```
 
+        Example: Reading feature group with time-based filtering on event_time:
+            ```python
+            fg = fs.get_or_create_feature_group(...)
+            # Using strings
+            fg.read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
+            ```
+
+        Example: Incremental feature pipeline — let the scheduler supply the window.
+            When the Hopsworks scheduler fires a job, it injects `HOPS_START_TIME`
+            and `HOPS_END_TIME` env vars describing the data interval the run
+            should process. If `start_time` / `end_time` are not passed to `read`,
+            these env vars are used as defaults, so the same feature-pipeline
+            code works whether launched by the scheduler, by a backfill
+            (`Job.run(start_time=..., end_time=...)`), or manually:
+
+            ```python
+            # No explicit time args — falls back to HOPS_START_TIME / HOPS_END_TIME
+            # (scheduler-supplied) if set, otherwise reads the whole feature group.
+            fg.read()
+            ```
+
         Parameters:
             wallclock_time:
                 If specified, retrieves feature group as of specific point in time.
                 If not specified, returns as of most recent time.
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+                Mutually exclusive with `start_time` / `end_time` (time-travel vs
+                event-time filter are different operations). An explicit `wallclock_time`
+                takes precedence over the scheduler-injected `HOPS_START_TIME` /
+                `HOPS_END_TIME` env vars: when it is set, those defaults are ignored.
             online: If `True`, read from online feature store.
             dataframe_type:
                 The type of the returned dataframe.
@@ -3145,6 +3219,32 @@ class FeatureGroup(FeatureGroupBase):
                 - key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`.
                 - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
+            start_time:
+                Inclusive lower bound on the `event_time` column (`event_time >= start_time`).
+                If not provided and `wallclock_time` is also not set, defaults to the
+                `HOPS_START_TIME` environment variable when set (scheduler-supplied
+                data-interval start). When `wallclock_time` is set the env-var fallback is
+                skipped — wallclock_time takes precedence. An explicit `start_time` always
+                wins over both. If neither `start_time` nor `HOPS_START_TIME` is set, no
+                lower bound is applied (the whole feature group is read).
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
+            end_time:
+                Exclusive upper bound on the `event_time` column (`event_time < end_time`). Combined
+                with the inclusive `start_time`, back-to-back scheduled windows partition the
+                timeline — events at the boundary are read exactly once and never dropped.
+                If not provided and `wallclock_time` is also not set, defaults to the
+                `HOPS_END_TIME` environment variable when set (scheduler-supplied
+                data-interval end). When `wallclock_time` is set the env-var fallback is
+                skipped — wallclock_time takes precedence. An explicit `end_time` always
+                wins over both. If neither `end_time` nor `HOPS_END_TIME` is set, no upper
+                bound is applied (the whole feature group is read).
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
 
         Returns:
             A dataframe in the requested format containing the feature group data.
@@ -3152,7 +3252,20 @@ class FeatureGroup(FeatureGroupBase):
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: No data is available for feature group with this commit date, if time travel enabled.
+            hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
+            hopsworks.client.exceptions.FeatureStoreException: If wallclock_time is used together with start_time or end_time.
         """
+        # Scheduler env-var defaults apply only on the start_time/end_time path. If the caller
+        # asked for time-travel via wallclock_time, leaving scheduler injection in place would
+        # populate start/end behind their back and then raise the mutually-exclusive guard
+        # below — even though they never set those args themselves. Likewise, if the FG has
+        # no event_time column there is nothing to filter on, so the env vars must stay a
+        # no-op rather than be promoted into args that then trip the no-event_time guard.
+        if wallclock_time is None and self.event_time is not None:
+            start_time, end_time = util.apply_scheduler_time_defaults(
+                start_time, end_time
+            )
+
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(
                 "Time travel format is not set for the feature group, cannot read as of specific point in time."
@@ -3164,26 +3277,41 @@ class FeatureGroup(FeatureGroupBase):
                 "environment with Spark Engine."
             )
 
+        if start_time is not None or end_time is not None:
+            if self.event_time is None:
+                raise FeatureStoreException(
+                    "Cannot filter by start_time/end_time: no event_time column is defined "
+                    "for this feature group. Set event_time when creating the feature group "
+                    "to enable time-based filtering."
+                )
+            # Reaching this branch with wallclock_time set means the caller passed BOTH
+            # explicit start/end and wallclock_time (env-var defaults are skipped above
+            # when wallclock_time is not None). That combination is still user error.
+            if wallclock_time is not None:
+                raise FeatureStoreException(
+                    "Cannot use wallclock_time together with start_time/end_time. "
+                    "wallclock_time is for time travel (reading historical snapshots), while "
+                    "start_time/end_time filter on the event_time column values."
+                )
+
         engine.get_instance().set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
 
+        query = self.select_all()
+
         if wallclock_time:
-            return (
-                self.select_all()
-                .as_of(wallclock_time)
-                .read(
-                    online,
-                    dataframe_type,
-                    read_options or {},
-                )
+            query = query.as_of(wallclock_time)
+
+        if start_time is not None or end_time is not None:
+            event_time_feature = self.get_feature(self.event_time)
+            time_filter = util.build_time_filter(
+                event_time_feature, start_time, end_time
             )
-        return self.select_all().read(
-            online,
-            dataframe_type,
-            read_options or {},
-        )
+            query = query.filter(time_filter)
+
+        return query.read(online, dataframe_type, read_options or {})
 
     @public
     def read_changes(
@@ -3299,8 +3427,7 @@ class FeatureGroup(FeatureGroupBase):
             options=options,
         )
         return [
-            (result[0], [result[1][f.name] for f in self.features])
-            for result in results
+            (result[0], [result[1][f.name] for f in self.columns]) for result in results
         ]
 
     @public
@@ -3375,8 +3502,16 @@ class FeatureGroup(FeatureGroupBase):
                   By default it does not wait.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
                   By default it does not wait.
-                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
-                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
+                - key `online_ingestion_options` and value a dict to configure online ingestion behaviour.
+                  Supported keys:
+                    - `timeout`: seconds to wait for online ingestion completion, default `60`, set to `0` for indefinite.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `period`: polling interval in seconds, default `1`.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `upsert_if_newer`: `True` or `False` to only update a row if the new value is newer than the existing one, defaults to `False`.
+                    - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
+                    - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
+                      When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage. `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
                 - key `start_offline_materialization` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
@@ -3610,11 +3745,16 @@ class FeatureGroup(FeatureGroupBase):
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration] to configure the Hopsworks Job used to write data into the feature group.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished. By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished. By default it does not wait.
-                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
-                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
-                - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
-                  Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
-                  Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
+                - key `online_ingestion_options` and value a dict to configure online ingestion behaviour.
+                  Supported keys:
+                    - `timeout`: seconds to wait for online ingestion completion, default `60`, set to `0` for indefinite.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `period`: polling interval in seconds, default `1`.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `upsert_if_newer`: `True` or `False` to only update a row if the new value is newer than the existing one, defaults to `False`.
+                    - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
+                    - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
+                      When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
                   `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
@@ -3684,12 +3824,13 @@ class FeatureGroup(FeatureGroupBase):
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = "true"
 
+        storage_normalized = storage.lower() if storage is not None else None
         job, ge_report = self._feature_group_engine.insert(
             self,
             feature_dataframe=feature_dataframe,
             overwrite=overwrite,
             operation=operation,
-            storage=storage.lower() if storage is not None else None,
+            storage=storage_normalized,
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
             transformation_context=transformation_context,
@@ -3699,12 +3840,17 @@ class FeatureGroup(FeatureGroupBase):
         # Compute stats in client if there is no backfill job:
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
-        if engine.get_type().startswith("spark") and not self.stream:
+        if (
+            engine.get_type().startswith("spark")
+            and not self.stream
+            and storage_normalized != "online"
+        ):
             self.compute_statistics()
         elif (
             self.statistics_config.enabled
             and engine.get_type() == "python"
             and not self.stream
+            and storage_normalized != "online"
         ):
             commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
@@ -4293,7 +4439,7 @@ class FeatureGroup(FeatureGroupBase):
                     json_dict["sinkJob"]
                 )
             return cls(**json_decamelized)
-        for raw_fg, fg in zip(json_dict, json_decamelized):
+        for raw_fg, fg in zip(json_dict, json_decamelized, strict=False):
             if "type" in fg:
                 fg["stream"] = fg["type"] == "streamFeatureGroupDTO"
             _ = fg.pop("type", None)
@@ -4881,11 +5027,16 @@ class ExternalFeatureGroup(FeatureGroupBase):
                   By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
                   By default it does not wait.
-                - key `disable_online_ingestion_count` and value `True` or `False` to disable sending the total number of entries to the online ingestion tracking system.
-                  By default the count is sent. When enabled, no batch size is known to the ingestion tracker, so `wait_for_online_ingestion` will wait until `online_ingestion_options.timeout` is reached rather than completing when all entries are processed.
-                - key `online_ingestion_options` and value a dict to configure waiting on online ingestion.
-                  Applied when `wait_for_online_ingestion` write option is `True` or the `wait` parameter is `True`.
-                  Supported keys are `timeout` (seconds to wait, default `60`, set to `0` for indefinite) and `period` (polling interval in seconds, default `1`).
+                - key `online_ingestion_options` and value a dict to configure online ingestion behaviour.
+                  Supported keys:
+                    - `timeout`: seconds to wait for online ingestion completion, default `60`, set to `0` for indefinite.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `period`: polling interval in seconds, default `1`.
+                      Applies only when `wait_for_online_ingestion` is `True` or the `wait` parameter is `True`.
+                    - `upsert_if_newer`: `True` or `False` to only update a row if the new value is newer than the existing one, defaults to `False`.
+                    - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
+                    - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
+                      When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
                 - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
                   To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
@@ -4952,6 +5103,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ] = "default",
         online: bool = False,
         read_options: dict[str, Any] | None = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -4972,6 +5125,31 @@ class ExternalFeatureGroup(FeatureGroupBase):
             df = fg.read()
             ```
 
+        Example: Reading with time-based filtering on event_time:
+            ```python
+            fg = fs.get_or_create_feature_group(...)
+            # Using strings
+            fg.read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
+            ```
+
+        Example: Incremental feature pipeline — let the scheduler supply the window.
+            When the Hopsworks scheduler fires a job, it injects `HOPS_START_TIME`
+            and `HOPS_END_TIME` env vars describing the data interval the run
+            should process. If `start_time` / `end_time` are not passed to `read`,
+            these env vars are used as defaults.
+
+            ```python
+            # No explicit time args — falls back to HOPS_START_TIME / HOPS_END_TIME
+            # (scheduler-supplied) if set, otherwise reads the whole feature group.
+            fg.read()
+            ```
+
         Warning: Engine Support
             **Spark only**
 
@@ -4983,6 +5161,24 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 By default, maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             online: If `True` read from online feature store.
             read_options: Additional options as key/value pairs to pass to the spark engine.
+            start_time:
+                Inclusive lower bound on the `event_time` column (`event_time >= start_time`).
+                If not provided, defaults to the `HOPS_START_TIME` environment variable when set
+                (scheduler-supplied data-interval start). An explicit value always takes precedence.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
+            end_time:
+                Exclusive upper bound on the `event_time` column (`event_time < end_time`). Combined
+                with the inclusive `start_time`, back-to-back scheduled windows partition the
+                timeline — events at the boundary are read exactly once and never dropped.
+                If not provided, defaults to the `HOPS_END_TIME` environment variable when set
+                (scheduler-supplied data-interval end). An explicit value always takes precedence.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string formatted as
+                `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
+                or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
+                Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
 
         Returns:
             A dataframe in the requested format containing the feature group data.
@@ -4991,7 +5187,18 @@ class ExternalFeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             hopsworks.client.exceptions.FeatureStoreException: If trying to read an external feature group directly in.
+            hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time is specified but no event_time column is defined for the feature group.
         """
+        # Fall back to scheduler-injected HOPS_START_TIME / HOPS_END_TIME env vars when
+        # the caller didn't supply explicit values. Explicit args always win. If the FG
+        # has no event_time column there is nothing to filter on, so the env vars must
+        # stay a no-op rather than be promoted into args that then trip the no-event_time
+        # guard below.
+        if self.event_time is not None:
+            start_time, end_time = util.apply_scheduler_time_defaults(
+                start_time, end_time
+            )
+
         if (
             engine.get_type() == "python"
             and not online
@@ -5007,11 +5214,29 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 "Query API to create Feature Views/Training Data containing External "
                 "Feature Groups."
             )
+
+        if (start_time is not None or end_time is not None) and self.event_time is None:
+            raise FeatureStoreException(
+                "Cannot filter by start_time/end_time: no event_time column is defined "
+                "for this feature group. Set event_time when creating the feature group "
+                "to enable time-based filtering."
+            )
+
         engine.get_instance().set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
-        return self.select_all().read(
+
+        query = self.select_all()
+
+        if start_time is not None or end_time is not None:
+            event_time_feature = self.get_feature(self.event_time)
+            time_filter = util.build_time_filter(
+                event_time_feature, start_time, end_time
+            )
+            query = query.filter(time_filter)
+
+        return query.read(
             dataframe_type=dataframe_type,
             online=online,
             read_options=read_options or {},
@@ -5110,8 +5335,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             options=options,
         )
         return [
-            (result[0], [result[1][f.name] for f in self.features])
-            for result in results
+            (result[0], [result[1][f.name] for f in self.columns]) for result in results
         ]
 
     @classmethod

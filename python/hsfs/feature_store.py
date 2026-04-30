@@ -597,7 +597,7 @@ class FeatureStore:
         version: int | None = None,
         description: str = "",
         online_enabled: bool = False,
-        time_travel_format: str | None = None,
+        time_travel_format: str | None = "DELTA",
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -672,7 +672,7 @@ class FeatureStore:
             version: Version of the feature group to create, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, defaults to `None` and will resolve to `"HUDI"` if the `deltalake` package is not installed, or `"DELTA"` if it is.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -826,7 +826,7 @@ class FeatureStore:
         version: int,
         description: str | None = "",
         online_enabled: bool | None = False,
-        time_travel_format: str | None = None,
+        time_travel_format: str | None = "DELTA",
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -894,7 +894,7 @@ class FeatureStore:
             version: Version of the feature group to retrieve or create.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, defaults to `None` and will resolve to `"HUDI"` if the `deltalake` package is not installed, or `"DELTA"` if it is.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.

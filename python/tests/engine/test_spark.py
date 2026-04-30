@@ -19,7 +19,7 @@ import datetime
 import json
 import logging
 import sys
-from unittest.mock import MagicMock, PropertyMock, call
+from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
 import hopsworks_common
 import numpy
@@ -80,6 +80,10 @@ from pyspark.sql.types import (
 hopsworks_common.connection._hsfs_engine_type = "spark"
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="Spark tests transiently fail on Windows.",
+)
 class TestSpark:
     # Helper Functions
     @staticmethod
@@ -1290,6 +1294,9 @@ class TestSpark:
         from datetime import datetime
 
         mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         spark_engine = spark.Engine()
 
@@ -1404,6 +1411,9 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
         mock_spark_engine_save_offline_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine._save_offline_dataframe"
         )
@@ -1971,7 +1981,12 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="test", version=1, featurestore_id=99, primary_key=[], id=10
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            id=10,
+            time_travel_format="NONE",
         )
         fg.feature_store = mocker.Mock()
 
@@ -2028,6 +2043,7 @@ class TestSpark:
             partition_key=[],
             id=10,
             features=[f, f1],
+            time_travel_format="NONE",
         )
 
         mock_df = mocker.Mock()
@@ -2223,10 +2239,13 @@ class TestSpark:
             name="test",
             version=1,
             featurestore_id=99,
-            primary_key=[],
             partition_key=[],
             id=10,
             online_topic_name="test_online_topic_name",
+            features=[
+                feature.Feature("col_0", primary=True),
+                feature.Feature("col_1"),
+            ],
         )
         fg.feature_store = mocker.Mock()
 
@@ -2241,7 +2260,21 @@ class TestSpark:
         )
 
         # Assert - num_entries should be dataframe row count (2) when flag is not set
-        mock_get_headers.assert_called_once_with(fg, 2)
+        mock_get_headers.assert_called_once_with(
+            fg,
+            2,
+            {
+                "kafka.test_option_name": "test_option_value",
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+            },
+        )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
     def test_save_online_dataframe_disable_online_ingestion_count(
@@ -2294,11 +2327,28 @@ class TestSpark:
         spark_engine._save_online_dataframe(
             feature_group=fg,
             dataframe=spark_df,
-            write_options={"disable_online_ingestion_count": True},
+            write_options={
+                "online_ingestion_options": {"disable_online_ingestion_count": True}
+            },
         )
 
         # Assert - num_entries should be None when disable_online_ingestion_count is True
-        mock_get_headers.assert_called_once_with(fg, None)
+        mock_get_headers.assert_called_once_with(
+            fg,
+            None,
+            {
+                "kafka.test_option_name": "test_option_value",
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
+            },
+        )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
     def test_serialize_to_avro(self, mocker):
@@ -6858,10 +6908,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -6917,10 +6963,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dict(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7028,10 +7070,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7082,10 +7120,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7165,10 +7199,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7220,10 +7250,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7323,10 +7349,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7380,10 +7402,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7460,10 +7478,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7512,10 +7526,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7614,10 +7624,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7671,10 +7677,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7748,10 +7750,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7799,10 +7797,6 @@ class TestSpark:
             == expected_dataframe.select(*logging_feature_names).collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7920,10 +7914,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7993,10 +7983,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8092,10 +8078,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8144,10 +8126,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8254,10 +8232,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_keys_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8315,10 +8289,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_key_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8403,10 +8373,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8455,10 +8421,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8559,10 +8521,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8618,10 +8576,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8702,10 +8656,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8760,10 +8710,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8868,10 +8814,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8924,10 +8866,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9007,10 +8945,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_event_time_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9058,10 +8992,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_event_time_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9158,10 +9088,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_id_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9212,10 +9138,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9310,10 +9232,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9364,10 +9282,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9473,10 +9387,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9530,10 +9440,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -9564,10 +9470,6 @@ class TestSpark:
             == f"Error logging data `{constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME}` to ensure that it has the following features : {column_names['request_parameters']}."
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_override_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9787,10 +9689,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_override_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -10035,10 +9933,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_override_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -10279,10 +10173,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_none(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10434,10 +10324,6 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_all(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10578,10 +10464,6 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_none_fully_qualified_names(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10752,10 +10634,6 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_all_fully_qualified_names(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10928,3 +10806,343 @@ class TestSpark:
                 result.hopsworks_logging_metadata.request_parameters.collect()
                 == request_parameters_spark_df.collect()
             )
+
+    class TestFilterOnlineDataframe:
+        @pytest.fixture(autouse=True)
+        def patch_engine_type(self, mocker):
+            mocker.patch("hsfs.engine.get_type", return_value="spark")
+            mocker.patch(
+                "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+            )
+
+        @pytest.fixture(autouse=True)
+        def spark_engine(self):
+            engine = spark.Engine()
+            engine._spark_session.conf.set("spark.sql.shuffle.partitions", "1")
+            return engine
+
+        def _make_fg(self, primary_key, event_time=None, ttl=None, ttl_enabled=None):
+            return feature_group.FeatureGroup(
+                name="test",
+                version=1,
+                featurestore_id=1,
+                primary_key=primary_key,
+                partition_key=[],
+                event_time=event_time,
+                ttl=ttl,
+                ttl_enabled=ttl_enabled,
+            )
+
+        def _make_df(self, spark_engine, data, schema):
+            return spark_engine._spark_session.createDataFrame(data, schema=schema)
+
+        def test_no_event_time_no_duplicates_returns_all_rows(self, spark_engine):
+            # Arrange
+            fg = self._make_fg(primary_key=["id"])
+            schema = StructType(
+                [StructField("id", IntegerType()), StructField("val", StringType())]
+            )
+            df = self._make_df(spark_engine, [(1, "a"), (2, "b")], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+
+        def test_no_event_time_deduplicates_by_last_row_per_primary_key(
+            self, spark_engine
+        ):
+            # Arrange: two rows for the same primary key — last one should win
+            fg = self._make_fg(primary_key=["id"])
+            schema = StructType(
+                [StructField("id", IntegerType()), StructField("val", StringType())]
+            )
+            df = self._make_df(spark_engine, [(1, "a"), (1, "b"), (2, "c")], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            ids = {r["id"] for r in result.collect()}
+            assert ids == {1, 2}
+
+        def test_event_time_keeps_latest_per_primary_key(self, spark_engine):
+            # Arrange: two rows for id=1 with different event times — only newer survives
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "old", older), (1, "new", newer), (2, "only", older)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            row = next(r for r in result.collect() if r["id"] == 1)
+            assert row["val"] == "new"
+
+        def test_event_time_out_of_order_batch_picks_max(self, spark_engine):
+            # Arrange: older record appears after newer in the dataframe
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            newer = datetime.datetime(2024, 6, 1)
+            older = datetime.datetime(2024, 1, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "new", newer), (1, "old", older)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "new"
+
+        def test_ttl_filters_expired_rows(self, spark_engine):
+            # Arrange: one row with a very old timestamp (expired), one with now
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            expired = datetime.datetime(2000, 1, 1)
+            fresh = datetime.datetime.now()
+            df = self._make_df(
+                spark_engine,
+                [(1, "expired", expired), (2, "fresh", fresh)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "fresh"
+
+        def test_ttl_keeps_all_rows_when_none_expired(self, spark_engine):
+            # Arrange: all rows are fresh
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            fresh = datetime.datetime.now()
+            df = self._make_df(spark_engine, [(1, "a", fresh), (2, "b", fresh)], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+
+        def test_ttl_disabled_falls_back_to_dedup_by_event_time(self, spark_engine):
+            # Arrange: ttl_enabled=False — should deduplicate by event time instead
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=False
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "old", older), (1, "new", newer)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "new"
+
+        def test_composite_primary_key(self, spark_engine):
+            # Arrange: primary key is (user_id, item_id) — two entries for same pair
+            fg = self._make_fg(primary_key=["user_id", "item_id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("user_id", IntegerType()),
+                    StructField("item_id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [
+                    (1, 10, "old", older),
+                    (1, 10, "new", newer),
+                    (1, 20, "only", older),
+                ],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            row = next(
+                r for r in result.collect() if r["user_id"] == 1 and r["item_id"] == 10
+            )
+            assert row["val"] == "new"
+
+
+class TestSparkConnectMode:
+    """Tests for Spark Connect compatibility guards."""
+
+    @staticmethod
+    def _make_connect_engine():
+        """Create a spark.Engine instance configured for Connect mode."""
+        engine = spark.Engine.__new__(spark.Engine)
+        engine._spark_session = MagicMock()
+        engine._spark_context = None
+        engine._jvm = None
+        engine._is_connect = True
+        engine._metrics = None
+        engine._dataset_api = MagicMock()
+        return engine
+
+    def test_set_job_group_noop_in_connect(self):
+        engine = self._make_connect_engine()
+        # Should not raise even though sparkContext is None
+        engine.set_job_group("group1", "description")
+
+    def test_set_hadoop_conf_uses_spark_conf(self):
+        engine = self._make_connect_engine()
+        engine._set_hadoop_conf("fs.s3a.access.key", "my-key")
+        engine._spark_session.conf.set.assert_called_once_with(
+            "spark.hadoop.fs.s3a.access.key", "my-key"
+        )
+
+    def test_set_hadoop_conf_classic_mode(self):
+        engine = spark.Engine.__new__(spark.Engine)
+        engine._spark_session = MagicMock()
+        engine._spark_context = MagicMock()
+        engine._jvm = MagicMock()
+        engine._is_connect = False
+        engine._set_hadoop_conf("fs.s3a.access.key", "my-key")
+        engine._spark_context._jsc.hadoopConfiguration().set.assert_called_once_with(
+            "fs.s3a.access.key", "my-key"
+        )
+
+    def test_unset_hadoop_conf_connect(self):
+        engine = self._make_connect_engine()
+        engine._unset_hadoop_conf("fs.gs.encryption.algorithm")
+        engine._spark_session.conf.unset.assert_called_once_with(
+            "spark.hadoop.fs.gs.encryption.algorithm"
+        )
+
+    def test_create_empty_df(self):
+        engine = self._make_connect_engine()
+        mock_streaming_df = MagicMock()
+        mock_streaming_df.schema = StructType([StructField("col1", StringType())])
+        engine.create_empty_df(mock_streaming_df)
+        engine._spark_session.createDataFrame.assert_called_once_with(
+            [], mock_streaming_df.schema
+        )
+
+    def test_save_offline_dataframe_blocks_hudi(self):
+        engine = self._make_connect_engine()
+        fg = MagicMock()
+        fg.time_travel_format = "HUDI"
+        df = MagicMock()
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Hudi"):
+            engine._save_offline_dataframe(fg, df, "upsert", {})
+
+    def test_convert_to_default_dataframe_blocks_rdd(self):
+        from pyspark.rdd import RDD
+
+        engine = self._make_connect_engine()
+        mock_rdd = MagicMock(spec=RDD)
+
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="RDD input is not supported"
+        ):
+            engine.convert_to_default_dataframe(mock_rdd)
+
+    def test_add_file_skips_spark_context(self, tmp_path):
+        from unittest.mock import patch as mock_patch
+
+        engine = self._make_connect_engine()
+
+        with mock_patch("hsfs.engine.spark.client") as mock_client:
+            mock_client._is_external.return_value = False
+            mock_response = MagicMock()
+            mock_response.content = b"file-content"
+            engine._dataset_api.read_content.return_value = mock_response
+
+            with (
+                mock_patch("hsfs.engine.spark.util") as mock_util,
+                mock_patch("builtins.open", mock_open()),
+            ):
+                mock_util.get_dataset_type.return_value = "DATASET"
+                result = engine.add_file("hdfs:///path/to/file.jks", distribute=True)
+
+        # Should not have called sparkContext.addFile
+        assert engine._spark_context is None
+        assert result.endswith("file.jks")
+
+    def test_create_spark_session_connect_skips_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=True),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.getOrCreate.assert_called_once()
+            mock_spark.builder.enableHiveSupport.assert_not_called()
+
+    def test_create_spark_session_classic_enables_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=False),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.enableHiveSupport.assert_called_once()

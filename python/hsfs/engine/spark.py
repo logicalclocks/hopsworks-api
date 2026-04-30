@@ -50,13 +50,14 @@ try:
     import pyspark
     from pyspark import SparkFiles
     from pyspark.rdd import RDD
-    from pyspark.sql import DataFrame, SparkSession, SQLContext, Window
+    from pyspark.sql import DataFrame, SparkSession, Window
     from pyspark.sql.avro.functions import from_avro, to_avro
     from pyspark.sql.functions import (
         array,
         col,
         concat,
         count,
+        current_timestamp,
         from_json,
         lit,
         monotonically_increasing_id,
@@ -96,6 +97,10 @@ import logging
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.spark_connect_utils import (
+    is_spark_connect_env,
+    is_spark_connect_session,
+)
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
     feature,
@@ -136,17 +141,78 @@ class Engine:
     APPEND = "append"
     OVERWRITE = "overwrite"
 
+    def _create_spark_session(self):
+        """Create and return a SparkSession.
+
+        Subclasses can override to customize the session builder
+        (e.g. skip Hive support or add Delta extensions).
+        """
+        if is_spark_connect_env():
+            return SparkSession.builder.getOrCreate()
+        return SparkSession.builder.enableHiveSupport().getOrCreate()
+
     def __init__(self):
-        self._spark_session = SparkSession.builder.enableHiveSupport().getOrCreate()
-        self._spark_context = self._spark_session.sparkContext
-        # self._spark_context.setLogLevel("DEBUG")
-        self._jvm = self._spark_context._jvm
+        self._spark_session = self._create_spark_session()
+
+        self._is_connect = is_spark_connect_session(self._spark_session)
+
+        if self._is_connect:
+            self._spark_context = None
+            self._jvm = None
+        else:
+            self._spark_context = self._spark_session.sparkContext
+            self._jvm = self._spark_context._jvm
 
         self._spark_session.conf.set("hive.exec.dynamic.partition", "true")
         self._spark_session.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")
         self._spark_session.conf.set("spark.sql.hive.convertMetastoreParquet", "false")
         self._spark_session.conf.set("spark.sql.session.timeZone", "UTC")
         self._dataset_api = dataset_api.DatasetApi()
+
+        # Stage metrics: enabled by default in Connect mode, can be overridden
+        self._metrics = None
+        try:
+            metrics_override = self._spark_session.conf.get(
+                "hsfs.metrics.enabled", None
+            )
+        except Exception:
+            metrics_override = None
+        metrics_enabled = (
+            metrics_override.lower() in ("1", "true")
+            if metrics_override is not None
+            else self._is_connect
+        )
+        if metrics_enabled:
+            from hsfs.engine.spark_metrics import SparkStageMetrics
+
+            self._metrics = SparkStageMetrics(self._spark_session)
+
+    def _set_hadoop_conf(self, key, value):
+        """Set a Hadoop configuration property via the appropriate mechanism."""
+        if self._is_connect:
+            self._spark_session.conf.set(f"spark.hadoop.{key}", value)
+        else:
+            self._spark_context._jsc.hadoopConfiguration().set(key, value)
+
+    def _set_hadoop_conf_if_unset(self, key, value):
+        """Set a Hadoop configuration property only if not already set."""
+        if self._is_connect:
+            try:
+                existing = self._spark_session.conf.get(f"spark.hadoop.{key}")
+                if existing:
+                    return
+            except Exception:
+                pass
+            self._spark_session.conf.set(f"spark.hadoop.{key}", value)
+        else:
+            self._spark_context._jsc.hadoopConfiguration().setIfUnset(key, value)
+
+    def _unset_hadoop_conf(self, key):
+        """Unset a Hadoop configuration property."""
+        if self._is_connect:
+            self._spark_session.conf.unset(f"spark.hadoop.{key}")
+        else:
+            self._spark_context._jsc.hadoopConfiguration().unset(key)
 
     def sql(
         self,
@@ -157,12 +223,16 @@ class Engine:
         read_options,
         schema=None,
     ):
+        if self._metrics:
+            self._metrics.snapshot()
         if not connector:
             result_df = self._sql_offline(sql_query, feature_store)
         else:
             result_df = connector.read(sql_query, None, read_options, None)
 
         self.set_job_group("", "")
+        if self._metrics:
+            self._metrics.report("sql")
         return self._return_dataframe_type(result_df, dataframe_type)
 
     def is_flyingduck_query_supported(self, query, read_options=None):
@@ -186,18 +256,18 @@ class Engine:
         filter: Filter | Logic = None,
     ) -> pd.DataFrame | np.ndarray | list[list[Any]] | TypeVar("pyspark.sql.DataFrame"):
         results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
-        feature_names = [f.name for f in feature_group.features]
+        feature_names = [f.name for f in feature_group.columns]
         dataframe_type = dataframe_type.lower()
         if dataframe_type in ["default", "spark"]:
             if len(results) == 0:
-                return self._spark_session.createDataFrame(
-                    self._spark_session.sparkContext.emptyRDD(), StructType()
-                )
+                return self._spark_session.createDataFrame([], StructType())
             return self._spark_session.createDataFrame(results, feature_names)
         df = pd.DataFrame(results, columns=feature_names, index=None)
         return self._return_dataframe_type(df, dataframe_type)
 
     def set_job_group(self, group_id, description):
+        if self._is_connect:
+            return
         self._spark_session.sparkContext.setJobGroup(group_id, description)
 
     def register_external_temporary_table(self, external_fg, alias):
@@ -219,6 +289,12 @@ class Engine:
     def register_hudi_temporary_table(
         self, hudi_fg_alias, feature_store_id, feature_store_name, read_options
     ):
+        if self._is_connect:
+            raise FeatureStoreException(
+                "Hudi time-travel format is not supported in Spark Connect mode "
+                "because it requires JVM bridge access. "
+                "Use DELTA format or no time-travel format instead."
+            )
         hudi_engine_instance = hudi_engine.HudiEngine(
             feature_store_id,
             feature_store_name,
@@ -281,6 +357,11 @@ class Engine:
         elif HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
             dataframe = self.convert_pandas_to_spark_dataframe(dataframe)
         elif isinstance(dataframe, RDD):
+            if self._is_connect:
+                raise FeatureStoreException(
+                    "RDD input is not supported in Spark Connect mode. "
+                    "Convert to a DataFrame first."
+                )
             dataframe = dataframe.toDF()
 
         if isinstance(dataframe, DataFrame):
@@ -534,11 +615,14 @@ class Engine:
         online_write_options,
         validation_id=None,
     ):
+        if self._metrics:
+            self._metrics.snapshot()
         try:
             if (
                 # Only `FeatureGroup class has time_travel_format property
                 isinstance(feature_group, fg_mod.FeatureGroup)
                 and feature_group.time_travel_format == "DELTA"
+                and storage in [None, "offline"]
             ):
                 self._check_duplicate_records(dataframe, feature_group)
                 _logger.debug(
@@ -564,6 +648,9 @@ class Engine:
                 )
         except Exception as e:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
+        finally:
+            if self._metrics:
+                self._metrics.report("save_dataframe")
 
     def save_stream_dataframe(
         self,
@@ -588,7 +675,9 @@ class Engine:
             )
 
         query = (
-            serialized_df.withColumn("headers", self._get_headers(feature_group))
+            serialized_df.withColumn(
+                "headers", self._get_headers(feature_group, options=write_options)
+            )
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
@@ -629,6 +718,12 @@ class Engine:
         validation_id=None,
     ):
         if feature_group.time_travel_format == "HUDI":
+            if self._is_connect:
+                raise FeatureStoreException(
+                    "Hudi time-travel format is not supported in Spark Connect mode "
+                    "because it requires JVM bridge access. "
+                    "Use DELTA format or no time-travel format instead."
+                )
             hudi_engine_instance = hudi_engine.HudiEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
@@ -646,9 +741,11 @@ class Engine:
                 feature_group.feature_store_name,
                 feature_group,
                 self._spark_session,
-                self._spark_context,
+                None if self._is_connect else self._spark_context,
             )
-            delta_engine_instance.save_delta_fg(dataframe, write_options, validation_id)
+            delta_engine_instance.save_delta_fg(
+                dataframe, write_options, validation_id, operation=operation
+            )
         else:
             dataframe.write.format(self.HIVE_FORMAT).mode(self.APPEND).options(
                 **write_options
@@ -656,11 +753,53 @@ class Engine:
                 feature_group.partition_key if feature_group.partition_key else []
             ).saveAsTable(feature_group._get_table_name())
 
+    def _filter_online_dataframe(self, feature_group, dataframe):
+        """Filter a dataframe before online ingestion to avoid overwriting newer data with older records.
+
+        For TTL-enabled feature groups, rows whose event time has already expired are dropped.
+        For non-TTL feature groups, only the last record per primary key is kept:
+        ordered by event time if configured, otherwise by insertion order.
+        """
+        event_time = feature_group.event_time
+
+        if feature_group.ttl_enabled and feature_group.ttl:
+            if event_time:
+                # Drop rows whose event time is older than the TTL window.
+                # event_time column is expected to be a timestamp; compare against current time minus TTL seconds.
+                ttl_threshold = current_timestamp().cast("long") - lit(
+                    feature_group.ttl
+                )
+                dataframe = dataframe.filter(
+                    col(event_time).cast("long") > ttl_threshold
+                )
+        else:
+            # Keep only the last record per primary key.
+            # Use event time as the ordering column when available, otherwise fall back to insertion order.
+            order_col = (
+                col(event_time).desc()
+                if event_time
+                else monotonically_increasing_id().desc()
+            )
+            window = Window.partitionBy(
+                *[col(k) for k in feature_group.primary_key]
+            ).orderBy(order_col)
+            dataframe = (
+                dataframe.withColumn("_rn", row_number().over(window))
+                .filter(col("_rn") == 1)
+                .drop("_rn")
+            )
+
+        return dataframe
+
     def _save_online_dataframe(self, feature_group, dataframe, write_options):
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
+        if write_options.get("online_ingestion_options", {}).get(
+            "mark_online_rows", True
+        ):
+            dataframe = self._filter_online_dataframe(feature_group, dataframe)
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         (
@@ -669,8 +808,11 @@ class Engine:
                 self._get_headers(
                     feature_group,
                     None
-                    if write_options.get("disable_online_ingestion_count", False)
+                    if write_options.get("online_ingestion_options", {}).get(
+                        "disable_online_ingestion_count", False
+                    )
                     else dataframe.count(),
+                    write_options,
                 ),
             )
             .write.format(self.KAFKA_FORMAT)
@@ -691,12 +833,13 @@ class Engine:
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         num_entries: int | None = None,
+        options: dict | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine.get_headers(
-                    feature_group, num_entries
+                    feature_group, num_entries, options
                 ).items()
             ]
         )
@@ -1326,9 +1469,9 @@ class Engine:
 
         # for external clients, download the file using the dataset API
         # also if the client is internal, but we only need the files on the driver
-        if client._is_external() or not distribute:
+        if client._is_external() or not distribute or self._is_connect:
             tmp_file = f"/tmp/{file_name}"
-            print("Reading key file from storage connector.")
+            _logger.info("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
 
             with open(tmp_file, "wb") as f:
@@ -1337,9 +1480,14 @@ class Engine:
             file = f"file://{tmp_file}"
 
         # If we need the files on the executors, then we should call addFile
-        if distribute:
+        if distribute and not self._is_connect:
             self._spark_context.addFile(file)
             return SparkFiles.get(file_name)
+        if distribute and self._is_connect:
+            _logger.warning(
+                "Spark Connect does not support distributing files to executors "
+                "via addFile(). The file is available on the driver only."
+            )
         # Remove the 'file://' prefix for local file paths
         return file[7:]
 
@@ -1353,6 +1501,9 @@ class Engine:
     ):
         """Profile a dataframe with Deequ.
 
+        Falls back to pandas-based profiling in Spark Connect mode where the
+        JVM bridge is unavailable.
+
         Parameters:
             dataframe: The Spark DataFrame to profile.
             relevant_columns: List of column names to include in profiling.
@@ -1360,6 +1511,21 @@ class Engine:
             histograms: Whether to compute feature value frequency histograms.
             exact_uniqueness: Whether to compute exact uniqueness metrics.
         """
+        if self._is_connect:
+            _logger.warning(
+                "Deequ-based profiling is not available in Spark Connect mode. "
+                "Falling back to pandas-based profiling."
+            )
+            from hsfs.engine.python import Engine as PythonEngine
+
+            if relevant_columns:
+                pdf = dataframe.select(*relevant_columns).toPandas()
+            else:
+                pdf = dataframe.toPandas()
+            python_engine = PythonEngine.__new__(PythonEngine)
+            return python_engine.profile(
+                pdf, relevant_columns, correlations, histograms, exact_uniqueness
+            )
         return self._jvm.com.logicalclocks.hsfs.spark.engine.SparkEngine.getInstance().profile(
             dataframe._jdf,
             relevant_columns,
@@ -1515,35 +1681,31 @@ class Engine:
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:
-            self._spark_context._jsc.hadoopConfiguration().set(
-                f"{prefix}.access.key", storage_connector.access_key
-            )
+            self._set_hadoop_conf(f"{prefix}.access.key", storage_connector.access_key)
         if storage_connector.secret_key:
-            self._spark_context._jsc.hadoopConfiguration().set(
-                f"{prefix}.secret.key", storage_connector.secret_key
-            )
+            self._set_hadoop_conf(f"{prefix}.secret.key", storage_connector.secret_key)
         if storage_connector.server_encryption_algorithm:
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.server-side-encryption-algorithm",
                 storage_connector.server_encryption_algorithm,
             )
         if storage_connector.server_encryption_key:
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.server-side-encryption-key",
                 storage_connector.server_encryption_key,
             )
         if storage_connector.session_token:
-            print(f"session token set for {prefix}")
-            self._spark_context._jsc.hadoopConfiguration().set(
+            _logger.debug("Session token set for %s", prefix)
+            self._set_hadoop_conf(
                 f"{prefix}.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
             )
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.session.token",
                 storage_connector.session_token,
             )
         if storage_connector.region:
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.endpoint.region",
                 storage_connector.region,
             )
@@ -1558,14 +1720,14 @@ class Engine:
                 continue
             # Strip the leading 'fs.s3a.' so we can prefix with the connector specific prefix
             suffix = key.split("fs.s3a.", 1)[1]
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.{suffix}",
                 str(value),
             )
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):
         for k, v in storage_connector.spark_options().items():
-            self._spark_context._jsc.hadoopConfiguration().set(k, v)
+            self._set_hadoop_conf(k, v)
 
         return path
 
@@ -1583,7 +1745,7 @@ class Engine:
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        for _feature in feature_group.features:
+        for _feature in feature_group.columns:
             if _feature.name not in dataframe.columns:
                 dataframe = dataframe.withColumn(
                     _feature.name, lit(None).cast(_feature.type)
@@ -1608,7 +1770,7 @@ class Engine:
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        for _feature in feature_group.features:
+        for _feature in feature_group.columns:
             if _feature.name not in dataframe.columns:
                 dataframe = dataframe.withColumn(
                     _feature.name, lit(None).cast(_feature.type)
@@ -1696,7 +1858,10 @@ class Engine:
             *[
                 fun(*feature).alias(output_col_name)
                 for fun, feature, output_col_name in zip(
-                    transformations, transformation_features, output_col_names
+                    transformations,
+                    transformation_features,
+                    output_col_names,
+                    strict=False,
                 )
             ],
         ).select(*untransformed_columns, *explode_name)
@@ -1823,57 +1988,39 @@ class Engine:
         PROPERTY_ACCT_KEY_ID = "fs.gs.auth.service.account.private.key.id"
         PROPERTY_ACCT_KEY = "fs.gs.auth.service.account.private.key"
         # The AbstractFileSystem for 'gs:' URIs
-        self._spark_context._jsc.hadoopConfiguration().setIfUnset(
-            PROPERTY_GCS_FS_KEY, PROPERTY_GCS_FS_VALUE
-        )
+        self._set_hadoop_conf_if_unset(PROPERTY_GCS_FS_KEY, PROPERTY_GCS_FS_VALUE)
         # Whether to use a service account for GCS authorization. Setting this
         # property to `false` will disable use of service accounts for authentication.
-        self._spark_context._jsc.hadoopConfiguration().setIfUnset(
-            PROPERTY_GCS_ACCOUNT_ENABLE, "true"
-        )
+        self._set_hadoop_conf_if_unset(PROPERTY_GCS_ACCOUNT_ENABLE, "true")
 
         # The JSON key file of the service account used for GCS
         # access when google.cloud.auth.service.account.enable is true.
         local_path = self.add_file(storage_connector.key_path)
         with open(local_path) as f_in:
             jsondata = json.load(f_in)
-        self._spark_context._jsc.hadoopConfiguration().set(
-            PROPERTY_ACCT_EMAIL, jsondata["client_email"]
-        )
-        self._spark_context._jsc.hadoopConfiguration().set(
-            PROPERTY_ACCT_KEY_ID, jsondata["private_key_id"]
-        )
-        self._spark_context._jsc.hadoopConfiguration().set(
-            PROPERTY_ACCT_KEY, jsondata["private_key"]
-        )
+        self._set_hadoop_conf(PROPERTY_ACCT_EMAIL, jsondata["client_email"])
+        self._set_hadoop_conf(PROPERTY_ACCT_KEY_ID, jsondata["private_key_id"])
+        self._set_hadoop_conf(PROPERTY_ACCT_KEY, jsondata["private_key"])
 
         if storage_connector.algorithm:
             # if encryption fields present
-            self._spark_context._jsc.hadoopConfiguration().set(
-                PROPERTY_ALGORITHM, storage_connector.algorithm
-            )
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(PROPERTY_ALGORITHM, storage_connector.algorithm)
+            self._set_hadoop_conf(
                 PROPERTY_ENCRYPTION_KEY, storage_connector.encryption_key
             )
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 PROPERTY_ENCRYPTION_HASH, storage_connector.encryption_key_hash
             )
         else:
             # unset if already set
-            self._spark_context._jsc.hadoopConfiguration().unset(PROPERTY_ALGORITHM)
-            self._spark_context._jsc.hadoopConfiguration().unset(
-                PROPERTY_ENCRYPTION_HASH
-            )
-            self._spark_context._jsc.hadoopConfiguration().unset(
-                PROPERTY_ENCRYPTION_KEY
-            )
+            self._unset_hadoop_conf(PROPERTY_ALGORITHM)
+            self._unset_hadoop_conf(PROPERTY_ENCRYPTION_HASH)
+            self._unset_hadoop_conf(PROPERTY_ENCRYPTION_KEY)
 
         return path
 
     def create_empty_df(self, streaming_df):
-        return SQLContext(self._spark_context).createDataFrame(
-            self._spark_context.emptyRDD(), streaming_df.schema
-        )
+        return self._spark_session.createDataFrame([], streaming_df.schema)
 
     @staticmethod
     def get_unique_values(feature_dataframe, feature_name):

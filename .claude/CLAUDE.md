@@ -21,10 +21,11 @@ uv run --project python docsig python/hopsworks python/hsfs python/hsml python/h
 - Code using optional packages (`polars`, `confluent_kafka`, `great_expectations`, `pyarrow`) must be gated by a decorator from `hopsworks_common.decorators` (e.g. `@uses_polars`)
 - `hopsworks_common` must not runtime-import `hopsworks`, `hsfs`, or `hsml`; `hsfs` and `hsml` must not runtime-import each other or `hopsworks`
 - Never commit or log API keys, tokens, or credentials
+- If you want to mark a section of a file with a comment, use `# region Region Name`
 
 ## Agent Docs
 
-- @.agent/architecture/README.md — package map and three-layer convention; links to packages, domain, and dependencies
-- @.agent/development/README.md — commands; links to setup, testing, linting, and CI
-- @.agent/conventions/README.md — conventions summary; links to docstring guide, code style, and public API
-- @.agent/caveats/README.md — known gotchas and workarounds; add new ones to this folder
+- @docs/architecture/README.md — package map and three-layer convention; links to packages, domain, and dependencies
+- @docs/development/README.md — commands; links to setup, testing, linting, and CI
+- @docs/conventions/README.md — conventions summary; links to docstring guide, code style, and public API
+- @docs/caveats/README.md — known gotchas and workarounds; add new ones to this folder

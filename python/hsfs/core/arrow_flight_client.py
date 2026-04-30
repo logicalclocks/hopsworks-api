@@ -195,7 +195,11 @@ class ArrowFlightClient:
         StorageConnector.REDSHIFT,
         StorageConnector.SQL,
         StorageConnector.GCS,
+        StorageConnector.UNITY_CATALOG,
     ]
+    # Oracle rides on StorageConnector.SQL above — it's distinguished on the
+    # backend by sqlConnector.databaseType == "ORACLE". Keep that routing in
+    # sync if this list is ever refactored to key on databaseType.
     READ_ERROR = "Could not read data using Hopsworks Query Service."
     WRITE_ERROR = 'Could not write data using Hopsworks Query Service. If the issue persists, use write_options={"use_spark": True} instead.'
     DEFAULTING_TO_DIFFERENT_SERVICE_WARNING = (

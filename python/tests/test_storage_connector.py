@@ -15,6 +15,7 @@
 #
 
 import base64
+import os
 from pathlib import WindowsPath
 
 import pytest
@@ -142,6 +143,67 @@ class TestS3Connector:
 
         # assert
         assert result == "s3://test-bucket/abc/def/some/location"
+
+
+class TestUnityCatalogConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_unity_catalog"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Unity Catalog connector description"
+        assert sc.type == storage_connector.StorageConnector.UNITY_CATALOG
+        assert sc.workspace_url == "https://test.cloud.databricks.com"
+        assert sc.access_token == "dapi-test-token"
+        assert sc.default_catalog == "test_catalog"
+        assert sc.aws_region == "us-west-2"
+        assert sc.arguments == {"arg1": "val1"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog_basic_info"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_unity_catalog"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.workspace_url is None
+        assert sc.access_token is None
+        assert sc.default_catalog is None
+        assert sc.aws_region is None
+        assert sc.arguments == {}
+
+    def test_connector_options(self):
+        sc = storage_connector.UnityCatalogConnector(
+            id=1,
+            name="uc",
+            featurestore_id=1,
+            workspace_url="https://ws.cloud.databricks.com",
+            access_token="dapi-xyz",
+            default_catalog="sales",
+        )
+        opts = sc.connector_options()
+        assert opts["workspace_url"] == "https://ws.cloud.databricks.com"
+        assert opts["default_catalog"] == "sales"
+
+    def test_spark_options_not_supported(self):
+        sc = storage_connector.UnityCatalogConnector(
+            id=1, name="uc", featurestore_id=1, workspace_url="https://x.com"
+        )
+        with pytest.raises(NotImplementedError):
+            sc.spark_options()
 
 
 class TestRedshiftConnector:
@@ -1099,6 +1161,7 @@ class TestSqlConnector:
 
         # Assert
         assert options["driver"] == expected_driver
+        assert options["url"] == f"jdbc:{expected_scheme}://localhost:3306/testdb"
 
     @pytest.mark.parametrize(
         "database_type, expected_driver, expected_scheme",
@@ -1122,9 +1185,35 @@ class TestSqlConnector:
         call_options = mock_read.return_value.read.call_args[0][2]
         assert call_options["url"] == f"jdbc:{expected_scheme}://localhost:3306/testdb"
 
+    def test_read_oracle_jdbc_url(self, mocker):
+        """read() should pass the Oracle ``jdbc:oracle:thin:@host:port/service`` URL to the engine."""
+        # Arrange
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        mock_engine = mocker.patch("hsfs.engine.get_instance")
+        mocker.patch.object(connector, "refetch")
+
+        # Act
+        connector.read(query="SELECT 1 FROM DUAL")
+
+        # Assert
+        call_options = mock_engine.return_value.read.call_args[0][2]
+        assert call_options["url"] == "jdbc:oracle:thin:@myhost:1521/ORCL"
+        assert call_options["driver"] == "oracle.jdbc.driver.OracleDriver"
+        assert call_options["query"] == "SELECT 1 FROM DUAL"
+
     def test_unsupported_database_type_raises(self):
         with pytest.raises(ValueError, match="Unsupported database_type"):
-            self._make_connector("ORACLE")
+            self._make_connector("UNSUPPORTED_DB")
 
     def test_spark_options_includes_arguments(self):
         # Arrange
@@ -1170,3 +1259,197 @@ class TestSqlConnector:
 
         # Assert: the explicit driver wins
         assert options["driver"] == "com.mysql.cj.jdbc.Driver"
+
+
+class TestOracleConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_oracle"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.SqlConnector)
+        assert sc.id == 1
+        assert sc.name == "test_oracle"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Oracle connector description"
+        assert sc.database_type == "ORACLE"
+        assert sc._host == "test_host"
+        assert sc._port == 1521
+        assert sc._database == "test_database"
+        assert sc._user == "test_user"
+        assert sc._password == "test_password"
+        assert sc._wallet_path == "/Projects/test_project/Resources/wallet.zip"
+        assert sc._wallet_password == "test_wallet_password"
+        assert sc._arguments == {"test_name": "test_value"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_oracle_basic_info"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.SqlConnector)
+        assert sc.id == 1
+        assert sc.name == "test_oracle"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.database_type == "ORACLE"
+        assert sc._host is None
+        assert sc._database is None
+
+    def test_spark_options(self):
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        opts = sc.spark_options()
+        assert opts["url"] == "jdbc:oracle:thin:@myhost:1521/ORCL"
+        assert opts["driver"] == "oracle.jdbc.driver.OracleDriver"
+        assert opts["user"] == "scott"
+        assert opts["password"] == "tiger"
+
+    def test_connector_options(self):
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        opts = sc.connector_options()
+        assert opts["host"] == "myhost"
+        assert opts["port"] == 1521
+        assert opts["service_name"] == "ORCL"
+        assert opts["user"] == "scott"
+        assert opts["password"] == "tiger"
+
+    def test_spark_options_wallet_uses_tcps(self):
+        """When wallet_path is set, spark_options should use tcps URL."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        opts = sc.spark_options()
+        assert opts["url"] == "jdbc:oracle:thin:@tcps://myhost:1521/ORCL"
+        # Wallet JDBC properties are set in read(), not spark_options()
+        assert "oracle.net.wallet_location" not in opts
+
+    def test_read_wallet_sets_jdbc_properties(self, mocker, tmp_path):
+        """read() should download/extract wallet and set Oracle JDBC wallet properties."""
+        import zipfile
+
+        # Create a local wallet zip to simulate what add_file returns
+        wallet_zip = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+            wallet_password="walletpass",
+        )
+
+        mock_engine = mocker.patch("hsfs.engine.get_instance")
+        mock_engine.return_value.add_file.return_value = str(wallet_zip)
+        mocker.patch.object(sc, "refetch")
+
+        sc.read(query="SELECT 1")
+
+        # Verify add_file was called with distribute=False
+        mock_engine.return_value.add_file.assert_called_once_with(
+            "/Projects/myproj/Resources/wallet.zip", distribute=False
+        )
+
+        # Verify the options passed to engine.read
+        call_options = mock_engine.return_value.read.call_args[0][2]
+        assert call_options["url"] == "jdbc:oracle:thin:@tcps://myhost:1521/ORCL"
+        assert "oracle.net.wallet_location" in call_options
+        expected_dir = str(tmp_path / "wallet")
+        assert expected_dir in call_options["oracle.net.wallet_location"]
+        assert call_options["oracle.net.tns_admin"] == expected_dir
+        assert call_options["oracle.net.wallet_password"] == "walletpass"
+        assert os.path.isfile(os.path.join(expected_dir, "cwallet.sso"))
+
+    def test_connector_options_wallet(self):
+        """connector_options should include wallet_path and wallet_password."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+            wallet_password="walletpass",
+        )
+        opts = sc.connector_options()
+        assert opts["wallet_path"] == "/Projects/myproj/Resources/wallet.zip"
+        assert opts["wallet_password"] == "walletpass"
+
+    def test_spark_options_wallet_only_uses_tns_alias_url(self):
+        """Wallet-only Oracle: URL carries the TNS alias only, no host:port."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="mydb_high",  # TNS alias from tnsnames.ora
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        opts = sc.spark_options()
+        assert opts["url"] == "jdbc:oracle:thin:@mydb_high"
+
+    def test_spark_options_no_host_no_wallet_raises(self):
+        """Oracle connector without host/port AND without wallet is invalid."""
+        from hopsworks_common.client.exceptions import DataSourceException
+
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        with pytest.raises(DataSourceException):
+            sc.spark_options()

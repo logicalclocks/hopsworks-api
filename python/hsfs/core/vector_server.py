@@ -25,7 +25,6 @@ from io import BytesIO
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Literal,
 )
 
@@ -67,6 +66,8 @@ if HAS_POLARS:
     import polars as pl
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs import (
         feature_view,
         training_dataset,
@@ -1094,7 +1095,7 @@ class VectorServer:
         )
         on_demand_feature_vectors = []
         for feature_vector, request_parameter in zip(
-            feature_vectors, request_parameters
+            feature_vectors, request_parameters, strict=False
         ):
             on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
                 data=feature_vector,
@@ -1139,8 +1140,12 @@ class VectorServer:
             Dictionary mapping features name to values.
         """
         if on_demand_features:
-            return dict(zip(self._on_demand_feature_vector_col_name, features))
-        return dict(zip(self._untransformed_feature_vector_col_name, features))
+            return dict(
+                zip(self._on_demand_feature_vector_col_name, features, strict=False)
+            )
+        return dict(
+            zip(self._untransformed_feature_vector_col_name, features, strict=False)
+        )
 
     def handle_feature_vector_return_type(
         self,

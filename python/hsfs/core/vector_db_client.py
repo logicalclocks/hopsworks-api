@@ -64,7 +64,7 @@ class VectorDbClient:
         for fg in self._query.featuregroups:
             if fg.embedding_index:
                 for feat in fg.embedding_index.get_embeddings():
-                    for fgf in fg.features:
+                    for fgf in fg.columns:
                         if fgf.name == feat.name and fgf.feature_group_id == fg.id:
                             self._embedding_features[fgf] = feat
         for q in [self._query] + [j.query for j in self._query.joins]:
@@ -104,7 +104,7 @@ class VectorDbClient:
                         (join.prefix or "") + embedding_feature.name
                     )
                 vdb_col_td_col_map = {}
-                for feat in join_fg.features:
+                for feat in join_fg.columns:
                     vdb_col_td_col_map[
                         join_fg.embedding_index.col_prefix + feat.name
                     ] = (join.prefix or "") + feat.name  # join.prefix can be None
@@ -201,7 +201,7 @@ class VectorDbClient:
             (
                 1 / item["_score"] - 1,
                 self._convert_to_pandas_type(
-                    embedding_feature.feature_group.features,
+                    embedding_feature.feature_group.columns,
                     self._rewrite_result_key(
                         item["_source"],
                         self._fg_vdb_col_td_col_map[embedding_feature.feature_group.id],
@@ -226,7 +226,7 @@ class VectorDbClient:
                 # convert timestamp in ms to datetime in s
                 result[feature_name] = datetime.fromtimestamp(
                     feature_value // 10**3, tz=timezone.utc
-                )
+                ).replace(tzinfo=None)
             elif feature_type == "binary" or (
                 feature.is_complex() and feature not in self._embedding_features
             ):
@@ -476,7 +476,7 @@ class VectorDbClient:
             vector_db_client = VectorDbClient(feature_group.select_all())
             results = vector_db_client.read(
                 feature_group.id,
-                feature_group.features,
+                feature_group.columns,
                 pk=feature_group.embedding_index.col_prefix
                 + feature_group.primary_key[0],
                 index_name=feature_group.embedding_index.index_name,
@@ -484,7 +484,7 @@ class VectorDbClient:
                 filter=filter,
             )
             return [
-                [result[f.name] for f in feature_group.features] for result in results
+                [result[f.name] for f in feature_group.columns] for result in results
             ]
         raise FeatureStoreException("Feature group does not have embedding.")
 

@@ -709,7 +709,7 @@ class TestQuery:
 
         q = query.Query(
             left_feature_group=TestQuery.fg_spine,
-            left_features=TestQuery.fg_spine.features,
+            left_features=TestQuery.fg_spine.columns,
         )
 
         q._prep_read(online=False, read_options={})
@@ -735,7 +735,7 @@ class TestQuery:
 
         q = query.Query(
             left_feature_group=TestQuery.fg1,
-            left_features=TestQuery.fg1.features,
+            left_features=TestQuery.fg1.columns,
         )
 
         q._prep_read(online=False, read_options={})
@@ -743,3 +743,279 @@ class TestQuery:
         mock_fs_query.register_external.assert_called()
         mock_fs_query.register_delta_tables.assert_called()
         mock_fs_query.register_hudi_tables.assert_called()
+
+    def test_limit_sets_limit(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().limit(10)
+
+        # Assert
+        assert q._limit == 10
+
+    def test_limit_returns_self(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all()
+        result = q.limit(5)
+
+        # Assert
+        assert result is q
+
+    def test_limit_overrides_previous(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().limit(10).limit(20)
+
+        # Assert
+        assert q._limit == 20
+
+    def test_show_does_not_mutate_limit(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        mock_engine = mocker.MagicMock()
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.on_demand_feature_groups = []
+        mock_fs_query.hudi_cached_feature_groups = []
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            return_value=mock_fs_query,
+        )
+
+        q = TestQuery.fg1.select_all()
+        q._limit = 50
+
+        q.show(5)
+
+        # _limit should be restored to the original value after show
+        assert q._limit == 50
+
+    def test_show_uses_n_as_limit(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        mock_engine = mocker.MagicMock()
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.on_demand_feature_groups = []
+        mock_fs_query.hudi_cached_feature_groups = []
+
+        captured_limit = []
+
+        def capture_limit(query, *args, **kwargs):
+            captured_limit.append(query._limit)
+            return mock_fs_query
+
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            side_effect=capture_limit,
+        )
+
+        q = TestQuery.fg1.select_all()
+        q.show(7)
+
+        # The query sent to the backend should have _limit == 7 during _prep_read
+        assert captured_limit[0] == 7
+
+
+class TestQueryRead:
+    def test_read_with_start_time_no_event_time_raises(self):
+        # Arrange
+        from unittest import mock
+
+        fg_without_event_time = feature_group.FeatureGroup(
+            name="test_fg_no_event_time",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=12),
+                feature.Feature("value", feature_group_id=12),
+            ],
+            id=12,
+            stream=False,
+            event_time=None,
+        )
+
+        with mock.patch("hsfs.engine.get_type", return_value="python"):
+            q = query.Query(
+                left_feature_group=fg_without_event_time,
+                left_features=fg_without_event_time.columns,
+            )
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                q.read(start_time="2024-01-01")
+
+    def test_read_with_end_time_no_event_time_raises(self):
+        # Arrange
+        from unittest import mock
+
+        fg_without_event_time = feature_group.FeatureGroup(
+            name="test_fg_no_event_time",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=12),
+                feature.Feature("value", feature_group_id=12),
+            ],
+            id=12,
+            stream=False,
+            event_time=None,
+        )
+
+        with mock.patch("hsfs.engine.get_type", return_value="python"):
+            q = query.Query(
+                left_feature_group=fg_without_event_time,
+                left_features=fg_without_event_time.columns,
+            )
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                q.read(end_time="2024-01-31")
+
+    def test_filter_then_read_with_start_time_no_event_time_raises(self):
+        # Arrange
+        from unittest import mock
+
+        fg_without_event_time = feature_group.FeatureGroup(
+            name="test_fg_no_event_time",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=12),
+                feature.Feature("value", feature_group_id=12),
+            ],
+            id=12,
+            stream=False,
+            event_time=None,
+        )
+
+        with mock.patch("hsfs.engine.get_type", return_value="python"):
+            q = query.Query(
+                left_feature_group=fg_without_event_time,
+                left_features=fg_without_event_time.columns,
+            )
+            filtered_q = q.filter(fg_without_event_time.get_feature("value") > 10)
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                filtered_q.read(start_time="2024-01-01")
+
+    def test_build_feature_lookup_left_features_only(self, mocker, backend_fixtures):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        q = TestQuery.fg1.select_all()
+        lookup = q._build_feature_lookup()
+
+        assert set(lookup.keys()) == {"id", "label", "tf_name"}
+        for name in ("id", "label", "tf_name"):
+            entries = lookup[name]
+            assert len(entries) == 1
+            feat, prefix, fg = entries[0]
+            assert feat.name == name
+            assert prefix is None
+            assert fg == TestQuery.fg1
+
+    def test_build_feature_lookup_with_joins(self, mocker, backend_fixtures):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        q = TestQuery.fg1.select_all().join(TestQuery.fg2.select_all())
+        lookup = q._build_feature_lookup()
+
+        # fg1 has id, label, tf_name; fg2 has id, tf1_name
+        assert "label" in lookup
+        assert "tf1_name" in lookup
+        # "id" appears in both fg1 and fg2
+        assert len(lookup["id"]) == 2
+
+    def test_build_feature_lookup_with_prefix(self, mocker, backend_fixtures):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        q = TestQuery.fg1.select_all().join(TestQuery.fg3.select_all(), prefix="fg3_")
+        lookup = q._build_feature_lookup()
+
+        # fg3 features should appear both with and without prefix
+        assert "tf3_name" in lookup
+        assert "fg3_tf3_name" in lookup
+        # The prefixed entry should reference fg3
+        feat, prefix, fg = lookup["fg3_tf3_name"][0]
+        assert feat.name == "tf3_name"
+        assert prefix == "fg3_"
+        assert fg == TestQuery.fg3
+
+    def test_resolve_feature_from_lookup_single_match(self):
+        feat_obj = feature.Feature("col_a")
+        fg_obj = TestQuery.fg1
+        lookup = {"col_a": [(feat_obj, None, fg_obj)]}
+
+        result_feat, result_prefix, result_fg = (
+            query.Query._resolve_feature_from_lookup("col_a", lookup)
+        )
+
+        assert result_feat is feat_obj
+        assert result_prefix is None
+        assert result_fg is fg_obj
+
+    def test_resolve_feature_from_lookup_prefers_no_prefix(self):
+        feat_no_prefix = feature.Feature("col_a")
+        feat_with_prefix = feature.Feature("col_a")
+        fg1 = TestQuery.fg1
+        fg2 = TestQuery.fg2
+        lookup = {
+            "col_a": [
+                (feat_with_prefix, "pfx_", fg2),
+                (feat_no_prefix, None, fg1),
+            ]
+        }
+
+        result_feat, result_prefix, result_fg = (
+            query.Query._resolve_feature_from_lookup("col_a", lookup)
+        )
+
+        assert result_feat is feat_no_prefix
+        assert result_prefix is None
+        assert result_fg is fg1
+
+    def test_resolve_feature_from_lookup_not_found(self):
+        lookup = {"col_a": [(feature.Feature("col_a"), None, TestQuery.fg1)]}
+
+        with pytest.raises(FeatureStoreException, match="could not found be found"):
+            query.Query._resolve_feature_from_lookup("missing", lookup)
+
+    def test_resolve_feature_from_lookup_ambiguous(self):
+        lookup = {
+            "col_a": [
+                (feature.Feature("col_a"), None, TestQuery.fg1),
+                (feature.Feature("col_a"), None, TestQuery.fg2),
+            ]
+        }
+
+        with pytest.raises(FeatureStoreException, match="ambiguous"):
+            query.Query._resolve_feature_from_lookup("col_a", lookup)
+
+    def test_get_feature_by_name_uses_build_and_resolve(self, mocker, backend_fixtures):
+        """Verify _get_feature_by_name delegates to _build_feature_lookup and _resolve_feature_from_lookup."""
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all())
+            .join(TestQuery.fg3.select_all(), prefix="fg3")
+        )
+
+        # Should resolve unambiguous feature from fg3
+        feat, prefix, fg = q._get_feature_by_name("tf3_name")
+        assert feat.name == "tf3_name"
+        assert fg == TestQuery.fg3

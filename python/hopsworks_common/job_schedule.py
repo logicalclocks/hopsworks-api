@@ -22,6 +22,28 @@ from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+def _ms_to_dt(v):
+    if isinstance(v, int):
+        return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
+    return v
+
+
+def _dt_to_ms(v):
+    """Serialise a datetime to epoch milliseconds.
+
+    Naive datetimes are treated as UTC — the backend JobSchedule model stores instants
+    in UTC, and `datetime.timestamp()` on a naive value would otherwise interpret it
+    in the client machine's local timezone and silently shift scheduled times by the
+    local offset on any client outside UTC. Mirrors the `_to_iso` convention in
+    `execution_api.py`.
+    """
+    if v is None:
+        return None
+    if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
+        v = v.replace(tzinfo=timezone.utc)
+    return int(v.timestamp() * 1000.0)
+
+
 @public("hopsworks.job_schedule.JobSchedule", "hsfs.core.job_schedule.JobSchedule")
 class JobSchedule:
     def __init__(
@@ -32,27 +54,38 @@ class JobSchedule:
         next_execution_date_time=None,
         id=None,
         end_date_time=None,
+        catchup=False,
+        max_active_runs=1,
+        start_time_offset_seconds=None,
+        end_time_offset_seconds=None,
+        skip_to_date=None,
+        max_catchup_runs=None,
         **kwargs,
     ):
         self._id = id
-        self._start_date_time = (
-            datetime.fromtimestamp(start_date_time / 1000, tz=timezone.utc)
-            if isinstance(start_date_time, int)
-            else start_date_time
-        )
-
-        self._end_date_time = (
-            datetime.fromtimestamp(end_date_time / 1000, tz=timezone.utc)
-            if isinstance(end_date_time, int)
-            else end_date_time
-        )
+        self._start_date_time = _ms_to_dt(start_date_time)
+        self._end_date_time = _ms_to_dt(end_date_time)
         self._enabled = enabled
         self._cron_expression = cron_expression
-
-        self._next_execution_date_time = (
-            datetime.fromtimestamp(next_execution_date_time / 1000, tz=timezone.utc)
-            if isinstance(next_execution_date_time, int)
-            else next_execution_date_time
+        self._next_execution_date_time = _ms_to_dt(next_execution_date_time)
+        self._catchup = bool(catchup) if catchup is not None else False
+        self._max_active_runs = (
+            int(max_active_runs) if max_active_runs is not None else 1
+        )
+        # None preserved: means "last execution time" for start, "cron fire time" for end.
+        self._start_time_offset_seconds = (
+            int(start_time_offset_seconds)
+            if start_time_offset_seconds is not None
+            else None
+        )
+        self._end_time_offset_seconds = (
+            int(end_time_offset_seconds)
+            if end_time_offset_seconds is not None
+            else None
+        )
+        self._skip_to_date = _ms_to_dt(skip_to_date)
+        self._max_catchup_runs = (
+            int(max_catchup_runs) if max_catchup_runs is not None else None
         )
 
     @classmethod
@@ -63,14 +96,16 @@ class JobSchedule:
     def to_dict(self):
         return {
             "id": self._id,
-            "startDateTime": int(self._start_date_time.timestamp() * 1000.0)
-            if self._start_date_time
-            else None,
-            "endDateTime": int(self._end_date_time.timestamp() * 1000.0)
-            if self._end_date_time
-            else None,
+            "startDateTime": _dt_to_ms(self._start_date_time),
+            "endDateTime": _dt_to_ms(self._end_date_time),
             "cronExpression": self._cron_expression,
             "enabled": self._enabled,
+            "catchup": self._catchup,
+            "maxActiveRuns": self._max_active_runs,
+            "startTimeOffsetSeconds": self._start_time_offset_seconds,
+            "endTimeOffsetSeconds": self._end_time_offset_seconds,
+            "skipToDate": _dt_to_ms(self._skip_to_date),
+            "maxCatchupRuns": self._max_catchup_runs,
         }
 
     def json(self):
@@ -111,3 +146,43 @@ class JobSchedule:
     def next_execution_date_time(self):
         """Return the next execution time."""
         return self._next_execution_date_time
+
+    @public
+    @property
+    def catchup(self):
+        """If True, backfill all missed intervals on scheduler recovery; if False, only the most recent."""
+        return self._catchup
+
+    @public
+    @property
+    def max_active_runs(self):
+        """Maximum number of concurrent executions allowed for this job (default 1)."""
+        return self._max_active_runs
+
+    @public
+    @property
+    def start_time_offset_seconds(self):
+        """Controls HOPS_START_TIME.
+
+        `None` = previous cron fire (last execution time); otherwise `cron_fire + seconds`
+        (negative = before, positive = after).
+        """
+        return self._start_time_offset_seconds
+
+    @public
+    @property
+    def end_time_offset_seconds(self):
+        """Controls HOPS_END_TIME. `None` = cron fire time; otherwise `cron_fire + seconds`."""
+        return self._end_time_offset_seconds
+
+    @public
+    @property
+    def skip_to_date(self):
+        """If set, reconciliation skips all missed intervals before this date."""
+        return self._skip_to_date
+
+    @public
+    @property
+    def max_catchup_runs(self):
+        """Upper bound on missed intervals created during reconciliation (keeps most recent)."""
+        return self._max_catchup_runs

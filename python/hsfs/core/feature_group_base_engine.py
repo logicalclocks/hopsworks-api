@@ -184,7 +184,7 @@ class FeatureGroupBaseEngine:
     ) -> list[Feature]:
         # take original schema and replaces the updated features and returns the new list
         new_features = []
-        for feature in feature_group.features:
+        for feature in feature_group.columns:
             if not any(
                 util.autofix_feature_name(updated.name) == feature.name
                 for updated in updated_features

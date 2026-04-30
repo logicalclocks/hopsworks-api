@@ -178,6 +178,9 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -303,6 +306,9 @@ class TestHudiEngine:
     ):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value=engine_type)
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -330,6 +336,9 @@ class TestHudiEngine:
     def test_setup_hudi_write_opts_hive_sync_external_fg(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         fg = feature_group.FeatureGroup(
             name="test",

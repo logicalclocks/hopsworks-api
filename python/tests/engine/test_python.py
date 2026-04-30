@@ -1247,6 +1247,42 @@ class TestPython:
         not HAS_POLARS,
         reason="Polars is not installed.",
     )
+    def test_profile_polars_with_complex_column_in_relevant_columns(self, mocker):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.return_value = {
+            "dataType": "String",
+            "test_key": "test_value",
+        }
+        python_engine = python.Engine()
+        df = pl.DataFrame({"col_int": [1, 2], "col_list": [[1, 2, 3], [4, 5, 6]]})
+
+        # Act — relevant_columns contains only the complex column; must not raise
+        # KeyError: 'statistic' from the Polars zip-conversion path
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=["col_list"],
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — complex column bypasses the Polars zip-conversion and gets empty stats
+        assert mock_python_engine_convert_pandas_statistics.call_count == 1
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[0][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            '"column": "col_list", "completeness": 1}]}'
+        )
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars_with_null_column(self, mocker):
         # Arrange
         mock_python_engine_convert_pandas_statistics = mocker.patch(
@@ -1352,6 +1388,155 @@ class TestPython:
             '"column": "col3", "completeness": 1}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 2
+
+    @pytest.mark.parametrize(
+        "col_name,col_values",
+        [
+            pytest.param("col_list", [[1, 2, 3], [4, 5, 6]], id="list"),
+            pytest.param("col_struct", [{"a": 1}, {"a": 2}], id="struct"),
+            # numpy array columns arise when reading parquet files with list<struct<>> columns
+            pytest.param(
+                "col_array",
+                [
+                    np.array([{"a": 1, "b": "x"}], dtype=object),
+                    np.array([{"a": 2, "b": "y"}], dtype=object),
+                ],
+                id="numpy_array",
+            ),
+        ],
+    )
+    def test_profile_pandas_with_complex_column(self, mocker, col_name, col_values):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.side_effect = [
+            {"dataType": "Integral", "test_key": "test_value"},
+            {"dataType": "String", "test_key": "test_value"},
+        ]
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
+
+        # Act
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=None,
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — complex column must not hang and must produce empty stats
+        assert mock_python_engine_convert_pandas_statistics.call_count == 2
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[1][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
+            '"column": "col_int", "completeness": 1}, '
+            '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            f'"column": "{col_name}", "completeness": 1}}]}}'
+        )
+
+    @pytest.mark.parametrize(
+        "col_name,col_values",
+        [
+            pytest.param("col_list", [[1, 2, 3], [4, 5, 6]], id="list"),
+            pytest.param("col_struct", [{"a": 1}, {"a": 2}], id="struct"),
+            # numpy array columns arise when reading parquet files with list<struct<>> columns
+            pytest.param(
+                "col_array",
+                [
+                    np.array([{"a": 1, "b": "x"}], dtype=object),
+                    np.array([{"a": 2, "b": "y"}], dtype=object),
+                ],
+                id="numpy_array",
+            ),
+        ],
+    )
+    def test_profile_pandas_with_complex_column_in_relevant_columns(
+        self, mocker, col_name, col_values
+    ):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.return_value = {
+            "dataType": "String",
+            "test_key": "test_value",
+        }
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
+
+        # Act — relevant_columns contains only the complex column; must not hang
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=[col_name],
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — _convert_pandas_statistics called once with empty stats
+        assert mock_python_engine_convert_pandas_statistics.call_count == 1
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[0][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            f'"column": "{col_name}", "completeness": 1}}]}}'
+        )
+
+    @pytest.mark.parametrize(
+        "col_name,col_values",
+        [
+            pytest.param("col_list", [[1, 2, 3], [4, 5, 6]], id="list"),
+            pytest.param("col_struct", [{"a": 1}, {"a": 2}], id="struct"),
+            # numpy array columns arise when reading parquet files with list<struct<>> columns
+            pytest.param(
+                "col_array",
+                [
+                    np.array([{"a": 1, "b": "x"}], dtype=object),
+                    np.array([{"a": 2, "b": "y"}], dtype=object),
+                ],
+                id="numpy_array",
+            ),
+        ],
+    )
+    def test_profile_pandas_with_mixed_relevant_columns(
+        self, mocker, col_name, col_values
+    ):
+        # Arrange
+        mock_python_engine_convert_pandas_statistics = mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics"
+        )
+        mock_python_engine_convert_pandas_statistics.side_effect = [
+            {"dataType": "Integral", "test_key": "test_value"},
+            {"dataType": "String", "test_key": "test_value"},
+        ]
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
+
+        # Act — relevant_columns contains both a non-complex and a complex column
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=["col_int", col_name],
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert — col_int goes through describe(); complex column is pre-populated with {}
+        assert mock_python_engine_convert_pandas_statistics.call_count == 2
+        assert (
+            mock_python_engine_convert_pandas_statistics.call_args_list[1][0][0] == {}
+        )
+        assert result == (
+            '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
+            '"column": "col_int", "completeness": 1}, '
+            '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
+            f'"column": "{col_name}", "completeness": 1}}]}}'
+        )
 
     def test_convert_pandas_statistics(self):
         # Arrange
@@ -1795,6 +1980,7 @@ class TestPython:
             partition_key=[],
             id=10,
             stream=False,
+            time_travel_format="NONE",
         )
 
         # Act
@@ -1815,8 +2001,8 @@ class TestPython:
 
     def test_save_dataframe_stream(self, mocker):
         # Arrange
-        mock_python_engine_write_dataframe_kafka = mocker.patch(
-            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        mock_python_engine_run_materialization_job = mocker.patch(
+            "hsfs.engine.python.Engine._run_materialization_job"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
             "hsfs.engine.python.Engine.legacy_save_dataframe"
@@ -1847,7 +2033,7 @@ class TestPython:
         )
 
         # Assert
-        assert mock_python_engine_write_dataframe_kafka.call_count == 1
+        assert mock_python_engine_run_materialization_job.call_count == 1
         assert mock_python_engine_legacy_save_dataframe.call_count == 0
 
     def test_save_dataframe_delta_time_travel_format(self, mocker):
@@ -1904,7 +2090,7 @@ class TestPython:
 
         # Verify save_delta_fg was called with correct parameters
         mock_delta_engine.return_value.save_delta_fg.assert_called_once_with(
-            test_dataframe, write_options={}, validation_id=None
+            test_dataframe, write_options={}, validation_id=None, operation="insert"
         )
 
     def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
@@ -1954,6 +2140,9 @@ class TestPython:
         mock_check_duplicate_records = mocker.patch(
             "hsfs.engine.python.Engine._check_duplicate_records"
         )
+        mock_legacy_save_dataframe = mocker.patch(
+            "hsfs.engine.python.Engine.legacy_save_dataframe"
+        )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         python_engine = python.Engine()
@@ -1985,6 +2174,7 @@ class TestPython:
 
         # Assert
         assert mock_check_duplicate_records.call_count == 0
+        assert mock_legacy_save_dataframe.call_count == 1
 
     @pytest.mark.parametrize(
         "test_name,primary_key,partition_key,event_time,data_dict",
@@ -2018,6 +2208,44 @@ class TestPython:
                     "text": ["a_t1", "a_t1_dup", "b_t2"],
                 },
             ),
+            (
+                "duplicate_event_time_in_primary_key",
+                ["id", "event_time"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                    ],
+                    "text": ["a_t1", "a_t1_dup", "b_t2"],
+                },
+            ),
+            (
+                "duplicate_partition_key_in_primary_key",
+                ["id", "p"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 0, 0], "text": ["a", "a_dup", "b"]},
+            ),
+            (
+                "duplicate_all_overlapping",
+                ["id", "event_time", "p"],
+                ["p"],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                    ],
+                    "p": [0, 0, 0],
+                    "text": ["a", "a_dup", "b"],
+                },
+            ),
         ],
     )
     def test_save_dataframe_delta_duplicate_should_fail(
@@ -2026,6 +2254,9 @@ class TestPython:
         # Arrange
         mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
         mocker.patch(
             "hsfs.engine.python.Engine.convert_to_default_dataframe",
             side_effect=lambda x: x,
@@ -2132,6 +2363,44 @@ class TestPython:
                 None,
                 {"id": [1, 1, 2], "text": ["a", "a_dup", "b"]},
             ),
+            (
+                "event_time_in_primary_key_no_duplicate",
+                ["id", "event_time"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "text": ["a_t1", "a_t2", "b_t1"],
+                },
+            ),
+            (
+                "partition_key_in_primary_key_no_duplicate",
+                ["id", "p"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 1, 0], "text": ["a_p0", "a_p1", "b_p0"]},
+            ),
+            (
+                "all_overlapping_no_duplicate",
+                ["id", "event_time", "p"],
+                ["p"],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "p": [0, 0, 0],
+                    "text": ["a", "b", "c"],
+                },
+            ),
         ],
     )
     def test_save_dataframe_delta_duplicate_should_succeed(
@@ -2140,6 +2409,9 @@ class TestPython:
         # Arrange
         mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
         mocker.patch(
             "hsfs.engine.python.Engine.convert_to_default_dataframe",
             side_effect=lambda x: x,
@@ -2212,6 +2484,9 @@ class TestPython:
 
         mocker.patch.dict(sys.modules, {"pyarrow": _FakePa("pyarrow")})
         mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         python_engine = python.Engine()
 
@@ -2243,7 +2518,11 @@ class TestPython:
 
         # Assert - from_pandas called exactly once, with only the 3 key columns
         assert len(captured_columns) == 1
-        assert captured_columns[0] == ["purchase_id", "ts", "purchase_month"]
+        assert set(captured_columns[0]) == {
+            "purchase_id",
+            "ts",
+            "purchase_month",
+        }  # Test using a set because order does not matter for duplicate check
 
     def test_legacy_save_dataframe(self, mocker):
         # Arrange
@@ -3146,7 +3425,7 @@ class TestPython:
         fg = feature_group.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
         )
-        q = query.Query(fg, fg.features)
+        q = query.Query(fg, fg.columns)
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -3190,7 +3469,7 @@ class TestPython:
         fg = feature_group.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
         )
-        q = query.Query(fg, fg.features)
+        q = query.Query(fg, fg.columns)
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -3479,10 +3758,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -3543,10 +3823,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -3603,13 +3884,14 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={
                 "start_offline_materialization": True,
                 "skip_offsets": True,
             },
+            storage=None,
         )
 
         # Assert
@@ -3666,10 +3948,11 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        python_engine._write_dataframe_kafka(
+        python_engine._run_materialization_job(
             feature_group=fg,
             dataframe=df,
             offline_write_options={"start_offline_materialization": True},
+            storage=None,
         )
 
         # Assert
@@ -7436,7 +7719,7 @@ class TestPython:
 
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -7513,7 +7796,7 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -7593,7 +7876,7 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -7673,7 +7956,7 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -7753,7 +8036,7 @@ class TestPython:
 
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columnn_names:
                     assert row[key] == expected_row[key]
@@ -7835,7 +8118,7 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -7917,7 +8200,7 @@ class TestPython:
 
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -8005,7 +8288,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_names:
                     assert row[key] == expected_row[key]
@@ -8085,7 +8368,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_names:
                     assert row[key] == expected_row[key]
@@ -8171,7 +8454,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_names:
                     assert row[key] == expected_row[key]
@@ -8250,7 +8533,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_names:
                     assert row[key] == expected_row[key]
@@ -8334,7 +8617,7 @@ class TestPython:
 
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_names:
                     assert row[key] == expected_row[key]
@@ -8413,7 +8696,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -8499,7 +8782,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_column_names:
                     assert row[key] == expected_row[key]
@@ -8579,7 +8862,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_column_names:
                     assert row[key] == expected_row[key]
@@ -8622,7 +8905,7 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_column_names:
                     assert row[key] == expected_row[key]
@@ -8699,7 +8982,7 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_column_names:
                     assert row[key] == expected_row[key]
@@ -8742,7 +9025,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_column_names:
                     assert row[key] == expected_row[key]
@@ -8824,7 +9107,7 @@ class TestPython:
             meta_data_logging_columns=meta_data_logging_columns,
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_names:
                     assert row[key] == expected_row[key]
@@ -8912,7 +9195,7 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_names:
                     assert row[key] == expected_row[key]
@@ -9058,7 +9341,7 @@ class TestPython:
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
         # Assert
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_name:
                     assert row[key] == expected_row[key]
@@ -9207,7 +9490,329 @@ class TestPython:
         )
         expected_logging_list = expected_log_data.to_dict(orient="records")
 
-        for row, expected_row in zip(logging_list, expected_logging_list):
+        for row, expected_row in zip(logging_list, expected_logging_list, strict=False):
             for key in row:
                 if key not in meta_data_logging_columns_name:
                     assert row[key] == expected_row[key]
+
+    class TestFilterOnlineDataframe:
+        @pytest.fixture(autouse=True)
+        def patch_engine_type(self, mocker):
+            mocker.patch("hsfs.engine.get_type", return_value="python")
+            mocker.patch(
+                "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+            )
+
+        def _make_fg(self, primary_key, event_time=None, ttl=None, ttl_enabled=None):
+            return feature_group.FeatureGroup(
+                name="test",
+                version=1,
+                featurestore_id=1,
+                primary_key=primary_key,
+                partition_key=[],
+                event_time=event_time,
+                ttl=ttl,
+                ttl_enabled=ttl_enabled,
+            )
+
+        def _make_df(self, data):
+            """Return (pandas_df, polars_df) tuple from a dict of columns."""
+            pdf = pd.DataFrame(data)
+            pld = pl.DataFrame(data) if HAS_POLARS else None
+            return pdf, pld
+
+        def _get_val(self, result, filter_col, filter_val, val_col):
+            """Get val from result filtered by a column value, works for both types."""
+            if HAS_POLARS and isinstance(result, pl.DataFrame):
+                return result.filter(pl.col(filter_col) == filter_val)[val_col][0]
+            return result[result[filter_col] == filter_val][val_col].iloc[0]
+
+        def _get_val_multi(self, result, filters, val_col):
+            """Get val from result filtered by multiple column-value pairs."""
+            if HAS_POLARS and isinstance(result, pl.DataFrame):
+                mask = None
+                for col_name, col_val in filters.items():
+                    cond = pl.col(col_name) == col_val
+                    mask = cond if mask is None else mask & cond
+                return result.filter(mask)[val_col][0]
+            mask = pd.Series([True] * len(result), index=result.index)
+            for col_name, col_val in filters.items():
+                mask &= result[col_name] == col_val
+            return result[mask][val_col].iloc[0]
+
+        def _make_ts_utc(self, timestamps):
+            """Return UTC-aware timestamps suitable for TTL tests."""
+            pdf_ts = pd.to_datetime(timestamps, utc=True)
+            if HAS_POLARS:
+                pld_ts = pl.Series(timestamps).dt.replace_time_zone("UTC")
+            else:
+                pld_ts = None
+            return pdf_ts, pld_ts
+
+        def _apply_flags(self, df, flags):
+            """Filter a dataframe using a list of booleans returned by _mark_online_rows."""
+            if HAS_POLARS and isinstance(df, pl.DataFrame):
+                return df.filter(pl.Series(flags))
+            return df[flags]
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_no_event_time_no_duplicates_returns_all_rows(self, use_polars):
+            # Arrange
+            fg = self._make_fg(primary_key=["id"])
+            pdf, pld = self._make_df({"id": [1, 2], "val": ["a", "b"]})
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_no_event_time_deduplicates_by_last_row_per_primary_key(
+            self, use_polars
+        ):
+            # Arrange: two rows for id=1 — last one should win
+            fg = self._make_fg(primary_key=["id"])
+            pdf, pld = self._make_df({"id": [1, 1, 2], "val": ["a", "b", "c"]})
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+            assert self._get_val(result, "id", 1, "val") == "b"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_event_time_keeps_latest_per_primary_key(self, use_polars):
+            # Arrange: two rows for id=1 — newer should survive
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            pdf, pld = self._make_df(
+                {
+                    "id": [1, 1, 2],
+                    "val": ["old", "new", "only"],
+                    "ts": [
+                        datetime(2024, 1, 1),
+                        datetime(2024, 6, 1),
+                        datetime(2024, 1, 1),
+                    ],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+            assert self._get_val(result, "id", 1, "val") == "new"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_event_time_out_of_order_batch_picks_max(self, use_polars):
+            # Arrange: older record appears after newer in the dataframe
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            pdf, pld = self._make_df(
+                {
+                    "id": [1, 1],
+                    "val": ["new", "old"],
+                    "ts": [datetime(2024, 6, 1), datetime(2024, 1, 1)],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 1
+            assert (result["val"][0] if use_polars else result["val"].iloc[0]) == "new"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_ttl_filters_expired_rows(self, use_polars):
+            # Arrange: one expired row, one fresh row
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            pdf_ts, pld_ts = self._make_ts_utc([datetime(2000, 1, 1), datetime.now()])
+            if use_polars:
+                df = pl.DataFrame(
+                    {"id": [1, 2], "val": ["expired", "fresh"], "ts": pld_ts}
+                )
+            else:
+                df = pd.DataFrame(
+                    {"id": [1, 2], "val": ["expired", "fresh"], "ts": pdf_ts}
+                )
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 1
+            assert (
+                result["val"][0] if use_polars else result["val"].iloc[0]
+            ) == "fresh"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_ttl_keeps_all_rows_when_none_expired(self, use_polars):
+            # Arrange: all rows are fresh
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            pdf_ts, pld_ts = self._make_ts_utc([datetime.now(), datetime.now()])
+            if use_polars:
+                df = pl.DataFrame({"id": [1, 2], "val": ["a", "b"], "ts": pld_ts})
+            else:
+                df = pd.DataFrame({"id": [1, 2], "val": ["a", "b"], "ts": pdf_ts})
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_ttl_disabled_falls_back_to_dedup_by_event_time(self, use_polars):
+            # Arrange: ttl_enabled=False — should deduplicate by event time instead
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=False
+            )
+            pdf, pld = self._make_df(
+                {
+                    "id": [1, 1],
+                    "val": ["old", "new"],
+                    "ts": [datetime(2024, 1, 1), datetime(2024, 6, 1)],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 1
+            assert (result["val"][0] if use_polars else result["val"].iloc[0]) == "new"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_composite_primary_key(self, use_polars):
+            # Arrange: primary key is (user_id, item_id)
+            fg = self._make_fg(primary_key=["user_id", "item_id"], event_time="ts")
+            pdf, pld = self._make_df(
+                {
+                    "user_id": [1, 1, 1],
+                    "item_id": [10, 10, 20],
+                    "val": ["old", "new", "only"],
+                    "ts": [
+                        datetime(2024, 1, 1),
+                        datetime(2024, 6, 1),
+                        datetime(2024, 1, 1),
+                    ],
+                }
+            )
+            df = pld if use_polars else pdf
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+            result = self._apply_flags(df, flags)
+
+            # Assert
+            assert len(result) == 2
+            assert (
+                self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val")
+                == "new"
+            )

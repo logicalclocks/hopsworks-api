@@ -1,7 +1,7 @@
 [project]
 name = "hopsworks"
 dynamic = ["version"]
-requires-python = ">=3.9,<3.14"
+requires-python = ">=3.10,<3.14"
 readme = "README.md"
 description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature Store, Model Registry and Model Serving"
 keywords = [
@@ -28,7 +28,6 @@ classifiers = [
     "Topic :: Utilities",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -56,7 +55,7 @@ dependencies = [
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
     "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
     "packaging",                     # ^21.0
-    "hopsworks-apigen",
+    "hopsworks-apigen>=1.0.4,<2.0.0",
 ]
 
 [project.scripts]
@@ -68,7 +67,7 @@ python = [
     "confluent-kafka<=2.11.1",
     "fastavro>=1.4.11,<=1.12.0",
     "tqdm",
-    "hops-deltalake==1.4.0; python_version >= '3.10' and (sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64'))",
+    "hops-deltalake==1.4.0-post1; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
 ]
 sqlalchemy-1 = [
     "pandas<2.2.0; python_version < '3.13'",
@@ -76,36 +75,38 @@ sqlalchemy-1 = [
 ]
 great-expectations = ["great_expectations==0.18.12"]
 dev-no-opt = [
-    "hopsworks[python]",
+    "hopsworks[python,trino]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
-    "ruff==0.15.4",
-    "docsig==0.79.0; python_version >= '3.10'",
+    "pytest-cov>=4.0",
+    "ruff==0.15.6",
+    "docsig==0.79.0",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas>=2.2.0",
     "typeguard==4.2.1",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
 ]
 dev-pandas1 = [
-    "hopsworks[python]",
+    "hopsworks[python,trino]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
-    "ruff==0.15.4",
-    "docsig==0.79.0; python_version >= '3.10'",
+    "pytest-cov>=4.0",
+    "ruff==0.15.6",
+    "docsig==0.79.0",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas<=1.5.3; python_version < '3.12'",
     "sqlalchemy<=1.4.48",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp]"]
-polars=[
+dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
+polars = [
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=17.0",
 ]
-mcp=[
-    "fastmcp>=2.10.5,<=2.13.3; python_version >= '3.10'",
+mcp = [
+    "fastmcp>=2.10.5,<=2.13.3",
     "filelock",
     "httpx",
     "httptools",
@@ -113,9 +114,15 @@ mcp=[
     "uvloop; sys_platform != 'win32'",
     "pydantic>=2.11.7",
 ]
+trino=[
+    "trino[sqlalchemy]==0.336.0"
+]
 
 [dependency-groups]
 pre-commit = ["pre-commit"]
+docs = [
+    "hopsworks-docs[cli]@git+https://github.com/logicalclocks/logicalclocks.github.io.git; python_version ~= '3.13.0'",
+]
 
 [tool.uv]
 conflicts = [
@@ -126,7 +133,7 @@ conflicts = [
 ]
 
 [build-system]
-requires = ["setuptools", "hopsworks-apigen[build]"]
+requires = ["setuptools", "hopsworks-apigen[build]>=1.0.4,<2.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -179,15 +186,15 @@ exclude = [
     "site-packages",
     "venv",
     "java",
-    "transformation_test_helper.py"  # File excluded from ruff formatting to maintain formatting required for tests
+    "transformation_test_helper.py", # File excluded from ruff formatting to maintain formatting required for tests
 ]
 
 # Same as Black.
 line-length = 88
 indent-width = 4
 
-# Assume Python 3.9+ syntax.
-target-version = "py39"
+# Assume Python 3.10+ syntax.
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
@@ -213,7 +220,6 @@ select = [
     "FA",
 ]
 ignore = [
-    "B905",  # zip has no strict kwarg until Python 3.10
     "W505",  # Doc line too long
     "E501",  # Line too long
 ]
@@ -255,3 +261,11 @@ disable = [
     "SIG305",
 ]
 ignore_kwargs = true
+
+[tool.coverage.run]
+source = ["hopsworks", "hsfs", "hsml", "hopsworks_common"]
+omit = ["*/tests/*"]
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true

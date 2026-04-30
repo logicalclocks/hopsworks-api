@@ -88,19 +88,22 @@ def spark_df():
 def feature_group_data():
     with mock.patch("hopsworks_common.client.get_instance"):
         engine.init("python")
-    return feature_group.FeatureGroup(
-        name="test_fg",
-        version=1,
-        online_enabled=True,
-        partition_key=[],
-        featurestore_id=1,
-        primary_key=["primary_key"],
-        features=[
-            Feature("primary_key", "int", online_type="varchar(10)"),
-            Feature("event_time", "string", online_type="varchar(10)"),
-            Feature("string_col", "string", online_type="varchar(200)"),
-        ],
-    )
+    with mock.patch(
+        "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+    ):
+        return feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            online_enabled=True,
+            partition_key=[],
+            featurestore_id=1,
+            primary_key=["primary_key"],
+            features=[
+                Feature("primary_key", "int", online_type="varchar(10)"),
+                Feature("event_time", "string", online_type="varchar(10)"),
+                Feature("string_col", "string", online_type="varchar(200)"),
+            ],
+        )
 
 
 @pytest.fixture
@@ -128,7 +131,7 @@ class BaseDataFrameTest:
     def _update_online_enabled(self, fg, online_enabled):
         fg.online_enabled = online_enabled
         if not online_enabled:
-            for f in fg.features:
+            for f in fg.columns:
                 f.online_type = None
 
     # region primary key
@@ -147,7 +150,7 @@ class BaseDataFrameTest:
             ValueError, match=f"Primary key column {KEY} is missing in input dataframe"
         ):
             DataFrameValidator().validate_schema(
-                feature_group_data, df, feature_group_data.features
+                feature_group_data, df, feature_group_data.columns
             )
 
     @pytest.mark.parametrize(
@@ -164,7 +167,7 @@ class BaseDataFrameTest:
             ValueError, match="Primary key column primary_key contains null values"
         ):
             DataFrameValidator().validate_schema(
-                feature_group_data, modified_df, feature_group_data.features
+                feature_group_data, modified_df, feature_group_data.columns
             )
 
     # endregion
@@ -185,12 +188,12 @@ class BaseDataFrameTest:
         if online_enabled:
             with pytest.raises(ValueError, match="String length exceeded"):
                 DataFrameValidator().validate_schema(
-                    feature_group_created, modified_df, feature_group_created.features
+                    feature_group_created, modified_df, feature_group_created.columns
                 )
         else:
             # Should not raise when online is disabled
             df_features = DataFrameValidator().validate_schema(
-                feature_group_created, modified_df, feature_group_created.features
+                feature_group_created, modified_df, feature_group_created.columns
             )
             assert isinstance(df_features, list)
 
@@ -207,12 +210,12 @@ class BaseDataFrameTest:
         if online_enabled:
             with pytest.raises(ValueError, match="String length exceeded"):
                 DataFrameValidator().validate_schema(
-                    feature_group_data, modified_df, feature_group_data.features
+                    feature_group_data, modified_df, feature_group_data.columns
                 )
         else:
             # Should not raise when online is disabled
             df_features = DataFrameValidator().validate_schema(
-                feature_group_data, modified_df, feature_group_data.features
+                feature_group_data, modified_df, feature_group_data.columns
             )
             assert isinstance(df_features, list)
 
@@ -227,7 +230,7 @@ class BaseDataFrameTest:
 
         # Act
         df_features = DataFrameValidator().validate_schema(
-            feature_group_data, df, feature_group_data.features
+            feature_group_data, df, feature_group_data.columns
         )
         # Assert
         # the online type of the string_col feature is same as explcitly set in the feature group
@@ -250,7 +253,7 @@ class BaseDataFrameTest:
             Feature("event_time", "string"),
             Feature("string_col", "string"),
         ]
-        feature_group_data.features = []
+        feature_group_data.columns = []
 
         # Act
         df_features = DataFrameValidator().validate_schema(
@@ -269,16 +272,16 @@ class BaseDataFrameTest:
         # Test that the validator does not update the online type of a non-varchar column
         # set string_col feature online type to text
         self._update_online_enabled(feature_group_data, online_enabled)
-        feature_group_data.features[2].online_type = "text"
+        feature_group_data.columns[2].online_type = "text"
         modified_df = self._modify_row(df, 0, string_col="b" * 1001)
 
         # Act
         df_features = DataFrameValidator().validate_schema(
-            feature_group_data, modified_df, feature_group_data.features
+            feature_group_data, modified_df, feature_group_data.columns
         )
 
         # Assert
-        assert df_features == feature_group_data.features
+        assert df_features == feature_group_data.columns
 
     # endregion
 
@@ -296,7 +299,7 @@ class BaseDataFrameTest:
         # Act
         with pytest.raises(ValueError) as excinfo:
             DataFrameValidator().validate_schema(
-                feature_group_data, modified_df, feature_group_data.features
+                feature_group_data, modified_df, feature_group_data.columns
             )
 
         # Assert

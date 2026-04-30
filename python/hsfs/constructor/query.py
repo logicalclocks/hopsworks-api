@@ -79,6 +79,7 @@ class Query:
         left_feature_group_end_time: str | int | date | datetime | None = None,
         joins: list[join_module.Join] | None = None,
         filter: Filter | Logic | dict[str, Any] | None = None,
+        limit: int | None = None,
         **kwargs,
     ) -> None:
         self._feature_store_name = feature_store_name
@@ -89,6 +90,7 @@ class Query:
         self._left_feature_group_end_time = left_feature_group_end_time
         self._joins = joins or []
         self._filter = Logic.from_response_json(filter)
+        self._limit = limit
         self._python_engine: bool = engine.get_type() == "python"
         self._query_constructor_api: query_constructor_api.QueryConstructorApi = (
             query_constructor_api.QueryConstructorApi()
@@ -243,6 +245,8 @@ class Query:
         online: bool = False,
         dataframe_type: str = "default",
         read_options: dict[str, Any] | None = None,
+        start_time: str | int | date | datetime | None = None,
+        end_time: str | int | date | datetime | None = None,
     ) -> (
         pd.DataFrame
         | np.ndarray
@@ -263,6 +267,19 @@ class Query:
             however, you can use the Query API to create Feature Views/Training
             Data containing External Feature Groups.
 
+        Example: Reading with filters and time-based filtering:
+            ```python
+            fg = fs.get_feature_group(...)
+            # Using strings
+            fg.filter(fg.category == "A").read(start_time="2024-01-01", end_time="2024-01-31")
+            # Using datetime objects
+            from datetime import datetime
+            fg.filter(fg.category == "A").read(start_time=datetime(2024, 1, 1), end_time=datetime(2024, 1, 31))
+            # Reading data from yesterday to now
+            from datetime import datetime, timedelta
+            fg.filter(fg.category == "A").read(start_time=datetime.now() - timedelta(days=1), end_time=datetime.now())
+            ```
+
         Parameters:
             online: Read from online storage.
             dataframe_type: DataFrame type to return.
@@ -272,10 +289,37 @@ class Query:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
                 `None` is converted to `{}`.
+            start_time:
+                Filter data to only include records where the event_time column of the
+                left feature group is greater than start_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string
+                formatted as `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
+                or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time:
+                Filter data to only include records where the event_time column of the
+                left feature group is less than end_time.
+                Can be a `datetime`, `date`, Unix timestamp (int), pandas `Timestamp`, or a string
+                formatted as `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
+                or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             DataFrame depending on the chosen type.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If start_time or end_time
+                is specified but no event_time column is defined for the left feature group.
         """
+        if start_time is not None or end_time is not None:
+            if self._left_feature_group.event_time is None:
+                raise FeatureStoreException(
+                    "Cannot filter by start_time/end_time: no event_time column is defined "
+                    "for the left feature group. Set event_time when creating the feature group "
+                    "to enable time-based filtering."
+                )
+            return self._read_with_time_filter(
+                online, dataframe_type, read_options, start_time, end_time
+            )
+
         if not isinstance(online, bool):
             warnings.warn(
                 f"Passed {online} as value to online kwarg for `read` method. The `online` parameter is expected to be a boolean"
@@ -316,6 +360,32 @@ class Query:
             schema,
         )
 
+    def _read_with_time_filter(
+        self,
+        online: bool,
+        dataframe_type: str,
+        read_options: dict[str, Any] | None,
+        start_time: str | int | date | datetime | None,
+        end_time: str | int | date | datetime | None,
+    ) -> (
+        pd.DataFrame
+        | np.ndarray
+        | list[list[Any]]
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+    ):
+        """Internal method to handle read with time-based filtering on event_time."""
+        event_time_feature = self._left_feature_group.get_feature(
+            self._left_feature_group.event_time
+        )
+        time_filter = util.build_time_filter(event_time_feature, start_time, end_time)
+        filtered_query = self.filter(time_filter)
+        return filtered_query.read(
+            online=online,
+            dataframe_type=dataframe_type,
+            read_options=read_options,
+        )
+
     @public
     def show(self, n: int, online: bool = False) -> list[list[Any]]:
         """Show the first N rows of the Query.
@@ -343,7 +413,12 @@ class Query:
             return engine.get_instance().read_vector_db(
                 self._left_feature_group, n, filter=self._filter
             )
-        sql_query, online_conn = self._prep_read(online, read_options)
+        previous_limit = self._limit
+        try:
+            self._limit = n
+            sql_query, online_conn = self._prep_read(online, read_options)
+        finally:
+            self._limit = previous_limit
         return engine.get_instance().show(
             sql_query, self._feature_store_name, n, online_conn, read_options
         )
@@ -612,6 +687,25 @@ class Query:
 
         return self
 
+    @public
+    def limit(self, n: int) -> Query:
+        """Limit the number of rows returned by the query.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("...")
+            query = fg.select_all().limit(100)
+            ```
+
+        Parameters:
+            n: Maximum number of rows to return.
+
+        Returns:
+            The query object with the applied limit.
+        """
+        self._limit = n
+        return self
+
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
@@ -625,6 +719,7 @@ class Query:
             "leftFeatureGroupEndTime": self._left_feature_group_end_time,
             "joins": self._joins,
             "filter": self._filter,
+            "limit": self._limit,
             "hiveEngine": self._python_engine,
         }
 
@@ -664,6 +759,7 @@ class Query:
                 for _join in json_decamelized.get("joins", [])
             ],
             filter=json_decamelized.get("filter", None),
+            limit=json_decamelized.get("limit", None),
         )
 
     def _check_read_supported(self, online: bool) -> None:
@@ -834,12 +930,12 @@ class Query:
 
         # search for feature by name and collect fg objects
         featuregroup_features = {}
-        for feat in self._left_feature_group.features:
+        for feat in self._left_feature_group.columns:
             featuregroup_features[feat.name] = featuregroup_features.get(
                 feat.name, []
             ) + [self._left_feature_group]
         for join_obj in self.joins:
-            for feat in join_obj.query._left_feature_group.features:
+            for feat in join_obj.query._left_feature_group.columns:
                 featuregroup_features[feat.name] = featuregroup_features.get(
                     feat.name, []
                 ) + [join_obj.query._left_feature_group]
@@ -856,25 +952,22 @@ class Query:
             Query.ERROR_MESSAGE_FEATURE_NOT_FOUND_FG.format(feature.name)
         )
 
-    def _get_feature_by_name(
-        self,
-        feature_name: str,
-    ) -> tuple[
-        Feature,
-        str | None,
-        fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup,
-    ]:
-        # collect a dict that maps feature names -> (feature, prefix, fg)
-        query_features = {}
+    def _build_feature_lookup(self) -> dict[str, list[tuple]]:
+        """Build a dictionary mapping feature names to (feature, prefix, fg) tuples.
+
+        The returned dict can be reused across multiple lookups to avoid
+        rebuilding it for each feature.
+        """
+        query_features: dict[str, list[tuple]] = {}
+
         for feat in self._left_features:
             feature_entry = (feat, None, self._left_feature_group)
-            query_features[feat.name] = query_features.get(feat.name, []) + [
-                feature_entry
-            ]
+            query_features.setdefault(feat.name, []).append(feature_entry)
 
-        # collect joins. we do it recursively to collect nested joins.
+        # collect joins recursively
         joins = set(self.joins)
-        [self._fg_rec_add_joins(q_join, joins) for q_join in self.joins]
+        for q_join in self.joins:
+            self._fg_rec_add_joins(q_join, joins)
 
         for join_obj in joins:
             for feat in join_obj.query._left_features:
@@ -883,23 +976,36 @@ class Query:
                     join_obj.prefix,
                     join_obj.query._left_feature_group,
                 )
-                query_features[feat.name] = query_features.get(feat.name, []) + [
-                    feature_entry
-                ]
+                query_features.setdefault(feat.name, []).append(feature_entry)
                 # if the join has a prefix, add a lookup for "prefix.feature_name"
                 if join_obj.prefix:
                     name_with_prefix = f"{join_obj.prefix}{feat.name}"
-                    query_features[name_with_prefix] = query_features.get(
-                        name_with_prefix, []
-                    ) + [feature_entry]
+                    query_features.setdefault(name_with_prefix, []).append(
+                        feature_entry
+                    )
 
-        if feature_name not in query_features:
+        return query_features
+
+    @staticmethod
+    def _resolve_feature_from_lookup(
+        feature_name: str,
+        feature_lookup: dict[str, list[tuple]],
+    ) -> tuple[
+        Feature,
+        str | None,
+        fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup,
+    ]:
+        """Resolve a single feature from a pre-built feature lookup dictionary.
+
+        Raises FeatureStoreException if the feature is not found or is ambiguous.
+        """
+        if feature_name not in feature_lookup:
             raise FeatureStoreException(
                 Query.ERROR_MESSAGE_FEATURE_NOT_FOUND.format(feature_name)
             )
 
         # return (feature, prefix, fg) tuple, if only one match was found
-        feats = query_features[feature_name]
+        feats = feature_lookup[feature_name]
         if len(feats) == 1:
             return feats[0]
 
@@ -911,6 +1017,18 @@ class Query:
         # there were multiple ambiguous matches
         raise FeatureStoreException(
             Query.ERROR_MESSAGE_FEATURE_AMBIGUOUS.format(feature_name)
+        )
+
+    def _get_feature_by_name(
+        self,
+        feature_name: str,
+    ) -> tuple[
+        Feature,
+        str | None,
+        fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup | fg_mod.SpineGroup,
+    ]:
+        return self._resolve_feature_from_lookup(
+            feature_name, self._build_feature_lookup()
         )
 
     @public

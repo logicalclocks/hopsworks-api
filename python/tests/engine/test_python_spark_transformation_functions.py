@@ -85,7 +85,9 @@ class TestPythonSparkTransformationFunctions:
             data=df,
         )
         assert list(result.columns) == list(expected_df.columns)
-        for result_dtype, expected_dtype in zip(result.dtypes, expected_df.dtypes):
+        for result_dtype, expected_dtype in zip(
+            result.dtypes, expected_df.dtypes, strict=False
+        ):
             assert str(result_dtype) == str(expected_dtype)
         pd.testing.assert_frame_equal(
             result, expected_df, check_dtype=False, check_exact=True
@@ -543,6 +545,67 @@ class TestPythonSparkTransformationFunctions:
         percentiles[74] = 2
         transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", percentiles=percentiles)
+        ]
+
+        # Assert
+        self._validate_on_python_engine(td, df, expected_df, transformation_functions)
+        self._validate_on_spark_engine(
+            td, spark_df, expected_spark_df, transformation_functions
+        )
+
+    def test_apply_builtin_log_transform(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
+        spark_engine = spark.Engine()
+
+        schema = StructType(
+            [
+                StructField("col_0", IntegerType(), True),
+                StructField("col_1", StringType(), True),
+                StructField("col_2", BooleanType(), True),
+            ]
+        )
+        df = pd.DataFrame(
+            data={
+                "col_0": [1, 2],
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+            }
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(df, schema=schema)
+
+        expected_schema = StructType(
+            [
+                StructField("col_1", StringType(), True),
+                StructField("col_2", BooleanType(), True),
+                StructField("log_transform_col_0_", DoubleType(), True),
+            ]
+        )
+        import math as _math
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "log_transform_col_0_": [0.0, _math.log(2)],
+            }
+        )
+        expected_spark_df = spark_engine._spark_session.createDataFrame(
+            expected_df, schema=expected_schema
+        )
+
+        # Arrange
+        from hsfs.builtin_transformations import log_transform
+
+        td = self._create_training_dataset()
+
+        transformation_functions = [
+            transformation_function.TransformationFunction(
+                hopsworks_udf=log_transform("col_0"),
+                featurestore_id=99,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
+            )
         ]
 
         # Assert

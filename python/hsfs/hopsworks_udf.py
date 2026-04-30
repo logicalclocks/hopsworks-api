@@ -22,10 +22,11 @@ import json
 import logging
 import re
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import humps
 from hopsworks_apigen import public
@@ -532,15 +533,15 @@ class HopsworksUdf:
         scope = __import__("__main__").__dict__.copy()
 
         # Adding variables required to be injected into the scope.
-        vaariable_to_inject = {
+        variables_to_inject = {
             UDFKeyWords.STATISTICS.value: self.transformation_statistics,
             UDFKeyWords.CONTEXT.value: self.transformation_context,
             "_output_col_names": self.output_column_names,
         }
-        vaariable_to_inject.update(**kwargs)
+        variables_to_inject.update(**kwargs)
 
         # Injecting variables that have a value into scope.
-        scope.update({k: v for k, v in vaariable_to_inject.items() if v is not None})
+        scope.update({k: v for k, v in variables_to_inject.items() if v is not None})
 
         return scope
 
@@ -738,7 +739,7 @@ def renaming_wrapper(*args):
                 new_feature_name, transformation_feature.statistic_argument_name
             )
             for transformation_feature, new_feature_name in zip(
-                self._transformation_features, features
+                self._transformation_features, features, strict=False
             )
         ]
         udf.dropped_features = updated_dropped_features

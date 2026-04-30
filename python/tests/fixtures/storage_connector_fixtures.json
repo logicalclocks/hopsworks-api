@@ -135,6 +135,56 @@
         },
         "headers": null
     },
+    "get_unity_catalog": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "description": "Unity Catalog connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog",
+            "storageConnectorType": "UNITY_CATALOG",
+            "workspace_url": "https://test.cloud.databricks.com",
+            "access_token": "dapi-test-token",
+            "default_catalog": "test_catalog",
+            "aws_region": "us-west-2",
+            "arguments": [{"name": "arg1", "value": "val1"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_unity_catalog_basic_info": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog",
+            "storageConnectorType": "UNITY_CATALOG"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
     "get_redshift_basic_info": {
         "response": {
             "type": "featurestoreRedshiftConnectorDTO",
@@ -569,6 +619,61 @@
             67,
             "storageconnectors",
             "test_big_query"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_oracle": {
+        "response": {
+            "type": "featurestoreSqlConnectorDTO",
+            "description": "Oracle connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_oracle",
+            "storageConnectorType": "SQL",
+            "databaseType": "ORACLE",
+            "host": "test_host",
+            "port": 1521,
+            "database": "test_database",
+            "user": "test_user",
+            "password": "test_password",
+            "walletPath": "/Projects/test_project/Resources/wallet.zip",
+            "walletPassword": "test_wallet_password",
+            "arguments": [{"name": "test_name", "value": "test_value"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_oracle"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_oracle_basic_info": {
+        "response": {
+            "type": "featurestoreSqlConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_oracle",
+            "storageConnectorType": "SQL",
+            "databaseType": "ORACLE"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_oracle"
         ],
         "query_params": {
             "temporaryCredentials": true

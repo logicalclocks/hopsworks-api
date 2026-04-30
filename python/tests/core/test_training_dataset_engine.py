@@ -87,7 +87,7 @@ class TestTrainingDatasetEngine:
         fg = feature_group.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
         )
-        q = query.Query(left_feature_group=fg, left_features=fg.features)
+        q = query.Query(left_feature_group=fg, left_features=fg.columns)
 
         # Act
         td_engine.save(training_dataset=td, features=q, user_write_options=None)

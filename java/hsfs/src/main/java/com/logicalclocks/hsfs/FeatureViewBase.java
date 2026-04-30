@@ -1482,7 +1482,42 @@ public abstract class FeatureViewBase<T extends FeatureViewBase, T3 extends Feat
   public void delete() throws FeatureStoreException, IOException {
     LOGGER.warn("JobWarning: All jobs associated to feature view `" + name + "`, version `"
         + version + "` will be removed.");
-    featureViewApi.delete(this.featureStore, this.name, this.version);
+    featureViewApi.delete(this.featureStore, this.name, this.version, false);
+  }
+  
+  /**
+   * Delete current feature view, all associated metadata and training data.
+   * By default, the feature view will not be deleted if there are
+   * models associated to it.
+   * If {@code force} is set to {@code true}, the feature view is deleted even
+   * if there are models associated to it.
+   *
+   * <pre>
+   * {@code
+   * // get feature store handle
+   * FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
+   * // get feature view handle
+   * FeatureView fv = fs.getFeatureView("fv_name", 1);
+   * // delete feature view
+   * fv.delete();
+   * // or force delete
+   * fv.delete(true);
+   * }
+   * </pre>
+   *
+   * @param force If set to {@code true}, forces deletion of the feature view even
+   *              if there are models associated to it.
+   *              Defaults to {@code false}, in which case the feature view will
+   *              not be deleted if there are models
+   *              associated to it and an exception will be raised instead.
+   * @throws FeatureStoreException In case client is not connected to Hopsworks.
+   * @throws IOException Generic IO exception.
+   */
+  public void delete(Boolean force) throws FeatureStoreException, IOException {
+    LOGGER.warn("JobWarning: All jobs associated to feature view `" + name + "`, version `"
+        + version + "` will be removed.");
+    boolean resolvedForce = Boolean.TRUE.equals(force);
+    featureViewApi.delete(this.featureStore, this.name, this.version, resolvedForce);
   }
 
   /**
