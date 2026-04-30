@@ -195,7 +195,7 @@ class TestDeployAgentScript:
 
         # Assert
         env_api.create_environment.assert_called_once_with(
-            "my_agent", base_environment_name="minimal-inference-pipeline"
+            "my_agent", base_environment_name="python-agent-pipeline"
         )
 
     def test_custom_environment_name_overrides_default(
