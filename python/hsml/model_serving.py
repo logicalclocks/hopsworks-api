@@ -519,8 +519,10 @@ class ModelServing:
 
         existing = self.get_deployment(name)
         if existing is not None:
-            # Preserve identity so save() updates the existing record instead of creating a new one.
+            # Preserve identity and server-assigned version so save() updates the
+            # existing record instead of creating a new one.
             predictor._id = existing.predictor.id
+            predictor._version = existing.predictor.version
             existing.predictor = predictor
             existing.description = description
             existing.save()

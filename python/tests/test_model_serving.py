@@ -366,11 +366,8 @@ class TestDeployAgentPackage:
         mocker.patch.object(ms, "get_deployment", return_value=None)
         mocker.patch("hsml.model_serving.Predictor.for_server")
 
-        # Act
         ms.deploy_agent(entry=str(pkg), name="my_agent")
 
-        # Assert: the wheel local path passed to upload is absolute and lives
-        # under the build directory `_build_and_install_package` created.
         wheel_uploads = [p for p in captured_uploads if p.endswith(wheel_filename)]
         assert len(wheel_uploads) == 1
         wheel_local_path = wheel_uploads[0]
@@ -473,10 +470,7 @@ class TestDeployAgentPackage:
 
         mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
         mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
-        mock_builder.from_isolated_env.return_value.build.return_value = str(
-            wheel_local
-        )
-
+        mock_builder.from_isolated_env.return_value.build.return_value = str(wheel_local)
         mocker.patch.object(ms, "get_deployment", return_value=None)
 
         with pytest.raises(ValueError, match="no top-level package with `__main__.py`"):
