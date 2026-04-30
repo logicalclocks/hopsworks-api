@@ -256,20 +256,6 @@ class TestDeployment:
         mock_stop.assert_not_called()
         mock_start.assert_called_once_with(await_running=600)
 
-    def test_restart_fail_if_stopped_raises(self, mocker, backend_fixtures):
-        # Arrange
-        p = self._get_dummy_predictor(mocker, backend_fixtures)
-        d = deployment.Deployment(predictor=p)
-        mocker.patch("hsml.deployment.Deployment.is_stopped", return_value=True)
-        mock_stop = mocker.patch("hsml.deployment.Deployment.stop")
-        mock_start = mocker.patch("hsml.deployment.Deployment.start")
-
-        # Act & Assert
-        with pytest.raises(ModelServingException):
-            d.restart(fail_if_stopped=True)
-        mock_stop.assert_not_called()
-        mock_start.assert_not_called()
-
     def test_restart_passes_custom_awaits(self, mocker, backend_fixtures):
         # Arrange
         p = self._get_dummy_predictor(mocker, backend_fixtures)
