@@ -470,7 +470,9 @@ class TestDeployAgentPackage:
 
         mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
         mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
-        mock_builder.from_isolated_env.return_value.build.return_value = str(wheel_local)
+        mock_builder.from_isolated_env.return_value.build.return_value = str(
+            wheel_local
+        )
         mocker.patch.object(ms, "get_deployment", return_value=None)
 
         with pytest.raises(ValueError, match="no top-level package with `__main__.py`"):
