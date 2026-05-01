@@ -24,6 +24,8 @@ from hopsworks_common import alert, client, util
 from hopsworks_common.core import (
     alerts_api,
     app_api,
+    chart_api,
+    dashboard_api,
     dataset_api,
     environment_api,
     flink_cluster_api,
@@ -94,6 +96,8 @@ class Project:
         self._project_namespace = project_namespace
         self._trino_api = None
         self._superset_api = None
+        self._chart_api = None
+        self._dashboard_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -354,6 +358,28 @@ class Project:
         if self._superset_api is None:
             self._superset_api = superset_api.SupersetApi(project=self)
         return self._superset_api
+
+    @public
+    def get_chart_api(self) -> chart_api.ChartApi:
+        """Get the chart API for the project.
+
+        Returns:
+            The chart API handle, lazily constructed on first call.
+        """
+        if self._chart_api is None:
+            self._chart_api = chart_api.ChartApi()
+        return self._chart_api
+
+    @public
+    def get_dashboard_api(self) -> dashboard_api.DashboardApi:
+        """Get the dashboard API for the project.
+
+        Returns:
+            The dashboard API handle, lazily constructed on first call.
+        """
+        if self._dashboard_api is None:
+            self._dashboard_api = dashboard_api.DashboardApi()
+        return self._dashboard_api
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:

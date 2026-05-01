@@ -100,6 +100,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.spark_connect_utils import (
     is_spark_connect_env,
     is_spark_connect_session,
+    is_spark_dataframe,
 )
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
@@ -239,8 +240,15 @@ class Engine:
         return False  # we do not support flyingduck on pyspark clients
 
     def _sql_offline(self, sql_query, feature_store):
-        # set feature store
-        self._spark_session.sql(f"USE {feature_store}")
+        # ``USE <feature_store>`` switches the active database in Spark's
+        # catalog. On Hopsworks the catalog is backed by Hive, so on the Spark
+        # Connect server (HopsFS-only, no Hive client provisioned) this call
+        # explodes with ``HiveException: Unable to instantiate
+        # SessionHiveMetaStoreClient``. Skip it in Connect mode — Delta and
+        # Hudi feature groups are already registered as session-global temp
+        # views by the query planner, which the SQL references unqualified.
+        if not self._is_connect:
+            self._spark_session.sql(f"USE {feature_store}")
         return self._spark_session.sql(sql_query)
 
     def show(self, sql_query, feature_store, n, online_conn, read_options=None):
@@ -335,7 +343,7 @@ class Engine:
             return dataframe
 
         # Converting to pandas dataframe if return type is not spark
-        if isinstance(dataframe, DataFrame):
+        if is_spark_dataframe(dataframe):
             dataframe = dataframe.toPandas()
 
         if dataframe_type.lower() == "pandas":
@@ -350,6 +358,25 @@ class Engine:
         )
 
     def convert_to_default_dataframe(self, dataframe, column_names=None):
+        """Normalize ``dataframe`` to a Spark DataFrame ready for ingestion.
+
+        Accepts ``list``, ``numpy.ndarray``, ``pandas.DataFrame``, ``RDD``,
+        and Spark DataFrames. Both classic ``pyspark.sql.DataFrame`` and
+        Spark Connect ``pyspark.sql.connect.dataframe.DataFrame`` are
+        supported via ``is_spark_dataframe``; the all-nullable schema
+        rebuild uses ``DataFrame.to(schema)`` which works in both modes.
+
+        ``RDD`` inputs are rejected when running under Spark Connect — the
+        client has no JVM bridge to materialize them.
+
+        Parameters:
+            dataframe: The input dataframe to normalize.
+            column_names: Optional column names for list/ndarray inputs.
+
+        Returns:
+            A Spark DataFrame with lowercased, sanitized column names and an
+            all-nullable schema, or ``None`` for the spine sentinel.
+        """
         if isinstance(dataframe, list):
             dataframe = self.convert_list_to_spark_dataframe(dataframe, column_names)
         elif HAS_NUMPY and isinstance(dataframe, np.ndarray):
@@ -364,7 +391,7 @@ class Engine:
                 )
             dataframe = dataframe.toDF()
 
-        if isinstance(dataframe, DataFrame):
+        if is_spark_dataframe(dataframe):
             upper_case_features = [
                 c for c in dataframe.columns if util.contains_uppercase(c)
             ]
@@ -394,9 +421,19 @@ class Engine:
                 nullable_schema = copy.deepcopy(lowercase_dataframe.schema)
                 for struct_field in nullable_schema:
                     struct_field.nullable = True
-                lowercase_dataframe = self._spark_session.createDataFrame(
-                    lowercase_dataframe.rdd, nullable_schema
-                )
+                # ``DataFrame.to(schema)`` (PySpark 3.4+) reconciles rows to
+                # the target schema by name and cast — same semantic as the
+                # previous ``createDataFrame(df.rdd, schema)`` round-trip but
+                # without touching the JVM, so it works under Spark Connect.
+                # On older PySpark (3.3 and earlier) ``.to()`` doesn't exist;
+                # fall back to the RDD path, which is fine because older
+                # PySpark also doesn't have Spark Connect.
+                if hasattr(lowercase_dataframe, "to"):
+                    lowercase_dataframe = lowercase_dataframe.to(nullable_schema)
+                else:
+                    lowercase_dataframe = self._spark_session.createDataFrame(
+                        lowercase_dataframe.rdd, nullable_schema
+                    )
 
             return lowercase_dataframe
         if dataframe == "spine":
@@ -1732,7 +1769,20 @@ class Engine:
         return path
 
     def is_spark_dataframe(self, dataframe):
-        return bool(isinstance(dataframe, DataFrame))
+        """Return True for any Spark DataFrame, classic or Spark Connect.
+
+        Delegates to the shared predicate in
+        ``hopsworks_common.spark_connect_utils`` so a single rule decides
+        what counts as a Spark DataFrame across the codebase.
+
+        Parameters:
+            dataframe: The object to type-test.
+
+        Returns:
+            True for both ``pyspark.sql.DataFrame`` and
+            ``pyspark.sql.connect.dataframe.DataFrame``; False otherwise.
+        """
+        return is_spark_dataframe(dataframe)
 
     def update_table_schema(self, feature_group):
         if feature_group.time_travel_format == "DELTA":
@@ -2462,7 +2512,7 @@ class Engine:
         Returns:
             `True` if the dataframe is supported, `False` otherwise.
         """
-        if isinstance(dataframe, (DataFrame, pd.DataFrame)):
+        if is_spark_dataframe(dataframe) or isinstance(dataframe, pd.DataFrame):
             return True
         return None
 

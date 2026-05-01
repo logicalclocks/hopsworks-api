@@ -42,6 +42,63 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _is_delta_table_at(spark_session, path: str) -> bool:
+    """Return True iff *path* contains a Delta table.
+
+    The classic ``delta.tables.DeltaTable.isDeltaTable`` reaches
+    ``spark._sc._jvm`` internally, which Spark Connect sessions don't expose.
+    For Connect, probe via ``DESCRIBE DETAIL delta.<path>`` instead — it
+    succeeds only when *path* is a Delta table and otherwise raises an
+    AnalysisException that we treat as "not a Delta table".
+    """
+    from hopsworks_common.spark_connect_utils import is_spark_connect_session
+
+    if is_spark_connect_session(spark_session):
+        try:
+            spark_session.sql(f"DESCRIBE DETAIL delta.`{path}`").take(1)
+            return True
+        except Exception:  # noqa: BLE001 - any failure means not a Delta table here
+            return False
+    try:
+        from delta.tables import DeltaTable
+    except ImportError as e:
+        raise ImportError(
+            "Delta Lake (delta-spark) is required for Spark operations. "
+            "Install 'delta-spark' or include it in your environment."
+        ) from e
+    return DeltaTable.isDeltaTable(spark_session, path)
+
+
+def _delta_table_for_path(spark_session, path: str):
+    """Return a ``DeltaTable`` handle for *path*.
+
+    On classic Spark, defers to ``delta.tables.DeltaTable.forPath``.
+    On Spark Connect, requires ``delta.connect.tables`` (delta-spark 4.0+);
+    older delta-spark versions do not support Connect-mode handle ops like
+    merge/history, so we raise a clear error pointing at the upgrade path.
+    """
+    from hopsworks_common.spark_connect_utils import is_spark_connect_session
+
+    if is_spark_connect_session(spark_session):
+        try:
+            from delta.connect.tables import DeltaTable
+        except ImportError as e:
+            raise ImportError(
+                "Spark Connect mode requires delta-spark>=4.0 for merge / "
+                "history / forPath operations (delta.connect.tables). The "
+                "currently installed delta-spark does not provide it."
+            ) from e
+        return DeltaTable.forPath(spark_session, path)
+    try:
+        from delta.tables import DeltaTable
+    except ImportError as e:
+        raise ImportError(
+            "Delta Lake (delta-spark) is required for Spark operations. "
+            "Install 'delta-spark' or include it in your environment."
+        ) from e
+    return DeltaTable.forPath(spark_session, path)
+
+
 class DeltaEngine:
     DELTA_SPARK_FORMAT = "delta"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
@@ -200,16 +257,13 @@ class DeltaEngine:
     def delete_record(self, delete_df):
         storage_options = None
         if self._spark_session is not None:
-            try:
-                from delta.tables import DeltaTable
-            except ImportError as e:
-                raise ImportError(
-                    "Delta Lake (delta-spark) is required for Spark operations. "
-                    "Install 'delta-spark' or include it in your environment."
-                ) from e
             location = self._feature_group.prepare_spark_location()
-            fg_source_table = DeltaTable.forPath(self._spark_session, location)
-            is_delta_table = DeltaTable.isDeltaTable(self._spark_session, location)
+            is_delta_table = _is_delta_table_at(self._spark_session, location)
+            fg_source_table = (
+                _delta_table_for_path(self._spark_session, location)
+                if is_delta_table
+                else None
+            )
         else:
             location = self._get_delta_rs_location()
             storage_options = self._get_delta_rs_storage_options()
@@ -258,18 +312,11 @@ class DeltaEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
-        try:
-            from delta.tables import DeltaTable
-        except ImportError as e:
-            raise ImportError(
-                "Delta Lake (delta-spark) is required for Spark operations. "
-                "Install 'delta-spark' or include it in your environment."
-            ) from e
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
 
-        if not DeltaTable.isDeltaTable(self._spark_session, location):
+        if not _is_delta_table_at(self._spark_session, location):
             (
                 dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
                 .options(**write_options)
@@ -292,7 +339,7 @@ class DeltaEngine:
                 .save(location)
             )
         else:
-            fg_source_table = DeltaTable.forPath(self._spark_session, location)
+            fg_source_table = _delta_table_for_path(self._spark_session, location)
 
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
@@ -824,17 +871,74 @@ class DeltaEngine:
 
         # --- Get commit history ---
         if spark_context is not None:
-            try:
-                from delta.tables import DeltaTable
-            except ImportError as e:
-                raise ImportError(
-                    "Delta Lake (delta-spark) is required to read commit metadata. "
-                    "Install 'delta-spark' or include it in your environment."
-                ) from e
-            # Spark DeltaTable (returns Spark DataFrame)
-            fg_source_table = DeltaTable.forPath(spark_context, base_path)
-            history = fg_source_table.history()
-            history_records = [r.asDict() for r in history.collect()]
+            from hopsworks_common.spark_connect_utils import (  # noqa: PLC0415
+                is_spark_connect_session,
+            )
+
+            if is_spark_connect_session(spark_context):
+                # Spark Connect path: ``DESCRIBE HISTORY`` and
+                # ``DeltaTable.history()`` route through Spark's catalog, which
+                # on Hopsworks is the Hive Metastore. The Spark Connect server
+                # in the terminal-spark image has no Hive client provisioned,
+                # so reading commit metadata that way fails with::
+                #
+                #   HiveException: Unable to instantiate
+                #   org.apache.hadoop.hive.ql.metadata.SessionHiveMetaStoreClient
+                #
+                # Read ``_delta_log/*.json`` directly via ``spark.read.json``
+                # — only touches the underlying filesystem (HopsFS), so no
+                # Hive client is required.
+                #
+                # Limitation: commits older than the latest checkpoint are
+                # stored in ``<n>.checkpoint.parquet`` and are not surfaced
+                # here. Hopsworks calls this right after a write to summarize
+                # the latest commit, so checkpoint coverage is unnecessary.
+                from pyspark.sql import functions as F  # noqa: PLC0415
+
+                log_glob = f"{base_path.rstrip('/')}/_delta_log/*.json"
+                log_df = spark_context.read.json(log_glob)
+                if "commitInfo" not in log_df.columns:
+                    history_records = []
+                else:
+                    # ``recursive=True`` so the nested ``operationMetrics``
+                    # struct comes back as a dict — the downstream summarizer
+                    # calls ``.get(...)`` on it.
+                    history_records = [
+                        r.asDict(recursive=True)
+                        for r in (
+                            log_df.withColumn("_file", F.input_file_name())
+                            .filter(F.col("commitInfo").isNotNull())
+                            .withColumn(
+                                "version",
+                                F.regexp_extract(
+                                    F.col("_file"), r"(\d+)\.json", 1
+                                ).cast("long"),
+                            )
+                            .select(
+                                "version",
+                                F.col("commitInfo.timestamp").alias("timestamp"),
+                                F.col("commitInfo.operation").alias("operation"),
+                                F.col("commitInfo.operationMetrics").alias(
+                                    "operationMetrics"
+                                ),
+                            )
+                            .collect()
+                        )
+                    ]
+            else:
+                # Classic Spark path: original behaviour, JVM-backed
+                # ``DeltaTable.forPath(...).history()``.
+                try:
+                    from delta.tables import DeltaTable  # noqa: PLC0415
+                except ImportError as e:
+                    raise ImportError(
+                        "Delta Lake (delta-spark) is required to read commit "
+                        "metadata. Install 'delta-spark' or include it in your "
+                        "environment."
+                    ) from e
+                fg_source_table = DeltaTable.forPath(spark_context, base_path)
+                history = fg_source_table.history()
+                history_records = [r.asDict() for r in history.collect()]
             _logger.debug(f"history_records for {base_path}: {history_records}")
         else:
             try:
