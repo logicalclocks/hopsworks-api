@@ -31,7 +31,7 @@ _DELTA_EXTENSIONS = "io.delta.sql.DeltaSparkSessionExtension"
 _DELTA_CATALOG = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
 
 
-@public("hopsworks.build_spark")
+@public
 def build_spark(
     app_name: str = "hopsworks",
     extra_configs: dict[str, str] | None = None,
