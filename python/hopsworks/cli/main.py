@@ -29,6 +29,7 @@ from hopsworks.cli.commands.setup import setup_cmd
 from hopsworks.cli.commands.superset import superset_group
 from hopsworks.cli.commands.td import td_group
 from hopsworks.cli.commands.transformation import transformation_group
+from hopsworks.cli.commands.trino import trino_group
 from hopsworks.cli.commands.update import update_cmd
 
 
@@ -94,6 +95,7 @@ cli.add_command(transformation_group)
 cli.add_command(chart_group)
 cli.add_command(dashboard_group)
 cli.add_command(superset_group)
+cli.add_command(trino_group)
 cli.add_command(context_cmd)
 cli.add_command(init_cmd)
 cli.add_command(update_cmd)
