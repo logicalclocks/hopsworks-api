@@ -199,23 +199,51 @@ def job_create(
     output.success("✓ Created job %s", getattr(job, "name", name))
 
 
+_DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
+
+
 @job_group.command("run")
 @click.argument("name")
 @click.option("--args", "app_args", help="Argument string passed to this execution.")
 @click.option("--wait", is_flag=True, help="Block until the execution terminates.")
+@click.option(
+    "--start-time",
+    type=click.DateTime(formats=_DT_FORMATS),
+    default=None,
+    help="ISO timestamp for HOPS_START_TIME (data interval start).",
+)
+@click.option(
+    "--end-time",
+    type=click.DateTime(formats=_DT_FORMATS),
+    default=None,
+    help="ISO timestamp for HOPS_END_TIME (data interval end). Requires --start-time.",
+)
 @click.pass_context
-def job_run(ctx: click.Context, name: str, app_args: str | None, wait: bool) -> None:
-    """Start a new execution of ``name``.
+def job_run(
+    ctx: click.Context,
+    name: str,
+    app_args: str | None,
+    wait: bool,
+    start_time: datetime | None,
+    end_time: datetime | None,
+) -> None:
+    """Start a new one-off execution of ``name``.
 
-    Args:
-        ctx: Click context.
-        name: Job name.
-        app_args: Argument string passed to the execution.
-        wait: When True, block until the execution terminates.
+    ``--start-time`` / ``--end-time`` are passed straight through to the
+    SDK and surface inside the job as ``HOPS_START_TIME`` /
+    ``HOPS_END_TIME``. Useful when you want to nudge a single run to
+    consume a specific data window without creating a schedule.
     """
+    if end_time is not None and start_time is None:
+        raise click.UsageError("--end-time requires --start-time.")
     job = _get_job(ctx, name)
     try:
-        execution = job.run(args=app_args, await_termination=wait)
+        execution = job.run(
+            args=app_args,
+            await_termination=wait,
+            start_time=start_time,
+            end_time=end_time,
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Run failed: {exc}") from exc
 
@@ -224,6 +252,68 @@ def job_run(ctx: click.Context, name: str, app_args: str | None, wait: bool) -> 
         name,
         getattr(execution, "id", "?"),
         getattr(execution, "state", "?"),
+    )
+    if output.JSON_MODE:
+        output.print_json(_execution_to_dict(execution))
+
+
+@job_group.command("backfill")
+@click.argument("name")
+@click.option(
+    "--start-time",
+    type=click.DateTime(formats=_DT_FORMATS),
+    required=True,
+    help="ISO timestamp for the start of the backfill window (HOPS_START_TIME).",
+)
+@click.option(
+    "--end-time",
+    type=click.DateTime(formats=_DT_FORMATS),
+    required=True,
+    help="ISO timestamp for the end of the backfill window (HOPS_END_TIME).",
+)
+@click.option("--args", "app_args", help="Argument string passed to this execution.")
+@click.option(
+    "--wait/--no-wait",
+    "wait",
+    default=True,
+    show_default=True,
+    help="Block until the execution terminates (default: yes).",
+)
+@click.pass_context
+def job_backfill(
+    ctx: click.Context,
+    name: str,
+    start_time: datetime,
+    end_time: datetime,
+    app_args: str | None,
+    wait: bool,
+) -> None:
+    """Run ``name`` once over an explicit [start_time, end_time] window.
+
+    Same SDK call as ``run`` (which sets ``HOPS_START_TIME`` /
+    ``HOPS_END_TIME`` env vars on the execution); the difference is that
+    both timestamps are required, signalling intent to backfill a fixed
+    historical interval rather than a normal one-off run.
+    """
+    if end_time <= start_time:
+        raise click.UsageError("--end-time must be strictly after --start-time.")
+    job = _get_job(ctx, name)
+    try:
+        execution = job.run(
+            args=app_args,
+            await_termination=wait,
+            start_time=start_time,
+            end_time=end_time,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Backfill failed: {exc}") from exc
+
+    output.success(
+        "✓ Backfill of %s started (execution #%s, window %s → %s)",
+        name,
+        getattr(execution, "id", "?"),
+        start_time.isoformat(),
+        end_time.isoformat(),
     )
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
@@ -317,17 +407,56 @@ def job_history(ctx: click.Context, name: str) -> None:
 @click.argument("cron")
 @click.option(
     "--start-time",
-    type=click.DateTime(
-        formats=["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
-    ),
+    type=click.DateTime(formats=_DT_FORMATS),
     help="ISO timestamp for the first trigger (e.g. 2026-04-26T09:00:00).",
 )
 @click.option(
     "--end-time",
-    type=click.DateTime(
-        formats=["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
-    ),
+    type=click.DateTime(formats=_DT_FORMATS),
     help="ISO timestamp for the last trigger.",
+)
+@click.option(
+    "--start-offset-seconds",
+    "start_offset_seconds",
+    type=int,
+    default=None,
+    help=(
+        "Per-fire offset for HOPS_START_TIME (data window start). Negative looks "
+        "back from the cron fire (e.g. -3600 = window starts 1h before fire). "
+        "Default (omitted) = previous cron fire (last execution time)."
+    ),
+)
+@click.option(
+    "--end-offset-seconds",
+    "end_offset_seconds",
+    type=int,
+    default=None,
+    help=(
+        "Per-fire offset for HOPS_END_TIME (data window end). 0 = cron fire time. "
+        "Default (omitted) = cron fire time."
+    ),
+)
+@click.option(
+    "--catchup/--no-catchup",
+    "catchup",
+    default=False,
+    show_default=True,
+    help="Replay missed fires on recovery (one execution per missed interval).",
+)
+@click.option(
+    "--max-active-runs",
+    "max_active_runs",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Upper bound on concurrent executions of this job.",
+)
+@click.option(
+    "--max-catchup-runs",
+    "max_catchup_runs",
+    type=int,
+    default=None,
+    help="Upper bound on missed intervals to replay during catchup (most-recent wins).",
 )
 @click.pass_context
 def job_schedule(
@@ -336,24 +465,31 @@ def job_schedule(
     cron: str,
     start_time: datetime | None,
     end_time: datetime | None,
+    start_offset_seconds: int | None,
+    end_offset_seconds: int | None,
+    catchup: bool,
+    max_active_runs: int,
+    max_catchup_runs: int | None,
 ) -> None:
-    """Attach a Quartz cron schedule to a job.
+    """Attach (or update) a Quartz cron schedule to ``name``.
 
-    The CLI parses ``--start-time`` / ``--end-time`` into ``datetime`` objects
-    so they can flow through to ``JobSchedule._dt_to_ms()`` which dereferences
-    ``tzinfo`` and would crash on raw strings.
-
-    Args:
-        ctx: Click context.
-        name: Job name.
-        cron: Quartz cron expression, e.g. ``0 0 * * * ?``.
-        start_time: ISO timestamp for first fire.
-        end_time: ISO timestamp for last fire.
+    The cron interval is the firing cadence. The data window the job
+    consumes per fire is controlled by ``--start-offset-seconds`` /
+    ``--end-offset-seconds`` (relative to the fire time). ``--catchup``
+    replays missed intervals after an outage; ``--max-catchup-runs``
+    caps how many missed intervals are replayed.
     """
     job = _get_job(ctx, name)
     try:
         schedule = job.schedule(
-            cron_expression=cron, start_time=start_time, end_time=end_time
+            cron_expression=cron,
+            start_time=start_time,
+            end_time=end_time,
+            catchup=catchup,
+            max_active_runs=max_active_runs,
+            start_time_offset_seconds=start_offset_seconds,
+            end_time_offset_seconds=end_offset_seconds,
+            max_catchup_runs=max_catchup_runs,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Schedule failed: {exc}") from exc
