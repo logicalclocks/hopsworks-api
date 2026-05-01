@@ -361,7 +361,17 @@ print(batch_df[["user_id", "prediction"]].head())
 import hopsworks
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.getOrCreate()
+# Spark Connect session with Delta extensions + DeltaCatalog (mandatory for
+# Hopsworks offline feature group reads/writes — see hops-pyspark skill).
+spark = (
+    SparkSession.builder.appName("batch_inference")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config(
+        "spark.sql.catalog.spark_catalog",
+        "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+    )
+    .getOrCreate()
+)
 
 # 1. Connect
 project = hopsworks.login()
