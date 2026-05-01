@@ -17,6 +17,7 @@ from hopsworks.cli.commands.context import context_cmd
 from hopsworks.cli.commands.dashboard import dashboard_group
 from hopsworks.cli.commands.dataset import dataset_group
 from hopsworks.cli.commands.deployment import deployment_group
+from hopsworks.cli.commands.env import env_group
 from hopsworks.cli.commands.fg import fg_group
 from hopsworks.cli.commands.fs import fs_group
 from hopsworks.cli.commands.fv import fv_group
@@ -88,6 +89,7 @@ cli.add_command(connector_group)
 cli.add_command(td_group)
 cli.add_command(model_group)
 cli.add_command(deployment_group)
+cli.add_command(env_group)
 cli.add_command(job_group)
 cli.add_command(app_group)
 cli.add_command(dataset_group)
