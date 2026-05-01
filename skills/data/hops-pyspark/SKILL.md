@@ -21,28 +21,21 @@ Always set:
 
 ## Canonical session builder
 
+The hopsworks SDK ships ``hopsworks.build_spark`` so user code stays one line. In Spark Connect mode it applies the Delta extensions + DeltaCatalog automatically; outside Connect (spark-submit / classic clusters) it leaves session config to ``spark-defaults.conf`` and just sets ``app_name`` + any user overrides:
+
 ```python
-from pyspark.sql import SparkSession
+from hopsworks import build_spark
 
+spark = build_spark("my_pipeline")
+```
 
-def build_spark(app_name: str = "my_app") -> SparkSession:
-    """Spark Connect session with Delta + DeltaCatalog wired in.
+Pass extra configs with ``extra_configs={...}``:
 
-    SPARK_REMOTE is set in the terminal-spark image's bashrc, so the
-    Connect URI is picked up automatically — do not pass .remote() here.
-    """
-    return (
-        SparkSession.builder.appName(app_name)
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
-        .getOrCreate()
-    )
-
-
-spark = build_spark()
+```python
+spark = build_spark(
+    "my_pipeline",
+    extra_configs={"spark.sql.shuffle.partitions": "200"},
+)
 ```
 
 This works for Hopsworks feature group reads/writes, plain Delta paths under HopsFS, and the hopsworks SDK's `fg.read()` / `fg.insert(df)` paths that delegate to Spark.

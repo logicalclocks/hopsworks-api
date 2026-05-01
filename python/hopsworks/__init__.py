@@ -27,6 +27,7 @@ from typing import Literal
 from hopsworks.connection import Connection
 from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
+from hopsworks.spark import build_spark  # noqa: F401  (public re-export)
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
 from hopsworks_common.client.exceptions import (
