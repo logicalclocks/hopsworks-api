@@ -13,9 +13,13 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import json
+import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pyarrow
 import pytest
 from hsfs import feature_group, feature_view, storage_connector, training_dataset
 from hsfs.constructor import fs_query
@@ -286,3 +290,196 @@ class TestArrowFlightClient:
         flight_client_mock.assert_called_once()
         args, kwargs = flight_client_mock.call_args
         assert kwargs.get("override_hostname") == "flyingduck.service.hopsworks.ai"
+
+
+@pytest.fixture
+def fake_hqs_module(monkeypatch):
+    """Inject a fake `hqs` package into sys.modules so HQSLocalClient can be exercised
+    without the real flyingduck library installed. Yields the fake module.
+    """
+    fake_engine = MagicMock(name="hqs._engine")
+    fake_client_obj = MagicMock(name="hqs.HQSClient.instance")
+    fake_client_obj._engine = fake_engine
+    fake_client_obj.hopsfs = MagicMock(name="hopsfs")
+
+    fake_hqs_client_class = MagicMock(name="hqs.HQSClient")
+    fake_hqs_client_class.from_pod_environment = MagicMock(return_value=fake_client_obj)
+
+    fake_hqs = SimpleNamespace(__version__="5.0.0", HQSClient=fake_hqs_client_class)
+    fake_reader_writer_module = SimpleNamespace(
+        ArrowDatasetReaderWriter=MagicMock(name="ArrowDatasetReaderWriter")
+    )
+    fake_duckdb = SimpleNamespace(__version__="1.5.2")
+    fake_pfs = SimpleNamespace(HadoopFileSystem=MagicMock(return_value=MagicMock()))
+
+    monkeypatch.setitem(sys.modules, "hqs", fake_hqs)
+    monkeypatch.setitem(
+        sys.modules,
+        "hqs.arrow_dataset_reader_writer",
+        fake_reader_writer_module,
+    )
+    monkeypatch.setitem(sys.modules, "duckdb", fake_duckdb)
+    # `import fsspec.implementations.arrow as pfs` walks fsspec → fsspec.implementations
+    # → fsspec.implementations.arrow, so the intermediate package must also be present.
+    monkeypatch.setitem(
+        sys.modules,
+        "fsspec.implementations",
+        SimpleNamespace(arrow=fake_pfs),
+    )
+    monkeypatch.setitem(sys.modules, "fsspec.implementations.arrow", fake_pfs)
+    yield fake_hqs
+
+
+class TestShouldUseLocalHqs:
+    def test_external_user_returns_false(self, mocker):
+        mocker.patch(
+            "hopsworks_common.client._is_external", return_value=True
+        )
+        remote = MagicMock()
+        remote._enabled_on_cluster = True
+        assert arrow_flight_client._should_use_local_hqs(remote) is False
+
+    def test_cluster_flag_disabled_returns_false(self, mocker, fake_hqs_module):
+        mocker.patch(
+            "hopsworks_common.client._is_external", return_value=False
+        )
+        remote = MagicMock()
+        remote._enabled_on_cluster = False
+        assert arrow_flight_client._should_use_local_hqs(remote) is False
+
+    def test_hqs_not_importable_returns_false(self, mocker):
+        mocker.patch(
+            "hopsworks_common.client._is_external", return_value=False
+        )
+        # find_spec returns None when the module is not installed.
+        mocker.patch(
+            "importlib.util.find_spec",
+            side_effect=lambda name: None if name == "hqs" else MagicMock(),
+        )
+        remote = MagicMock()
+        remote._enabled_on_cluster = True
+        assert arrow_flight_client._should_use_local_hqs(remote) is False
+
+    def test_duckdb_not_importable_returns_false(self, mocker):
+        mocker.patch(
+            "hopsworks_common.client._is_external", return_value=False
+        )
+        mocker.patch(
+            "importlib.util.find_spec",
+            side_effect=lambda name: None if name == "duckdb" else MagicMock(),
+        )
+        remote = MagicMock()
+        remote._enabled_on_cluster = True
+        assert arrow_flight_client._should_use_local_hqs(remote) is False
+
+    def test_all_gates_pass_returns_true(self, mocker):
+        mocker.patch(
+            "hopsworks_common.client._is_external", return_value=False
+        )
+        # All find_spec calls return a spec — both hqs and duckdb are "installed"
+        mocker.patch("importlib.util.find_spec", return_value=MagicMock())
+        remote = MagicMock()
+        remote._enabled_on_cluster = True
+        assert arrow_flight_client._should_use_local_hqs(remote) is True
+
+
+class TestGetInstanceRouting:
+    @pytest.fixture(autouse=True)
+    def reset_singleton(self):
+        arrow_flight_client.close()
+        yield
+        arrow_flight_client.close()
+
+    def test_external_returns_arrow_flight(self, mocker):
+        mocker.patch("hopsworks_common.client._is_external", return_value=True)
+        # Construction does network probes — patch them out
+        mocker.patch.object(
+            arrow_flight_client.ArrowFlightClient,
+            "__init__",
+            return_value=None,
+        )
+        instance = arrow_flight_client.get_instance()
+        assert isinstance(instance, arrow_flight_client.ArrowFlightClient)
+
+    def test_internal_with_local_hqs_swaps_to_local(self, mocker, fake_hqs_module):
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mocker.patch("importlib.util.find_spec", return_value=MagicMock())
+        # Construct a real-ish ArrowFlightClient stub with the cluster flag on
+        remote_stub = MagicMock(spec=arrow_flight_client.ArrowFlightClient)
+        remote_stub._enabled_on_cluster = True
+        mocker.patch.object(
+            arrow_flight_client,
+            "ArrowFlightClient",
+            return_value=remote_stub,
+        )
+        instance = arrow_flight_client.get_instance()
+        assert isinstance(instance, arrow_flight_client.HQSLocalClient)
+        # The HQSLocalClient should hold the remote stub as its fallback.
+        assert instance._flight_fallback is remote_stub
+
+
+class TestHQSLocalClient:
+    @pytest.fixture
+    def local_client(self, fake_hqs_module):
+        fallback = MagicMock(spec=arrow_flight_client.ArrowFlightClient)
+        return arrow_flight_client.HQSLocalClient(flight_fallback=fallback), fallback
+
+    def test_unsigned_read_query_runs_locally(self, local_client):
+        client, fallback = local_client
+        query = MagicMock()
+        query.hqs_payload_signature = None
+        query.hqs_payload = json.dumps({"query_string": "x", "features": {}})
+        arrow_table = pyarrow.Table.from_pydict({"col": [1, 2, 3]})
+        client._hqs_client.execute.return_value = arrow_table
+
+        result = client.read_query(query, None, dataframe_type="default")
+
+        client._hqs_client.execute.assert_called_once()
+        fallback.read_query.assert_not_called()
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 3
+
+    def test_signed_read_query_forwards_to_flight(self, local_client):
+        client, fallback = local_client
+        query = MagicMock()
+        query.hqs_payload_signature = "sig"
+        fallback.read_query.return_value = "remote-result"
+
+        result = client.read_query(query, None, dataframe_type="default")
+
+        client._hqs_client.execute.assert_not_called()
+        fallback.read_query.assert_called_once_with(query, None, "default")
+        assert result == "remote-result"
+
+    def test_signed_create_training_dataset_forwards_to_flight(self, local_client):
+        client, fallback = local_client
+        query = MagicMock()
+        query.hqs_payload_signature = "sig"
+        fallback.create_training_dataset.return_value = "remote-tds"
+
+        result = client.create_training_dataset(
+            MagicMock(), MagicMock(), query, None
+        )
+
+        fallback.create_training_dataset.assert_called_once()
+        assert result == "remote-tds"
+
+    def test_disable_for_session_drops_fallback(self, mocker, local_client):
+        client, fallback = local_client
+        # Patch the global ArrowFlightClient constructor invoked by _disable_for_session
+        mocker.patch.object(
+            arrow_flight_client.ArrowFlightClient,
+            "__init__",
+            return_value=None,
+        )
+        client._disable_for_session()
+        assert client._flight_fallback is None
+        assert client._disabled_for_session is True
+
+    def test_uses_from_pod_environment(self, fake_hqs_module):
+        fallback = MagicMock(spec=arrow_flight_client.ArrowFlightClient)
+        arrow_flight_client.HQSLocalClient(flight_fallback=fallback)
+        # Memory cap is delegated to the library's classmethod
+        fake_hqs_module.HQSClient.from_pod_environment.assert_called_once()
+        # Bare HQSClient(...) should not be invoked directly
+        fake_hqs_module.HQSClient.assert_not_called()
