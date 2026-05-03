@@ -117,6 +117,16 @@ mcp = [
 trino=[
     "trino[sqlalchemy]==0.336.0"
 ]
+# Local in-process HQS query engine for pods running inside Hopsworks.
+# The connector drivers mirror the set installed in the flyingduck Flight
+# server image, so the local engine has parity with the server. Drivers
+# beyond hudi/delta on HopsFS are dormant on the SDK routing path under
+# current access control (every ExternalFG is signed and forwarded), but
+# they ship for parity and direct HQSClient use.
+hqs = [
+    "hopsworks[python]",
+    "hqs[snowflake,bigquery,postgres,mysql,oracle,redshift,delta-gcs]>=5.0.0,<6.0.0",
+]
 
 [dependency-groups]
 pre-commit = ["pre-commit"]

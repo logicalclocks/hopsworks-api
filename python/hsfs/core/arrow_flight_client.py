@@ -54,10 +54,43 @@ _logger = logging.getLogger(__name__)
 _arrow_flight_instance = None
 
 
-def get_instance() -> ArrowFlightClient:
+def _should_use_local_hqs(remote_client: ArrowFlightClient) -> bool:
+    """Decide whether the singleton should be swapped to in-process HQS.
+
+    Activates only when the SDK is running inside a Hopsworks pod, the
+    cluster admin has enabled the feature query service, and both `hqs`
+    and `duckdb` are importable. Mere presence of `hqs` in the install
+    set is not sufficient — `duckdb` is in the `[hqs]` extra and a stale
+    install missing it must keep using Arrow Flight.
+    """
+    try:
+        if client._is_external():
+            return False
+    except Exception:
+        return False
+    if not remote_client._enabled_on_cluster:
+        return False
+    import importlib.util
+
+    if importlib.util.find_spec("hqs") is None:
+        return False
+    if importlib.util.find_spec("duckdb") is None:
+        return False
+    return True
+
+
+def get_instance() -> ArrowFlightClient | HQSLocalClient:
     global _arrow_flight_instance
     if not _arrow_flight_instance:
-        _arrow_flight_instance = ArrowFlightClient()
+        # Construct ArrowFlightClient first — it reads the cluster's
+        # enable_flyingduck variable into _enabled_on_cluster. The local
+        # client reuses this instance as its lazy fallback for signed
+        # (cross-project / restricted-access) queries.
+        remote = ArrowFlightClient()
+        if _should_use_local_hqs(remote):
+            _arrow_flight_instance = HQSLocalClient(flight_fallback=remote)
+        else:
+            _arrow_flight_instance = remote
     return _arrow_flight_instance
 
 
@@ -70,7 +103,7 @@ def _disable_feature_query_service_client():
     global _arrow_flight_instance
     _logger.debug("Disabling Hopsworks Query Service Client.")
     if _arrow_flight_instance is None:
-        _arrow_flight_instance.ArrowFlightClient(disabled_for_session=True)
+        _arrow_flight_instance = ArrowFlightClient(disabled_for_session=True)
     else:
         _arrow_flight_instance._disable_for_session(on_purpose=True)
 
@@ -615,6 +648,139 @@ class ArrowFlightClient:
     def enabled_on_cluster(self) -> bool:
         """Whether the client is enabled on the cluster."""
         return self._enabled_on_cluster
+
+
+class HQSLocalClient:
+    """In-process query execution using the hqs library.
+
+    Activated only inside Hopsworks pods when the cluster admin has enabled
+    the feature query service. Same-project queries against managed feature
+    groups run locally with no Arrow Flight network hop. Signed payloads
+    (restricted users, individual feature group shares, external feature
+    groups) are forwarded to the Arrow Flight server, which holds the
+    private key and superuser HDFS credentials.
+    """
+
+    SUPPORTED_FORMATS = ArrowFlightClient.SUPPORTED_FORMATS
+    SUPPORTED_EXTERNAL_CONNECTORS = ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
+
+    def __init__(self, flight_fallback: ArrowFlightClient):
+        import hqs
+        import fsspec.implementations.arrow as pfs
+
+        hopsfs = pfs.HadoopFileSystem("default")
+        self._hqs_client = hqs.HQSClient.from_pod_environment(hopsfs=hopsfs)
+        self._enabled_on_cluster = True
+        self._disabled_for_session = False
+        self._flight_fallback: ArrowFlightClient | None = flight_fallback
+        _logger.info(
+            "Using local HQS library (v%s) for same-project query execution; "
+            "Arrow Flight fallback ready for signed payloads.",
+            hqs.__version__,
+        )
+
+    def _get_flight_fallback(self) -> ArrowFlightClient:
+        if self._flight_fallback is None:
+            raise FeatureStoreException(
+                "Local HQS client has been disabled for this session and the "
+                "Arrow Flight fallback is no longer available."
+            )
+        return self._flight_fallback
+
+    def _should_be_used(self):
+        return True
+
+    def _disable_for_session(self, message=None, on_purpose=False):
+        # Swap the global singleton to a disabled ArrowFlightClient so that
+        # subsequent get_instance() callers see the disabled state. Drop the
+        # local fallback reference so a stale handle cannot resurrect routing.
+        global _arrow_flight_instance
+        _arrow_flight_instance = ArrowFlightClient(disabled_for_session=True)
+        self._flight_fallback = None
+        self._disabled_for_session = True
+
+    def is_enabled(self):
+        return True
+
+    def read_query(self, query_object, arrow_flight_config, dataframe_type):
+        if query_object.hqs_payload_signature:
+            _logger.info(
+                "Signed HQS payload — forwarding read_query to Arrow Flight server."
+            )
+            return self._get_flight_fallback().read_query(
+                query_object, arrow_flight_config, dataframe_type
+            )
+
+        query_payload = json.loads(query_object.hqs_payload)
+        arrow_table = self._hqs_client.execute(query_payload)
+
+        if dataframe_type.lower() == "polars":
+            if not HAS_POLARS:
+                raise ModuleNotFoundError(polars_not_installed_message)
+            return pl.from_arrow(arrow_table)
+        return arrow_table.to_pandas()
+
+    def read_path(self, path, arrow_flight_config, dataframe_type):
+        import pyarrow.dataset as ds
+
+        dataset = ds.dataset(
+            f"hdfs://{path}",
+            format="parquet",
+            filesystem=self._hqs_client.hopsfs,
+        )
+        arrow_table = dataset.to_table()
+
+        if dataframe_type.lower() == "polars":
+            if not HAS_POLARS:
+                raise ModuleNotFoundError(polars_not_installed_message)
+            return pl.from_arrow(arrow_table)
+        return arrow_table.to_pandas()
+
+    def create_training_dataset(
+        self, feature_view_obj, training_dataset_obj, query_obj, arrow_flight_config
+    ):
+        if query_obj.hqs_payload_signature:
+            _logger.info(
+                "Signed HQS payload — forwarding create_training_dataset to Arrow Flight server."
+            )
+            return self._get_flight_fallback().create_training_dataset(
+                feature_view_obj,
+                training_dataset_obj,
+                query_obj,
+                arrow_flight_config,
+            )
+
+        from hqs.arrow_dataset_reader_writer import ArrowDatasetReaderWriter
+
+        training_dataset = {
+            "project_name": client.get_instance()._project_name,
+            "fv_name": feature_view_obj.name,
+            "fv_version": feature_view_obj.version,
+            "tds_version": training_dataset_obj.version,
+            "query": json.loads(query_obj.hqs_payload),
+        }
+        writer = ArrowDatasetReaderWriter(self._hqs_client._engine)
+        return writer.create_training_dataset(training_dataset)
+
+    @property
+    def timeout(self):
+        return ArrowFlightClient.DEFAULT_TIMEOUT_SECONDS
+
+    @property
+    def health_check_timeout(self):
+        return ArrowFlightClient.DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS
+
+    @property
+    def host_url(self):
+        return "local"
+
+    @property
+    def disabled_for_session(self) -> bool:
+        return self._disabled_for_session
+
+    @property
+    def enabled_on_cluster(self) -> bool:
+        return True
 
 
 def supports(featuregroups):
