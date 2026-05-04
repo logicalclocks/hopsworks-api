@@ -668,7 +668,7 @@ class Deployment:
     @public
     @property
     def project_namespace(self):
-        """Name of kubernetes namespace the project is in"""
+        """Name of the Kubernetes namespace the project is in."""
         return self._predictor.project_namespace
 
     @project_namespace.setter
