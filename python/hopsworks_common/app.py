@@ -30,7 +30,7 @@ from hopsworks_common.core import app_api
 _logger = logging.getLogger(__name__)
 
 SERVING_POLL_INTERVAL = 3.0
-SERVING_TIMEOUT = 120.0
+SERVING_TIMEOUT = 300.0
 
 
 @public("hopsworks.app.App")
