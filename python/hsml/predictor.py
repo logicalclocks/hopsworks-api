@@ -36,11 +36,7 @@ from hsml.resources import PredictorResources
 from hsml.scaling_config import (
     PredictorScalingConfig,
 )
-from hsml.transformer import (
-    Transformer,
-    env_vars_dict_to_list,
-    env_vars_list_to_dict,
-)
+from hsml.transformer import Transformer
 
 
 @public
@@ -327,8 +323,9 @@ class Predictor(DeployableComponent):
             environment = json_decamelized.pop("environment_dto")
             kwargs["environment"] = environment["name"]
         if "predictor_env_vars" in json_decamelized:
-            kwargs["env_vars"] = env_vars_list_to_dict(
-                json_decamelized.pop("predictor_env_vars")
+            env_vars = json_decamelized.pop("predictor_env_vars")
+            kwargs["env_vars"] = (
+                dict(e.split("=", 1) for e in env_vars) if env_vars else None
             )
         kwargs["project_namespace"] = json_decamelized.pop("project_namespace")
         kwargs["scaling_configuration"] = PredictorScalingConfig.from_json(
@@ -369,7 +366,10 @@ class Predictor(DeployableComponent):
         if self.model_framework is not None:
             json = {**json, "modelFramework": self._model_framework}
         if self._env_vars:
-            json = {**json, "predictorEnvVars": env_vars_dict_to_list(self._env_vars)}
+            json = {
+                **json,
+                "predictorEnvVars": [f"{k}={v}" for k, v in self._env_vars.items()],
+            }
         if self.environment is not None:
             json = {**json, "environmentDTO": {"name": self._environment}}
         if self._resources is not None:
