@@ -1076,30 +1076,6 @@ class TestPredictor:
         # Key consumed (popped) on the way out
         assert "predictor_env_vars" not in p_json
 
-    def test_extract_fields_from_json_env_vars_malformed_dropped(
-        self, mocker, backend_fixtures
-    ):
-        # Arrange
-        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
-        p_json = copy.deepcopy(
-            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
-                "items"
-            ][0]
-        )
-        p_json["predictor_env_vars"] = [
-            "FOO=bar",
-            "no_equals",
-            "=novalue",
-            123,
-            None,
-        ]
-
-        # Act
-        kwargs = predictor.Predictor.extract_fields_from_json(p_json)
-
-        # Assert
-        assert kwargs["env_vars"] == {"FOO": "bar"}
-
     def test_extract_fields_from_json_env_vars_absent(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)

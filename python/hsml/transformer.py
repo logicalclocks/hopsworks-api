@@ -23,32 +23,6 @@ from hsml.resources import TransformerResources
 from hsml.scaling_config import TransformerScalingConfig
 
 
-def env_vars_dict_to_list(d: dict | None) -> list | None:
-    """Convert a dict of env vars to the backend wire format (list of "KEY=VALUE")."""
-    if not d:
-        return None
-    return [f"{k}={v}" for k, v in d.items()]
-
-
-def env_vars_list_to_dict(items: list | None) -> dict | None:
-    """Parse the backend wire format (list of "KEY=VALUE") into a dict.
-
-    Lenient: malformed entries (non-string, no `=`, empty key) are dropped, matching
-    the backend's `HopsUtils.parseEnvVars` / `ReservedEnvVars.findReserved` behaviour.
-    """
-    if not items:
-        return None
-    out: dict[str, str] = {}
-    for entry in items:
-        if not isinstance(entry, str):
-            continue
-        eq = entry.find("=")
-        if eq <= 0:
-            continue
-        out[entry[:eq]] = entry[eq + 1 :]
-    return out
-
-
 @public
 class Transformer(DeployableComponent):
     """Metadata object representing a transformer to be used in a predictor."""
@@ -142,9 +116,8 @@ class Transformer(DeployableComponent):
             return None, None, None, None
         sc = TransformerScalingConfig.from_json(json_decamelized)
         rc = TransformerResources.from_json(json_decamelized)
-        ev = env_vars_list_to_dict(
-            json_decamelized.pop("transformer_env_vars", None)
-        )
+        env_vars = json_decamelized.pop("transformer_env_vars", None)
+        ev = dict(e.split("=", 1) for e in env_vars) if env_vars else None
         return sf, rc, sc, ev
 
     def update_from_response_json(self, json_dict):
@@ -156,7 +129,7 @@ class Transformer(DeployableComponent):
     def to_dict(self):
         d = {"transformer": self._script_file, **self._resources.to_dict()}
         if self._env_vars:
-            d["transformerEnvVars"] = env_vars_dict_to_list(self._env_vars)
+            d["transformerEnvVars"] = [f"{k}={v}" for k, v in self._env_vars.items()]
         return d
 
     @public
