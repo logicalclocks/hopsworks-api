@@ -34,11 +34,15 @@ class Dashboard:
         id: int | None = None,
         name: str | None = None,
         charts: list[Chart] | None = None,
+        type: str | None = None,
+        bundle_path: str | None = None,
         **kwargs,
     ):
         self._id = id
         self._name = name
         self._charts = charts
+        self._type = type
+        self._bundle_path = bundle_path
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> list[Dashboard]:
@@ -52,11 +56,18 @@ class Dashboard:
         return cls(**json_decamelized)
 
     def to_dict(self):
-        return {
+        # Order matters for snapshot-style assertions, but the backend ignores it.
+        # `bundlePath` is camelCase because the JAX-RS DTO uses Jackson's default.
+        out: dict[str, Any] = {
             "id": self._id,
             "name": self._name,
             "charts": self._charts,
         }
+        if self._type is not None:
+            out["type"] = self._type
+        if self._bundle_path is not None:
+            out["bundlePath"] = self._bundle_path
+        return out
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -84,6 +95,24 @@ class Dashboard:
     @charts.setter
     def charts(self, charts: list[Chart]) -> None:
         self._charts = charts
+
+    @property
+    def type(self) -> str | None:
+        """Dashboard kind, either ``"GRID"`` or ``"BUNDLE"``."""
+        return self._type
+
+    @type.setter
+    def type(self, type: str) -> None:
+        self._type = type
+
+    @property
+    def bundle_path(self) -> str | None:
+        """Absolute HopsFS path to the bundle directory, only set for BUNDLE dashboards."""
+        return self._bundle_path
+
+    @bundle_path.setter
+    def bundle_path(self, bundle_path: str) -> None:
+        self._bundle_path = bundle_path
 
     def delete(self) -> None:
         """Delete the dashboard from the feature store.

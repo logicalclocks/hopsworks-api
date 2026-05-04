@@ -20,7 +20,7 @@ from hsfs.core.dashboard import Dashboard
 
 
 class DashboardApi:
-    def create_dashboard(self, dashboard: Dashboard) -> None:
+    def create_dashboard(self, dashboard: Dashboard) -> Dashboard:
         _client = client.get_instance()
         path_params = [
             "project",
@@ -28,12 +28,13 @@ class DashboardApi:
             "dashboards",
         ]
 
-        _client._send_request(
+        response = _client._send_request(
             "POST",
             path_params,
             headers={"content-type": "application/json"},
             data=dashboard.json(),
         )
+        return Dashboard.from_response_json(response)
 
     def get_dashboards(self) -> list[Dashboard]:
         _client = client.get_instance()

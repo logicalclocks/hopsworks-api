@@ -2239,6 +2239,105 @@ class FeatureStore:
         )
         return DashboardApi().create_dashboard(dashboard)
 
+    def create_bundle(self, name: str, path: str) -> Dashboard:
+        """Upload a built SPA directory and register it as a BUNDLE dashboard.
+
+        The directory at ``path`` must contain an ``index.html`` produced by a
+        front-end build (e.g. ``vite build``).
+        Files are uploaded to ``Resources/dashboards/{name}`` in the project's
+        HopsFS, then a ``BUNDLE`` dashboard is registered pointing at that path.
+        The backend derives the bundle path from ``name``, so name validation is
+        strict: alphanumerics, underscore, and hyphen only.
+        Calling ``create_bundle`` again with the same name uploads new files over
+        the existing bundle and returns the existing dashboard — no duplicate row
+        is created, and the existing bundle is never deleted by the cleanup path.
+        On registration failure for a *first-time* create, the SDK attempts to
+        remove the orphaned upload directory before re-raising the exception.
+
+        Example:
+            ```python
+            fs.create_bundle(name="sales-overview", path="./dist")
+            ```
+
+        Parameters:
+            name: Name of the dashboard; also used as the destination directory.
+            path: Local directory containing the built SPA.
+
+        Returns:
+            The created or existing dashboard metadata.
+
+        Raises:
+            ValueError: If ``name`` is invalid, ``path`` does not exist, or ``path`` does not contain ``index.html``.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        import re
+        from os.path import isdir, isfile, join
+
+        from hopsworks_common.core.dataset_api import DatasetApi
+
+        # Mirror the backend's name regex so we fail before uploading. The name
+        # becomes a HopsFS path segment, so we forbid slashes, dots, and any
+        # punctuation that could let a name escape the dashboards directory.
+        if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$", name):
+            raise ValueError(
+                f"invalid dashboard name {name!r}: must match "
+                r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}"
+            )
+        if not isdir(path):
+            raise ValueError(f"{path}: bundle directory not found")
+        if not isfile(join(path, "index.html")):
+            raise ValueError(
+                f"{path}/index.html not found — run your front-end build first"
+            )
+
+        upload_dir = f"Resources/dashboards/{name}"
+        dataset_api = DatasetApi()
+        dashboard_api = DashboardApi()
+
+        # Idempotency: a BUNDLE dashboard with this name in this project means
+        # we're refreshing its content. Resolve existence BEFORE uploading so
+        # the cleanup branch below is only reachable when this call is the
+        # one that just produced the upload — otherwise we'd risk deleting a
+        # pre-existing bundle on a transient registration failure.
+        existing = self._find_bundle_dashboard(dashboard_api, name)
+
+        dataset_api.upload(path, upload_dir, overwrite=True)
+
+        if existing is not None:
+            return existing
+
+        import contextlib
+
+        try:
+            # bundle_path is server-derived; the field on the DTO is informational.
+            dashboard = Dashboard(name=name, type="BUNDLE")
+            return dashboard_api.create_dashboard(dashboard)
+        except Exception:
+            # Safe to clean up: `existing` was None at the start of this call,
+            # so the upload we just did is the only thing in upload_dir.
+            with contextlib.suppress(Exception):
+                dataset_api.remove(upload_dir)
+            raise
+
+    @staticmethod
+    def _find_bundle_dashboard(
+        dashboard_api: DashboardApi, name: str
+    ) -> Dashboard | None:
+        """Return the BUNDLE dashboard with this name in this project, or None.
+
+        Falls back to None if listing fails — we'd rather risk a duplicate
+        registration than silently lose user data by deleting an existing
+        bundle on cleanup.
+        """
+        try:
+            dashboards = dashboard_api.get_dashboards() or []
+        except Exception:
+            return None
+        for d in dashboards:
+            if d.name == name and d.type == "BUNDLE":
+                return d
+        return None
+
     def get_dashboards(self) -> list[Dashboard]:
         """Get all dashboards in the feature store.
 
