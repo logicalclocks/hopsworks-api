@@ -393,16 +393,16 @@ class StorageConnector(ABC):
             elif self.type == StorageConnector.BIGQUERY:
                 database = self.query_project
             elif self.type == StorageConnector.SQL:
-                if self._database_type == StorageConnector.ORACLE:
+                if self.database_type == StorageConnector.ORACLE:
                     # For Oracle the `database` field holds the service name
                     # (or TNS alias when using a wallet), not a schema, while
                     # the backend filters tables by OWNER (schema).
                     # Default to the connecting user's own schema.
                     if not self.user:
                         raise ValueError(
-                            "Database name is required for Oracle connectors "
-                            "without a configured user. Pass an explicit "
-                            "`database` to get_tables()."
+                            "A schema/owner is required for Oracle connectors "
+                            "without a configured user. Pass it as the "
+                            "`database` argument to get_tables()."
                         )
                     database = self.user.upper()
                 else:

@@ -1507,6 +1507,6 @@ class TestOracleConnector:
             wallet_path="/Projects/myproj/Resources/wallet.zip",
         )
         with pytest.raises(
-            ValueError, match="Database name is required for Oracle connectors"
+            ValueError, match="schema/owner is required for Oracle connectors"
         ):
             sc.get_tables()
