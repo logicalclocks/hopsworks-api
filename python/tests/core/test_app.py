@@ -64,6 +64,22 @@ class TestApp:
         assert apps[0].name == "app1"
         assert apps[1].name == "app2"
 
+    def test_from_response_json_list_with_collection_wrapper(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        json_data = {
+            "count": 2,
+            "items": [
+                {"jobId": 1, "name": "app1", "state": "RUNNING", "serving": True},
+                {"jobId": 2, "name": "app2", "state": "KILLED", "serving": False},
+            ],
+        }
+
+        apps = App.from_response_json_list(json_data)
+
+        assert len(apps) == 2
+        assert apps[0].name == "app1"
+        assert apps[1].name == "app2"
+
     def test_app_url_when_serving(self, mocker):
         mock_client = mocker.patch("hopsworks_common.client.get_instance")
         mock_client.return_value._base_url = "https://myhost:443"
@@ -167,6 +183,50 @@ class TestApp:
         app.delete()
 
         mock_api.return_value._delete.assert_called_once_with("my_app")
+
+    def test_get_logs(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+        mock_api.return_value._get_log.side_effect = [
+            {"type": "out", "log": "stdout content"},
+            {"type": "err", "log": "stderr content"},
+        ]
+
+        app = App(name="my_app", state="KILLED", execution_id=10)
+        app._app_api = mock_api.return_value
+
+        logs = app.get_logs()
+
+        assert logs == {"stdout": "stdout content", "stderr": "stderr content"}
+        mock_api.return_value._get_log.assert_has_calls(
+            [
+                mocker.call("my_app", 10, "out"),
+                mocker.call("my_app", 10, "err"),
+            ]
+        )
+
+    def test_get_logs_normalizes_missing_logs(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+        mock_api.return_value._get_log.side_effect = [
+            {"type": "out"},
+            {"type": "err", "log": None},
+        ]
+
+        app = App(name="my_app", state="KILLED", execution_id=10)
+        app._app_api = mock_api.return_value
+
+        assert app.get_logs() == {"stdout": "", "stderr": ""}
+
+    def test_get_logs_requires_execution(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        app = App(name="my_app", state="STOPPED", execution_id=None)
+
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
+            app.get_logs()
+
+        assert "no execution is available" in str(e_info.value)
 
     def test_run_without_await_serving(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")

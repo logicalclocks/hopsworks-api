@@ -166,6 +166,22 @@ class AppApi:
             "PUT", path_params, headers=headers, data=json.dumps({"state": "stopped"})
         )
 
+    def _get_log(self, app_name: str, execution_id: int, log_type: str) -> dict:
+        """Get stdout or stderr log metadata for an app execution."""
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            app_name,
+            "executions",
+            execution_id,
+            "log",
+            log_type,
+        ]
+        headers = {"content-type": "application/json"}
+        return _client._send_request("GET", path_params, headers=headers)
+
     def _delete(self, app_name: str):
         """Delete an app."""
         _client = client.get_instance()

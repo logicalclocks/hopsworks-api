@@ -87,6 +87,9 @@ class App:
 
     @classmethod
     def from_response_json_list(cls, json_list):
+        if json_list and isinstance(json_list, dict):
+            json_decamelized = humps.decamelize(json_list)
+            json_list = json_decamelized.get("items")
         if json_list and isinstance(json_list, list):
             return [cls.from_response_json(item) for item in json_list]
         return []
@@ -221,6 +224,31 @@ class App:
         """
         print(f"Deleting app: {self._name}")
         self._app_api._delete(self._name)
+
+    @public
+    @usage.method_logger
+    def get_logs(self) -> dict[str, str]:
+        """Get stdout and stderr logs for the latest app execution.
+
+        Returns:
+            Dictionary with ``stdout`` and ``stderr`` log content.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If the app has no execution.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when retrieving logs.
+        """
+        if not self._execution_id:
+            raise JobExecutionException(
+                f"Cannot get logs for app {self._name!r}: no execution is available."
+            )
+
+        stdout = self._app_api._get_log(self._name, self._execution_id, "out")
+        stderr = self._app_api._get_log(self._name, self._execution_id, "err")
+
+        return {
+            "stdout": stdout.get("log") or "",
+            "stderr": stderr.get("log") or "",
+        }
 
     @public
     def get_url(self) -> str:
