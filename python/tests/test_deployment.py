@@ -224,6 +224,53 @@ class TestDeployment:
         # Assert
         mock_serving_engine_start.assert_called_once_with(d, await_status=await_stopped)
 
+    # restart
+
+    def test_restart_when_running(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hsml.deployment.Deployment.is_stopped", return_value=False)
+        mock_stop = mocker.patch("hsml.deployment.Deployment.stop")
+        mock_start = mocker.patch("hsml.deployment.Deployment.start")
+
+        # Act
+        d.restart()
+
+        # Assert
+        mock_stop.assert_called_once_with(await_stopped=600)
+        mock_start.assert_called_once_with(await_running=600)
+
+    def test_restart_when_stopped_starts_in_place(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hsml.deployment.Deployment.is_stopped", return_value=True)
+        mock_stop = mocker.patch("hsml.deployment.Deployment.stop")
+        mock_start = mocker.patch("hsml.deployment.Deployment.start")
+
+        # Act
+        d.restart()
+
+        # Assert
+        mock_stop.assert_not_called()
+        mock_start.assert_called_once_with(await_running=600)
+
+    def test_restart_passes_custom_awaits(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hsml.deployment.Deployment.is_stopped", return_value=False)
+        mock_stop = mocker.patch("hsml.deployment.Deployment.stop")
+        mock_start = mocker.patch("hsml.deployment.Deployment.start")
+
+        # Act
+        d.restart(await_stopped=42, await_running=137)
+
+        # Assert
+        mock_stop.assert_called_once_with(await_stopped=42)
+        mock_start.assert_called_once_with(await_running=137)
+
     # delete
 
     def test_delete_default(self, mocker, backend_fixtures):

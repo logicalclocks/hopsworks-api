@@ -57,3 +57,28 @@ class LibraryApi:
             ),
             environment=self,
         )
+
+    def _uninstall(self, library_name: str, name: str) -> None:
+        """Uninstall a library from the environment.
+
+        Parameters:
+            library_name: Name of the library.
+            name: Name of the environment.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        _client = client.get_instance()
+
+        path_params = [
+            "project",
+            _client._project_id,
+            "python",
+            "environments",
+            name,
+            "libraries",
+            library_name,
+        ]
+
+        headers = {"content-type": "application/json"}
+        _client._send_request("DELETE", path_params, headers=headers)
