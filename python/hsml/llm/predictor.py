@@ -21,8 +21,21 @@ from hsml.predictor import Predictor
 class Predictor(Predictor):
     """Configuration for a predictor running with the vLLM backend."""
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        variant: str = PREDICTOR.VLLM_VARIANT_VLLM,
+        image_tag: str | None = None,
+        **kwargs,
+    ):
+        valid_variants = {PREDICTOR.VLLM_VARIANT_VLLM, PREDICTOR.VLLM_VARIANT_OMNI}
+        if variant not in valid_variants:
+            raise ValueError(
+                f"variant '{variant}' is not valid. Possible values are {sorted(valid_variants)}"
+            )
+
         kwargs["model_framework"] = MODEL.FRAMEWORK_LLM
         kwargs["model_server"] = PREDICTOR.MODEL_SERVER_VLLM
+        kwargs["vllm_variant"] = variant
+        kwargs["vllm_image_tag"] = image_tag
 
         super().__init__(**kwargs)

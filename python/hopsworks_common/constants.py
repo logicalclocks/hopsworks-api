@@ -206,6 +206,9 @@ class PREDICTOR:
     # serving tool
     SERVING_TOOL_DEFAULT = "DEFAULT"
     SERVING_TOOL_KSERVE = "KSERVE"
+    # vLLM variant
+    VLLM_VARIANT_VLLM = "VLLM"
+    VLLM_VARIANT_OMNI = "VLLM_OMNI"
 
 
 class PREDICTOR_STATE:

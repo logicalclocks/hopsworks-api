@@ -1174,6 +1174,82 @@ class TestPredictor:
         kwargs = predictor.Predictor.extract_fields_from_json(wire)
 
         assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
+    # vLLM variant round-trip
+
+    def test_vllm_variant_vllm_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"]["get_deployment_vllm_kserve_vllm_variant"][
+            "response"
+        ]
+
+        # Act
+        p = predictor.Predictor.from_response_json(p_json)
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.vllm_variant == "VLLM"
+        assert p.vllm_image_tag is None
+        assert p2.vllm_variant == p.vllm_variant
+        assert p2.vllm_image_tag == p.vllm_image_tag
+        assert serialized["vllmVariant"] == "VLLM"
+        assert serialized["vllmImageTag"] is None
+
+    def test_vllm_variant_omni_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"]["get_deployment_vllm_kserve_omni_variant"][
+            "response"
+        ]
+
+        # Act
+        p = predictor.Predictor.from_response_json(p_json)
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.vllm_variant == "VLLM_OMNI"
+        assert p.vllm_image_tag == "v0.14.0"
+        assert p2.vllm_variant == p.vllm_variant
+        assert p2.vllm_image_tag == p.vllm_image_tag
+        assert serialized["vllmVariant"] == "VLLM_OMNI"
+        assert serialized["vllmImageTag"] == "v0.14.0"
+
+    def test_llm_predictor_default_variant(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act
+        p = LLMPredictor(name="my_llm")
+
+        # Assert
+        assert p.vllm_variant == PREDICTOR.VLLM_VARIANT_VLLM
+        assert p.vllm_image_tag is None
+
+    def test_llm_predictor_omni_variant(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act
+        p = LLMPredictor(name="my_llm", variant=PREDICTOR.VLLM_VARIANT_OMNI, image_tag="v0.14.0")
+
+        # Assert
+        assert p.vllm_variant == PREDICTOR.VLLM_VARIANT_OMNI
+        assert p.vllm_image_tag == "v0.14.0"
+
+    def test_llm_predictor_invalid_variant_raises(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act + Assert
+        with pytest.raises(ValueError) as e_info:
+            LLMPredictor(name="my_llm", variant="INVALID")
+
+        assert "is not valid" in str(e_info.value)
 
     # auxiliary methods
 
