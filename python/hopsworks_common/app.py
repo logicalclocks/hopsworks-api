@@ -182,11 +182,11 @@ class App:
         Raises:
             hopsworks.client.exceptions.JobExecutionException: If the app fails to start or the serving timeout is exceeded.
         """
-        print(f"Starting app: {self._name}")
+        _logger.info("Starting app: %s", self._name)
         self._app_api._start(self._name)
 
         if await_serving:
-            print("Waiting for app to become ready...")
+            _logger.info("Waiting for app to become ready...")
             return self._wait_for_serving()
 
         return self._refresh()
@@ -200,9 +200,9 @@ class App:
             Self, with updated state.
         """
         if not self._execution_id:
-            print("App is not running.")
+            _logger.info("App is not running.")
             return self
-        print(f"Stopping app: {self._name}")
+        _logger.info("Stopping app: %s", self._name)
         self._app_api._stop(self._name, self._execution_id)
         # Poll until the state is final
         elapsed = 0.0
@@ -222,7 +222,7 @@ class App:
 
         This stops the app if running and removes the job configuration.
         """
-        print(f"Deleting app: {self._name}")
+        _logger.info("Deleting app: %s", self._name)
         self._app_api._delete(self._name)
 
     @public
@@ -242,8 +242,8 @@ class App:
                 f"Cannot get logs for app {self._name!r}: no execution is available."
             )
 
-        stdout = self._app_api._get_log(self._name, self._execution_id, "out")
-        stderr = self._app_api._get_log(self._name, self._execution_id, "err")
+        stdout = self._app_api._get_log(self._name, self._execution_id, "out") or {}
+        stderr = self._app_api._get_log(self._name, self._execution_id, "err") or {}
 
         return {
             "stdout": stdout.get("log") or "",
@@ -284,7 +284,7 @@ class App:
             self._refresh()
             if self._serving:
                 if self.app_url:
-                    print(f"App is serving at:\n{self.app_url}")
+                    _logger.info("App is serving at:\n%s", self.app_url)
                 return self
             if self._state in ("FAILED", "KILLED", "FRAMEWORK_FAILURE"):
                 raise JobExecutionException(

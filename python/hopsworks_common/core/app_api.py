@@ -180,7 +180,7 @@ class AppApi:
             log_type,
         ]
         headers = {"content-type": "application/json"}
-        return _client._send_request("GET", path_params, headers=headers)
+        return _client._send_request("GET", path_params, headers=headers) or {}
 
     def _delete(self, app_name: str):
         """Delete an app."""

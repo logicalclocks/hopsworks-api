@@ -16,6 +16,7 @@
 
 import pytest
 from hopsworks_common.app import App
+from hopsworks_common.core.app_api import AppApi
 from hsfs.client import exceptions
 
 
@@ -217,6 +218,41 @@ class TestApp:
         app._app_api = mock_api.return_value
 
         assert app.get_logs() == {"stdout": "", "stderr": ""}
+
+    def test_get_logs_normalizes_empty_log_responses(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+        mock_api.return_value._get_log.side_effect = [{}, {}]
+
+        app = App(name="my_app", state="KILLED", execution_id=10)
+        app._app_api = mock_api.return_value
+
+        assert app.get_logs() == {"stdout": "", "stderr": ""}
+
+    def test_get_logs_normalizes_none_log_responses(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+        mock_api.return_value._get_log.side_effect = [None, None]
+
+        app = App(name="my_app", state="KILLED", execution_id=10)
+        app._app_api = mock_api.return_value
+
+        assert app.get_logs() == {"stdout": "", "stderr": ""}
+
+    def test_get_log_normalizes_empty_backend_response(self, mocker):
+        mock_client = mocker.Mock()
+        mock_client._project_id = 99
+        mock_client._send_request.return_value = None
+        mocker.patch("hopsworks_common.client.get_instance", return_value=mock_client)
+
+        logs = AppApi()._get_log("my_app", 10, "out")
+
+        assert logs == {}
+        mock_client._send_request.assert_called_once_with(
+            "GET",
+            ["project", 99, "jobs", "my_app", "executions", 10, "log", "out"],
+            headers={"content-type": "application/json"},
+        )
 
     def test_get_logs_requires_execution(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
