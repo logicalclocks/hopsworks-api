@@ -1247,6 +1247,43 @@ class TestPython:
         not HAS_POLARS,
         reason="Polars is not installed.",
     )
+    def test_profile_polars_end_to_end(self):
+        # Regression: previously the polars zip-conversion was guarded by
+        # isinstance(stats[col], list), but pl.DataFrame.describe().to_dict()
+        # returns dict[str, Series]; the raw Series leaked into
+        # _convert_pandas_statistics and "count" in stat raised
+        # InvalidOperationError.
+        python_engine = python.Engine()
+        df = pl.DataFrame({"col1": [1, 2, 3, 4], "col2": ["a", "b", "c", "d"]})
+
+        result = json.loads(
+            python_engine.profile(
+                df=df,
+                relevant_columns=["col1", "col2"],
+                correlations=None,
+                histograms=None,
+                exact_uniqueness=True,
+            )
+        )
+
+        cols = {c["column"]: c for c in result["columns"]}
+        assert cols["col1"]["dataType"] == "Integral"
+        assert cols["col1"]["count"] == 4.0
+        assert cols["col1"]["mean"] == 2.5
+        assert cols["col1"]["minimum"] == 1.0
+        assert cols["col1"]["maximum"] == 4.0
+        assert cols["col1"]["sum"] == 10.0
+        # polars uses nearest-rank interpolation; just assert percentiles are populated
+        assert cols["col1"]["approxPercentiles"][49] in {2.0, 2.5, 3.0}
+        assert cols["col2"]["dataType"] == "String"
+        # polars returns describe values as strings for non-numeric columns
+        assert str(cols["col2"]["count"]) == "4"
+        assert "approxPercentiles" not in cols["col2"]
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars_with_complex_column_in_relevant_columns(self, mocker):
         # Arrange
         mock_python_engine_convert_pandas_statistics = mocker.patch(
