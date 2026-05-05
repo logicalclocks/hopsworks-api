@@ -16,7 +16,7 @@
 import decimal
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 import hopsworks_common
 import numpy as np
@@ -37,7 +37,7 @@ from hsfs.client import exceptions
 from hsfs.constructor import query
 from hsfs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
 from hsfs.core import inode, job, online_ingestion
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
 from hsfs.expectation_suite import ExpectationSuite
 from hsfs.serving_key import ServingKey
@@ -1320,6 +1320,48 @@ class TestPython:
         not HAS_POLARS,
         reason="Polars is not installed.",
     )
+    def test_profile_polars_casts_timestamp_columns_to_string(self, mocker):
+        # Arrange - exercises the polars `with_columns(pl.col(...).cast(pl.String))`
+        # branch that runs before describe() to normalize timestamp/date columns.
+        # side_effect returns a fresh dict per call so the production code's
+        # in-place stat["column"] assignment doesn't alias entries.
+        mocker.patch(
+            "hsfs.engine.python.Engine._convert_pandas_statistics",
+            side_effect=lambda stat, dataType: {
+                "dataType": dataType,
+                "min": stat.get("min"),
+            },
+        )
+        python_engine = python.Engine()
+        df = pl.DataFrame(
+            {
+                "ts": [datetime(2024, 1, 1), datetime(2024, 1, 2)],
+                "d": [date(2024, 1, 1), date(2024, 1, 2)],
+            }
+        )
+
+        # Act - the cast branch turns timestamp/date columns into strings; if it
+        # didn't run, describe() would surface raw timestamp objects and the min
+        # values below would not match these string literals.
+        result = python_engine.profile(
+            df=df,
+            relevant_columns=None,
+            correlations=None,
+            histograms=None,
+            exact_uniqueness=True,
+        )
+
+        # Assert
+        parsed = json.loads(result)
+        by_col = {col["column"]: col for col in parsed["columns"]}
+        assert set(by_col) == {"ts", "d"}
+        assert by_col["ts"]["min"] == "2024-01-01 00:00:00.000000"
+        assert by_col["d"]["min"] == "2024-01-01"
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars_with_null_column(self, mocker):
         # Arrange
         mock_python_engine_convert_pandas_statistics = mocker.patch(
@@ -1721,8 +1763,8 @@ class TestPython:
         )
 
     @pytest.mark.skipif(
-        not HAS_GREAT_EXPECTATIONS,
-        reason="Great Expectations is not installed.",
+        not HAS_GREAT_EXPECTATIONS or GE_MAJOR != 0,
+        reason="GE 0.x-only path: great_expectations.from_pandas was removed in GE 1.x.",
     )
     def test_validate_with_great_expectations(self, mocker):
         # Arrange
@@ -1737,6 +1779,23 @@ class TestPython:
 
         # Assert
         assert mock_ge_from_pandas.call_count == 1
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS or GE_MAJOR != 1,
+        reason="GE 1.x-only path: gx.get_context replaces from_pandas.",
+    )
+    def test_validate_with_great_expectations_v1(self, mocker):
+        # Arrange
+        mock_get_context = mocker.patch("great_expectations.get_context")
+        python_engine = python.Engine()
+
+        # Act
+        python_engine.validate_with_great_expectations(
+            dataframe=None, expectation_suite=None, ge_validate_kwargs={}
+        )
+
+        # Assert
+        assert mock_get_context.call_count == 1
 
     @pytest.mark.skipif(
         HAS_GREAT_EXPECTATIONS,
@@ -1857,6 +1916,43 @@ class TestPython:
             mock_warnings.call_args[0][0]
             == "The ingested dataframe contains upper case letters in feature names: `['Col1', 'Date']`. Feature names are sanitized to lower case in the feature store."
         )
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_convert_to_default_dataframe_non_utc_tz_pandas_polars_parity(self, mocker):
+        # Regression for the polars tz bug: an earlier `dt.replace_time_zone(None)`
+        # call silently dropped the zone and kept wall-clock time, while the pandas
+        # sibling used `dt.tz_convert(None)` which converts to UTC first. For
+        # non-UTC zones the two branches diverged. This test asserts they now
+        # produce the *same* UTC-naive value for an equivalent input.
+        import zoneinfo
+
+        mocker.patch("warnings.warn")
+        python_engine = python.Engine()
+
+        # 12:00 NY local in January (UTC-5) == 17:00 UTC.
+        ny = zoneinfo.ZoneInfo("America/New_York")
+        pandas_df = pd.DataFrame({"ts": [datetime(2024, 1, 1, 12, 0, tzinfo=ny)]})
+        polars_df = pl.DataFrame(
+            [
+                pl.Series(
+                    "ts",
+                    [datetime(2024, 1, 1, 12, 0)],
+                    pl.Datetime(time_zone=None),
+                ).dt.replace_time_zone("America/New_York"),
+            ]
+        )
+
+        # Act
+        pandas_result = python_engine.convert_to_default_dataframe(dataframe=pandas_df)
+        polars_result = python_engine.convert_to_default_dataframe(dataframe=polars_df)
+
+        # Assert - both branches produce the same UTC-naive instant
+        assert pandas_result["ts"].iloc[0] == datetime(2024, 1, 1, 17, 0)
+        assert polars_result["ts"].to_list() == [datetime(2024, 1, 1, 17, 0)]
+        assert polars_result["ts"].dtype == pl.Datetime(time_zone=None)
 
     def test_shallow_copy_dataframe_is_shallow(self):
         # Arrange
@@ -2561,6 +2657,133 @@ class TestPython:
             "purchase_month",
         }  # Test using a set because order does not matter for duplicate check
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_check_duplicate_records_polars_no_duplicates(self, mocker):
+        # Arrange - polars branch uses df.select(...).to_arrow() to extract keys.
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="purchases",
+            version=1,
+            featurestore_id=99,
+            primary_key=["purchase_id"],
+            partition_key=[],
+            event_time="ts",
+            time_travel_format=None,
+        )
+        df = pl.DataFrame(
+            {
+                "purchase_id": [1, 2, 3],
+                "ts": [
+                    datetime(2024, 1, 1),
+                    datetime(2024, 1, 2),
+                    datetime(2024, 1, 3),
+                ],
+                "amount": [9.99, 19.99, 4.99],
+            }
+        )
+
+        # Act + Assert - no exception means no duplicates were found
+        python_engine._check_duplicate_records(df, fg)
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_check_duplicate_records_polars_finds_duplicates(self, mocker):
+        # Arrange - same primary_key + event_time row appears twice.
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="purchases",
+            version=1,
+            featurestore_id=99,
+            primary_key=["purchase_id"],
+            partition_key=[],
+            event_time="ts",
+            time_travel_format=None,
+        )
+        df = pl.DataFrame(
+            {
+                "purchase_id": [1, 1, 2],
+                "ts": [
+                    datetime(2024, 1, 1),
+                    datetime(2024, 1, 1),
+                    datetime(2024, 1, 2),
+                ],
+                "amount": [9.99, 9.99, 4.99],
+            }
+        )
+
+        # Act + Assert
+        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
+            python_engine._check_duplicate_records(df, fg)
+        assert "duplicate" in str(exc_info.value).lower()
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_check_duplicate_records_polars_missing_key_column_raises(self, mocker):
+        # Arrange - the polars branch must still validate that key columns exist.
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="purchases",
+            version=1,
+            featurestore_id=99,
+            primary_key=["purchase_id"],
+            partition_key=[],
+            time_travel_format=None,
+        )
+        df = pl.DataFrame({"amount": [9.99, 19.99]})
+
+        # Act + Assert
+        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
+            python_engine._check_duplicate_records(df, fg)
+        assert "purchase_id" in str(exc_info.value)
+
+    def test_to_arrow_table_pandas(self):
+        # Arrange
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
+
+        # Act
+        result = python_engine._to_arrow_table(df)
+
+        # Assert
+        assert isinstance(result, pa.Table)
+        assert result.column_names == ["col1", "col2"]
+        assert result.to_pydict() == {"col1": [1, 2], "col2": ["a", "b"]}
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_to_arrow_table_polars(self):
+        # Arrange - exercises the polars `df.to_arrow()` branch.
+        python_engine = python.Engine()
+        df = pl.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
+
+        # Act
+        result = python_engine._to_arrow_table(df)
+
+        # Assert
+        assert isinstance(result, pa.Table)
+        assert result.column_names == ["col1", "col2"]
+        assert result.to_pydict() == {"col1": [1, 2], "col2": ["a", "b"]}
+
+    def test_to_arrow_table_unsupported_type_raises(self):
+        # Arrange
+        python_engine = python.Engine()
+
+        # Act + Assert
+        with pytest.raises(TypeError, match="Unsupported dataframe type"):
+            python_engine._to_arrow_table([1, 2, 3])
+
     def test_legacy_save_dataframe(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -3243,6 +3466,39 @@ class TestPython:
             == "Sum of split ratios should be 1 and each values should be in range (0, 1)"
         )
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_random_split_polars(self, mocker):
+        # Arrange - exercises the polars `with_columns(pl.Series(...))` and
+        # `filter(pl.col(...) == i).drop(...)` branch of _random_split.
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        python_engine = python.Engine()
+
+        df = pl.DataFrame({"col1": list(range(10)), "col2": list(range(10, 20))})
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.6, "test": 0.4},
+            label=["f", "f_wrong"],
+            id=10,
+        )
+
+        # Act
+        result = python_engine._random_split(df=df, training_dataset_obj=td)
+
+        # Assert - both splits returned as polars frames, no internal split column leaks
+        assert list(result) == ["train", "test"]
+        for split_name in result:
+            assert isinstance(result[split_name], pl.DataFrame)
+            assert set(result[split_name].columns) == {"col1", "col2"}
+        assert sum(len(result[name]) for name in result) == len(df)
+
     def test_time_series_split(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -3590,6 +3846,24 @@ class TestPython:
         # Assert
         assert isinstance(result, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         assert df.equals(result)
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_return_dataframe_type_polars_converts_pandas(self):
+        # Arrange - exercises the pl.from_pandas branch in _return_dataframe_type
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+
+        # Act
+        result = python_engine._return_dataframe_type(
+            dataframe=df, dataframe_type="polars"
+        )
+
+        # Assert
+        assert isinstance(result, pl.DataFrame)
+        assert result.equals(pl.from_pandas(df))
 
     def test_return_dataframe_type_numpy(self):
         # Arrange
@@ -9749,6 +10023,51 @@ class TestPython:
             assert (
                 result["val"][0] if use_polars else result["val"].iloc[0]
             ) == "fresh"
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
+        def test_ttl_compares_in_utc_for_non_utc_event_time(self, use_polars):
+            # Regression: the polars TTL branch used dt.replace_time_zone("UTC"),
+            # which only relabels the dtype and leaves the wall-clock unchanged.
+            # For non-UTC tz columns this misclassifies fresh rows as expired
+            # (or vice versa) compared to the pandas branch's pd.to_datetime(utc=True)
+            # which converts to the UTC instant. Both branches should agree.
+            import zoneinfo
+
+            ny = zoneinfo.ZoneInfo("America/New_York")
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            # Wall-clock 2000-01-01 00:00 NY is also long expired in UTC; the
+            # discriminating value is one whose UTC instant is fresh but whose
+            # wall-clock would be classified differently if not tz-converted.
+            # Build an event_time slightly newer than (now - ttl) when read as UTC,
+            # which is older than (now - ttl) if its tz were silently dropped.
+            now_utc = datetime.now(tz=timezone.utc)
+            fresh_utc = now_utc - timedelta(seconds=600)  # well within 1h ttl
+            fresh_in_ny = fresh_utc.astimezone(ny)
+            if use_polars:
+                ts_naive = fresh_in_ny.replace(tzinfo=None)
+                pld_ts = pl.Series([ts_naive]).dt.replace_time_zone("America/New_York")
+                df = pl.DataFrame({"id": [1], "val": ["fresh"], "ts": pld_ts})
+            else:
+                df = pd.DataFrame({"id": [1], "val": ["fresh"], "ts": [fresh_in_ny]})
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+
+            # Assert - the row is fresh in UTC, so it must be kept
+            assert flags == [True]
 
         @pytest.mark.parametrize(
             "use_polars",

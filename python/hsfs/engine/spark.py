@@ -119,7 +119,7 @@ from hsfs.core import (
     kafka_engine,
     transformation_function_engine,
 )
-from hsfs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_AVRO, HAS_GREAT_EXPECTATIONS
 from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.decorators import uses_great_expectations
 from hsfs.storage_connector import StorageConnector
@@ -1582,6 +1582,22 @@ class Engine:
         expectation_suite: great_expectations.core.ExpectationSuite,  # noqa: F821
         ge_validate_kwargs: dict | None,
     ):
+        if ge_validate_kwargs is None:
+            ge_validate_kwargs = {}
+        if GE_MAJOR == 1:
+            # GE 1.x removed BaseDataContext + RuntimeBatchRequest. The Spark
+            # validation path under 1.x uses get_context + spark dataframe assets.
+            context = great_expectations.get_context(mode="ephemeral")
+            data_source = context.data_sources.add_spark("hopsworks_spark")
+            asset = data_source.add_dataframe_asset("hopsworks_asset")
+            batch_definition = asset.add_batch_definition_whole_dataframe(
+                "hopsworks_batch"
+            )
+            batch = batch_definition.get_batch(
+                batch_parameters={"dataframe": dataframe}
+            )
+            return batch.validate(expectation_suite, **ge_validate_kwargs)
+
         # NOTE: InMemoryStoreBackendDefaults SHOULD NOT BE USED in normal settings. You
         # may experience data loss as it persists nothing. It is used here for testing.
         # Please refer to docs to learn how to instantiate your DataContext.

@@ -373,13 +373,18 @@ def cast_polars_column_to_offline_type(
     if offline_type == "date":
         return feature_column.cast(pl.Date)
     if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
-        return feature_column.map_elements(
-            lambda x: (
-                (ast.literal_eval(x) if isinstance(x, str) else x)
-                if (x is not None and x != "")
-                else None
-            )
-        )
+        # Mirrors the pandas branch: pass already-parsed list/dict values through,
+        # parse strings via literal_eval, and treat None / "" as null. Without the
+        # list/dict short-circuit, a column that already has pl.List/pl.Struct
+        # dtype confuses map_elements' return-dtype inference.
+        def _parse_or_passthrough(x):
+            if x is None:
+                return None
+            if isinstance(x, str):
+                return ast.literal_eval(x) if x else None
+            return x
+
+        return feature_column.map_elements(_parse_or_passthrough)
     if offline_type == "string":
         return feature_column.map_elements(lambda x: str(x) if x is not None else None)
     if offline_type.startswith("decimal"):

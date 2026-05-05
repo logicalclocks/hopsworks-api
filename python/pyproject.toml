@@ -73,12 +73,13 @@ python = [
     "fastavro>=1.4.11,<=1.12.0",
     "tqdm",
     "hops-deltalake==1.4.0-post1; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    "httpx<=0.28.1",
 ]
 sqlalchemy-1 = [
     "pandas<2.2.0; python_version < '3.13'",
     "sqlalchemy<2.0.0",
 ]
-great-expectations = ["great_expectations==0.18.12"]
+great-expectations = ["great_expectations>=0.18.12,<=1.17.1"]
 dev-no-opt = [
     "hopsworks[python,trino]",
     "pytest==7.4.4",
@@ -91,6 +92,7 @@ dev-no-opt = [
     "pandas>=2.2.0",
     "typeguard==4.2.1",
     "delta-spark==3.3.1",
+    "setuptools; python_version >= '3.12'",
 ]
 dev-pandas1 = [
     "hopsworks[python,trino]",
@@ -102,12 +104,13 @@ dev-pandas1 = [
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas<=1.5.3; python_version < '3.12'",
+    "numpy<2; python_version < '3.12'",
     "sqlalchemy<=1.4.48",
     "delta-spark==3.3.1",
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
 polars = [
-    "polars>=0.20.18,<=0.21.0",
+    "polars>=0.20.31,<=1.40.1",
     "pyarrow>=17.0",
 ]
 mcp = [
