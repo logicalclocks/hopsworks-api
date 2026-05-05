@@ -1448,7 +1448,7 @@ class SapHanaConnector(StorageConnector):
     type = StorageConnector.SAP_HANA
     JDBC_FORMAT = "jdbc"
     DRIVER = "com.sap.db.jdbc.Driver"
-    DEFAULT_PORT = 30015
+    DEFAULT_PORT = 39015
 
     def __init__(
         self,

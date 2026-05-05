@@ -326,7 +326,7 @@
             "name": "test_sap_hana",
             "storageConnectorType": "SAP_HANA",
             "host": "hana.example.com",
-            "port": 30015,
+            "port": 39015,
             "database": "HXE",
             "schema": "SYSTEM",
             "table": "TBL",

@@ -1467,7 +1467,7 @@ class TestSapHanaConnector:
         assert sc._featurestore_id == 67
         assert sc.description == "SAP HANA connector description"
         assert sc.host == "hana.example.com"
-        assert sc.port == 30015
+        assert sc.port == 39015
         assert sc.database == "HXE"
         assert sc.schema == "SYSTEM"
         assert sc.table == "TBL"
@@ -1502,7 +1502,7 @@ class TestSapHanaConnector:
             name="test_connector",
             featurestore_id=1,
             host="hana.example.com",
-            port=30015,
+            port=39015,
             database="HXE",
             schema="ANALYTICS",
             user="SYSTEM",
@@ -1515,7 +1515,7 @@ class TestSapHanaConnector:
         assert opts["driver"] == storage_connector.SapHanaConnector.DRIVER
         assert (
             opts["url"]
-            == "jdbc:sap://hana.example.com:30015/?databaseName=HXE&currentschema=ANALYTICS"
+            == "jdbc:sap://hana.example.com:39015/?databaseName=HXE&currentschema=ANALYTICS"
         )
         assert opts["user"] == "SYSTEM"
         assert opts["password"] == "pw"
@@ -1533,7 +1533,7 @@ class TestSapHanaConnector:
 
         opts = sc.spark_options()
 
-        assert opts["url"] == "jdbc:sap://hana.example.com:30015/"
+        assert opts["url"] == "jdbc:sap://hana.example.com:39015/"
         assert "dbtable" not in opts
 
     def test_default_port_applied(self):
@@ -1543,7 +1543,7 @@ class TestSapHanaConnector:
             featurestore_id=1,
             host="hana.example.com",
         )
-        assert sc.port == 30015
+        assert sc.port == 39015
 
     def test_arguments_merged_into_spark_options(self):
         sc = storage_connector.SapHanaConnector(
@@ -1593,7 +1593,7 @@ class TestSapHanaConnector:
         props = sc.connector_options()
 
         assert props["address"] == "hana.example.com"
-        assert props["port"] == 30015
+        assert props["port"] == 39015
         assert props["user"] == "SYSTEM"
         assert props["password"] == "pw"
         assert props["databaseName"] == "HXE"
