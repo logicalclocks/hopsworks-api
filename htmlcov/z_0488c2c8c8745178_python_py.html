@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">914 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">770<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">144<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">771<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">143<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">4<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_0488c2c8c8745178_spark_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-05-04 14:16 +0000
+            created at 2026-05-05 10:59 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -823,9 +823,9 @@
     <p class="run"><span class="n"><a id="t741" href="#t741">741</a></span><span class="t">        <span class="key">for</span> <span class="nam">col</span> <span class="key">in</span> <span class="nam">relevant_columns</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t742" href="#t742">742</a></span><span class="t">            <span class="key">if</span> <span class="nam">HAS_POLARS</span> <span class="key">and</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t743" href="#t743">743</a></span><span class="t">                <span class="nam">isinstance</span><span class="op">(</span><span class="nam">df</span><span class="op">,</span> <span class="op">(</span><span class="nam">pl</span><span class="op">.</span><span class="nam">DataFrame</span><span class="op">,</span> <span class="nam">pl</span><span class="op">.</span><span class="nam">dataframe</span><span class="op">.</span><span class="nam">frame</span><span class="op">.</span><span class="nam">DataFrame</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t744" href="#t744">744</a></span><span class="t">                <span class="key">and</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">stats</span><span class="op">[</span><span class="nam">col</span><span class="op">]</span><span class="op">,</span> <span class="nam">list</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t744" href="#t744">744</a></span><span class="t">                <span class="key">and</span> <span class="key">not</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">stats</span><span class="op">[</span><span class="nam">col</span><span class="op">]</span><span class="op">,</span> <span class="nam">dict</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t745" href="#t745">745</a></span><span class="t">            <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t746" href="#t746">746</a></span><span class="t">                <span class="nam">stats</span><span class="op">[</span><span class="nam">col</span><span class="op">]</span> <span class="op">=</span> <span class="nam">dict</span><span class="op">(</span><span class="nam">zip</span><span class="op">(</span><span class="nam">stats</span><span class="op">[</span><span class="str">"statistic"</span><span class="op">]</span><span class="op">,</span> <span class="nam">stats</span><span class="op">[</span><span class="nam">col</span><span class="op">]</span><span class="op">,</span> <span class="nam">strict</span><span class="op">=</span><span class="key">False</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t746" href="#t746">746</a></span><span class="t">                <span class="nam">stats</span><span class="op">[</span><span class="nam">col</span><span class="op">]</span> <span class="op">=</span> <span class="nam">dict</span><span class="op">(</span><span class="nam">zip</span><span class="op">(</span><span class="nam">stats</span><span class="op">[</span><span class="str">"statistic"</span><span class="op">]</span><span class="op">,</span> <span class="nam">stats</span><span class="op">[</span><span class="nam">col</span><span class="op">]</span><span class="op">,</span> <span class="nam">strict</span><span class="op">=</span><span class="key">False</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t747" href="#t747">747</a></span><span class="t">            <span class="com"># set data type</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t748" href="#t748">748</a></span><span class="t">            <span class="nam">arrow_type</span> <span class="op">=</span> <span class="nam">arrow_schema</span><span class="op">.</span><span class="nam">field</span><span class="op">(</span><span class="nam">col</span><span class="op">)</span><span class="op">.</span><span class="nam">type</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t749" href="#t749">749</a></span><span class="t">            <span class="key">if</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -2941,7 +2941,7 @@
             <a class="nav" href="z_0488c2c8c8745178_spark_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-05-04 14:16 +0000
+            created at 2026-05-05 10:59 +0000
         </p>
     </div>
 </footer>
