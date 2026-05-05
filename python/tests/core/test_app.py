@@ -309,12 +309,23 @@ class TestApp:
 
         assert "Timed out" in str(e_info.value)
 
-    def test_wait_for_serving_killed_state(self, mocker):
+    @pytest.mark.parametrize(
+        "failed_state",
+        [
+            "FAILED",
+            "KILLED",
+            "FRAMEWORK_FAILURE",
+            "APP_MASTER_START_FAILED",
+            "INITIALIZATION_FAILED",
+            "SUBMISSION_FAILED",
+        ],
+    )
+    def test_wait_for_serving_failed_state(self, mocker, failed_state):
         mocker.patch("hopsworks_common.client.get_instance")
         mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
 
-        killed = App(name="my_app", state="KILLED", serving=False)
-        mock_api.return_value.get_app.return_value = killed
+        failed = App(name="my_app", state=failed_state, serving=False)
+        mock_api.return_value.get_app.return_value = failed
 
         app = App(name="my_app", state="RUNNING")
         app._app_api = mock_api.return_value
@@ -323,6 +334,7 @@ class TestApp:
             app._wait_for_serving()
 
         assert "App failed to start" in str(e_info.value)
+        assert failed_state in str(e_info.value)
 
     def test_str_repr(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")

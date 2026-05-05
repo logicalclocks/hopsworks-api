@@ -30,7 +30,21 @@ from hopsworks_common.core import app_api
 _logger = logging.getLogger(__name__)
 
 SERVING_POLL_INTERVAL = 3.0
-SERVING_TIMEOUT = 300.0
+SERVING_TIMEOUT = 600.0
+
+# Terminal failure states reported by the backend (mirrors JobState.getFinalStates()).
+# Image-pull and pod-scheduling failures surface as INITIALIZATION_FAILED or
+# APP_MASTER_START_FAILED, not FAILED, so all must be checked to fail fast.
+_FAILED_STATES = frozenset(
+    {
+        "FAILED",
+        "KILLED",
+        "FRAMEWORK_FAILURE",
+        "APP_MASTER_START_FAILED",
+        "INITIALIZATION_FAILED",
+        "SUBMISSION_FAILED",
+    }
+)
 
 
 @public("hopsworks.app.App")
@@ -286,7 +300,7 @@ class App:
                 if self.app_url:
                     _logger.info("App is serving at:\n%s", self.app_url)
                 return self
-            if self._state in ("FAILED", "KILLED", "FRAMEWORK_FAILURE"):
+            if self._state in _FAILED_STATES:
                 raise JobExecutionException(
                     f"App failed to start. State: {self._state}"
                 )
