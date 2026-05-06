@@ -489,6 +489,57 @@ class FeatureStore:
         )
 
     @public
+    @usage.method_logger
+    def share(self, target_project: str | int) -> None:
+        """Share this entire feature store with another project.
+
+        After the share, members of ``target_project`` can read every
+        feature group in this feature store (subject to per-feature-group
+        permissions configured at share time on the backend).
+
+        Requires the **Data Owner** role in the source project.
+
+        Example:
+            ```python
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+            fs.share("other_project")
+            ```
+
+        Parameters:
+            target_project: Project name (preferred) or numeric id.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+            hopsworks.client.exceptions.RestAPIError: If the target project
+                doesn't exist or the backend otherwise rejects the request.
+        """
+        from hsfs.core import share_api
+
+        share_api.ShareApi(self._id).share_feature_store(target_project)
+
+    @public
+    @usage.method_logger
+    def unshare(self, target_project: str | int) -> None:
+        """Revoke a previously-granted feature-store-level share.
+
+        Requires the **Data Owner** role in the source project.
+
+        Parameters:
+            target_project: Project name or numeric id.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+            hopsworks.client.exceptions.RestAPIError: If the share doesn't
+                exist or the backend otherwise rejects the request.
+        """
+        from hsfs.core import share_api
+
+        share_api.ShareApi(self._id).unshare_feature_store(target_project)
+
+    @public
     def sql(
         self,
         query: str,

@@ -866,6 +866,73 @@ class FeatureGroupBase:
         return self._feature_group_engine.get_generated_feature_groups(self)
 
     @public
+    def share(
+        self,
+        target_project: str | int,
+        features: list[str] | None = None,
+    ) -> None:
+        """Share this feature group with another project.
+
+        Use ``features`` to share only a subset of columns: that is the only
+        way to expose certain columns of a feature group while keeping others
+        private. Primary keys and the event-time column are always included
+        by the backend regardless of this list (they're required to read the
+        data). When ``features`` is ``None`` the whole feature group is
+        shared, identical to ``feature_store.share`` but scoped to one fg.
+
+        Requires the **Data Owner** role in the source project.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            # Share entire feature group
+            fg.share("downstream_project")
+
+            # Share only selected columns (PK + event_time always included)
+            fg.share("downstream_project", features=["amount", "country"])
+            ```
+
+        Parameters:
+            target_project: Project name (preferred) or numeric id.
+            features: Optional whitelist of feature names. ``None`` shares
+                the whole feature group.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+            hopsworks.client.exceptions.RestAPIError: If the target project
+                or feature group doesn't exist, or the backend otherwise
+                rejects the request.
+        """
+        from hsfs.core import share_api
+
+        share_api.ShareApi(self._feature_store_id).share_feature_group(
+            self._id, target_project, features=features
+        )
+
+    @public
+    def unshare(self, target_project: str | int) -> None:
+        """Revoke a previously-granted feature-group share.
+
+        Requires the **Data Owner** role in the source project.
+
+        Parameters:
+            target_project: Project name or numeric id.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+            hopsworks.client.exceptions.RestAPIError: If the share doesn't
+                exist or the backend otherwise rejects the request.
+        """
+        from hsfs.core import share_api
+
+        share_api.ShareApi(self._feature_store_id).unshare_feature_group(
+            self._id, target_project
+        )
+
+    @public
     def get_feature(self, name: str) -> feature.Feature | None:
         """Retrieve a `Feature` object from the schema of the feature group.
 
