@@ -84,7 +84,7 @@ if HAS_PYARROW:
                         value_type=value_type, index_type=index_type, ordered=ordered
                     )
                     for value_type in _STRING_TYPES
-                    for index_type in _INT_TYPES + _BIG_INT_TYPES
+                    for index_type in _TINYINT_TYPES + _SMALLINT_TYPES + _INT_TYPES + _BIG_INT_TYPES
                     for ordered in [True, False]
                 ],
             ],
@@ -432,7 +432,10 @@ def convert_simple_pandas_dtype_to_offline_type(arrow_type: pa.DataType) -> str:
     # render the Hive-style "decimal(p,s)" string the rest of the stack
     # already accepts (offline writes, online ingestion, spark engine type
     # mapping all check `offline_type.startswith("decimal")`).
-    if pa.types.is_decimal(arrow_type):
+    # Guard the isinstance check: callers occasionally pass non-DataType
+    # values (legacy callsites + tests that exercise the "unsupported"
+    # path), and pa.types.is_decimal raises on those.
+    if isinstance(arrow_type, pa.DataType) and pa.types.is_decimal(arrow_type):
         return f"decimal({arrow_type.precision},{arrow_type.scale})"
     try:
         return PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type]

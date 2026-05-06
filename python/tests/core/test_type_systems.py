@@ -41,8 +41,9 @@ class TestTypeSystems:
             arrow_type=pa.list_(pa.int8())
         )
 
-        # Assert
-        assert result == "array<int>"
+        # Assert: int8 maps to tinyint (granular int mapping was added so
+        # SAP HANA-style narrow integers preserve their offline type).
+        assert result == "array<tinyint>"
 
     def test_infer_type_pyarrow_large_list(self):
         # Act
@@ -51,7 +52,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "array<int>"
+        assert result == "array<tinyint>"
 
     def test_infer_type_pyarrow_struct(self):
         # Act
@@ -436,7 +437,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "int"
+        assert result == "smallint"
 
     def test_convert_simple_pandas_type_uint16(self):
         # Act
@@ -454,7 +455,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "int"
+        assert result == "tinyint"
 
     def test_convert_simple_pandas_type_int16(self):
         # Act
@@ -463,7 +464,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "int"
+        assert result == "smallint"
 
     def test_convert_simple_pandas_type_int32(self):
         # Act

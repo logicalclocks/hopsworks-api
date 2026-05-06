@@ -1628,6 +1628,10 @@ class TestSapHanaConnector:
             password="pw",
             table="TBL",
         )
+        # SapHanaConnector.read() refetches before reading (so a connector
+        # loaded as basic info refreshes its credentials); stub it out so
+        # the test doesn't try to talk to a backend.
+        mocker.patch.object(sc, "refetch")
         query = "SELECT * FROM ANALYTICS.TBL"
         sc.read(query=query)
 
