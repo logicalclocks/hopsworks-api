@@ -236,6 +236,23 @@ hops dataset share Resources/my_dir --target other_project [--permission READ_ON
 hops dataset unshare Resources/my_dir --target other_project
 ```
 
+## Search
+
+```bash
+# Project-scoped search across feature groups, feature views, training datasets, features
+hops search ls "transactions"
+
+# Global search across every project the caller can see
+hops search ls "transactions" --global
+
+# Restrict to one entity type
+hops search ls "transactions" --type feature_group
+
+# Filter by keyword and/or schematized tag (repeatable)
+hops search ls "transactions" --keyword fraud --keyword production
+hops search ls --tag "ownership:owner=jim" --tag "lifecycle:env=prod"
+```
+
 ## Context and LLM Integration
 
 ```bash

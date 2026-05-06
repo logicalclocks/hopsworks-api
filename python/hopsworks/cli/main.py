@@ -24,6 +24,7 @@ from hopsworks.cli.commands.job import job_group
 from hopsworks.cli.commands.login import login_cmd
 from hopsworks.cli.commands.model import model_group
 from hopsworks.cli.commands.project import project_group
+from hopsworks.cli.commands.search import search_group
 from hopsworks.cli.commands.setup import setup_cmd
 from hopsworks.cli.commands.superset import superset_group
 from hopsworks.cli.commands.td import td_group
@@ -93,6 +94,7 @@ cli.add_command(app_group)
 cli.add_command(dataset_group)
 cli.add_command(transformation_group)
 cli.add_command(superset_group)
+cli.add_command(search_group)
 cli.add_command(trino_group)
 cli.add_command(context_cmd)
 cli.add_command(init_cmd)
