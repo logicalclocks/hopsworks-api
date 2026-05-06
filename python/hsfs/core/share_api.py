@@ -170,6 +170,75 @@ class ShareApi:
                 ) from e
             raise
 
+    def list_feature_store_shares(self) -> list[dict]:
+        """List the projects this feature store has been shared with.
+
+        Returns the ``items`` array from the backend's
+        ``GET /featurestores/{id}/share`` response. Each entry has at
+        least ``sharedWithProject`` (with ``name`` / ``id``),
+        ``sharedBy``, ``sharedOn``, and ``sharedEntirely`` (true when
+        the whole feature store was shared rather than an individual
+        feature group).
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            self._feature_store_id,
+            "share",
+        ]
+        try:
+            resp = _client._send_request("GET", path_params) or {}
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(
+                    "Listing feature-store shares requires the Data Owner "
+                    f"role in project '{_client._project_name}'."
+                ) from e
+            raise
+        # Empty/no-shares may come back as the bare DTO with no items field.
+        return resp.get("items") or []
+
+    def list_feature_group_shares(self, feature_group_id: int) -> list[dict]:
+        """List the projects a single feature group has been shared with.
+
+        Returns the ``items`` array from the backend's
+        ``GET /featurestores/{id}/share/featuregroups/{fgId}`` response.
+        Each entry includes ``sharedWithProject``, ``sharedBy``,
+        ``sharedOn``, ``sharedEntirely`` (false when only specific
+        columns were shared), and ``features`` (the column whitelist
+        when not shared entirely; empty/null otherwise).
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            self._feature_store_id,
+            "share",
+            "featuregroups",
+            feature_group_id,
+        ]
+        try:
+            resp = _client._send_request("GET", path_params) or {}
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(
+                    "Listing feature-group shares requires the Data Owner "
+                    f"role in project '{_client._project_name}'."
+                ) from e
+            raise
+        return resp.get("items") or []
+
     def unshare_feature_group(
         self, feature_group_id: int, target_project: str | int
     ) -> None:

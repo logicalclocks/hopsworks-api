@@ -912,6 +912,28 @@ class FeatureGroupBase:
         )
 
     @public
+    def shared_with(self) -> list[dict]:
+        """List the projects this feature group has been shared with.
+
+        Each entry has ``sharedWithProject`` (with ``name`` / ``id``),
+        ``sharedBy``, ``sharedOn``, ``sharedEntirely`` (false when only
+        specific columns were shared), and ``features`` (the column
+        whitelist when not shared entirely; empty/null otherwise).
+
+        Returns:
+            A list of dicts as returned by the backend.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+        """
+        from hsfs.core import share_api
+
+        return share_api.ShareApi(self._feature_store_id).list_feature_group_shares(
+            self._id
+        )
+
+    @public
     def unshare(self, target_project: str | int) -> None:
         """Revoke a previously-granted feature-group share.
 
