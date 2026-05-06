@@ -396,7 +396,20 @@ class StorageConnector(ABC):
             elif self.type == StorageConnector.BIGQUERY:
                 database = self.query_project
             elif self.type == StorageConnector.SQL:
-                database = self.database
+                if self.database_type == StorageConnector.ORACLE:
+                    # For Oracle the `database` field holds the service name
+                    # (or TNS alias when using a wallet), not a schema, while
+                    # the backend filters tables by OWNER (schema).
+                    # Default to the connecting user's own schema.
+                    if not self.user:
+                        raise ValueError(
+                            "A schema/owner is required for Oracle connectors "
+                            "without a configured user. Pass it as the "
+                            "`database` argument to get_tables()."
+                        )
+                    database = self.user.upper()
+                else:
+                    database = self.database
             elif self.type == StorageConnector.UNITY_CATALOG:
                 if not self.default_catalog:
                     raise ValueError(
@@ -1567,6 +1580,11 @@ class SapHanaConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         """Return Spark JDBC options for the SAP HANA connector."""
+        if not self._host:
+            raise DataSourceException(
+                "SAP HANA connector requires a host. The connector was likely loaded "
+                "without credentials (basic info only); refetch it before reading."
+            )
         opts: dict[str, Any] = {**(self._arguments or {})}
         opts["driver"] = self.DRIVER
         url = f"jdbc:sap://{self._host}:{self._port}/"
@@ -1619,6 +1637,7 @@ class SapHanaConnector(StorageConnector):
             raise NotImplementedError(
                 "SAP HANA connector not yet supported for engine: " + engine.get_type()
             )
+        self.refetch()
         merged = (
             {**self.spark_options(), **options}
             if options is not None

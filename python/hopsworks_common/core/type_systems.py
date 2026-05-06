@@ -426,7 +426,7 @@ def cast_column_to_online_type(
     return feature_column  # handle gracefully, just return the column as-is
 
 
-def convert_simple_pandas_dtype_to_offline_type(arrow_type: str) -> str:
+def convert_simple_pandas_dtype_to_offline_type(arrow_type: pa.DataType) -> str:
     # Pyarrow decimal types carry per-column precision and scale, so they
     # cannot live in a static type-keyed map. Match them structurally and
     # render the Hive-style "decimal(p,s)" string the rest of the stack

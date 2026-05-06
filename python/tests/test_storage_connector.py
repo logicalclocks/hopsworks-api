@@ -1454,6 +1454,63 @@ class TestOracleConnector:
         with pytest.raises(DataSourceException):
             sc.spark_options()
 
+    def test_get_tables_defaults_to_user_schema_for_oracle(self, mocker):
+        """For Oracle, get_tables(None) defaults to the user's schema, not service_name."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "SCOTT")
+
+    def test_get_tables_oracle_explicit_database_overrides_default(self, mocker):
+        """Explicit database to get_tables should not be replaced by the user."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "get_tables", return_value=[]
+        )
+
+        sc.get_tables("SH")
+
+        mock_get_tables.assert_called_once_with(sc, "SH")
+
+    def test_get_tables_oracle_without_user_raises(self):
+        """Oracle without a configured user has no sensible default schema."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="mydb_high",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        with pytest.raises(
+            ValueError, match="schema/owner is required for Oracle connectors"
+        ):
+            sc.get_tables()
+
 
 class TestSapHanaConnector:
     def test_from_response_json(self, backend_fixtures):
@@ -1598,3 +1655,20 @@ class TestSapHanaConnector:
         assert props["password"] == "pw"
         assert props["databaseName"] == "HXE"
         assert props["currentSchema"] == "ANALYTICS"
+
+    def test_spark_options_without_host_raises(self):
+        """Mirror the Oracle/JdbcConnector pattern.
+
+        A connector loaded as basic info (no host yet) must fail fast on
+        spark_options() instead of producing an unusable
+        ``jdbc:sap://None:port/`` URL.
+        """
+        from hopsworks_common.client.exceptions import DataSourceException
+
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+        )
+        with pytest.raises(DataSourceException, match="requires a host"):
+            sc.spark_options()
