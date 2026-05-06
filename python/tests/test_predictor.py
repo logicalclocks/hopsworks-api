@@ -96,6 +96,8 @@ class TestPredictor:
         assert p.scaling_configuration.min_instances == 0
         assert p.scaling_configuration.scale_metric.name == "RPS"
         assert p.scaling_configuration.target == 100
+        assert p.env_vars == {"FOO": "bar", "BAZ": "qux"}
+        assert p.transformer.env_vars == {"X": "y"}
 
     def test_from_response_json_list(self, mocker, backend_fixtures):
         # Arrange
@@ -996,6 +998,182 @@ class TestPredictor:
 
         # Assert
         assert url is None
+
+    # env vars
+
+    def test_to_dict_env_vars_serialises_to_predictor_env_vars_list(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={"FOO": "bar", "BAZ": "qux"},
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "envVars" not in d
+        assert "predictorEnvVars" in d
+        assert sorted(d["predictorEnvVars"]) == ["BAZ=qux", "FOO=bar"]
+
+    def test_to_dict_env_vars_none_omits_key(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars=None,
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "predictorEnvVars" not in d
+        assert "envVars" not in d
+
+    def test_to_dict_env_vars_empty_omits_key(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={},
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "predictorEnvVars" not in d
+
+    def test_extract_fields_from_json_env_vars_roundtrip(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        p_json["predictor_env_vars"] = ["FOO=bar", "K=V=with=eq"]
+
+        # Act
+        kwargs = predictor.Predictor.extract_fields_from_json(p_json)
+
+        # Assert
+        assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
+        # Key consumed (popped) on the way out
+        assert "predictor_env_vars" not in p_json
+
+    def test_extract_fields_from_json_env_vars_absent(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        p_json.pop("predictor_env_vars", None)
+
+        # Act
+        kwargs = predictor.Predictor.extract_fields_from_json(p_json)
+
+        # Assert
+        assert "env_vars" not in kwargs
+
+    def test_env_vars_setter(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        assert p.env_vars is None
+
+        # Act
+        p.env_vars = {"A": "1"}
+
+        # Assert
+        assert p.env_vars == {"A": "1"}
+
+    def test_env_vars_lifecycle_add_change_remove(self, mocker):
+        # Mirrors the loadtest scenario: set on construct, override, clear with
+        # None, re-set, clear with {}. Each transition both holds in memory and
+        # round-trips through to_dict so a save() on the live backend would send
+        # the right payload.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={"FOO": "bar", "BAZ": "qux"},
+        )
+        assert p.env_vars == {"FOO": "bar", "BAZ": "qux"}
+        assert sorted(p.to_dict()["predictorEnvVars"]) == ["BAZ=qux", "FOO=bar"]
+
+        # Override
+        p.env_vars = {"NEW": "1"}
+        assert p.env_vars == {"NEW": "1"}
+        assert p.to_dict()["predictorEnvVars"] == ["NEW=1"]
+
+        # Clear with None — to_dict must omit the field so the backend stores null.
+        p.env_vars = None
+        assert p.env_vars is None
+        assert "predictorEnvVars" not in p.to_dict()
+
+        # Re-set, then clear with {} — must serialise the same as None.
+        p.env_vars = {"AGAIN": "2"}
+        assert p.to_dict()["predictorEnvVars"] == ["AGAIN=2"]
+        p.env_vars = {}
+        assert p.env_vars == {}
+        assert "predictorEnvVars" not in p.to_dict()
+
+    def test_env_vars_wire_round_trip(self, mocker, backend_fixtures):
+        # Set-on-SDK → to_dict → decamelize (mimics humps.decamelize on the wire)
+        # → extract_fields_from_json → assert env_vars survives. Catches any drift
+        # between the serialiser and parser, which is what the loadtest's
+        # `fetched_deployment.env_vars == ...` ultimately checks.
+        import humps
+
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={"FOO": "bar", "K": "V=with=eq"},
+        )
+        # Combine the to_dict output with the rest of a real fixture so the
+        # extract path doesn't choke on missing required fields.
+        wire = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        wire["predictor_env_vars"] = humps.decamelize(p.to_dict())["predictor_env_vars"]
+
+        kwargs = predictor.Predictor.extract_fields_from_json(wire)
+
+        assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
 
     # auxiliary methods
 
