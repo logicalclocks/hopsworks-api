@@ -229,7 +229,7 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
-            env_vars: Additional environment variables to use
+            env_vars: Environment variables to set on the predictor.
 
         Returns:
             The predictor metadata object.
@@ -318,7 +318,7 @@ class ModelServing:
             script_file: Path to a custom predictor script implementing the Transformer class.
             resources: Resources to be allocated for the transformer.
             scaling_configuration: Scaling configuration for the transformer.
-            env_vars: Additional environment variables to use
+            env_vars: Environment variables to set on the transformer.
 
         Returns:
             The transformer metadata object.
@@ -373,7 +373,7 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
-            env_vars: Additional environment variables to use
+            env_vars: Environment variables to set on the predictor.
 
         Returns:
             The predictor metadata object.
