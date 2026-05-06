@@ -92,6 +92,15 @@ def _resolve_verify(insecure: bool, ca_bundle: str | None) -> Any:
     return True
 
 
+class _ClusterTooOldForTokenFlow(Exception):
+    """Marker raised when /token-flow/create returns 404.
+
+    Older Hopsworks releases do not ship the token-flow REST resource;
+    rather than surface a raw "404 Not Found" we catch this case in the
+    caller and fall back to password-based API-key creation.
+    """
+
+
 def _create_flow(api_base: str, key_name: str, verify: Any) -> dict:
     resp = requests.post(
         f"{api_base}{TOKEN_FLOW_CREATE}",
@@ -99,8 +108,115 @@ def _create_flow(api_base: str, key_name: str, verify: Any) -> dict:
         timeout=REQUEST_TIMEOUT_SECONDS,
         verify=verify,
     )
+    if resp.status_code == 404:
+        raise _ClusterTooOldForTokenFlow(
+            "/token-flow/create returned 404 — cluster does not support browser flow"
+        )
     resp.raise_for_status()
     return resp.json()
+
+
+# Default API-key scope set for hops-cli — matches what the token-flow
+# endpoint grants to fresh CLI keys, kept in sync so a key minted via
+# the legacy password flow has identical capabilities to a token-flow key.
+_CLI_API_KEY_SCOPES = [
+    "PROJECT",
+    "FEATURESTORE",
+    "JOB",
+    "DATASET_CREATE",
+    "DATASET_VIEW",
+    "DATASET_DELETE",
+    "KAFKA",
+    "SERVING",
+    "MODELREGISTRY",
+    "USER",
+]
+
+
+def _password_auth_create_key(
+    api_base: str, key_name: str, verify: Any
+) -> tuple[str, str | None]:
+    """Fallback for clusters without /token-flow/*: prompt email + password,
+    then POST ``/users/apiKey`` to mint a new key in one round trip.
+
+    The session is established with ``POST /auth/login`` (form-encoded
+    email + password [+ optional otp]). Hopsworks responds with a
+    ``proxy_session`` JWT cookie which the api-key creation request then
+    uses for authentication. Both responses are JSON; we don't display
+    the password.
+
+    Args:
+        api_base: ``https://<host>/hopsworks-api/api`` base URL.
+        key_name: Name to register the new api key under (must match
+            ``KEY_NAME_REGEX``).
+        verify: ``requests`` verify argument.
+
+    Returns:
+        ``(api_key, project_username)`` — ``project_username`` is
+        ``None`` if not derivable from the API-key response. The caller
+        is responsible for verifying the key against the SDK and writing
+        ``~/.hops.toml``.
+
+    Raises:
+        click.ClickException: On bad credentials, locked accounts,
+            disabled password login, or any non-2xx from the backend.
+    """
+    output.info("")
+    output.info("This cluster does not support the browser token flow.")
+    output.info("Falling back to email + password sign-in.")
+    output.info("")
+    email = click.prompt("Email")
+    password = click.prompt("Password", hide_input=True)
+    otp = click.prompt(
+        "Two-factor code (leave blank if not enabled)", default="", show_default=False
+    )
+
+    session = requests.Session()
+    try:
+        login = session.post(
+            f"{api_base}/auth/login",
+            data={"email": email, "password": password, "otp": otp},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            verify=verify,
+        )
+    except requests.RequestException as exc:
+        raise click.ClickException(f"Login request failed: {exc}") from exc
+    if login.status_code != 200:
+        # Bubble the backend's user-facing message when present; fall back
+        # to a generic line so the CLI never echoes a giant HTML 500 page.
+        try:
+            msg = login.json().get("usrMsg") or login.json().get("errorMsg")
+        except Exception:  # noqa: BLE001
+            msg = None
+        raise click.ClickException(
+            f"Login failed (HTTP {login.status_code}): {msg or login.text[:200]}"
+        )
+
+    try:
+        create = session.post(
+            f"{api_base}/users/apiKey",
+            params=[("name", key_name), *(("scope", s) for s in _CLI_API_KEY_SCOPES)],
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            verify=verify,
+        )
+    except requests.RequestException as exc:
+        raise click.ClickException(f"API key creation failed: {exc}") from exc
+    if create.status_code not in (200, 201):
+        try:
+            msg = create.json().get("usrMsg") or create.json().get("errorMsg")
+        except Exception:  # noqa: BLE001
+            msg = None
+        raise click.ClickException(
+            f"API key creation failed (HTTP {create.status_code}): "
+            f"{msg or create.text[:200]}"
+        )
+    body = create.json()
+    api_key = body.get("key")
+    if not api_key:
+        raise click.ClickException(
+            "Backend accepted the request but returned no api key in the body."
+        )
+    return api_key, None
 
 
 def _wait_for_key(
@@ -235,8 +351,16 @@ def setup_cmd(
             "your API key — only use this on a trusted network."
         )
 
+    # Try the modern browser token flow first. On 404 we fall back to the
+    # legacy email + password path so this command still works on older
+    # Hopsworks clusters that predate the /token-flow/* REST resource.
     try:
         created = _create_flow(api_base, key_name, verify)
+    except _ClusterTooOldForTokenFlow:
+        api_key, project = _password_auth_create_key(api_base, key_name, verify)
+        server_key_name = key_name
+        # Skip the browser-flow block below by jumping to the verify+save tail.
+        return _finalize_setup(host, api_key, project, server_key_name, cfg)
     except requests.RequestException as exc:
         raise click.ClickException(f"Could not start token flow: {exc}") from exc
 
@@ -273,10 +397,23 @@ def setup_cmd(
     if not api_key:
         raise click.ClickException("Server did not return an API key.")
 
-    # Verify *before* writing to disk. If the freshly minted key fails
-    # verification we don't want a stale or unintended credential left in
-    # ``~/.hops.toml`` — the user re-runs ``hops setup --force`` and the
-    # config is unchanged.
+    _finalize_setup(host, api_key, project, server_key_name, cfg)
+
+
+def _finalize_setup(
+    host: str,
+    api_key: str,
+    project: str | None,
+    server_key_name: str | None,
+    cfg: config.HopsConfig,
+) -> None:
+    """Verify the freshly-minted API key, then persist it to ``~/.hops.toml``.
+
+    Verification happens *before* writing to disk — if the key fails to
+    authenticate we don't want a stale or unintended credential left
+    behind. The user can re-run ``hops setup --force`` and the config
+    remains unchanged.
+    """
     try:
         auth.verify(host=host, api_key_value=api_key, project=project)
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
