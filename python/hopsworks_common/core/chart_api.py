@@ -18,8 +18,7 @@
 Charts are a UI-side concept attached to a project and rendered on
 dashboards; they are not part of the feature-store or model-registry domain
 and therefore do not have richer SDK models. This module exposes a thin CRUD
-wrapper so both the ``hops chart`` CLI and downstream callers can share a
-single implementation that follows the codebase's "HTTP calls live in
+wrapper that follows the codebase's "HTTP calls live in
 ``core/<entity>_api.py``" rule.
 """
 

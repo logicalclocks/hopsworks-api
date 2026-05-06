@@ -1,4 +1,4 @@
-"""``hops connector`` — storage connector read + write commands.
+"""``hops datasource`` — storage connector read + write commands.
 
 The SDK does not expose a ``create_storage_connector``; we POST straight to
 ``/featurestores/{id}/storageconnectors`` via the authenticated REST client.
@@ -14,12 +14,12 @@ import click
 from hopsworks.cli import output, session
 
 
-@click.group("connector")
-def connector_group() -> None:
-    """Storage connector commands."""
+@click.group("datasource")
+def datasource_group() -> None:
+    """Data source (storage connector) commands."""
 
 
-@connector_group.command("list")
+@datasource_group.command("list")
 @click.pass_context
 def connector_list(ctx: click.Context) -> None:
     """List all storage connectors in the active project.
@@ -42,7 +42,7 @@ def connector_list(ctx: click.Context) -> None:
     output.print_table(["ID", "NAME", "TYPE", "DESCRIPTION"], rows)
 
 
-@connector_group.command("info")
+@datasource_group.command("info")
 @click.argument("name")
 @click.pass_context
 def connector_info(ctx: click.Context, name: str) -> None:
@@ -105,7 +105,7 @@ def _connector_to_dict(sc: Any) -> dict[str, Any]:
 # region Write commands
 
 
-@connector_group.group("create")
+@datasource_group.group("create")
 def connector_create() -> None:
     """Create a storage connector (subcommand per backend)."""
 
@@ -284,7 +284,7 @@ def connector_create_bigquery(
     _create_connector(ctx, body)
 
 
-@connector_group.command("delete")
+@datasource_group.command("delete")
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
@@ -314,7 +314,7 @@ def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
     output.success("✓ Deleted connector %s", name)
 
 
-@connector_group.command("databases")
+@datasource_group.command("databases")
 @click.argument("name")
 @click.pass_context
 def connector_databases(ctx: click.Context, name: str) -> None:
@@ -336,7 +336,7 @@ def connector_databases(ctx: click.Context, name: str) -> None:
     output.print_table(["DATABASE"], [[db] for db in databases or []])
 
 
-@connector_group.command("tables")
+@datasource_group.command("tables")
 @click.argument("name")
 @click.option("--database", help="Database to list tables from.")
 @click.pass_context
@@ -365,7 +365,7 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
     output.print_table(["TABLE", "DATABASE"], rows)
 
 
-@connector_group.command("preview")
+@datasource_group.command("preview")
 @click.argument("name")
 @click.pass_context
 def connector_preview(ctx: click.Context, name: str) -> None:

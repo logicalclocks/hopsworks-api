@@ -2,8 +2,7 @@
 
 Superset in Hopsworks is exposed via ``project.get_superset_api()``. That
 module handles Superset's CSRF dance and session tokens for us, so the CLI
-just wraps each method in a Click command. Distinct from ``hops chart`` /
-``hops dashboard`` (Hopsworks-native).
+just wraps each method in a Click command.
 """
 
 from __future__ import annotations

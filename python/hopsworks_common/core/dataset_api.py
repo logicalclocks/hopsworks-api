@@ -513,6 +513,121 @@ class DatasetApi:
 
     @public
     @usage.method_logger
+    def share(
+        self,
+        path: str,
+        target_project: str,
+        permission: Literal["READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"] = "READ_ONLY",
+    ) -> None:
+        """Share a dataset from the active project with another project.
+
+        The caller must have the ``Data owner`` role in the active project; the
+        backend rejects the share otherwise.
+        Feature-store datasets can only be shared as ``READ_ONLY``.
+
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        dataset_api.share("Resources/my_dir", target_project="other_project")
+        ```
+
+        Parameters:
+            path: Dataset path in the active project (e.g. ``Resources/my_dir``).
+            target_project: Name of the project to share with.
+            permission: One of ``READ_ONLY`` (default), ``EDITABLE``,
+                ``EDITABLE_BY_OWNERS``. The target project's data owners
+                still have to accept the share before its members see it.
+
+        Raises:
+            PermissionError: If the caller lacks the Data Owner role in the
+                source project (HTTP 403 from the backend).
+            hopsworks.client.exceptions.RestAPIError: If the dataset doesn't
+                exist, the target project doesn't exist, or a feature-store
+                dataset is shared with a permission other than ``READ_ONLY``.
+            ValueError: If ``permission`` is not one of the allowed values
+                or ``target_project`` is empty.
+        """
+        if permission not in ("READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"):
+            raise ValueError(
+                f"permission must be one of READ_ONLY, EDITABLE, "
+                f"EDITABLE_BY_OWNERS; got {permission!r}"
+            )
+        if not target_project:
+            raise ValueError("target_project must be a non-empty project name")
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "dataset", path]
+        query_params = {
+            "action": "SHARE",
+            "target_project": target_project,
+            "permission": permission,
+        }
+        try:
+            _client._send_request("POST", path_params, query_params=query_params)
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(
+                    f"Sharing dataset '{path}' with project '{target_project}' "
+                    f"requires the Data Owner role in the source project "
+                    f"'{_client._project_name}'. Ask a data owner of "
+                    f"'{_client._project_name}' to run this, or be granted that role."
+                ) from e
+            raise
+
+    @public
+    @usage.method_logger
+    def unshare(self, path: str, target_project: str) -> None:
+        """Revoke a previously-granted dataset share with another project.
+
+        Like :meth:`share`, requires Data Owner role in the active (source) project.
+
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        dataset_api.unshare("Resources/my_dir", target_project="other_project")
+        ```
+
+        Parameters:
+            path: Dataset path in the active project.
+            target_project: Name of the project to revoke the share from.
+
+        Raises:
+            PermissionError: If the caller lacks the Data Owner role in the
+                source project (HTTP 403 from the backend).
+            hopsworks.client.exceptions.RestAPIError: If the dataset isn't
+                shared with that project, the target project doesn't exist,
+                or the backend otherwise rejects the request.
+            ValueError: If ``target_project`` is empty.
+        """
+        if not target_project:
+            raise ValueError("target_project must be a non-empty project name")
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "dataset", path]
+        query_params = {
+            "action": "UNSHARE",
+            "target_project": target_project,
+        }
+        try:
+            _client._send_request("POST", path_params, query_params=query_params)
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(
+                    f"Unsharing dataset '{path}' from project '{target_project}' "
+                    f"requires the Data Owner role in the source project "
+                    f"'{_client._project_name}'. Ask a data owner of "
+                    f"'{_client._project_name}' to run this, or be granted that role."
+                ) from e
+            raise
+
+    @public
+    @usage.method_logger
     def mkdir(self, path: str) -> str:
         """Create a directory in the Hopsworks Filesystem.
 

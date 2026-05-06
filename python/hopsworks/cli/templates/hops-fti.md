@@ -43,7 +43,7 @@ Print this table with `✓` / `·` / `✗` per row based on the probe:
 
 ```
 FEATURE PIPELINE
-  [ ] F0  Data source identified            → hops connector list
+  [ ] F0  Data source identified            → hops datasource list
   [ ] F1  Feature group schema declared     → hops fg list
   [ ] F2  Feature pipeline writes data      → hops fg preview <fg> --n 1
   [ ] F3  Statistics computed               → fg info shows statistics

@@ -34,14 +34,12 @@ python/hopsworks/cli/
 │   ├── fg.py                # hops fg list|info|preview|features|stats|keywords|…|insert|derive|search
 │   ├── fg_external.py       # hops fg create-external
 │   ├── fv.py                # hops fv list|info|create|get|read|delete
-│   ├── connector.py         # hops connector list|info|test|databases|tables|preview|create|delete
+│   ├── datasource.py        # hops datasource list|info|test|databases|tables|preview|create|delete
 │   ├── td.py                # hops td list|create|compute|read|delete
 │   ├── transformation.py    # hops transformation list|create
 │   ├── model.py             # hops model list|info|register|download|delete
 │   ├── deployment.py        # hops deployment list|info|create|start|stop|predict|logs|delete
 │   ├── job.py               # hops job list|info|create|run|stop|status|logs|history|delete|schedule…
-│   ├── chart.py             # hops chart list|info|create|update|delete|generate
-│   ├── dashboard.py         # hops dashboard list|info|create|delete|add-chart|remove-chart
 │   ├── dataset.py           # hops dataset list|mkdir
 │   ├── context.py           # hops context  (LLM dump)
 │   ├── setup.py             # hops setup    (Modal-style browser token flow — PRIMARY auth)
@@ -359,7 +357,7 @@ Progress is tracked as a flat checklist per pipeline, each pipeline independentl
 
 ```
 FEATURE PIPELINE
-  [ ] F0  Data source identified            — check `hops connector list`
+  [ ] F0  Data source identified            — check `hops datasource list`
   [ ] F1  Feature group schema declared     — check `hops fg list`
   [ ] F2  Feature pipeline writes data      — check `hops fg preview <fg> --n 1` returns rows
   [ ] F3  Statistics computed               — check `fg stats` has results

@@ -11,10 +11,8 @@ from __future__ import annotations
 import click
 from hopsworks.cli import config, output
 from hopsworks.cli.commands.app import app_group
-from hopsworks.cli.commands.chart import chart_group
-from hopsworks.cli.commands.connector import connector_group
+from hopsworks.cli.commands.datasource import datasource_group
 from hopsworks.cli.commands.context import context_cmd
-from hopsworks.cli.commands.dashboard import dashboard_group
 from hopsworks.cli.commands.dataset import dataset_group
 from hopsworks.cli.commands.deployment import deployment_group
 from hopsworks.cli.commands.env import env_group
@@ -85,7 +83,7 @@ cli.add_command(project_group)
 cli.add_command(fs_group)
 cli.add_command(fg_group)
 cli.add_command(fv_group)
-cli.add_command(connector_group)
+cli.add_command(datasource_group)
 cli.add_command(td_group)
 cli.add_command(model_group)
 cli.add_command(deployment_group)
@@ -94,8 +92,6 @@ cli.add_command(job_group)
 cli.add_command(app_group)
 cli.add_command(dataset_group)
 cli.add_command(transformation_group)
-cli.add_command(chart_group)
-cli.add_command(dashboard_group)
 cli.add_command(superset_group)
 cli.add_command(trino_group)
 cli.add_command(context_cmd)

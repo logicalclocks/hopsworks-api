@@ -189,43 +189,27 @@ hops job delete <name> --yes
 ## Storage Connectors
 
 ```bash
-hops connector list
-hops connector info <name>
-hops connector databases <name>
-hops connector tables <name> --database X
-hops connector preview <name>
-hops connector delete <name> --yes
+hops datasource list
+hops datasource info <name>
+hops datasource databases <name>
+hops datasource tables <name> --database X
+hops datasource preview <name>
+hops datasource delete <name> --yes
 ```
 
 ### Create
 
 ```bash
-hops connector create jdbc <name> --url "jdbc:..." --user u --password p
-hops connector create s3 <name> --bucket b --access-key ... --secret-key ... [--region eu-west-1]
-hops connector create snowflake <name> --url ... --user u --password p \
+hops datasource create jdbc <name> --url "jdbc:..." --user u --password p
+hops datasource create s3 <name> --bucket b --access-key ... --secret-key ... [--region eu-west-1]
+hops datasource create snowflake <name> --url ... --user u --password p \
   --database D --schema S --warehouse W [--role R]
-hops connector create bigquery <name> --project-id gcp-proj --dataset D --key-path /Resources/key.json
-```
-
-## Hopsworks Charts & Dashboards
-
-Hopsworks-native (NOT Superset).
-
-```bash
-hops chart list
-hops chart create <title> --url <plotly-html-in-hopsfs> [--width 6] [--height 4]
-hops chart delete <id> --yes
-
-hops dashboard list
-hops dashboard create <name>
-hops dashboard add-chart <dashboard-id> --chart <chart-id>
-hops dashboard remove-chart <dashboard-id> --chart <chart-id>
-hops dashboard delete <id> --yes
+hops datasource create bigquery <name> --project-id gcp-proj --dataset D --key-path /Resources/key.json
 ```
 
 ## Superset
 
-Wraps `project.get_superset_api()`. Use this for Superset dashboards, NOT `hops chart` / `hops dashboard`.
+Wraps `project.get_superset_api()`. Use this for dashboards.
 
 ```bash
 hops superset dataset list
@@ -246,6 +230,10 @@ hops dataset mkdir /Projects/<proj>/newdir
 hops dataset upload ./file.txt /Projects/<proj>/Resources/
 hops dataset download /Projects/<proj>/Resources/out.log --output ./
 hops dataset remove /Projects/<proj>/stale --yes
+
+# Share a dataset with another project (Data Owner role required in source project)
+hops dataset share Resources/my_dir --target other_project [--permission READ_ONLY|EDITABLE|EDITABLE_BY_OWNERS]
+hops dataset unshare Resources/my_dir --target other_project
 ```
 
 ## Context and LLM Integration

@@ -1,6 +1,6 @@
 ---
 name: hops-superset
-description: Use when building Superset charts or dashboards inside Hopsworks via the Python SDK. Auto-invoke when the user wants to create Superset charts/dashboards/datasets, visualize a feature group in Superset, or interact with `project.get_superset_api()`. Do NOT use `hops dashboard`/`hops chart` — that is a different (non-Superset) system.
+description: Use when building Superset charts or dashboards inside Hopsworks via the Python SDK. Auto-invoke when the user wants to create Superset charts/dashboards/datasets, visualize a feature group in Superset, or interact with `project.get_superset_api()`.
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -24,9 +24,6 @@ Use this skill whenever the user wants to:
 - Create / update / delete Superset charts, datasets, or dashboards programmatically
 - Wire a Hopsworks feature group into an existing Superset dashboard
 - Debug Superset chart errors like `Item with key "X" is not registered` or `Empty query?`
-
-Do **not** use this skill for `hops dashboard` / `hops chart` commands — those
-are a different Hopsworks system.
 
 ---
 

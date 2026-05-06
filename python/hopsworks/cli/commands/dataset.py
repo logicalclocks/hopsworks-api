@@ -144,6 +144,79 @@ def dataset_download(
     output.success("✓ Downloaded to %s", path)
 
 
+@dataset_group.command("share")
+@click.argument("path")
+@click.option(
+    "--target",
+    "target_project",
+    required=True,
+    help="Project to share the dataset with.",
+)
+@click.option(
+    "--permission",
+    type=click.Choice(["READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"]),
+    default="READ_ONLY",
+    show_default=True,
+    help="Permission for the target project. Feature-store datasets must be READ_ONLY.",
+)
+@click.pass_context
+def dataset_share(
+    ctx: click.Context, path: str, target_project: str, permission: str
+) -> None:
+    """Share a dataset with another project.
+
+    Requires the **Data Owner** role in the active (source) project; the
+    backend rejects the share otherwise.
+
+    Args:
+        ctx: Click context.
+        path: HopsFS path of the dataset to share (e.g. ``Resources/my_dir``).
+        target_project: Name of the project to share with.
+        permission: One of ``READ_ONLY``, ``EDITABLE``, ``EDITABLE_BY_OWNERS``.
+    """
+    project = session.get_project(ctx)
+    try:
+        project.get_dataset_api().share(
+            path, target_project=target_project, permission=permission
+        )
+    except PermissionError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Share failed: {exc}") from exc
+    output.success(
+        "✓ Shared %s with project '%s' (%s)", path, target_project, permission
+    )
+
+
+@dataset_group.command("unshare")
+@click.argument("path")
+@click.option(
+    "--target",
+    "target_project",
+    required=True,
+    help="Project to revoke the share from.",
+)
+@click.pass_context
+def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
+    """Revoke a previously-granted dataset share with another project.
+
+    Requires the **Data Owner** role in the active (source) project.
+
+    Args:
+        ctx: Click context.
+        path: HopsFS path of the dataset.
+        target_project: Name of the project to revoke the share from.
+    """
+    project = session.get_project(ctx)
+    try:
+        project.get_dataset_api().unshare(path, target_project=target_project)
+    except PermissionError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Unshare failed: {exc}") from exc
+    output.success("✓ Unshared %s from project '%s'", path, target_project)
+
+
 @dataset_group.command("remove")
 @click.argument("path")
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
