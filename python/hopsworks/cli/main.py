@@ -16,7 +16,7 @@ from hopsworks.cli.commands.context import context_cmd
 from hopsworks.cli.commands.deployment import deployment_group
 from hopsworks.cli.commands.env import env_group
 from hopsworks.cli.commands.fg import fg_group
-from hopsworks.cli.commands.fs import fs_group
+from hopsworks.cli.commands.files import files_group
 from hopsworks.cli.commands.fv import fv_group
 from hopsworks.cli.commands.init import init_cmd
 from hopsworks.cli.commands.job import job_group
@@ -80,7 +80,7 @@ def cli(
 cli.add_command(setup_cmd)
 cli.add_command(login_cmd)
 cli.add_command(project_group)
-cli.add_command(fs_group)
+cli.add_command(files_group)
 cli.add_command(fg_group)
 cli.add_command(fv_group)
 cli.add_command(datasource_group)

@@ -225,15 +225,15 @@ hops superset dashboard create "My Dashboard" [--published]
 ## File system (HopsFS)
 
 ```bash
-hops fs list [path]
-hops fs mkdir /Projects/<proj>/newdir
-hops fs upload ./file.txt /Projects/<proj>/Resources/
-hops fs download /Projects/<proj>/Resources/out.log --output ./
-hops fs remove /Projects/<proj>/stale --yes
+hops files list [path]
+hops files mkdir /Projects/<proj>/newdir
+hops files upload ./file.txt /Projects/<proj>/Resources/
+hops files download /Projects/<proj>/Resources/out.log --output ./
+hops files remove /Projects/<proj>/stale --yes
 
 # Share a dataset with another project (Data Owner role required in source project)
-hops fs share Resources/my_dir --target other_project [--permission READ_ONLY|EDITABLE|EDITABLE_BY_OWNERS]
-hops fs unshare Resources/my_dir --target other_project
+hops files share Resources/my_dir --target other_project [--permission READ_ONLY|EDITABLE|EDITABLE_BY_OWNERS]
+hops files unshare Resources/my_dir --target other_project
 ```
 
 ## Search

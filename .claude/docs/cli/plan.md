@@ -30,7 +30,7 @@ python/hopsworks/cli/
 │   ├── __init__.py
 │   ├── login.py             # hops login
 │   ├── project.py           # hops project list|use|info
-│   ├── fs.py                # hops fs list|mkdir|upload|download|share|unshare|remove (HopsFS file system)
+│   ├── files.py             # hops files list|mkdir|upload|download|share|unshare|remove (HopsFS file system)
 │   ├── fg.py                # hops fg list|info|preview|features|stats|keywords|…|insert|derive|search
 │   ├── fg_external.py       # hops fg create-external
 │   ├── fv.py                # hops fv list|info|create|get|read|delete

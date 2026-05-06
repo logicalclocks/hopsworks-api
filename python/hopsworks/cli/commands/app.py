@@ -2,7 +2,7 @@
 
 Wraps the SDK's ``project.get_app_api()``: list, info, create, start, stop,
 delete, plus a convenience ``url`` that prints the public serving URL.
-App scripts must be uploaded to HopsFS first (``hops fs upload``);
+App scripts must be uploaded to HopsFS first (``hops files upload``);
 ``create`` takes the HopsFS path, same as ``hops job create``.
 """
 
@@ -108,7 +108,7 @@ def app_url(ctx: click.Context, name: str) -> None:
     "--path",
     "app_path",
     required=True,
-    help="HopsFS path to the Streamlit .py file (upload with `hops fs upload` first).",
+    help="HopsFS path to the Streamlit .py file (upload with `hops files upload` first).",
 )
 @click.option(
     "--environment",

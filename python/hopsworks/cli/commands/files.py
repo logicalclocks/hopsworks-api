@@ -1,10 +1,12 @@
-"""``hops fs`` — list, mkdir, upload/download, share, and remove in HopsFS.
+"""``hops files`` — list, mkdir, upload/download, share, and remove in HopsFS.
 
 All operations are backed by the SDK's ``DatasetApi`` (the REST resource
 this wraps is still called ``/dataset/...`` for backwards compatibility,
-but at the user-facing CLI level these are file-system commands so the
-group is named ``fs``). Output is a plain ``NAME/KIND/SIZE`` table for
-``list`` and free-form success messages for the rest.
+but at the user-facing CLI level these are file-system commands; named
+``files`` rather than ``fs`` so it doesn't collide with the standard
+"feature store" abbreviation in Hopsworks docs). Output is a plain
+``NAME/KIND/SIZE`` table for ``list`` and free-form success messages
+for the rest.
 """
 
 from __future__ import annotations
@@ -15,12 +17,12 @@ import click
 from hopsworks.cli import output, session
 
 
-@click.group("fs")
-def fs_group() -> None:
+@click.group("files")
+def files_group() -> None:
     """File-system commands on HopsFS (list, mkdir, upload, download, share, remove)."""
 
 
-@fs_group.command("list")
+@files_group.command("list")
 @click.argument("path", required=False, default="")
 @click.pass_context
 def dataset_list(ctx: click.Context, path: str) -> None:
@@ -59,7 +61,7 @@ def _entry_row(entry: Any) -> list[Any]:
     return [name, kind, size]
 
 
-@fs_group.command("mkdir")
+@files_group.command("mkdir")
 @click.argument("path")
 @click.pass_context
 def dataset_mkdir(ctx: click.Context, path: str) -> None:
@@ -77,7 +79,7 @@ def dataset_mkdir(ctx: click.Context, path: str) -> None:
     output.success("✓ Created %s", created or path)
 
 
-@fs_group.command("upload")
+@files_group.command("upload")
 @click.argument("local_path", type=click.Path(exists=True))
 @click.argument("remote_path")
 @click.option("--overwrite", is_flag=True, help="Overwrite an existing remote file.")
@@ -115,7 +117,7 @@ def dataset_upload(
     output.success("✓ Uploaded to %s", uploaded or remote_path)
 
 
-@fs_group.command("download")
+@files_group.command("download")
 @click.argument("remote_path")
 @click.option(
     "--output",
@@ -146,7 +148,7 @@ def dataset_download(
     output.success("✓ Downloaded to %s", path)
 
 
-@fs_group.command("share")
+@files_group.command("share")
 @click.argument("path")
 @click.option(
     "--target",
@@ -190,7 +192,7 @@ def dataset_share(
     )
 
 
-@fs_group.command("unshare")
+@files_group.command("unshare")
 @click.argument("path")
 @click.option(
     "--target",
@@ -219,7 +221,7 @@ def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
     output.success("✓ Unshared %s from project '%s'", path, target_project)
 
 
-@fs_group.command("remove")
+@files_group.command("remove")
 @click.argument("path")
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
 @click.pass_context
