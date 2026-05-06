@@ -239,7 +239,25 @@ class TestModel:
             transformer=transformer,
             api_protocol=p_json["api_protocol"],
             environment=p_json["environment_dto"]["name"],
+            env_vars=None,
         )
+        mock_predictor.deploy.assert_called_once()
+
+    def test_deploy_with_env_vars(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        mock_predictor = mocker.Mock()
+        mock_predictor_for_model = mocker.patch(
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
+        )
+        env_vars = {"FOO": "bar", "BAZ": "qux"}
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.deploy(name="test", env_vars=env_vars)
+
+        # Assert
+        assert mock_predictor_for_model.call_args.kwargs["env_vars"] == env_vars
         mock_predictor.deploy.assert_called_once()
 
     # delete

@@ -747,7 +747,7 @@ class Engine:
             # and raises ``InvalidOperationError``. Accept both shapes.
             if HAS_POLARS and (
                 isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
-                and isinstance(stats[col], (list, pl.Series))
+                and not isinstance(stats[col], dict)
             ):
                 stats[col] = dict(
                     zip(stats["statistic"], stats[col], strict=False)

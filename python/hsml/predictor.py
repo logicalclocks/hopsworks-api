@@ -77,6 +77,7 @@ class Predictor(DeployableComponent):
         environment: str | None = None,
         project_namespace: str = None,
         scaling_configuration: PredictorScalingConfig | dict | Default | None = None,
+        env_vars: dict[str, str] | None = None,
         **kwargs,
     ):
         serving_tool = (
@@ -124,6 +125,7 @@ class Predictor(DeployableComponent):
         self._environment = environment
         self._project_namespace = project_namespace
         self._project_name = None
+        self._env_vars = env_vars
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -320,6 +322,11 @@ class Predictor(DeployableComponent):
         if "environment_dto" in json_decamelized:
             environment = json_decamelized.pop("environment_dto")
             kwargs["environment"] = environment["name"]
+        if "predictor_env_vars" in json_decamelized:
+            env_vars = json_decamelized.pop("predictor_env_vars")
+            kwargs["env_vars"] = (
+                dict(e.split("=", 1) for e in env_vars) if env_vars else None
+            )
         kwargs["project_namespace"] = json_decamelized.pop("project_namespace")
         kwargs["scaling_configuration"] = PredictorScalingConfig.from_json(
             json_decamelized
@@ -358,6 +365,11 @@ class Predictor(DeployableComponent):
             json = {**json, "modelVersion": self._model_version}
         if self.model_framework is not None:
             json = {**json, "modelFramework": self._model_framework}
+        if self._env_vars:
+            json = {
+                **json,
+                "predictorEnvVars": [f"{k}={v}" for k, v in self._env_vars.items()],
+            }
         if self.environment is not None:
             json = {**json, "environmentDTO": {"name": self._environment}}
         if self._resources is not None:
@@ -572,6 +584,15 @@ class Predictor(DeployableComponent):
         self._api_protocol = api_protocol
 
     @public
+    @property
+    def env_vars(self):
+        """Environment variables of the predictor."""
+        return self._env_vars
+
+    @env_vars.setter
+    def env_vars(self, env_vars: dict[str, str] | None):
+        self._env_vars = env_vars
+
     @property
     def environment(self):
         """Name of the inference environment."""

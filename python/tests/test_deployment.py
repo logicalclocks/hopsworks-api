@@ -829,6 +829,58 @@ class TestDeployment:
         assert url == "https://example.com/v1/project/name/v1/models/name:predict"
         mock_predictor_get_inference_url.assert_called_once()
 
+    # env vars
+
+    def test_env_vars_proxies_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        assert d.env_vars is None
+
+        # Act
+        d.env_vars = {"FOO": "bar"}
+
+        # Assert
+        assert d.env_vars == {"FOO": "bar"}
+        assert p.env_vars == {"FOO": "bar"}
+
+    def test_env_vars_reflects_predictor_value(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        p.env_vars = {"A": "1"}
+
+        # Act
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.env_vars == {"A": "1"}
+
+    def test_env_vars_lifecycle_add_change_remove(self, mocker, backend_fixtures):
+        # Lifecycle on the Deployment proxy: every assignment must land on the
+        # underlying predictor (so save() sends it) and the read-back must
+        # mirror it. Mirrors the loadtest's add → override → clear (None) →
+        # re-set → clear ({}) sequence.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+
+        d.env_vars = {"FOO": "bar"}
+        assert d.env_vars == {"FOO": "bar"}
+        assert p.env_vars == {"FOO": "bar"}
+
+        d.env_vars = {"NEW": "1"}
+        assert d.env_vars == {"NEW": "1"}
+        assert p.env_vars == {"NEW": "1"}
+
+        d.env_vars = None
+        assert d.env_vars is None
+        assert p.env_vars is None
+
+        d.env_vars = {"AGAIN": "2"}
+        assert d.env_vars == {"AGAIN": "2"}
+        d.env_vars = {}
+        assert d.env_vars == {}
+        assert p.env_vars == {}
+
     # auxiliary methods
 
     def _get_dummy_predictor(self, mocker, backend_fixtures):
