@@ -40,8 +40,13 @@ if TYPE_CHECKING:
 if HAS_PYARROW:
     import pyarrow as pa
 
-    # Decimal types are currently not supported
-    _INT_TYPES = [pa.uint8(), pa.uint16(), pa.int8(), pa.int16(), pa.int32()]
+    # Decimal types are handled structurally in
+    # convert_simple_pandas_dtype_to_offline_type because their precision
+    # and scale vary per column and cannot live in a static type-keyed
+    # map.
+    _TINYINT_TYPES = [pa.int8()]
+    _SMALLINT_TYPES = [pa.uint8(), pa.int16()]
+    _INT_TYPES = [pa.uint16(), pa.int32()]
     _BIG_INT_TYPES = [pa.uint32(), pa.int64()]
     _FLOAT_TYPES = [pa.float16(), pa.float32()]
     _DOUBLE_TYPES = [pa.float64()]
@@ -52,6 +57,8 @@ if HAS_PYARROW:
     _BINARY_TYPES = [pa.binary(), pa.large_binary()]
 
     PYARROW_HOPSWORKS_DTYPE_MAPPING = {
+        **dict.fromkeys(_TINYINT_TYPES, "tinyint"),
+        **dict.fromkeys(_SMALLINT_TYPES, "smallint"),
         **dict.fromkeys(_INT_TYPES, "int"),
         **dict.fromkeys(_BIG_INT_TYPES, "bigint"),
         **dict.fromkeys(_FLOAT_TYPES, "float"),
