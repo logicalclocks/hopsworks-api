@@ -222,6 +222,7 @@ class Model:
         transformer: Transformer | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
+        env_vars: dict | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -257,6 +258,7 @@ class Model:
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The inference environment to use.
+            env_vars: Environment variables to set on the predictor.
 
         Returns:
             `Deployment`: The deployment metadata object of a new or existing deployment.
@@ -281,6 +283,7 @@ class Model:
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
+            env_vars=env_vars,
         )
 
         return predictor.deploy()

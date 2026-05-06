@@ -591,6 +591,16 @@ class Deployment:
 
     @public
     @property
+    def env_vars(self):
+        """Environment variables of the predictor."""
+        return self._predictor.env_vars
+
+    @env_vars.setter
+    def env_vars(self, env_vars: dict[str, str] | None):
+        self._predictor.env_vars = env_vars
+
+    @public
+    @property
     def project_namespace(self):
         """Name of inference environment."""
         return self._predictor.project_namespace
