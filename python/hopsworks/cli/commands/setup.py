@@ -285,9 +285,13 @@ def setup_cmd(
     host = auth.normalize_host(host)
     api_base = auth.api_base(host)
 
+    # Use the auto-suggested name silently (or whatever the user passed
+    # via ``--key-name``). The previous interactive ``API key name``
+    # prompt blocked the flow before the browser could launch — and is
+    # also redundant on the manual-browser fallback, where the user is
+    # the one naming the key in the UI. ``--key-name`` remains for the
+    # rare case someone needs to override the default.
     key_name = key_name_flag or _suggest_key_name()
-    if not key_name_flag:
-        key_name = click.prompt("API key name", default=key_name)
     if not KEY_NAME_REGEX.match(key_name):
         raise click.BadParameter(
             "Key name must match [a-zA-Z0-9_-]{1,45}.",
