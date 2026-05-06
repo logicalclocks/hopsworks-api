@@ -1058,7 +1058,9 @@ class TestPredictor:
         # Assert
         assert "predictorEnvVars" not in d
 
-    def test_extract_fields_from_json_env_vars_roundtrip(self, mocker, backend_fixtures):
+    def test_extract_fields_from_json_env_vars_roundtrip(
+        self, mocker, backend_fixtures
+    ):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         p_json = copy.deepcopy(
