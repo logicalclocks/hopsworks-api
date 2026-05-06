@@ -335,8 +335,12 @@ class Predictor(DeployableComponent):
         kwargs["scaling_configuration"] = PredictorScalingConfig.from_json(
             json_decamelized
         )
-        kwargs["vllm_variant"] = json_decamelized.get("vllm_variant")
-        kwargs["vllm_image_tag"] = json_decamelized.get("vllm_image_tag")
+        kwargs["vllm_variant"] = util.extract_field_from_json(
+            json_decamelized, "vllm_variant"
+        )
+        kwargs["vllm_image_tag"] = util.extract_field_from_json(
+            json_decamelized, "vllm_image_tag"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -362,9 +366,13 @@ class Predictor(DeployableComponent):
             "configFile": self._config_file,
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
-            "vllmVariant": self._vllm_variant,
-            "vllmImageTag": self._vllm_image_tag,
         }
+        if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
+            json = {
+                **json,
+                "vllmVariant": self._vllm_variant,
+                "vllmImageTag": self._vllm_image_tag,
+            }
         if self.model_name is not None:
             json = {**json, "modelName": self._model_name}
         if self.model_path is not None:
