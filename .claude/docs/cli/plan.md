@@ -30,7 +30,7 @@ python/hopsworks/cli/
 │   ├── __init__.py
 │   ├── login.py             # hops login
 │   ├── project.py           # hops project list|use|info
-│   ├── fs.py                # hops fs list
+│   ├── fs.py                # hops fs list|mkdir|upload|download|share|unshare|remove (HopsFS file system)
 │   ├── fg.py                # hops fg list|info|preview|features|stats|keywords|…|insert|derive|search
 │   ├── fg_external.py       # hops fg create-external
 │   ├── fv.py                # hops fv list|info|create|get|read|delete
@@ -40,7 +40,6 @@ python/hopsworks/cli/
 │   ├── model.py             # hops model list|info|register|download|delete
 │   ├── deployment.py        # hops deployment list|info|create|start|stop|predict|logs|delete
 │   ├── job.py               # hops job list|info|create|run|stop|status|logs|history|delete|schedule…
-│   ├── dataset.py           # hops dataset list|mkdir
 │   ├── context.py           # hops context  (LLM dump)
 │   ├── setup.py             # hops setup    (Modal-style browser token flow — PRIMARY auth)
 │   ├── init.py              # hops init     (Claude Code skill/permissions scaffold)

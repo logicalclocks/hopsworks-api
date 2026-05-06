@@ -13,7 +13,6 @@ from hopsworks.cli import config, output
 from hopsworks.cli.commands.app import app_group
 from hopsworks.cli.commands.datasource import datasource_group
 from hopsworks.cli.commands.context import context_cmd
-from hopsworks.cli.commands.dataset import dataset_group
 from hopsworks.cli.commands.deployment import deployment_group
 from hopsworks.cli.commands.env import env_group
 from hopsworks.cli.commands.fg import fg_group
@@ -91,7 +90,6 @@ cli.add_command(deployment_group)
 cli.add_command(env_group)
 cli.add_command(job_group)
 cli.add_command(app_group)
-cli.add_command(dataset_group)
 cli.add_command(transformation_group)
 cli.add_command(superset_group)
 cli.add_command(search_group)
