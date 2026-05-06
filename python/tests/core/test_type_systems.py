@@ -135,6 +135,25 @@ class TestTypeSystems:
         # Assert
         assert str(e_info.value) == "dtype 'time32[s]' not supported"
 
+    def test_infer_type_pyarrow_decimal128(self):
+        # Decimal columns must surface their declared precision and scale
+        # (rather than collapsing to a coarser type) so SAP HANA / Oracle
+        # DECIMAL(p,s) round-trips through hsfs without losing precision.
+        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+            arrow_type=pa.decimal128(12, 2)
+        )
+
+        # Assert
+        assert result == "decimal(12,2)"
+
+    def test_infer_type_pyarrow_decimal128_no_scale(self):
+        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+            arrow_type=pa.decimal128(38, 0)
+        )
+
+        # Assert
+        assert result == "decimal(38,0)"
+
     def test_infer_type_pyarrow_struct_with_decimal_fields(self):
         # Arrange
         mapping = {f"user{i}": 2.0 for i in range(2)}

@@ -420,6 +420,13 @@ def cast_column_to_online_type(
 
 
 def convert_simple_pandas_dtype_to_offline_type(arrow_type: str) -> str:
+    # Pyarrow decimal types carry per-column precision and scale, so they
+    # cannot live in a static type-keyed map. Match them structurally and
+    # render the Hive-style "decimal(p,s)" string the rest of the stack
+    # already accepts (offline writes, online ingestion, spark engine type
+    # mapping all check `offline_type.startswith("decimal")`).
+    if pa.types.is_decimal(arrow_type):
+        return f"decimal({arrow_type.precision},{arrow_type.scale})"
     try:
         return PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type]
     except KeyError as err:
