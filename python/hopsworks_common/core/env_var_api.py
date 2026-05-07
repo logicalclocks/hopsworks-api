@@ -38,23 +38,37 @@ class EnvVarsApi:
         api.create_env_var("OPENAI_API_KEY", "sk-...")
         api.create_env_var("HF_TOKEN", "hf_...")
 
+        # Print only names — values are typically credentials, don't log them.
         for v in api.get_env_vars():
-            print(v.name, v.value)
+            print(v.name)
 
         api.delete_env_var("OPENAI_API_KEY")
         ```
     """
 
     @public
-    def get_env_vars(self) -> list[env_var.EnvVar]:
+    def get_env_vars(self, include_value: bool = True) -> list[env_var.EnvVar]:
         """Return all account-level env vars for the authenticated user.
+
+        The backend omits values from the list response by default to reduce
+        accidental exposure (UI, logs, proxies). The SDK opts back in here so
+        existing callers see ``EnvVar.value`` populated; pass
+        ``include_value=False`` if you only need names (e.g. building a UI
+        list before drilling into a single var).
+
+        Parameters:
+            include_value: When ``False``, the returned EnvVars have no value
+                set. Default ``True`` preserves the existing behavior.
 
         Returns:
             List of [`EnvVar`][hopsworks.env_var.EnvVar] objects, possibly empty.
         """
         _client = client.get_instance()
+        params = {"includeValue": "true" if include_value else "false"}
         return env_var.EnvVar.from_response_json(
-            _client._send_request("GET", ["users", "envvars"])
+            _client._send_request(
+                "GET", ["users", "envvars"], query_params=params
+            )
         )
 
     @public

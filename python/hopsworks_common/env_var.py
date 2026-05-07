@@ -86,6 +86,22 @@ class EnvVar:
         """
         return self._env_var_api.delete_env_var(self.name)
 
+    def to_dict(self):
+        """Serialise to a JSON-friendly dict, redacting the value.
+
+        Used by ``util.Encoder`` when ``json()`` / ``str(env_var)`` /
+        logging serialises an EnvVar. The value is intentionally redacted
+        because env vars typically hold credentials/tokens and we don't
+        want them landing in logs / notebook outputs / error reports.
+        Use ``env_var.value`` directly if you need the plaintext.
+        """
+        return {
+            "name": self._name,
+            "value": "***" if self._value is not None else None,
+            "added_on": self._added_on,
+            "updated_on": self._updated_on,
+        }
+
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
