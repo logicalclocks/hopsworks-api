@@ -67,6 +67,9 @@ class EnvVarsApi:
 
         Parameters:
             name: Variable name (e.g. ``"OPENAI_API_KEY"``).
+
+        Returns:
+            The matching [`EnvVar`][hopsworks.env_var.EnvVar], or ``None``.
         """
         _client = client.get_instance()
         env_vars = env_var.EnvVar.from_response_json(
@@ -84,6 +87,12 @@ class EnvVarsApi:
             ```python
             api.get("OPENAI_API_KEY")  # -> "sk-..." or None
             ```
+
+        Parameters:
+            name: Variable name.
+
+        Returns:
+            The env var's value, or ``None`` when no var with that name exists.
         """
         env_var_obj = self.get_env_var(name)
         return env_var_obj.value if env_var_obj else None
@@ -92,21 +101,24 @@ class EnvVarsApi:
     def create_env_var(self, name: str, value: str) -> env_var.EnvVar:
         """Add a new account-level env var.
 
+        Example:
+            ```python
+            api.create_env_var("OPENAI_API_KEY", "sk-...")
+            ```
+
         Parameters:
             name: Variable name. Must match ``^[A-Za-z_][A-Za-z0-9_]*$`` and
                 not be reserved by the platform (``API_KEY``, ``HOPS_*``,
                 ``HOPSWORKS_*``, etc — see ``ReservedEnvVars`` in the backend).
             value: Variable value. Up to 8192 characters.
 
+        Returns:
+            The created [`EnvVar`][hopsworks.env_var.EnvVar].
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: ``ENV_VAR_RESERVED_NAME``,
                 ``ENV_VAR_INVALID_NAME``, ``ENV_VAR_VALUE_TOO_LARGE``, or
                 ``ENV_VAR_LIMIT_EXCEEDED`` (default cap is 64 vars per user).
-
-        Example:
-            ```python
-            api.create_env_var("OPENAI_API_KEY", "sk-...")
-            ```
         """
         return self._upsert("POST", ["users", "envvars"], name, value)
 
@@ -114,9 +126,19 @@ class EnvVarsApi:
     def update_env_var(self, name: str, value: str) -> env_var.EnvVar:
         """Replace the value of an existing env var.
 
-        Raises ``RestAPIError`` with ``ENV_VAR_NOT_FOUND`` if the name doesn't
-        exist. Use [`set_env_var`][hopsworks.core.env_var_api.EnvVarsApi.set_env_var]
-        to upsert instead.
+        Use [`set_env_var`][hopsworks.core.env_var_api.EnvVarsApi.set_env_var]
+        to upsert (create-if-missing) instead.
+
+        Parameters:
+            name: Variable name. Must already exist.
+            value: New value. Up to 8192 characters.
+
+        Returns:
+            The updated [`EnvVar`][hopsworks.env_var.EnvVar].
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: ``ENV_VAR_NOT_FOUND``
+                if no env var with that name exists.
         """
         return self._upsert("PUT", ["users", "envvars", name], name, value)
 
@@ -129,6 +151,13 @@ class EnvVarsApi:
             # Idempotent — safe to call from setup scripts
             api.set_env_var("HF_TOKEN", os.environ["HF_TOKEN"])
             ```
+
+        Parameters:
+            name: Variable name.
+            value: Variable value.
+
+        Returns:
+            The created or updated [`EnvVar`][hopsworks.env_var.EnvVar].
         """
         existing = self.get_env_var(name)
         if existing is None:
@@ -155,13 +184,17 @@ class EnvVarsApi:
     def delete_env_var(self, name: str) -> None:
         """Remove a single env var from the account.
 
-        Raises ``RestAPIError`` with ``ENV_VAR_NOT_FOUND`` if the name doesn't
-        exist.
-
         Example:
             ```python
             api.delete_env_var("OPENAI_API_KEY")
             ```
+
+        Parameters:
+            name: Variable name to remove.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: ``ENV_VAR_NOT_FOUND``
+                if no env var with that name exists.
         """
         _client = client.get_instance()
         _client._send_request("DELETE", ["users", "envvars", name])
@@ -172,6 +205,9 @@ class EnvVarsApi:
 
         Kept for parity with [`SecretsApi.delete`][hopsworks.core.secret_api.SecretsApi].
         New code should prefer ``delete_env_var``.
+
+        Parameters:
+            name: Variable name to remove.
         """
         self.delete_env_var(name)
 
