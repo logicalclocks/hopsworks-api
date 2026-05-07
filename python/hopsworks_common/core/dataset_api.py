@@ -64,6 +64,9 @@ class DatasetApi:
     DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE = 1024 * 1024
     FLOW_PERMANENT_ERRORS = [404, 413, 415, 500, 501]
 
+    # Backend error code for DatasetErrorCode.UPLOAD_DISK_SPACE_ERROR (110000 + 55)
+    DATASET_ERROR_CODE_UPLOAD_DISK_SPACE = 110055
+
     # alias for backwards-compatibility:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
 
@@ -207,6 +210,7 @@ class DatasetApi:
             The path to the uploaded file or directory.
 
         Raises:
+            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`, or if the upload fails because the HopsFS storage quota is exhausted.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # local path could be absolute or relative,
@@ -389,6 +393,11 @@ class DatasetApi:
                     or chunk.retries > max_chunk_retries
                 ):
                     chunk.status = "failed"
+                    if re.error_code == DatasetApi.DATASET_ERROR_CODE_UPLOAD_DISK_SPACE:
+                        raise DatasetException(
+                            "Upload failed: HopsFS storage is full. "
+                            "Please contact your administrator to free up disk space."
+                        ) from re
                     raise re
                 time.sleep(chunk_retry_interval)
                 continue

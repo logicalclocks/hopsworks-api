@@ -145,6 +145,67 @@ class TestS3Connector:
         assert result == "s3://test-bucket/abc/def/some/location"
 
 
+class TestUnityCatalogConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_unity_catalog"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Unity Catalog connector description"
+        assert sc.type == storage_connector.StorageConnector.UNITY_CATALOG
+        assert sc.workspace_url == "https://test.cloud.databricks.com"
+        assert sc.access_token == "dapi-test-token"
+        assert sc.default_catalog == "test_catalog"
+        assert sc.aws_region == "us-west-2"
+        assert sc.arguments == {"arg1": "val1"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog_basic_info"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.id == 1
+        assert sc.name == "test_unity_catalog"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.workspace_url is None
+        assert sc.access_token is None
+        assert sc.default_catalog is None
+        assert sc.aws_region is None
+        assert sc.arguments == {}
+
+    def test_connector_options(self):
+        sc = storage_connector.UnityCatalogConnector(
+            id=1,
+            name="uc",
+            featurestore_id=1,
+            workspace_url="https://ws.cloud.databricks.com",
+            access_token="dapi-xyz",
+            default_catalog="sales",
+        )
+        opts = sc.connector_options()
+        assert opts["workspace_url"] == "https://ws.cloud.databricks.com"
+        assert opts["default_catalog"] == "sales"
+
+    def test_spark_options_not_supported(self):
+        sc = storage_connector.UnityCatalogConnector(
+            id=1, name="uc", featurestore_id=1, workspace_url="https://x.com"
+        )
+        with pytest.raises(NotImplementedError):
+            sc.spark_options()
+
+
 class TestRedshiftConnector:
     def test_from_response_json(self, backend_fixtures):
         # Arrange
@@ -1391,4 +1452,227 @@ class TestOracleConnector:
             password="tiger",
         )
         with pytest.raises(DataSourceException):
+            sc.spark_options()
+
+    def test_get_tables_defaults_to_user_schema_for_oracle(self, mocker):
+        """For Oracle, get_tables(None) defaults to the user's schema, not service_name."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "SCOTT")
+
+    def test_get_tables_oracle_explicit_database_overrides_default(self, mocker):
+        """Explicit database to get_tables should not be replaced by the user."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            host="myhost",
+            port=1521,
+            database="ORCL",
+            user="scott",
+            password="tiger",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "get_tables", return_value=[]
+        )
+
+        sc.get_tables("SH")
+
+        mock_get_tables.assert_called_once_with(sc, "SH")
+
+    def test_get_tables_oracle_without_user_raises(self):
+        """Oracle without a configured user has no sensible default schema."""
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="mydb_high",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        with pytest.raises(
+            ValueError, match="schema/owner is required for Oracle connectors"
+        ):
+            sc.get_tables()
+
+
+class TestSapHanaConnector:
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_sap_hana"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.SapHanaConnector)
+        assert sc.id == 1
+        assert sc.name == "test_sap_hana"
+        assert sc._featurestore_id == 67
+        assert sc.description == "SAP HANA connector description"
+        assert sc.host == "hana.example.com"
+        assert sc.port == 39015
+        assert sc.database == "HXE"
+        assert sc.schema == "SYSTEM"
+        assert sc.table == "TBL"
+        assert sc.user == "SYSTEM"
+        assert sc.password == "test_password"
+        assert sc.application == "hopsworks"
+        assert sc.options == {"fetchsize": "1000"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_sap_hana_basic_info"][
+            "response"
+        ]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.SapHanaConnector)
+        assert sc.id == 1
+        assert sc.name == "test_sap_hana"
+        assert sc.host is None
+        assert sc.port == storage_connector.SapHanaConnector.DEFAULT_PORT
+        assert sc.database is None
+        assert sc.schema is None
+        assert sc.table is None
+        assert sc.user is None
+        assert sc.password is None
+        assert sc.application is None
+        assert sc.options == {}
+
+    def test_spark_options_url_includes_database_and_schema(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            port=39015,
+            database="HXE",
+            schema="ANALYTICS",
+            user="SYSTEM",
+            password="pw",
+            table="TBL",
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["driver"] == storage_connector.SapHanaConnector.DRIVER
+        assert (
+            opts["url"]
+            == "jdbc:sap://hana.example.com:39015/?databaseName=HXE&currentschema=ANALYTICS"
+        )
+        assert opts["user"] == "SYSTEM"
+        assert opts["password"] == "pw"
+        assert opts["dbtable"] == "TBL"
+
+    def test_spark_options_no_database_no_schema(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            user="SYSTEM",
+            password="pw",
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["url"] == "jdbc:sap://hana.example.com:39015/"
+        assert "dbtable" not in opts
+
+    def test_default_port_applied(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+        )
+        assert sc.port == 39015
+
+    def test_arguments_merged_into_spark_options(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            arguments=[{"name": "fetchsize", "value": "5000"}],
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["fetchsize"] == "5000"
+
+    def test_read_query_overrides_dbtable(self, mocker):
+        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mock_engine_read = mocker.patch("hsfs.engine.spark.Engine.read")
+
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            user="SYSTEM",
+            password="pw",
+            table="TBL",
+        )
+        # SapHanaConnector.read() refetches before reading (so a connector
+        # loaded as basic info refreshes its credentials); stub it out so
+        # the test doesn't try to talk to a backend.
+        mocker.patch.object(sc, "refetch")
+        query = "SELECT * FROM ANALYTICS.TBL"
+        sc.read(query=query)
+
+        called_options = mock_engine_read.call_args[0][2]
+        assert called_options["query"] == query
+        assert "dbtable" not in called_options
+
+    def test_connector_options_minimal(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            user="SYSTEM",
+            password="pw",
+            database="HXE",
+            schema="ANALYTICS",
+        )
+
+        props = sc.connector_options()
+
+        assert props["address"] == "hana.example.com"
+        assert props["port"] == 39015
+        assert props["user"] == "SYSTEM"
+        assert props["password"] == "pw"
+        assert props["databaseName"] == "HXE"
+        assert props["currentSchema"] == "ANALYTICS"
+
+    def test_spark_options_without_host_raises(self):
+        """Mirror the Oracle/JdbcConnector pattern.
+
+        A connector loaded as basic info (no host yet) must fail fast on
+        spark_options() instead of producing an unusable
+        ``jdbc:sap://None:port/`` URL.
+        """
+        from hopsworks_common.client.exceptions import DataSourceException
+
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+        )
+        with pytest.raises(DataSourceException, match="requires a host"):
             sc.spark_options()
