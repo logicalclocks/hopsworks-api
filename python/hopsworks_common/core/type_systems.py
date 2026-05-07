@@ -84,7 +84,10 @@ if HAS_PYARROW:
                         value_type=value_type, index_type=index_type, ordered=ordered
                     )
                     for value_type in _STRING_TYPES
-                    for index_type in _TINYINT_TYPES + _SMALLINT_TYPES + _INT_TYPES + _BIG_INT_TYPES
+                    for index_type in _TINYINT_TYPES
+                    + _SMALLINT_TYPES
+                    + _INT_TYPES
+                    + _BIG_INT_TYPES
                     for ordered in [True, False]
                 ],
             ],
