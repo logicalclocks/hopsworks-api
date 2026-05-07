@@ -74,6 +74,7 @@ class StorageConnector(ABC):
     REST = "REST"
     ORACLE = "ORACLE"
     UNITY_CATALOG = "UNITY_CATALOG"
+    SAP_HANA = "SAP_HANA"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -109,6 +110,7 @@ class StorageConnector(ABC):
         | CRMAndAnalyticsConnector
         | RestConnector
         | UnityCatalogConnector
+        | SapHanaConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -133,6 +135,7 @@ class StorageConnector(ABC):
         | CRMAndAnalyticsConnector
         | RestConnector
         | UnityCatalogConnector
+        | SapHanaConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -1444,6 +1447,212 @@ class SnowflakeConnector(StorageConnector):
 
     @public
     def prepare_spark(self, path=None):
+        return engine.get_instance().setup_storage_connector(self, path)
+
+
+@public
+class SapHanaConnector(StorageConnector):
+    """SAP HANA storage connector backed by the SAP JDBC driver.
+
+    Use this connector to register an external feature group whose data lives
+    in SAP HANA, and to ingest data from HANA via the dlt-based ingestion job.
+    """
+
+    type = StorageConnector.SAP_HANA
+    JDBC_FORMAT = "jdbc"
+    DRIVER = "com.sap.db.jdbc.Driver"
+    DEFAULT_PORT = 39015
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        database: str | None = None,
+        schema: str | None = None,
+        table: str | None = None,
+        user: str | None = None,
+        password: str | None = None,
+        application: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+
+        self._host = host
+        self._port = port if port is not None else self.DEFAULT_PORT
+        self._database = database
+        self._schema = schema
+        self._table = table
+        self._user = user
+        self._password = password
+        self._application = application
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else arguments
+            if isinstance(arguments, dict)
+            else {}
+        )
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Hostname of the SAP HANA endpoint."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """Port of the SAP HANA endpoint."""
+        return self._port
+
+    @public
+    @property
+    def database(self) -> str | None:
+        """Tenant database name on the SAP HANA endpoint."""
+        return self._database
+
+    @public
+    @property
+    def schema(self) -> str | None:
+        """Default schema applied to unqualified queries."""
+        return self._schema
+
+    @public
+    @property
+    def table(self) -> str | None:
+        """Table the connector points at when no query is provided."""
+        return self._table
+
+    @public
+    @property
+    def user(self) -> str | None:
+        """Database user."""
+        return self._user
+
+    @public
+    @property
+    def password(self) -> str | None:
+        """Database password."""
+        return self._password
+
+    @public
+    @property
+    def application(self) -> str | None:
+        """Optional SAP HANA application name surfaced for session tracing."""
+        return self._application
+
+    @public
+    @property
+    def options(self) -> dict[str, Any]:
+        """Additional Spark and JDBC options merged into reads."""
+        return self._arguments
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return arguments suitable for an external Python HANA driver such as `hdbcli`.
+
+        ```python
+        from hdbcli import dbapi
+
+        sc = fs.get_storage_connector("hana_conn")
+        conn = dbapi.connect(**sc.connector_options())
+        ```
+        """
+        props: dict[str, Any] = {
+            "address": self._host,
+            "port": self._port,
+            "user": self._user,
+        }
+        if self._password:
+            props["password"] = self._password
+        if self._database:
+            props["databaseName"] = self._database
+        if self._schema:
+            props["currentSchema"] = self._schema
+        if self._application:
+            props["sessionVariables"] = {"APPLICATION": self._application}
+        return props
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return Spark JDBC options for the SAP HANA connector."""
+        if not self._host:
+            raise DataSourceException(
+                "SAP HANA connector requires a host. The connector was likely loaded "
+                "without credentials (basic info only); refetch it before reading."
+            )
+        opts: dict[str, Any] = {**(self._arguments or {})}
+        opts["driver"] = self.DRIVER
+        url = f"jdbc:sap://{self._host}:{self._port}/"
+        url_params: list[str] = []
+        if self._database:
+            url_params.append(f"databaseName={self._database}")
+        if self._schema:
+            url_params.append(f"currentschema={self._schema}")
+        if url_params:
+            url += "?" + "&".join(url_params)
+        opts["url"] = url
+        if self._user:
+            opts["user"] = self._user
+        if self._password:
+            opts["password"] = self._password
+        if self._table:
+            opts["dbtable"] = self._table
+        return opts
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Read a table or query from SAP HANA into a dataframe.
+
+        Parameters:
+            query: SQL query to read; overrides any configured table.
+            data_format: Not used for SAP HANA.
+            options: Extra key/value options passed to the Spark JDBC reader.
+            path: Not used for SAP HANA.
+            dataframe_type: Type of the returned dataframe.
+
+        Returns:
+            `DataFrame`.
+        """
+        if not engine.get_instance().is_connector_type_supported(self.type):
+            raise NotImplementedError(
+                "SAP HANA connector not yet supported for engine: " + engine.get_type()
+            )
+        self.refetch()
+        merged = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if query:
+            merged["query"] = query
+            merged.pop("dbtable", None)
+        return engine.get_instance().read(
+            self, self.JDBC_FORMAT, merged, None, dataframe_type
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Prepare the Spark session with the SAP HANA driver classpath when needed."""
         return engine.get_instance().setup_storage_connector(self, path)
 
 

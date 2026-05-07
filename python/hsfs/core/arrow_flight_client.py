@@ -181,6 +181,7 @@ class ArrowFlightClient:
         StorageConnector.SQL,
         StorageConnector.GCS,
         StorageConnector.UNITY_CATALOG,
+        StorageConnector.SAP_HANA,
     ]
     # Oracle rides on StorageConnector.SQL above — it's distinguished on the
     # backend by sqlConnector.databaseType == "ORACLE". Keep that routing in

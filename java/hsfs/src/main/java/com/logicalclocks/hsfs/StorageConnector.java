@@ -59,7 +59,8 @@ import java.util.stream.Collectors;
     @JsonSubTypes.Type(value = StorageConnector.KafkaConnector.class, name = "KAFKA"),
     @JsonSubTypes.Type(value = StorageConnector.GcsConnector.class, name = "GCS"),
     @JsonSubTypes.Type(value = StorageConnector.BigqueryConnector.class, name = "BIGQUERY"),
-    @JsonSubTypes.Type(value = StorageConnector.SqlConnector.class, name = "SQL")
+    @JsonSubTypes.Type(value = StorageConnector.SqlConnector.class, name = "SQL"),
+    @JsonSubTypes.Type(value = StorageConnector.SapHanaConnector.class, name = "SAP_HANA")
 })
 public abstract class StorageConnector {
 
@@ -657,6 +658,107 @@ public abstract class StorageConnector {
       this.database = updatedConnector.getDatabase();
       this.user = updatedConnector.getUser();
       this.password = updatedConnector.getPassword();
+      this.arguments = updatedConnector.getArguments();
+    }
+
+    @JsonIgnore
+    public String getPath(String subPath) {
+      return null;
+    }
+  }
+
+  public static class SapHanaConnector extends StorageConnector {
+
+    public static final String DRIVER = "com.sap.db.jdbc.Driver";
+    public static final int DEFAULT_PORT = 39015;
+    private static final String SESSION_VARIABLE_PREFIX = "sessionVariable:";
+
+    @Getter @Setter
+    protected String host;
+
+    @Getter @Setter
+    protected Integer port;
+
+    @Getter @Setter
+    protected String database;
+
+    @Getter @Setter
+    protected String schema;
+
+    @Getter @Setter
+    protected String table;
+
+    @Getter @Setter
+    protected String user;
+
+    @Getter @Setter
+    protected String password;
+
+    // The SAP_HANA `APPLICATION` session variable; surfaces as APPLICATION
+    // in HANA's session tracing so DBAs can attribute load to Hopsworks.
+    @Getter @Setter
+    protected String application;
+
+    @Getter @Setter
+    protected List<Option> arguments;
+
+    @Override
+    public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
+      if (Strings.isNullOrEmpty(host)) {
+        throw new FeatureStoreException("SAP HANA connector requires a host. The connector was likely loaded "
+            + "without credentials (basic info only); refetch it before reading.");
+      }
+      int effectivePort = port != null ? port : DEFAULT_PORT;
+      String url = "jdbc:sap://" + host + ":" + effectivePort + "/";
+      // databaseName + currentschema are query-string params on the SAP
+      // JDBC URL (not separate options); see SAP HANA Client Interface
+      // Programming Reference.
+      List<String> urlParams = new java.util.ArrayList<>();
+      String databaseName = dataSource == null ? database : dataSource.getDatabase();
+      if (!Strings.isNullOrEmpty(databaseName)) {
+        urlParams.add("databaseName=" + databaseName);
+      }
+      if (!Strings.isNullOrEmpty(schema)) {
+        urlParams.add("currentschema=" + schema);
+      }
+      if (!urlParams.isEmpty()) {
+        url += "?" + String.join("&", urlParams);
+      }
+
+      Map<String, String> options = new HashMap<>();
+      options.put(Constants.JDBC_URL, url);
+      options.put(Constants.JDBC_DRIVER, DRIVER);
+      if (!Strings.isNullOrEmpty(user)) {
+        options.put(Constants.JDBC_USER, user);
+      }
+      if (!Strings.isNullOrEmpty(password)) {
+        options.put(Constants.JDBC_PWD, password);
+      }
+      if (!Strings.isNullOrEmpty(table)) {
+        options.put("dbtable", table);
+      }
+      if (!Strings.isNullOrEmpty(application)) {
+        // SAP JDBC accepts session variables prefixed with sessionVariable:.
+        options.put(SESSION_VARIABLE_PREFIX + "APPLICATION", application);
+      }
+      if (arguments != null && !arguments.isEmpty()) {
+        Map<String, String> argOptions = arguments.stream()
+            .collect(Collectors.toMap(Option::getName, Option::getValue));
+        options.putAll(argOptions);
+      }
+      return options;
+    }
+
+    public void update() throws FeatureStoreException, IOException {
+      SapHanaConnector updatedConnector = (SapHanaConnector) refetch();
+      this.host = updatedConnector.getHost();
+      this.port = updatedConnector.getPort();
+      this.database = updatedConnector.getDatabase();
+      this.schema = updatedConnector.getSchema();
+      this.table = updatedConnector.getTable();
+      this.user = updatedConnector.getUser();
+      this.password = updatedConnector.getPassword();
+      this.application = updatedConnector.getApplication();
       this.arguments = updatedConnector.getArguments();
     }
 

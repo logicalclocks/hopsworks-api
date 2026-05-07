@@ -1510,3 +1510,169 @@ class TestOracleConnector:
             ValueError, match="schema/owner is required for Oracle connectors"
         ):
             sc.get_tables()
+
+
+class TestSapHanaConnector:
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_sap_hana"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.SapHanaConnector)
+        assert sc.id == 1
+        assert sc.name == "test_sap_hana"
+        assert sc._featurestore_id == 67
+        assert sc.description == "SAP HANA connector description"
+        assert sc.host == "hana.example.com"
+        assert sc.port == 39015
+        assert sc.database == "HXE"
+        assert sc.schema == "SYSTEM"
+        assert sc.table == "TBL"
+        assert sc.user == "SYSTEM"
+        assert sc.password == "test_password"
+        assert sc.application == "hopsworks"
+        assert sc.options == {"fetchsize": "1000"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_sap_hana_basic_info"][
+            "response"
+        ]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.SapHanaConnector)
+        assert sc.id == 1
+        assert sc.name == "test_sap_hana"
+        assert sc.host is None
+        assert sc.port == storage_connector.SapHanaConnector.DEFAULT_PORT
+        assert sc.database is None
+        assert sc.schema is None
+        assert sc.table is None
+        assert sc.user is None
+        assert sc.password is None
+        assert sc.application is None
+        assert sc.options == {}
+
+    def test_spark_options_url_includes_database_and_schema(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            port=39015,
+            database="HXE",
+            schema="ANALYTICS",
+            user="SYSTEM",
+            password="pw",
+            table="TBL",
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["driver"] == storage_connector.SapHanaConnector.DRIVER
+        assert (
+            opts["url"]
+            == "jdbc:sap://hana.example.com:39015/?databaseName=HXE&currentschema=ANALYTICS"
+        )
+        assert opts["user"] == "SYSTEM"
+        assert opts["password"] == "pw"
+        assert opts["dbtable"] == "TBL"
+
+    def test_spark_options_no_database_no_schema(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            user="SYSTEM",
+            password="pw",
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["url"] == "jdbc:sap://hana.example.com:39015/"
+        assert "dbtable" not in opts
+
+    def test_default_port_applied(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+        )
+        assert sc.port == 39015
+
+    def test_arguments_merged_into_spark_options(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            arguments=[{"name": "fetchsize", "value": "5000"}],
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["fetchsize"] == "5000"
+
+    def test_read_query_overrides_dbtable(self, mocker):
+        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mock_engine_read = mocker.patch("hsfs.engine.spark.Engine.read")
+
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            user="SYSTEM",
+            password="pw",
+            table="TBL",
+        )
+        # SapHanaConnector.read() refetches before reading (so a connector
+        # loaded as basic info refreshes its credentials); stub it out so
+        # the test doesn't try to talk to a backend.
+        mocker.patch.object(sc, "refetch")
+        query = "SELECT * FROM ANALYTICS.TBL"
+        sc.read(query=query)
+
+        called_options = mock_engine_read.call_args[0][2]
+        assert called_options["query"] == query
+        assert "dbtable" not in called_options
+
+    def test_connector_options_minimal(self):
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            host="hana.example.com",
+            user="SYSTEM",
+            password="pw",
+            database="HXE",
+            schema="ANALYTICS",
+        )
+
+        props = sc.connector_options()
+
+        assert props["address"] == "hana.example.com"
+        assert props["port"] == 39015
+        assert props["user"] == "SYSTEM"
+        assert props["password"] == "pw"
+        assert props["databaseName"] == "HXE"
+        assert props["currentSchema"] == "ANALYTICS"
+
+    def test_spark_options_without_host_raises(self):
+        """Mirror the Oracle/JdbcConnector pattern.
+
+        A connector loaded as basic info (no host yet) must fail fast on
+        spark_options() instead of producing an unusable
+        ``jdbc:sap://None:port/`` URL.
+        """
+        from hopsworks_common.client.exceptions import DataSourceException
+
+        sc = storage_connector.SapHanaConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+        )
+        with pytest.raises(DataSourceException, match="requires a host"):
+            sc.spark_options()

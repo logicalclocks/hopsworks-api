@@ -317,6 +317,60 @@
         },
         "headers": null
     },
+    "get_sap_hana": {
+        "response": {
+            "type": "featureStoreSapHanaConnectorDTO",
+            "description": "SAP HANA connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sap_hana",
+            "storageConnectorType": "SAP_HANA",
+            "host": "hana.example.com",
+            "port": 39015,
+            "database": "HXE",
+            "schema": "SYSTEM",
+            "table": "TBL",
+            "user": "SYSTEM",
+            "password": "test_password",
+            "application": "hopsworks",
+            "arguments": [{"name": "fetchsize", "value": "1000"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sap_hana"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_sap_hana_basic_info": {
+        "response": {
+            "type": "featureStoreSapHanaConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sap_hana",
+            "storageConnectorType": "SAP_HANA"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sap_hana"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
     "get_jdbc": {
         "response": {
             "type": "featurestoreJdbcConnectorDTO",
