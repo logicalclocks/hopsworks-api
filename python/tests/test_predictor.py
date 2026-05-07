@@ -1174,6 +1174,7 @@ class TestPredictor:
         kwargs = predictor.Predictor.extract_fields_from_json(wire)
 
         assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
+
     # vLLM variant round-trip
 
     def test_vllm_variant_vllm_round_trip(self, mocker, backend_fixtures):
