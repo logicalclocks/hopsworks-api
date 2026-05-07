@@ -66,9 +66,7 @@ class EnvVarsApi:
         _client = client.get_instance()
         params = {"includeValue": "true" if include_value else "false"}
         return env_var.EnvVar.from_response_json(
-            _client._send_request(
-                "GET", ["users", "envvars"], query_params=params
-            )
+            _client._send_request("GET", ["users", "envvars"], query_params=params)
         )
 
     @public
