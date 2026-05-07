@@ -115,7 +115,11 @@ class ProjectApi:
         return project.Project.from_response_json(project_json)
 
     def _create_project(
-        self, name: str, description: str = None, feature_store_topic: str = None
+        self,
+        name: str,
+        description: str = None,
+        feature_store_topic: str = None,
+        namespace: str = None,
     ) -> project.Project:
         """Create a new project.
 
@@ -123,6 +127,8 @@ class ProjectApi:
             name: Name of the project.
             description: Description of the project.
             feature_store_topic: Feature store topic name.
+            namespace: Kubernetes namespace to use for the project. If ``None``
+                the backend derives one from the project name.
 
         Returns:
             The Project object.
@@ -142,6 +148,8 @@ class ProjectApi:
             "description": description,
             "featureStoreTopic": feature_store_topic,
         }
+        if namespace is not None:
+            data["namespace"] = namespace
         _client._send_request(
             "POST",
             path_params,
