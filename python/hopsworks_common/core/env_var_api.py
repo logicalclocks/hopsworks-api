@@ -23,11 +23,35 @@ from hopsworks_common import client, decorators, env_var
 
 @public("hopsworks.core.env_var_api.EnvVarsApi")
 class EnvVarsApi:
-    """API for managing user account environment variables in Hopsworks."""
+    """Manage user account environment variables in Hopsworks.
+
+    Account env vars are encrypted at rest and automatically injected into
+    every runtime the user starts (jobs, deployments, apps, Jupyter, terminal).
+    Per-runtime env vars override account-level on collision.
+
+    Example:
+        ```python
+        import hopsworks
+        hopsworks.login()
+        api = hopsworks.get_env_vars_api()
+
+        api.create_env_var("OPENAI_API_KEY", "sk-...")
+        api.create_env_var("HF_TOKEN", "hf_...")
+
+        for v in api.get_env_vars():
+            print(v.name, v.value)
+
+        api.delete_env_var("OPENAI_API_KEY")
+        ```
+    """
 
     @public
     def get_env_vars(self) -> list[env_var.EnvVar]:
-        """Get all account environment variables."""
+        """Return all account-level env vars for the authenticated user.
+
+        Returns:
+            List of [`EnvVar`][hopsworks.env_var.EnvVar] objects, possibly empty.
+        """
         _client = client.get_instance()
         return env_var.EnvVar.from_response_json(
             _client._send_request("GET", ["users", "envvars"])
@@ -36,7 +60,14 @@ class EnvVarsApi:
     @public
     @decorators.catch_not_found("hopsworks_common.env_var.EnvVar", fallback_return=None)
     def get_env_var(self, name: str) -> env_var.EnvVar | None:
-        """Get an account environment variable."""
+        """Look up a single env var by name.
+
+        Returns ``None`` when no env var with that name exists, instead of
+        raising — convenient for "set if missing" patterns.
+
+        Parameters:
+            name: Variable name (e.g. ``"OPENAI_API_KEY"``).
+        """
         _client = client.get_instance()
         env_vars = env_var.EnvVar.from_response_json(
             _client._send_request("GET", ["users", "envvars", name])
@@ -45,27 +76,60 @@ class EnvVarsApi:
 
     @public
     def get(self, name: str) -> str | None:
-        """Get an account environment variable value."""
+        """Return just the value of an env var, or ``None`` if missing.
+
+        Convenience wrapper around [`get_env_var`][hopsworks.core.env_var_api.EnvVarsApi.get_env_var].
+
+        Example:
+            ```python
+            api.get("OPENAI_API_KEY")  # -> "sk-..." or None
+            ```
+        """
         env_var_obj = self.get_env_var(name)
         return env_var_obj.value if env_var_obj else None
 
     @public
     def create_env_var(self, name: str, value: str) -> env_var.EnvVar:
-        """Create an account environment variable.
+        """Add a new account-level env var.
 
-        Raises a ``RestAPIError`` with code ``ENV_VAR_RESERVED_NAME`` when the
-        name is reserved and ``ENV_VAR_INVALID_NAME`` when the name is invalid.
+        Parameters:
+            name: Variable name. Must match ``^[A-Za-z_][A-Za-z0-9_]*$`` and
+                not be reserved by the platform (``API_KEY``, ``HOPS_*``,
+                ``HOPSWORKS_*``, etc — see ``ReservedEnvVars`` in the backend).
+            value: Variable value. Up to 8192 characters.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: ``ENV_VAR_RESERVED_NAME``,
+                ``ENV_VAR_INVALID_NAME``, ``ENV_VAR_VALUE_TOO_LARGE``, or
+                ``ENV_VAR_LIMIT_EXCEEDED`` (default cap is 64 vars per user).
+
+        Example:
+            ```python
+            api.create_env_var("OPENAI_API_KEY", "sk-...")
+            ```
         """
         return self._upsert("POST", ["users", "envvars"], name, value)
 
     @public
     def update_env_var(self, name: str, value: str) -> env_var.EnvVar:
-        """Update the value of an existing account environment variable."""
+        """Replace the value of an existing env var.
+
+        Raises ``RestAPIError`` with ``ENV_VAR_NOT_FOUND`` if the name doesn't
+        exist. Use [`set_env_var`][hopsworks.core.env_var_api.EnvVarsApi.set_env_var]
+        to upsert instead.
+        """
         return self._upsert("PUT", ["users", "envvars", name], name, value)
 
     @public
     def set_env_var(self, name: str, value: str) -> env_var.EnvVar:
-        """Create the env var if missing, otherwise update its value."""
+        """Upsert: create the env var if missing, else update its value.
+
+        Example:
+            ```python
+            # Idempotent — safe to call from setup scripts
+            api.set_env_var("HF_TOKEN", os.environ["HF_TOKEN"])
+            ```
+        """
         existing = self.get_env_var(name)
         if existing is None:
             return self.create_env_var(name, value)
@@ -88,13 +152,40 @@ class EnvVarsApi:
         return env_vars[0]
 
     @public
-    def delete(self, name: str):
-        """Delete an account environment variable."""
+    def delete_env_var(self, name: str) -> None:
+        """Remove a single env var from the account.
+
+        Raises ``RestAPIError`` with ``ENV_VAR_NOT_FOUND`` if the name doesn't
+        exist.
+
+        Example:
+            ```python
+            api.delete_env_var("OPENAI_API_KEY")
+            ```
+        """
         _client = client.get_instance()
         _client._send_request("DELETE", ["users", "envvars", name])
 
     @public
-    def delete_all(self):
-        """Delete all account environment variables."""
+    def delete(self, name: str) -> None:
+        """Alias for [`delete_env_var`][hopsworks.core.env_var_api.EnvVarsApi.delete_env_var].
+
+        Kept for parity with [`SecretsApi.delete`][hopsworks.core.secret_api.SecretsApi].
+        New code should prefer ``delete_env_var``.
+        """
+        self.delete_env_var(name)
+
+    @public
+    def delete_all(self) -> None:
+        """Remove all account-level env vars for the authenticated user.
+
+        Returns silently if there are none.
+
+        Example:
+            ```python
+            api.delete_all()
+            assert api.get_env_vars() == []
+            ```
+        """
         _client = client.get_instance()
         _client._send_request("DELETE", ["users", "envvars"])

@@ -154,7 +154,17 @@ class TestEnvVarsApi:
         assert result.value == "new"
         assert client._send_request.call_args_list[1].args[0] == "PUT"
 
-    def test_delete_calls_delete(self, mocker):
+    def test_delete_env_var_calls_delete(self, mocker):
+        api = EnvVarsApi()
+        c = _patch_client(mocker, None)
+        api.delete_env_var("OPENAI_API_KEY")
+        method, path = c._send_request.call_args.args[:2]
+        assert method == "DELETE"
+        assert path == ["users", "envvars", "OPENAI_API_KEY"]
+
+    def test_delete_alias(self, mocker):
+        # The plain `delete(name)` alias must still work — it's there for
+        # parity with SecretsApi.delete and existing user code.
         api = EnvVarsApi()
         c = _patch_client(mocker, None)
         api.delete("OPENAI_API_KEY")

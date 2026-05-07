@@ -80,8 +80,11 @@ class EnvVar:
 
     @public
     def delete(self):
-        """Delete the environment variable."""
-        return self._env_var_api.delete(self.name)
+        """Remove this env var from the user's account.
+
+        Equivalent to ``api.delete_env_var(self.name)``.
+        """
+        return self._env_var_api.delete_env_var(self.name)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
