@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Literal
 
 from hopsworks.connection import Connection
-from hopsworks.core import project_api, secret_api
+from hopsworks.core import env_var_api, project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
@@ -57,6 +57,7 @@ _hw_connection = Connection.connection
 
 _connected_project = None
 _secrets_api = None
+_env_vars_api = None
 _project_api = None
 
 udf = hsfs.hopsworks_udf.udf
@@ -384,6 +385,7 @@ def logout():
     global _hw_connection
     global _project_api
     global _secrets_api
+    global _env_vars_api
 
     if _is_connection_active():
         _hw_connection.close()
@@ -391,6 +393,7 @@ def logout():
     client.stop()
     _project_api = None
     _secrets_api = None
+    _env_vars_api = None
     _hw_connection = Connection.connection
 
 
@@ -424,8 +427,10 @@ def get_current_project() -> project.Project:
 def _initialize_module_apis():
     global _project_api
     global _secrets_api
+    global _env_vars_api
     _project_api = project_api.ProjectApi()
     _secrets_api = secret_api.SecretsApi()
+    _env_vars_api = env_var_api.EnvVarsApi()
 
 
 @public
@@ -485,6 +490,19 @@ def get_secrets_api() -> secret_api.SecretsApi:
     if not _is_connection_active():
         raise NoHopsworksConnectionError
     return _secrets_api
+
+
+@public
+def get_env_vars_api() -> env_var_api.EnvVarsApi:
+    """Get the environment variables api.
+
+    Returns:
+        The environment variables API handle.
+    """
+    global _env_vars_api
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError
+    return _env_vars_api
 
 
 def _set_active_project(project):
