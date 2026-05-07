@@ -41,8 +41,9 @@ class TestTypeSystems:
             arrow_type=pa.list_(pa.int8())
         )
 
-        # Assert
-        assert result == "array<int>"
+        # Assert: int8 maps to tinyint (granular int mapping was added so
+        # SAP HANA-style narrow integers preserve their offline type).
+        assert result == "array<tinyint>"
 
     def test_infer_type_pyarrow_large_list(self):
         # Act
@@ -51,7 +52,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "array<int>"
+        assert result == "array<tinyint>"
 
     def test_infer_type_pyarrow_struct(self):
         # Act
@@ -134,6 +135,25 @@ class TestTypeSystems:
 
         # Assert
         assert str(e_info.value) == "dtype 'time32[s]' not supported"
+
+    def test_infer_type_pyarrow_decimal128(self):
+        # Decimal columns must surface their declared precision and scale
+        # (rather than collapsing to a coarser type) so SAP HANA / Oracle
+        # DECIMAL(p,s) round-trips through hsfs without losing precision.
+        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+            arrow_type=pa.decimal128(12, 2)
+        )
+
+        # Assert
+        assert result == "decimal(12,2)"
+
+    def test_infer_type_pyarrow_decimal128_no_scale(self):
+        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+            arrow_type=pa.decimal128(38, 0)
+        )
+
+        # Assert
+        assert result == "decimal(38,0)"
 
     def test_infer_type_pyarrow_struct_with_decimal_fields(self):
         # Arrange
@@ -417,7 +437,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "int"
+        assert result == "smallint"
 
     def test_convert_simple_pandas_type_uint16(self):
         # Act
@@ -435,7 +455,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "int"
+        assert result == "tinyint"
 
     def test_convert_simple_pandas_type_int16(self):
         # Act
@@ -444,7 +464,7 @@ class TestTypeSystems:
         )
 
         # Assert
-        assert result == "int"
+        assert result == "smallint"
 
     def test_convert_simple_pandas_type_int32(self):
         # Act

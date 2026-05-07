@@ -27,5 +27,6 @@ public enum StorageConnectorType {
   KAFKA,
   GCS,
   BIGQUERY,
-  SQL
+  SQL,
+  SAP_HANA
 }
