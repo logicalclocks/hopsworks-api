@@ -1236,7 +1236,7 @@ class TestPredictor:
 
         # Act
         p = LLMPredictor(
-            name="my_llm", variant=PREDICTOR.VLLM_VARIANT_OMNI, image_tag="v0.14.0"
+            name="my_llm", vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI, vllm_image_tag="v0.14.0"
         )
 
         # Assert
@@ -1250,7 +1250,7 @@ class TestPredictor:
 
         # Act + Assert
         with pytest.raises(ValueError) as e_info:
-            LLMPredictor(name="my_llm", variant="INVALID")
+            LLMPredictor(name="my_llm", vllm_variant="INVALID")
 
         assert "is not valid" in str(e_info.value)
 
@@ -1299,8 +1299,8 @@ class TestPredictor:
 
             return LLMPredictor(
                 name=kwargs["model_name"],
-                variant=kwargs.get("vllm_variant", PREDICTOR.VLLM_VARIANT_VLLM),
-                image_tag=kwargs.get("vllm_image_tag"),
+                vllm_variant=kwargs.get("vllm_variant", PREDICTOR.VLLM_VARIANT_VLLM),
+                vllm_image_tag=kwargs.get("vllm_image_tag"),
             )
 
         mocker.patch(
