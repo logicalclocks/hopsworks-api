@@ -27,7 +27,6 @@ from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
-from hopsworks_common.constants import PREDICTOR
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.model_schema import ModelSchema

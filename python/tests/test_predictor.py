@@ -1236,7 +1236,9 @@ class TestPredictor:
 
         # Act
         p = LLMPredictor(
-            name="my_llm", vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI, vllm_image_tag="v0.14.0"
+            name="my_llm",
+            vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI,
+            vllm_image_tag="v0.14.0",
         )
 
         # Assert
