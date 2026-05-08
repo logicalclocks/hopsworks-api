@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import getpass
+import importlib
 import logging
 import os
 import sys
@@ -24,10 +25,13 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
-from hopsworks.connection import Connection
+# Lightweight imports happen eagerly. Heavy submodules (`hsfs`, `hsml`,
+# `hopsworks.connection`, …) are loaded on first attribute access via the
+# PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
+# entry points (the ``hops`` CLI, dependent libraries' import-time checks)
+# that don't need the full feature-store / model-registry surface area.
 from hopsworks.core import env_var_api, project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
-from hopsworks.spark import build_spark  # noqa: F401  (public re-export)
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
 from hopsworks_common.client.exceptions import (
@@ -39,29 +43,18 @@ from hopsworks_common.constants import CLIENT
 from requests.exceptions import SSLError
 
 
-# Needs to run before import of hsml and hsfs
+# Needs to run before import of hsml and hsfs (consumed transitively by some
+# clients that explicitly do ``import hopsworks; hopsworks.hsfs``).
 warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
-
-import hsfs  # noqa: E402
-import hsml  # noqa: E402
-
-
-sys.modules["hopsworks.hsfs"] = hsfs
-sys.modules["hopsworks.hsml"] = hsml
 
 
 __version__ = version.__version__
 
-connection = Connection.connection
-
-_hw_connection = Connection.connection
 
 _connected_project = None
 _secrets_api = None
 _env_vars_api = None
 _project_api = None
-
-udf = hsfs.hopsworks_udf.udf
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
@@ -71,6 +64,68 @@ def hw_formatwarning(message, category, filename, lineno, line=None):
 warnings.formatwarning = hw_formatwarning
 
 __all__ = ["connection", "udf"]
+
+
+# ─── Lazy attribute resolution ───────────────────────────────────────────────
+# Map name → factory. Factories are callables so we can side-effect
+# ``sys.modules`` for ``hopsworks.hsfs`` / ``hopsworks.hsml`` aliases on first
+# touch, matching the previous behaviour of the eager imports.
+
+def _load_hsfs():  # type: ignore[no-untyped-def]
+    mod = importlib.import_module("hsfs")
+    sys.modules.setdefault("hopsworks.hsfs", mod)
+    return mod
+
+
+def _load_hsml():  # type: ignore[no-untyped-def]
+    mod = importlib.import_module("hsml")
+    sys.modules.setdefault("hopsworks.hsml", mod)
+    return mod
+
+
+def _load_connection_class():  # type: ignore[no-untyped-def]
+    from hopsworks.connection import Connection
+    return Connection
+
+
+def _load_build_spark():  # type: ignore[no-untyped-def]
+    from hopsworks.spark import build_spark  # noqa: F401
+    return build_spark
+
+
+_LAZY = {
+    "hsfs": _load_hsfs,
+    "hsml": _load_hsml,
+    "Connection": _load_connection_class,
+    "build_spark": _load_build_spark,
+    "connection": lambda: _load_connection_class().connection,
+    # ``udf`` is the public entry point for hopsworks UDFs; pulling it through
+    # ``hsfs`` keeps the lazy-load path consistent.
+    "udf": lambda: _load_hsfs().hopsworks_udf.udf,
+}
+
+
+def __getattr__(name):  # type: ignore[no-untyped-def]
+    """PEP 562 lazy attribute access.
+
+    ``import hopsworks`` no longer triggers ``hsfs`` / ``hsml`` /
+    ``great_expectations``; the first time anyone reads
+    ``hopsworks.connection`` / ``hopsworks.udf`` / ``hopsworks.hsfs`` /
+    ``hopsworks.hsml``, the relevant module is imported and cached on the
+    package object so subsequent accesses are free.
+    """
+    factory = _LAZY.get(name)
+    if factory is None:
+        raise AttributeError(f"module 'hopsworks' has no attribute {name!r}")
+    value = factory()
+    # Cache so subsequent attribute lookups skip ``__getattr__`` entirely.
+    globals()[name] = value
+    return value
+
+
+# Compatibility alias used internally by the login flow below.
+def _hw_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
+    return _load_connection_class().connection(*args, **kwargs)
 
 logging.basicConfig(
     level=logging.INFO,

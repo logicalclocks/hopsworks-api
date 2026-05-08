@@ -36,6 +36,21 @@ from hsml.engine import local_engine
 from tqdm.auto import tqdm
 
 
+def _render_chunk(chunk) -> str:
+    """Render a single log chunk's content with a trailing newline.
+
+    Adding a newline here (rather than relying on the upstream pipeline) lets
+    ``read_logs(...)`` produce output you can pipe straight to ``grep`` or
+    ``awk`` without each block getting glued to the next one. We only add the
+    separator when content does not already end in ``\\n`` so we never
+    double-space lines that already carry their own terminator.
+    """
+    content = chunk.content or ""
+    if content and not content.endswith("\n"):
+        content += "\n"
+    return content
+
+
 class ServingEngine:
     START_STEPS = [
         PREDICTOR_STATE.CONDITION_TYPE_STOPPED,
@@ -566,6 +581,156 @@ class ServingEngine:
         )
 
         return self._serving_api.get_logs(deployment_instance, component, tail)
+
+    # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
+    # These never print and never short-circuit on deployment state. The
+    # OpenSearch source returns logs even when the deployment is stopped, so
+    # the legacy "deployment is stopping → return None" guard would just hide
+    # data that is in fact retrievable.
+
+    def read_logs(
+        self,
+        deployment_instance,
+        component: str = "predictor",
+        tail: int = 100,
+        source: str = "opensearch",
+        since: "str | None" = None,
+        until: "str | None" = None,
+        pod: "str | None" = None,
+    ) -> str:
+        """Return deployment logs as a single plain-text string.
+
+        Programmatic counterpart to :py:meth:`get_logs`. Never prints; the
+        caller decides what to do with the returned value.
+        """
+        chunks = self._serving_api.get_logs(
+            deployment_instance,
+            component,
+            tail,
+            source=source,
+            since=since,
+            until=until,
+            pod=pod,
+        )
+        return self._format_log_chunks(chunks or [])
+
+    def tail_logs(
+        self,
+        deployment_instance,
+        component: str = "predictor",
+        interval: float = 2.0,
+        source: str = "opensearch",
+        since: "str | None" = "now",
+        timeout: "float | None" = None,
+        stop_on_status=None,
+    ):
+        """Yield only newly observed log chunks as plain text.
+
+        v1 streaming is client-side polling: each tick calls
+        :py:meth:`read_logs` with a moving ``since`` cursor and yields the
+        portion not already seen. Deduplication is by (timestamp, doc_id)
+        on the OpenSearch path and by content hash for the Kubernetes path
+        (which has neither field). The generator stops when:
+
+        - ``timeout`` (seconds, optional) elapses,
+        - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
+        - the caller breaks out of the loop / closes the generator.
+        """
+        # OpenSearch documents are uniquely identified by ``doc_id`` and
+        # ordered by ``timestamp``; this state suffices to dedupe across
+        # successive overlapping windows.
+        seen_doc_ids: "set[str]" = set()
+        last_timestamp: "str | None" = since if (since and since != "now") else None
+        # Kubernetes path has no doc id / timestamp, so dedupe by content
+        # hash instead. Bound the set so a chatty deployment doesn't keep
+        # the dedupe state growing forever.
+        seen_hashes: "set[int]" = set()
+        seen_hashes_cap = 4096
+
+        # ``since="now"`` is a UX shorthand: start streaming brand-new lines
+        # only. Resolved here on the first call to a real ISO-8601 timestamp
+        # so subsequent polls are time-bounded the same way.
+        if since == "now":
+            from datetime import datetime, timezone
+            last_timestamp = (
+                datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            )
+
+        deadline = (time.monotonic() + timeout) if timeout else None
+
+        while True:
+            chunks = self._serving_api.get_logs(
+                deployment_instance,
+                component,
+                # Bounded per-poll fetch. Larger values just mean more work
+                # for the dedupe pass; the SDK still yields only what's new.
+                tail=200,
+                source=source,
+                since=last_timestamp,
+                until=None,
+                pod=None,
+            ) or []
+
+            new_chunks = []
+            for chunk in chunks:
+                if chunk.doc_id is not None:
+                    if chunk.doc_id in seen_doc_ids:
+                        continue
+                    seen_doc_ids.add(chunk.doc_id)
+                else:
+                    key = hash((chunk.instance_name, chunk.content))
+                    if key in seen_hashes:
+                        continue
+                    if len(seen_hashes) >= seen_hashes_cap:
+                        # Drop the oldest half — set has no ordering, so we
+                        # just clear and start fresh; worst case we re-yield
+                        # at most ``seen_hashes_cap / 2`` already-seen lines
+                        # once before steady state is restored.
+                        seen_hashes = set()
+                    seen_hashes.add(key)
+                new_chunks.append(chunk)
+                if chunk.timestamp is not None and (
+                    last_timestamp is None or chunk.timestamp > last_timestamp
+                ):
+                    last_timestamp = chunk.timestamp
+
+            if new_chunks:
+                yield self._format_log_chunks(new_chunks)
+
+            if stop_on_status is not None:
+                state = self.get_state(deployment_instance)
+                if state is not None and state.status == stop_on_status:
+                    return
+
+            if deadline is not None and time.monotonic() >= deadline:
+                return
+
+            time.sleep(interval)
+
+    @staticmethod
+    def _format_log_chunks(chunks) -> str:
+        """Merge a list of ``DeployableComponentLogs`` into one plain string.
+
+        When more than one distinct ``instance_name`` is present, prefix each
+        block with ``==> <instance> <==\\n`` (tail-style). Single-instance
+        responses join contents directly so ``read_logs(...)`` round-trips
+        cleanly through grep/awk.
+        """
+        if not chunks:
+            return ""
+        instance_names = {c.instance_name for c in chunks if c.instance_name}
+        if len(instance_names) <= 1:
+            return "".join(_render_chunk(c) for c in chunks)
+        # Group chronologically per instance, then concatenate.
+        by_instance: "dict[str, list]" = {}
+        for c in chunks:
+            by_instance.setdefault(c.instance_name or "", []).append(c)
+        parts = []
+        for instance, items in by_instance.items():
+            parts.append(f"==> {instance} <==\n")
+            for c in items:
+                parts.append(_render_chunk(c))
+        return "".join(parts)
 
     # Model inference
 

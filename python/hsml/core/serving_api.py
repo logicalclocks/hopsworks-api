@@ -365,7 +365,14 @@ class ServingApi:
         return domain["successMessage"]
 
     def get_logs(
-        self, deployment_instance: deployment.Deployment, component: str, tail: int
+        self,
+        deployment_instance: deployment.Deployment,
+        component: str,
+        tail: int,
+        source: "str | None" = None,
+        since: "str | None" = None,
+        until: "str | None" = None,
+        pod: "str | None" = None,
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
@@ -373,6 +380,15 @@ class ServingApi:
             deployment_instance: Metadata object of the deployment to get logs from.
             component: Deployment component (e.g., predictor or transformer).
             tail: Number of tailing lines to retrieve.
+            source: ``"opensearch"`` for historical logs from the project's
+                serving index (works for stopped deployments), ``"kubernetes"``
+                for live pod-tailing. Default ``None`` lets the backend
+                pick the legacy Kubernetes path.
+            since: ISO-8601 lower bound on the log timestamp; ignored on
+                the Kubernetes path.
+            until: ISO-8601 upper bound on the log timestamp; ignored on
+                the Kubernetes path.
+            pod: Restrict to a single instance / container name.
 
         Returns:
             Deployment logs.
@@ -385,7 +401,17 @@ class ServingApi:
             deployment_instance.id,
             "logs",
         ]
-        query_params = {"component": component, "tail": tail}
+        query_params: dict = {"component": component, "tail": tail}
+        # Only forward optional params when set so the wire format stays
+        # identical to the pre-CLI release for old call sites.
+        if source is not None:
+            query_params["source"] = source
+        if since is not None:
+            query_params["since"] = since
+        if until is not None:
+            query_params["until"] = until
+        if pod is not None:
+            query_params["pod"] = pod
         return deployable_component_logs.DeployableComponentLogs.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
         )

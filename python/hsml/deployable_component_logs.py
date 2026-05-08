@@ -25,11 +25,27 @@ class DeployableComponentLogs:
     Parameters:
         name: Deployment instance name.
         content: Actual logs.
+        timestamp: ISO-8601 timestamp of the underlying log line. Populated
+            on the OpenSearch ``source`` path; ``None`` for live Kubernetes
+            pod-tailing where the line has no canonical timestamp on the
+            wire.
+        doc_id: OpenSearch document id. Combined with ``timestamp`` it forms
+            the dedupe key that :py:meth:`Deployment.tail_logs` uses to
+            avoid yielding the same line on overlapping polls.
     """
 
-    def __init__(self, instance_name: str, content: str, **kwargs):
+    def __init__(
+        self,
+        instance_name: str,
+        content: str,
+        timestamp: "str | None" = None,
+        doc_id: "str | None" = None,
+        **kwargs,
+    ):
         self._instance_name = instance_name
         self._content = content
+        self._timestamp = timestamp
+        self._doc_id = doc_id
         self._created_at = datetime.now()
 
     @classmethod
@@ -47,10 +63,21 @@ class DeployableComponentLogs:
     def extract_fields_from_json(cls, json_decamelized):
         instance_name = util.extract_field_from_json(json_decamelized, "instance_name")
         content = util.extract_field_from_json(json_decamelized, "content")
-        return instance_name, content
+        # ``timestamp`` and ``doc_id`` are missing on the legacy Kubernetes
+        # source response. ``extract_field_from_json`` already returns
+        # ``None`` for absent keys so this stays back-compat with old
+        # backends.
+        timestamp = util.extract_field_from_json(json_decamelized, "timestamp")
+        doc_id = util.extract_field_from_json(json_decamelized, "doc_id")
+        return instance_name, content, timestamp, doc_id
 
     def to_dict(self):
-        return {"instance_name": self._instance_name, "content": self._content}
+        return {
+            "instance_name": self._instance_name,
+            "content": self._content,
+            "timestamp": self._timestamp,
+            "doc_id": self._doc_id,
+        }
 
     @property
     def instance_name(self):
@@ -66,6 +93,16 @@ class DeployableComponentLogs:
     def created_at(self):
         """Datetime when the current server logs chunk was retrieved."""
         return self._created_at
+
+    @property
+    def timestamp(self):
+        """ISO-8601 timestamp of the log line (OpenSearch source only)."""
+        return self._timestamp
+
+    @property
+    def doc_id(self):
+        """OpenSearch document id of the log line (OpenSearch source only)."""
+        return self._doc_id
 
     @property
     def component(self):

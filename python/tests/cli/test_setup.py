@@ -72,6 +72,10 @@ def test_setup_runs_token_flow_when_forced(tmp_home):
         "timeout": False,
     }
 
+    # Two ``requests.post`` calls now: ``/create`` (kicks off the flow) and
+    # ``/wait/<flowId>`` (long-poll). The wait endpoint switched to POST + JSON
+    # so the wait secret never lands in proxy access logs / browser history /
+    # crash reporters as a query string.
     create_mock = mock.Mock()
     create_mock.json.return_value = created_response
     create_mock.raise_for_status = mock.Mock()
@@ -80,9 +84,14 @@ def test_setup_runs_token_flow_when_forced(tmp_home):
     wait_mock.json.return_value = wait_response
     wait_mock.raise_for_status = mock.Mock()
 
+    def _post(url, *args, **kwargs):
+        # Route by URL so /create and /wait return the right payload.
+        if "/wait/" in url:
+            return wait_mock
+        return create_mock
+
     with (
-        mock.patch.object(setup_mod.requests, "post", return_value=create_mock) as post,
-        mock.patch.object(setup_mod.requests, "get", return_value=wait_mock) as get,
+        mock.patch.object(setup_mod.requests, "post", side_effect=_post) as post,
         mock.patch.object(setup_mod, "_open_browser", return_value=True),
         mock.patch.object(setup_mod.auth, "verify") as verify,
     ):
@@ -101,13 +110,22 @@ def test_setup_runs_token_flow_when_forced(tmp_home):
         )
 
     assert result.exit_code == 0, result.output
-    # Confirms key_name was plumbed through to the backend.
-    _, kwargs = post.call_args
-    assert kwargs["params"]["key_name"] == "jim-laptop"
-    assert kwargs["params"]["utm_source"] == "hops-cli"
-    # Wait call uses the returned secret.
-    _, wait_kwargs = get.call_args
-    assert wait_kwargs["params"]["wait_secret"] == "sekret"
+
+    # Find the /create and /wait POSTs.
+    create_call = next(c for c in post.call_args_list if "/wait/" not in c.args[0])
+    wait_call = next(c for c in post.call_args_list if "/wait/" in c.args[0])
+
+    # /create still uses query params — those have no secrets.
+    assert create_call.kwargs["params"]["key_name"] == "jim-laptop"
+    assert create_call.kwargs["params"]["utm_source"] == "hops-cli"
+
+    # /wait carries the secret in the JSON body, never in the URL or params.
+    assert wait_call.kwargs["json"]["waitSecret"] == "sekret"
+    assert "tf-abc" in wait_call.args[0]
+    assert "params" not in wait_call.kwargs or "wait_secret" not in (
+        wait_call.kwargs.get("params") or {}
+    )
+
     # Key ended up persisted with the server-reported name.
     saved = config.load()
     assert saved.api_key == "NEW.KEY"
