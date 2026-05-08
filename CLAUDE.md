@@ -4,10 +4,11 @@ Skills are organized into bucket folders under skills/:
 
 ml/ — develop and operate ML systems with FTI pipeline architecture
 agents/ — develop and operate scheduled agents and agent deployments
-apps/ —  design and operate Streamlit apps
-dashboards/ —  design Superset dashboards
+dashboards/ — design Streamlit apps and Superset dashboards
+data/ — data discovery, Trino SQL, storage connectors
+hops/ — legacy flat layout (superseded by the categorized folders above)
 deprecated/ — no longer used
-Every skill in ml/, agents/, apps/, dashboards/ must have a reference in the top-level README.md and an entry in .claude-plugin/plugin.json. Skills in deprecated/ must not appear in either.
+Every skill in ml/, agents/, dashboards/, data/ must have a reference in the top-level README.md. Skills in deprecated/ must not appear there.
 
 Each skill entry in the top-level README.md must link the skill name to its SKILL.md.
 

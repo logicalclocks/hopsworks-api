@@ -11,7 +11,7 @@ This skill should be invoked when the user wants to create a feature pipeline pr
 
 3. Interview the user relentlessly about every aspect of this plan until you reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. 
 
-4. Sketch out the data sources, frameworks that will be used, and transformations that will be peformed to build or modify to complete the implementation. Actively look for opportunities to extract deep modules that can be tested in isolation. A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes. Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
+4. Sketch out the data sources, frameworks that will be used, and transformations that will be performed to build or modify to complete the implementation. Actively look for opportunities to extract deep modules that can be tested in isolation. A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes. Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
 
 5. Once you have a complete understanding of the problem and solution, use the template below to write the specification. The reqs (pipeline requirements) should be written as a local markdown file at reqs/feature-pipeline.md, reqs/training-pipeline.md or reqs/inference-pipeline.md. Create the reqs/ directory if it doesn’t exist. Do NOT call any external service.
 

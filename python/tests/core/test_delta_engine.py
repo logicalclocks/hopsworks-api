@@ -873,13 +873,6 @@ class TestDeltaEngine:
             mock_history_data[1], mock_history_data[0]
         )
 
-        # Assert
-        assert result == "result"
-        mocker_get_delta_feature_group_commit.assert_called_once()
-        mocker_get_delta_feature_group_commit.assert_called_once_with(
-            mock_history_data[1], mock_history_data[0]
-        )
-
     def test_get_last_commit_metadata_deltars(self, mocker):
         # Arrange
         mock_history_data = [

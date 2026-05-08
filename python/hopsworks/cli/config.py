@@ -16,7 +16,6 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
-import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -259,9 +258,11 @@ def save(cfg: HopsConfig, profile: str = "default") -> None:
     existing[profile] = payload
 
     tmp = CONFIG_PATH.with_suffix(CONFIG_PATH.suffix + ".tmp")
-    with tmp.open("wb") as f:
+    # Open with O_CREAT|O_WRONLY|O_TRUNC and mode 0o600 so the secret is
+    # never world-readable even between open() and chmod().
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
         tomli_w.dump(existing, f)
-    os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
     os.replace(tmp, CONFIG_PATH)
 
 
@@ -278,7 +279,9 @@ def clear(profile: str = "default") -> None:
         CONFIG_PATH.unlink(missing_ok=True)
         return
     tmp = CONFIG_PATH.with_suffix(CONFIG_PATH.suffix + ".tmp")
-    with tmp.open("wb") as f:
+    # Open with O_CREAT|O_WRONLY|O_TRUNC and mode 0o600 so the secret is
+    # never world-readable even between open() and chmod().
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
         tomli_w.dump(existing, f)
-    os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
     os.replace(tmp, CONFIG_PATH)

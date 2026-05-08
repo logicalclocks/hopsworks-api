@@ -5,7 +5,7 @@ description: Create an architecture for an ML system as a composition of feature
 
 This skill should be invoked when the user wants to build an ML system.
 
-1. Ask the user for a description of the prediction problem and the data sources. Look at available feature groups and for any data sources (connnectors) see if there might be tables that could be mounted as external feature groups.
+1. Ask the user for a description of the prediction problem and the data sources. Look at available feature groups and for any data sources (connectors) see if there might be tables that could be mounted as external feature groups.
 
 2. Identify any new candidate features not already available in feature groups that could be precomputed in feature pipelines. Batch or streaming feature pipelines are ok. Then backfill feature data. Then schedule incremental batch feature pipelines to keep the feature data up to date.
 
@@ -13,4 +13,4 @@ This skill should be invoked when the user wants to build an ML system.
 
 4. For batch ML systems, a batch inference pipeline will make predictions and save them to a feature group. Then an app or dashboard can visualize those predictions. For real-time ML systems, the model will be deployed as a deployment on Hopsworks. You may need to create a new Python environment and install dependencies for that. After the model has been deployed write a UI to show it off as a streamlit app in Hopsworks and deploy it in Hopsworks.
     
-5. For each of the pipelines/programs you have to write, create an issue in Github. Track dependencies (blockers) and make a kanban board with all of them.
+5. For each of the pipelines/programs you have to write, create an issue in GitHub. Track dependencies (blockers) and make a kanban board with all of them.

@@ -30,7 +30,7 @@ from typing import Literal
 # PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
 # entry points (the ``hops`` CLI, dependent libraries' import-time checks)
 # that don't need the full feature-store / model-registry surface area.
-from hopsworks.core import env_var_api, project_api, secret_api
+from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
@@ -40,6 +40,7 @@ from hopsworks_common.client.exceptions import (
     RestAPIError,
 )
 from hopsworks_common.constants import CLIENT
+from hopsworks_common.core import env_var_api
 from requests.exceptions import SSLError
 
 
@@ -123,9 +124,15 @@ def __getattr__(name):  # type: ignore[no-untyped-def]
     return value
 
 
-# Compatibility alias used internally by the login flow below.
-def _hw_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
+def _make_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
+    """Factory: create a new Connection via the lazy-loaded Connection class."""
     return _load_connection_class().connection(*args, **kwargs)
+
+
+# Holds the active Connection instance after login(); points to _make_connection
+# when logged out so the login() flow can always call _hw_connection(...) to
+# create a fresh connection regardless of prior auth state.
+_hw_connection = _make_connection
 
 logging.basicConfig(
     level=logging.INFO,
@@ -450,7 +457,7 @@ def logout():
     _project_api = None
     _secrets_api = None
     _env_vars_api = None
-    _hw_connection = _load_connection_class().connection
+    _hw_connection = _make_connection
 
 
 def _is_connection_active():

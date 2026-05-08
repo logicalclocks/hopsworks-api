@@ -4,4 +4,4 @@ description: Create a connection to one of Hopsworks available data sources. Mou
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
-Prefer to use the hops CLI for data discovery. If a user asks abo
+Prefer to use the hops CLI for data discovery.
