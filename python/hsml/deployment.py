@@ -26,6 +26,8 @@ from hsml.engine import serving_engine
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -363,7 +365,7 @@ class Deployment:
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status: str | None = None,
-    ):
+    ) -> Iterator[str]:
         """Yield only newly observed log chunks as plain text.
 
         Client-side polling, not server-streaming: each tick calls
