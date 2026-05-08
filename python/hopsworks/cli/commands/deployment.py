@@ -293,27 +293,97 @@ def deployment_predict(
     help="Component to fetch logs for (predictor, transformer, ...).",
 )
 @click.option(
-    "--tail", type=int, default=10, show_default=True, help="Number of lines."
+    "--tail", type=int, default=100, show_default=True, help="Number of lines."
+)
+@click.option(
+    "--source",
+    type=click.Choice(["opensearch", "kubernetes"]),
+    default="opensearch",
+    show_default=True,
+    help=(
+        "opensearch: historical logs from the project serving index "
+        "(works for stopped deployments). kubernetes: live pod-tailing."
+    ),
+)
+@click.option("--since", help="ISO-8601 lower bound on log timestamp.")
+@click.option("--until", help="ISO-8601 upper bound on log timestamp.")
+@click.option(
+    "-f",
+    "--follow",
+    is_flag=True,
+    help="Stream new log lines as they are written (Ctrl-C to stop).",
+)
+@click.option(
+    "--interval",
+    type=float,
+    default=2.0,
+    show_default=True,
+    help="Seconds between polls when --follow is set.",
 )
 @click.pass_context
-def deployment_logs(ctx: click.Context, name: str, component: str, tail: int) -> None:
-    """Stream the last ``tail`` log lines from a deployment component.
+def deployment_logs(
+    ctx: click.Context,
+    name: str,
+    component: str,
+    tail: int,
+    source: str,
+    since: "str | None",
+    until: "str | None",
+    follow: bool,
+    interval: float,
+) -> None:
+    """Read or follow logs from a deployment component.
+
+    Without ``--follow``: prints the last ``--tail`` lines and exits.
+    With ``--follow``: yields new chunks every ``--interval`` seconds
+    until interrupted with Ctrl-C.
 
     Args:
         ctx: Click context.
         name: Deployment name.
         component: Component to query (e.g. ``predictor``, ``transformer``).
         tail: Number of lines.
+        source: ``opensearch`` or ``kubernetes``.
+        since: ISO-8601 lower bound on log timestamp.
+        until: ISO-8601 upper bound on log timestamp.
+        follow: Stream new lines instead of returning a one-shot tail.
+        interval: Seconds between polls when following.
     """
     deployment = _get_deployment(ctx, name)
+
+    if follow:
+        try:
+            for chunk in deployment.tail_logs(
+                component=component,
+                interval=interval,
+                source=source,
+                # When ``--since`` is provided, start there; otherwise stream
+                # only brand-new lines from the moment the command starts.
+                since=since or "now",
+            ):
+                click.echo(chunk, nl=False)
+        except KeyboardInterrupt:
+            # Clean exit on Ctrl-C; the generator itself drops out via
+            # GeneratorExit and ``time.sleep`` is interruptible.
+            return
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Log follow failed: {exc}") from exc
+        return
+
     try:
-        logs = deployment.get_logs(component=component, tail=tail)
+        text = deployment.read_logs(
+            component=component,
+            tail=tail,
+            source=source,
+            since=since,
+            until=until,
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Log fetch failed: {exc}") from exc
     if output.JSON_MODE:
-        output.print_json({"component": component, "logs": logs})
+        output.print_json({"component": component, "logs": text})
         return
-    click.echo(logs or "<no logs>")
+    click.echo(text or "<no logs>")
 
 
 @deployment_group.command("delete")

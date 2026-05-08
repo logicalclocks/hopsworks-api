@@ -275,6 +275,12 @@ class Deployment:
     def get_logs(self, component: str = "predictor", tail: int = 10):
         """Prints the deployment logs of the predictor or transformer.
 
+        .. note::
+            Legacy: this method **prints to stdout and returns ``None``**.
+            New code (and any agent / scripted use) should call
+            :py:meth:`read_logs` for a string return value or
+            :py:meth:`tail_logs` for incremental streaming.
+
         Parameters:
             component: Deployment component to get the logs from (e.g., predictor or transformer).
             tail: Number of most recent lines to retrieve from the logs.
@@ -295,6 +301,111 @@ class Deployment:
         if logs is not None:
             for log in logs:
                 print(log, end="\n\n")
+
+    @public
+    def read_logs(
+        self,
+        component: str = "predictor",
+        tail: int = 100,
+        source: str = "opensearch",
+        since: "str | None" = None,
+        until: "str | None" = None,
+        pod: "str | None" = None,
+    ) -> str:
+        """Return deployment logs as a single plain-text string.
+
+        Programmatic counterpart to :py:meth:`get_logs`. Suitable for
+        agents and scripts: never prints, never short-circuits on
+        deployment state. The default ``source="opensearch"`` reads the
+        project's serving index and works for stopped or restarted
+        deployments — :py:meth:`get_logs` only reads live pod stdout and
+        returns ``None`` when the deployment isn't running.
+
+        Parameters:
+            component: ``predictor`` or ``transformer``.
+            tail: Most-recent lines to retrieve. Capped server-side.
+            source: ``opensearch`` (historical, default) or ``kubernetes``
+                (live pod-tailing; only works while running).
+            since: ISO-8601 lower bound on log timestamp. Ignored on the
+                Kubernetes path.
+            until: ISO-8601 upper bound on log timestamp. Ignored on the
+                Kubernetes path.
+            pod: Restrict to one instance / container name.
+
+        Returns:
+            The joined logs as plain text. Empty string when there are no
+            matching lines; ``==> <instance> <==\\n`` block headers when
+            multiple instances are present.
+        """
+        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        if component not in components:
+            raise ValueError(
+                "Component '{}' is not valid. Possible values are '{}'".format(
+                    component, ", ".join(components)
+                )
+            )
+        return self._serving_engine.read_logs(
+            self,
+            component=component,
+            tail=tail,
+            source=source,
+            since=since,
+            until=until,
+            pod=pod,
+        )
+
+    @public
+    def tail_logs(
+        self,
+        component: str = "predictor",
+        interval: float = 2.0,
+        source: str = "opensearch",
+        since: "str | None" = "now",
+        timeout: "float | None" = None,
+        stop_on_status: "str | None" = None,
+    ):
+        """Yield only newly observed log chunks as plain text.
+
+        Client-side polling, not server-streaming: each tick calls
+        :py:meth:`read_logs` with a moving cursor and yields the portion
+        not already seen. Deduplication uses the OpenSearch ``timestamp``
+        + ``doc_id`` pair; a content-hash fallback covers the Kubernetes
+        path.
+
+        Example::
+
+            for chunk in dep.tail_logs(timeout=120):
+                print(chunk, end="")
+
+        Parameters:
+            component: ``predictor`` or ``transformer``.
+            interval: Seconds between polls.
+            source: ``opensearch`` (default) or ``kubernetes``.
+            since: ``"now"`` to start from the current instant (default),
+                or an ISO-8601 timestamp to replay from a specific point.
+            timeout: Stop after this many seconds. ``None`` runs forever.
+            stop_on_status: Stop when ``deployment.get_state().status``
+                matches this string (e.g. ``"Stopped"``).
+
+        Yields:
+            Plain-text log chunks containing only newly observed content.
+        """
+        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        if component not in components:
+            raise ValueError(
+                "Component '{}' is not valid. Possible values are '{}'".format(
+                    component, ", ".join(components)
+                )
+            )
+        yield from self._serving_engine.tail_logs(
+            self,
+            component=component,
+            interval=interval,
+            source=source,
+            since=since,
+            timeout=timeout,
+            stop_on_status=stop_on_status,
+        )
 
     @public
     def get_url(self):
