@@ -11,8 +11,8 @@ import json
 from unittest import mock
 
 from click.testing import CliRunner
-from hopsworks.cli.commands import connector as connector_cmd
 from hopsworks.cli.commands import context as context_cmd
+from hopsworks.cli.commands import datasource as datasource_cmd
 from hopsworks.cli.commands import fv as fv_cmd
 from hopsworks.cli.commands import model as model_cmd
 from hopsworks.cli.main import cli
@@ -42,17 +42,9 @@ def _feature_group(name, version=1, online=False, features=None, primary_key=Non
     return fg
 
 
-# --- fs --------------------------------------------------------------------
-
-
-def test_fs_list(mock_project):
-    result = CliRunner().invoke(cli, ["fs", "list"])
-    assert result.exit_code == 0, result.output
-    assert "demo_featurestore" in result.output
-    assert "67" in result.output
-
-
 # --- fg --------------------------------------------------------------------
+# (The old ``hops fs list`` group was removed; project-level FS info is now
+# surfaced via ``hops project info``, which test_project covers.)
 
 
 def test_fg_list_table(mock_project):
@@ -158,10 +150,12 @@ def test_fv_info(mock_project):
     assert "fraud_fv" in result.output
 
 
-# --- connector -------------------------------------------------------------
+# --- datasource ------------------------------------------------------------
+# Group was renamed from ``connector`` to ``datasource`` to align with the
+# SDK terminology; the underlying ``_list_connectors`` helper kept its name.
 
 
-def test_connector_list(mock_project):
+def test_datasource_list(mock_project):
     items = [
         {
             "id": 1,
@@ -170,20 +164,20 @@ def test_connector_list(mock_project):
             "description": "",
         }
     ]
-    with mock.patch.object(connector_cmd, "_list_connectors", return_value=items):
-        result = CliRunner().invoke(cli, ["connector", "list"])
+    with mock.patch.object(datasource_cmd, "_list_connectors", return_value=items):
+        result = CliRunner().invoke(cli, ["datasource", "list"])
     assert result.exit_code == 0, result.output
     assert "my_sf" in result.output
 
 
-def test_connector_info(mock_project):
+def test_datasource_info(mock_project):
     fs = mock_project.get_feature_store.return_value
     sc = mock.MagicMock()
     sc.id, sc.name, sc.description = 1, "my_sf", ""
     ds = mock.MagicMock()
     ds.storage_connector = sc
     fs.get_data_source.return_value = ds
-    result = CliRunner().invoke(cli, ["connector", "info", "my_sf"])
+    result = CliRunner().invoke(cli, ["datasource", "info", "my_sf"])
     assert result.exit_code == 0, result.output
     assert "my_sf" in result.output
 
@@ -284,25 +278,26 @@ def test_job_info_not_found(mock_project):
     assert result.exit_code != 0
 
 
-# --- dataset ---------------------------------------------------------------
+# --- files -----------------------------------------------------------------
+# Group was renamed from ``dataset`` to ``files``.
 
 
-def test_dataset_list_strings(mock_project):
+def test_files_list_strings(mock_project):
     api = mock.MagicMock()
     api.list.return_value = ["Resources", "Jupyter"]
     mock_project.get_dataset_api.return_value = api
-    result = CliRunner().invoke(cli, ["dataset", "list"])
+    result = CliRunner().invoke(cli, ["files", "list"])
     assert result.exit_code == 0, result.output
     assert "Resources" in result.output
 
 
-def test_dataset_list_inodes(mock_project):
+def test_files_list_inodes(mock_project):
     api = mock.MagicMock()
     inode = mock.MagicMock()
     inode.name, inode.dir, inode.size = "train.parquet", False, 1024
     api.list.return_value = [inode]
     mock_project.get_dataset_api.return_value = api
-    result = CliRunner().invoke(cli, ["dataset", "list", "Resources"])
+    result = CliRunner().invoke(cli, ["files", "list", "Resources"])
     assert result.exit_code == 0, result.output
     assert "train.parquet" in result.output
 
