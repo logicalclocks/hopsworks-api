@@ -24,6 +24,7 @@ from hopsworks_common.client.exceptions import ModelRegistryException
 from hsml import model
 from hsml.constants import MODEL
 from hsml.core import explicit_provenance
+from hsml.engine import model_engine
 
 
 class TestModel:
@@ -506,6 +507,132 @@ class TestModel:
         mock_td_provenance.assert_called_once()
         assert mock_fv.init_serving.called
         assert not mock_fv.init_batch_scoring.called
+
+
+class TestModelEngine:
+    @pytest.mark.parametrize(
+        "model_path,expected_hdfs_path",
+        [
+            (
+                "/hopsfs/Projects/demo/Models/model.pkl",
+                "Projects/demo/Models/model.pkl",
+            ),
+            (
+                "/mnt/hopsfs/Projects/demo/Models/model.pkl",
+                "/Projects/demo/Models/model.pkl",
+            ),
+        ],
+    )
+    def test_normalize_hopsfs_mount_path(self, mocker, model_path, expected_hdfs_path):
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+
+        engine = model_engine.ModelEngine()
+
+        assert engine._normalize_hopsfs_mount_path(model_path) == expected_hdfs_path
+
+    def test_normalize_hopsfs_mount_path_returns_none_for_local_path(self, mocker):
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+
+        engine = model_engine.ModelEngine()
+
+        assert engine._normalize_hopsfs_mount_path("local/model.pkl") is None
+
+    @pytest.mark.parametrize(
+        "model_path,expected_hdfs_path",
+        [
+            (
+                "/hopsfs/Projects/demo/hopsfs/archive/model.pkl",
+                "Projects/demo/hopsfs/archive/model.pkl",
+            ),
+            (
+                "/mnt/hopsfs/Projects/demo/mnt/hopsfs/archive/model.pkl",
+                "/Projects/demo/mnt/hopsfs/archive/model.pkl",
+            ),
+        ],
+    )
+    def test_normalize_hopsfs_mount_path_strips_only_leading_prefix(
+        self, mocker, model_path, expected_hdfs_path
+    ):
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+
+        engine = model_engine.ModelEngine()
+
+        assert engine._normalize_hopsfs_mount_path(model_path) == expected_hdfs_path
+
+    @pytest.mark.parametrize(
+        "model_path,expected_hdfs_path",
+        [
+            (
+                "/hopsfs/Projects/demo/Models/model.pkl",
+                "Projects/demo/Models/model.pkl",
+            ),
+            (
+                "/mnt/hopsfs/Projects/demo/Models/model.pkl",
+                "/Projects/demo/Models/model.pkl",
+            ),
+        ],
+    )
+    def test_save_model_from_local_or_hopsfs_mount_uses_hopsfs_copy(
+        self, mocker, model_path, expected_hdfs_path
+    ):
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+
+        engine = model_engine.ModelEngine()
+        copy_or_move = mocker.patch.object(engine, "_copy_or_move_hopsfs_model")
+        upload_local = mocker.patch.object(engine, "_upload_local_model")
+        model_instance = mocker.Mock(model_files_path="Models/test/1/Files")
+        progress = mocker.Mock()
+
+        engine._save_model_from_local_or_hopsfs_mount(
+            model_instance=model_instance,
+            model_path=model_path,
+            keep_original_files=True,
+            update_upload_progress=progress,
+        )
+
+        copy_or_move.assert_called_once_with(
+            from_hdfs_model_path=expected_hdfs_path,
+            to_model_files_path=model_instance.model_files_path,
+            keep_original_files=True,
+            update_upload_progress=progress,
+        )
+        upload_local.assert_not_called()
+
+    def test_save_model_from_local_or_hopsfs_mount_uses_local_upload(self, mocker):
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+
+        engine = model_engine.ModelEngine()
+        copy_or_move = mocker.patch.object(engine, "_copy_or_move_hopsfs_model")
+        upload_local = mocker.patch.object(engine, "_upload_local_model")
+        model_instance = mocker.Mock(model_files_path="Models/test/1/Files")
+        progress = mocker.Mock()
+        upload_configuration = {"config": "value"}
+
+        engine._save_model_from_local_or_hopsfs_mount(
+            model_instance=model_instance,
+            model_path="local/model.pkl",
+            keep_original_files=True,
+            update_upload_progress=progress,
+            upload_configuration=upload_configuration,
+        )
+
+        upload_local.assert_called_once_with(
+            from_local_model_path="local/model.pkl",
+            to_model_files_path=model_instance.model_files_path,
+            update_upload_progress=progress,
+            upload_configuration=upload_configuration,
+        )
+        copy_or_move.assert_not_called()
 
 
 class TestModelNameValidation:

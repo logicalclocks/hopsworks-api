@@ -54,6 +54,7 @@ class TestConstants:
     def test_model_registry_constants(self):
         # Arrange
         model_registry = {
+            "HOPSFS_MOUNT_PREFIX_BASE": "/mnt/hopsfs",
             "HOPSFS_MOUNT_PREFIX": "/hopsfs/",
             "MODELS_DATASET": "Models",
             "MODEL_FILES_DIR_NAME": "Files",

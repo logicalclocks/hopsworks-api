@@ -144,6 +144,17 @@ class ModelEngine:
             n_files += 1
             update_upload_progress(n_dirs=n_dirs, n_files=n_files)
 
+    def _normalize_hopsfs_mount_path(self, model_path):
+        if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX):
+            return model_path.replace(
+                constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, "", 1
+            )
+        if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE):
+            return model_path.replace(
+                constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE, "", 1
+            )
+        return None
+
     def _download_model_from_hopsfs_recursive(
         self,
         from_hdfs_model_path: str,
@@ -249,11 +260,10 @@ class ModelEngine:
     ):
         """Save model files from a local path. The local path can be on hopsfs mount."""
         # check hopsfs mount
-        if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX):
+        from_hdfs_model_path = self._normalize_hopsfs_mount_path(model_path)
+        if from_hdfs_model_path is not None:
             self._copy_or_move_hopsfs_model(
-                from_hdfs_model_path=model_path.replace(
-                    constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, ""
-                ),
+                from_hdfs_model_path=from_hdfs_model_path,
                 to_model_files_path=model_instance.model_files_path,
                 keep_original_files=keep_original_files,
                 update_upload_progress=update_upload_progress,

@@ -155,6 +155,7 @@ class MODEL:
 
 
 class MODEL_REGISTRY:
+    HOPSFS_MOUNT_PREFIX_BASE = "/mnt/hopsfs"
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
     MODELS_DATASET = "Models"
     MODEL_FILES_DIR_NAME = "Files"
