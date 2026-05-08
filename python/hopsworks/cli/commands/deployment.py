@@ -327,8 +327,8 @@ def deployment_logs(
     component: str,
     tail: int,
     source: str,
-    since: "str | None",
-    until: "str | None",
+    since: str | None,
+    until: str | None,
     follow: bool,
     interval: float,
 ) -> None:

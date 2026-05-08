@@ -12,6 +12,7 @@ hive`` / ``--catalog system`` for the built-in catalogs.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -143,10 +144,9 @@ def _execute(
                 f"Output truncated to {limit} rows. Pass --limit 0 for unlimited."
             )
     finally:
-        try:
+        # close-time errors are non-fatal
+        with contextlib.suppress(Exception):
             conn.close()
-        except Exception:  # noqa: BLE001 - close-time errors are non-fatal
-            pass
 
 
 # region: query -----------------------------------------------------------

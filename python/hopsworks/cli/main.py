@@ -11,10 +11,14 @@ like ``--help`` measurably slow (~2 s+); deferring keeps them snappy.
 from __future__ import annotations
 
 import importlib
-from typing import Iterable
+from typing import TYPE_CHECKING
 
 import click
 from hopsworks.cli import config, output
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 # Map ``<command-name> -> "<module>:<attribute>"``. The attribute is the

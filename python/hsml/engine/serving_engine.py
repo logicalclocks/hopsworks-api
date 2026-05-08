@@ -37,12 +37,12 @@ from tqdm.auto import tqdm
 
 
 def _render_chunk(chunk) -> str:
-    """Render a single log chunk's content with a trailing newline.
+    r"""Render a single log chunk's content with a trailing newline.
 
     Adding a newline here (rather than relying on the upstream pipeline) lets
     ``read_logs(...)`` produce output you can pipe straight to ``grep`` or
     ``awk`` without each block getting glued to the next one. We only add the
-    separator when content does not already end in ``\\n`` so we never
+    separator when content does not already end in ``\n`` so we never
     double-space lines that already carry their own terminator.
     """
     content = chunk.content or ""
@@ -594,9 +594,9 @@ class ServingEngine:
         component: str = "predictor",
         tail: int = 100,
         source: str = "opensearch",
-        since: "str | None" = None,
-        until: "str | None" = None,
-        pod: "str | None" = None,
+        since: str | None = None,
+        until: str | None = None,
+        pod: str | None = None,
     ) -> str:
         """Return deployment logs as a single plain-text string.
 
@@ -620,8 +620,8 @@ class ServingEngine:
         component: str = "predictor",
         interval: float = 2.0,
         source: str = "opensearch",
-        since: "str | None" = "now",
-        timeout: "float | None" = None,
+        since: str | None = "now",
+        timeout: float | None = None,
         stop_on_status=None,
     ):
         """Yield only newly observed log chunks as plain text.
@@ -639,12 +639,12 @@ class ServingEngine:
         # OpenSearch documents are uniquely identified by ``doc_id`` and
         # ordered by ``timestamp``; this state suffices to dedupe across
         # successive overlapping windows.
-        seen_doc_ids: "set[str]" = set()
-        last_timestamp: "str | None" = since if (since and since != "now") else None
+        seen_doc_ids: set[str] = set()
+        last_timestamp: str | None = since if (since and since != "now") else None
         # Kubernetes path has no doc id / timestamp, so dedupe by content
         # hash instead. Bound the set so a chatty deployment doesn't keep
         # the dedupe state growing forever.
-        seen_hashes: "set[int]" = set()
+        seen_hashes: set[int] = set()
         seen_hashes_cap = 4096
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
@@ -709,10 +709,10 @@ class ServingEngine:
 
     @staticmethod
     def _format_log_chunks(chunks) -> str:
-        """Merge a list of ``DeployableComponentLogs`` into one plain string.
+        r"""Merge a list of ``DeployableComponentLogs`` into one plain string.
 
         When more than one distinct ``instance_name`` is present, prefix each
-        block with ``==> <instance> <==\\n`` (tail-style). Single-instance
+        block with ``==> <instance> <==\n`` (tail-style). Single-instance
         responses join contents directly so ``read_logs(...)`` round-trips
         cleanly through grep/awk.
         """
@@ -722,7 +722,7 @@ class ServingEngine:
         if len(instance_names) <= 1:
             return "".join(_render_chunk(c) for c in chunks)
         # Group chronologically per instance, then concatenate.
-        by_instance: "dict[str, list]" = {}
+        by_instance: dict[str, list] = {}
         for c in chunks:
             by_instance.setdefault(c.instance_name or "", []).append(c)
         parts = []

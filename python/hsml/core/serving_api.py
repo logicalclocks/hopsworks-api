@@ -369,10 +369,10 @@ class ServingApi:
         deployment_instance: deployment.Deployment,
         component: str,
         tail: int,
-        source: "str | None" = None,
-        since: "str | None" = None,
-        until: "str | None" = None,
-        pod: "str | None" = None,
+        source: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        pod: str | None = None,
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 

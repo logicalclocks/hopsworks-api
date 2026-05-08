@@ -19,11 +19,15 @@ in the source project; a 403 is reported as a ``PermissionError``.
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import project_api
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def _resolve_target_project_id(target_project: str | int) -> int:

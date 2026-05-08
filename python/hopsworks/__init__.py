@@ -450,12 +450,12 @@ def logout():
     _project_api = None
     _secrets_api = None
     _env_vars_api = None
-    _hw_connection = Connection.connection
+    _hw_connection = _load_connection_class().connection
 
 
 def _is_connection_active():
     global _hw_connection
-    return isinstance(_hw_connection, Connection)
+    return isinstance(_hw_connection, _load_connection_class())
 
 
 @public

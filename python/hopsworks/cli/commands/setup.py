@@ -199,7 +199,9 @@ def _wait_for_key(
         body = resp.json()
         if not body.get("timeout"):
             return body
-    raise click.ClickException(
+    # click.ClickException isn't on ruff's known no-return allow-list, so it
+    # would flag this otherwise-terminating path as a missing explicit return.
+    raise click.ClickException(  # noqa: RET503
         "Timed out waiting for authentication. Re-run `hops setup` to try again."
     )
 
@@ -275,11 +277,11 @@ def setup_cmd(
 
     if cfg.internal:
         _handle_internal(cfg)
-        return
+        return None
 
     if not force and cfg.is_authenticated():
         _verify_and_report(cfg)
-        return
+        return None
 
     host = cfg.host or click.prompt("Hopsworks host", default=config.DEFAULT_HOST)
     host = auth.normalize_host(host)
@@ -352,6 +354,7 @@ def setup_cmd(
         raise click.ClickException("Server did not return an API key.")
 
     _finalize_setup(host, api_key, project, server_key_name, cfg)
+    return None
 
 
 def _finalize_setup(

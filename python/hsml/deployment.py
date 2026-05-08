@@ -308,11 +308,11 @@ class Deployment:
         component: str = "predictor",
         tail: int = 100,
         source: str = "opensearch",
-        since: "str | None" = None,
-        until: "str | None" = None,
-        pod: "str | None" = None,
+        since: str | None = None,
+        until: str | None = None,
+        pod: str | None = None,
     ) -> str:
-        """Return deployment logs as a single plain-text string.
+        r"""Return deployment logs as a single plain-text string.
 
         Programmatic counterpart to :py:meth:`get_logs`. Suitable for
         agents and scripts: never prints, never short-circuits on
@@ -360,9 +360,9 @@ class Deployment:
         component: str = "predictor",
         interval: float = 2.0,
         source: str = "opensearch",
-        since: "str | None" = "now",
-        timeout: "float | None" = None,
-        stop_on_status: "str | None" = None,
+        since: str | None = "now",
+        timeout: float | None = None,
+        stop_on_status: str | None = None,
     ):
         """Yield only newly observed log chunks as plain text.
 
