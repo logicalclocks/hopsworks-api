@@ -1,3 +1,4 @@
+# ruff: noqa: INP001
 """Exploratory data analysis for a Hopsworks Feature View (PySpark).
 
 Same EDA as fv-eda.py but uses Spark so it scales to datasets that don't
@@ -103,9 +104,7 @@ def _list_stats(df: DataFrame, name: str) -> dict[str, object]:
 
 def _temporal_range(df: DataFrame, name: str) -> tuple[object, object]:
     quoted = f"`{name}`"
-    row = df.agg(
-        F.min(quoted).alias("min"), F.max(quoted).alias("max")
-    ).collect()[0]
+    row = df.agg(F.min(quoted).alias("min"), F.max(quoted).alias("max")).collect()[0]
     return row["min"], row["max"]
 
 
@@ -116,12 +115,11 @@ def analyze(df: DataFrame) -> None:
     print(f"\nRows: {n_rows:,}    Columns: {n_cols}")
     print("=" * 80)
 
-    null_counts = df.select(
-        [
-            F.sum(F.col(c).isNull().cast("int")).alias(c)
-            for c in df.columns
-        ]
-    ).collect()[0].asDict()
+    null_counts = (
+        df.select([F.sum(F.col(c).isNull().cast("int")).alias(c) for c in df.columns])
+        .collect()[0]
+        .asDict()
+    )
 
     for field in df.schema.fields:
         name = field.name
@@ -146,8 +144,14 @@ def analyze(df: DataFrame) -> None:
             )
         elif isinstance(dtype, _NUMERIC_TYPES) and sem == "numerical":
             stats = _numeric_stats(df, name)
+
             def fmt(x):
-                return f"{x:.4g}" if isinstance(x, (int, float)) and x is not None else str(x)
+                return (
+                    f"{x:.4g}"
+                    if isinstance(x, (int, float)) and x is not None
+                    else str(x)
+                )
+
             print(
                 f"  mean={fmt(stats['mean'])}  std={fmt(stats['std'])}  "
                 f"min={fmt(stats['min'])}  p25={fmt(stats['p25'])}  "

@@ -89,9 +89,7 @@ def build_spark(
     builder = SparkSession.builder.appName(app_name)
     if is_spark_connect_env():
         builder = builder.config("spark.sql.extensions", _DELTA_EXTENSIONS)
-        builder = builder.config(
-            "spark.sql.catalog.spark_catalog", _DELTA_CATALOG
-        )
+        builder = builder.config("spark.sql.catalog.spark_catalog", _DELTA_CATALOG)
     for key, value in (extra_configs or {}).items():
         builder = builder.config(key, value)
     return builder.getOrCreate()

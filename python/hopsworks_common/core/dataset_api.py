@@ -517,7 +517,9 @@ class DatasetApi:
         self,
         path: str,
         target_project: str,
-        permission: Literal["READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"] = "READ_ONLY",
+        permission: Literal[
+            "READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"
+        ] = "READ_ONLY",
     ) -> None:
         """Share a dataset from the active project with another project.
 

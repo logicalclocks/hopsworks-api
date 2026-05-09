@@ -1,3 +1,4 @@
+# ruff: noqa: INP001
 """Exploratory data analysis for a Hopsworks Feature View (Polars).
 
 Usage:
@@ -20,9 +21,16 @@ import polars as pl
 
 
 _NUMERIC_DTYPES = (
-    pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-    pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-    pl.Float32, pl.Float64,
+    pl.Int8,
+    pl.Int16,
+    pl.Int32,
+    pl.Int64,
+    pl.UInt8,
+    pl.UInt16,
+    pl.UInt32,
+    pl.UInt64,
+    pl.Float32,
+    pl.Float64,
 )
 _TEMPORAL_DTYPES = (pl.Date, pl.Datetime, pl.Time, pl.Duration)
 _LIST_DTYPES = (pl.List, pl.Array)
@@ -48,7 +56,7 @@ def _semantic_type(dtype: pl.DataType, n_unique: int, n_rows: int) -> str:
 def _describe_numeric(series: pl.Series) -> dict[str, float | None]:
     s = series.drop_nulls()
     if s.len() == 0:
-        return {k: None for k in ("mean", "std", "min", "p25", "p50", "p75", "max")}
+        return dict.fromkeys(("mean", "std", "min", "p25", "p50", "p75", "max"))
     return {
         "mean": float(s.mean()),
         "std": float(s.std()) if s.len() > 1 else 0.0,
@@ -105,7 +113,9 @@ def analyze(df: pl.DataFrame) -> None:
 
         if isinstance(dtype, _LIST_DTYPES):
             stats = _describe_list(col)
-            print(f"  list lengths: avg={stats['avg_len']}  min={stats['min_len']}  max={stats['max_len']}")
+            print(
+                f"  list lengths: avg={stats['avg_len']}  min={stats['min_len']}  max={stats['max_len']}"
+            )
         elif isinstance(dtype, _NUMERIC_DTYPES) and sem == "numerical":
             stats = _describe_numeric(col)
             print(

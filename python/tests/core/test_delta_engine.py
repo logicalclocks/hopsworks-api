@@ -865,9 +865,7 @@ class TestDeltaEngine:
 
         # Assert: the engine read ``_delta_log/*.json`` instead of routing
         # through ``DESCRIBE HISTORY`` (which would hit the Hive Metastore).
-        mock_spark.read.json.assert_called_once_with(
-            "s3://some/path/_delta_log/*.json"
-        )
+        mock_spark.read.json.assert_called_once_with("s3://some/path/_delta_log/*.json")
         assert result == "result"
         mocker_get_delta_feature_group_commit.assert_called_once_with(
             mock_history_data[1], mock_history_data[0]

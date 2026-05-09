@@ -652,24 +652,28 @@ class ServingEngine:
         # so subsequent polls are time-bounded the same way.
         if since == "now":
             from datetime import datetime, timezone
-            last_timestamp = (
-                datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+            last_timestamp = datetime.now(tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S.%fZ"
             )
 
         deadline = (time.monotonic() + timeout) if timeout else None
 
         while True:
-            chunks = self._serving_api.get_logs(
-                deployment_instance,
-                component,
-                # Bounded per-poll fetch. Larger values just mean more work
-                # for the dedupe pass; the SDK still yields only what's new.
-                tail=200,
-                source=source,
-                since=last_timestamp,
-                until=None,
-                pod=None,
-            ) or []
+            chunks = (
+                self._serving_api.get_logs(
+                    deployment_instance,
+                    component,
+                    # Bounded per-poll fetch. Larger values just mean more work
+                    # for the dedupe pass; the SDK still yields only what's new.
+                    tail=200,
+                    source=source,
+                    since=last_timestamp,
+                    until=None,
+                    pod=None,
+                )
+                or []
+            )
 
             new_chunks = []
             for chunk in chunks:

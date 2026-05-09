@@ -748,10 +748,13 @@ class TestDeployment:
 
     # read_logs / tail_logs (programmatic, never print)
 
-    def _make_chunk(self, instance_name="i-0", content="line\n", timestamp=None, doc_id=None):
+    def _make_chunk(
+        self, instance_name="i-0", content="line\n", timestamp=None, doc_id=None
+    ):
         # Pure Python stand-in for DeployableComponentLogs — only the
         # attributes the engine touches are needed.
         from types import SimpleNamespace
+
         return SimpleNamespace(
             instance_name=instance_name,
             content=content,
@@ -759,14 +762,17 @@ class TestDeployment:
             doc_id=doc_id,
         )
 
-    def test_read_logs_returns_string_no_capsys_output(self, mocker, backend_fixtures, capsys):
+    def test_read_logs_returns_string_no_capsys_output(
+        self, mocker, backend_fixtures, capsys
+    ):
         # Arrange
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
-        )
-        chunks = [self._make_chunk(content="hello\n"), self._make_chunk(content="world")]
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        chunks = [
+            self._make_chunk(content="hello\n"),
+            self._make_chunk(content="world"),
+        ]
         mock_api = mocker.patch(
             "hsml.core.serving_api.ServingApi.get_logs", return_value=chunks
         )
@@ -781,12 +787,12 @@ class TestDeployment:
         assert captured.out == "" and captured.err == ""
         mock_api.assert_called_once()
 
-    def test_read_logs_forwards_source_and_time_window_to_api(self, mocker, backend_fixtures):
+    def test_read_logs_forwards_source_and_time_window_to_api(
+        self, mocker, backend_fixtures
+    ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
-        )
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
         mock_api = mocker.patch(
             "hsml.core.serving_api.ServingApi.get_logs", return_value=[]
         )
@@ -808,12 +814,12 @@ class TestDeployment:
         # tail goes through positionally per ServingApi.get_logs signature.
         assert mock_api.call_args.args[2] == 200
 
-    def test_read_logs_multiple_instances_get_block_headers(self, mocker, backend_fixtures):
+    def test_read_logs_multiple_instances_get_block_headers(
+        self, mocker, backend_fixtures
+    ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
-        )
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
         mocker.patch(
             "hsml.core.serving_api.ServingApi.get_logs",
             return_value=[
@@ -828,21 +834,29 @@ class TestDeployment:
         # would not include any header.
         assert "==> pod-A <==" in out and "==> pod-B <==" in out
 
-    def test_tail_logs_yields_only_new_chunks_dedup_doc_id(self, mocker, backend_fixtures):
+    def test_tail_logs_yields_only_new_chunks_dedup_doc_id(
+        self, mocker, backend_fixtures
+    ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
-        )
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
         # First poll: two new entries. Second poll: doc_id "x1" already
         # seen, doc_id "x3" is new → only "x3" should be yielded.
         first = [
-            self._make_chunk(content="a\n", timestamp="2026-05-08T00:00:01Z", doc_id="x1"),
-            self._make_chunk(content="b\n", timestamp="2026-05-08T00:00:02Z", doc_id="x2"),
+            self._make_chunk(
+                content="a\n", timestamp="2026-05-08T00:00:01Z", doc_id="x1"
+            ),
+            self._make_chunk(
+                content="b\n", timestamp="2026-05-08T00:00:02Z", doc_id="x2"
+            ),
         ]
         second = [
-            self._make_chunk(content="a\n", timestamp="2026-05-08T00:00:01Z", doc_id="x1"),
-            self._make_chunk(content="c\n", timestamp="2026-05-08T00:00:03Z", doc_id="x3"),
+            self._make_chunk(
+                content="a\n", timestamp="2026-05-08T00:00:01Z", doc_id="x1"
+            ),
+            self._make_chunk(
+                content="c\n", timestamp="2026-05-08T00:00:03Z", doc_id="x3"
+            ),
         ]
         mocker.patch(
             "hsml.core.serving_api.ServingApi.get_logs",
@@ -869,12 +883,13 @@ class TestDeployment:
     def test_tail_logs_dedup_hash_for_kubernetes_source(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
-        )
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
         # No timestamp / doc_id → engine falls back to (instance, content) hash.
         first = [self._make_chunk(content="boot\n")]
-        second = [self._make_chunk(content="boot\n"), self._make_chunk(content="ready\n")]
+        second = [
+            self._make_chunk(content="boot\n"),
+            self._make_chunk(content="ready\n"),
+        ]
         mocker.patch(
             "hsml.core.serving_api.ServingApi.get_logs",
             side_effect=[first, second],
@@ -894,12 +909,8 @@ class TestDeployment:
     def test_tail_logs_stops_on_status(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
-        )
-        mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs", return_value=[]
-        )
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hsml.core.serving_api.ServingApi.get_logs", return_value=[])
         # First state probe returns Running, second returns Stopped → loop exits.
         states = [
             mocker.MagicMock(status="Running"),
@@ -919,9 +930,7 @@ class TestDeployment:
         # users who depend on its print behaviour are not silently broken.
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
-        )
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
 
         class MockLog:
             def __repr__(self):

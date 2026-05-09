@@ -135,11 +135,7 @@ def _execute(
         headers = _column_names(cur)
         rows = list(_iter_rows(cur, limit))
         _render_rows(headers, rows)
-        if (
-            limit
-            and len(rows) >= limit
-            and not output.JSON_MODE
-        ):
+        if limit and len(rows) >= limit and not output.JSON_MODE:
             output.warn(
                 f"Output truncated to {limit} rows. Pass --limit 0 for unlimited."
             )

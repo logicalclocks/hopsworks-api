@@ -72,6 +72,7 @@ __all__ = ["connection", "udf"]
 # ``sys.modules`` for ``hopsworks.hsfs`` / ``hopsworks.hsml`` aliases on first
 # touch, matching the previous behaviour of the eager imports.
 
+
 def _load_hsfs():  # type: ignore[no-untyped-def]
     mod = importlib.import_module("hsfs")
     sys.modules.setdefault("hopsworks.hsfs", mod)
@@ -86,11 +87,13 @@ def _load_hsml():  # type: ignore[no-untyped-def]
 
 def _load_connection_class():  # type: ignore[no-untyped-def]
     from hopsworks.connection import Connection
+
     return Connection
 
 
 def _load_build_spark():  # type: ignore[no-untyped-def]
     from hopsworks.spark import build_spark  # noqa: F401
+
     return build_spark
 
 

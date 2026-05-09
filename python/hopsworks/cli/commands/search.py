@@ -103,7 +103,9 @@ def search_ls(
                 + [_row("feature", r) for r in result.features]
             )
         elif doc_type == "feature_group":
-            rows = [_row("feature_group", r) for r in api.feature_groups(**common_kwargs)]
+            rows = [
+                _row("feature_group", r) for r in api.feature_groups(**common_kwargs)
+            ]
         elif doc_type == "feature_view":
             rows = [_row("feature_view", r) for r in api.feature_views(**common_kwargs)]
         elif doc_type == "training_dataset":
@@ -121,9 +123,7 @@ def search_ls(
         output.info("No results in %s.", scope)
         return
 
-    output.print_table(
-        ["KIND", "NAME", "VERSION", "PROJECT", "DESCRIPTION"], rows
-    )
+    output.print_table(["KIND", "NAME", "VERSION", "PROJECT", "DESCRIPTION"], rows)
 
 
 def _row(kind: str, item: Any) -> list[Any]:

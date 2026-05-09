@@ -35,11 +35,7 @@ def _user_label(value: Any) -> str:
             or f"{value.get('firstname', '')} {value.get('lastname', '')}".strip()
             or "-"
         )
-    return (
-        getattr(value, "username", None)
-        or getattr(value, "email", None)
-        or "-"
-    )
+    return getattr(value, "username", None) or getattr(value, "email", None) or "-"
 
 
 def _ts_label(value: Any) -> str:

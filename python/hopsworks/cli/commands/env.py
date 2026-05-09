@@ -45,7 +45,10 @@ def env_list(ctx: click.Context) -> None:
         return
     output.print_table(
         ["NAME", "PYTHON_VERSION", "DESCRIPTION"],
-        [[r["name"] or "", r["python_version"] or "", r["description"] or ""] for r in rows],
+        [
+            [r["name"] or "", r["python_version"] or "", r["description"] or ""]
+            for r in rows
+        ],
     )
 
 
@@ -147,6 +150,4 @@ def env_install(
     if output.JSON_MODE:
         output.print_json({"environment": env_name, "installed": requirements_file})
     else:
-        output.success(
-            f"Installed '{requirements_file}' into environment '{env_name}'"
-        )
+        output.success(f"Installed '{requirements_file}' into environment '{env_name}'")
