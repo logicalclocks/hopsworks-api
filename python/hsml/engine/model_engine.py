@@ -149,10 +149,15 @@ class ModelEngine:
             return model_path.replace(
                 constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, "", 1
             )
-        if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE):
-            return model_path.replace(
-                constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE, "", 1
-            )
+        # /mnt/hopsfs/ is rooted at /Projects/, so the on-disk path is
+        # /mnt/hopsfs/<projectName>/<rest> — strip the project segment too
+        # so the result is project-relative, matching the /hopsfs/ branch.
+        base = constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE
+        if model_path.startswith(base + "/"):
+            rest = model_path[len(base) + 1 :]
+            first_slash = rest.find("/")
+            if first_slash != -1 and first_slash + 1 < len(rest):
+                return rest[first_slash + 1 :]
         return None
 
     def _download_model_from_hopsfs_recursive(

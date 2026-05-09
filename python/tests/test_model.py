@@ -513,13 +513,22 @@ class TestModelEngine:
     @pytest.mark.parametrize(
         "model_path,expected_hdfs_path",
         [
+            # /hopsfs/ is the per-project mount: strip the prefix to get a
+            # project-relative dataset path.
             (
-                "/hopsfs/Projects/demo/Models/model.pkl",
-                "Projects/demo/Models/model.pkl",
+                "/hopsfs/Models/model.pkl",
+                "Models/model.pkl",
             ),
+            # /mnt/hopsfs/ is the cluster-wide mount rooted at /Projects/, so
+            # the path is /mnt/hopsfs/<projectName>/<rest>. Strip both segments.
             (
-                "/mnt/hopsfs/Projects/demo/Models/model.pkl",
-                "/Projects/demo/Models/model.pkl",
+                "/mnt/hopsfs/demo/Models/model.pkl",
+                "Models/model.pkl",
+            ),
+            # The actual failing case from the loadtest run on 2026-05-09.
+            (
+                "/mnt/hopsfs/demo/Resources/workflows/models/tensorflow",
+                "Resources/workflows/models/tensorflow",
             ),
         ],
     )
@@ -545,12 +554,12 @@ class TestModelEngine:
         "model_path,expected_hdfs_path",
         [
             (
-                "/hopsfs/Projects/demo/hopsfs/archive/model.pkl",
-                "Projects/demo/hopsfs/archive/model.pkl",
+                "/hopsfs/Models/hopsfs/archive/model.pkl",
+                "Models/hopsfs/archive/model.pkl",
             ),
             (
-                "/mnt/hopsfs/Projects/demo/mnt/hopsfs/archive/model.pkl",
-                "/Projects/demo/mnt/hopsfs/archive/model.pkl",
+                "/mnt/hopsfs/demo/Models/mnt/hopsfs/archive/model.pkl",
+                "Models/mnt/hopsfs/archive/model.pkl",
             ),
         ],
     )
@@ -569,12 +578,12 @@ class TestModelEngine:
         "model_path,expected_hdfs_path",
         [
             (
-                "/hopsfs/Projects/demo/Models/model.pkl",
-                "Projects/demo/Models/model.pkl",
+                "/hopsfs/Models/model.pkl",
+                "Models/model.pkl",
             ),
             (
-                "/mnt/hopsfs/Projects/demo/Models/model.pkl",
-                "/Projects/demo/Models/model.pkl",
+                "/mnt/hopsfs/demo/Models/model.pkl",
+                "Models/model.pkl",
             ),
         ],
     )
