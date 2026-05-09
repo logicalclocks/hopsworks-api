@@ -53,12 +53,14 @@ def test_deployment_predict_parses_json_data(mock_project):
 def test_deployment_logs(mock_project):
     ms = mock.MagicMock()
     deployment = mock.MagicMock()
-    deployment.get_logs.return_value = "line1\nline2"
+    deployment.read_logs.return_value = "line1\nline2"
     ms.get_deployment.return_value = deployment
     mock_project.get_model_serving.return_value = ms
     result = CliRunner().invoke(cli, ["deployment", "logs", "fraud", "--tail", "5"])
     assert result.exit_code == 0, result.output
-    deployment.get_logs.assert_called_with(component="predictor", tail=5)
+    deployment.read_logs.assert_called_with(
+        component="predictor", tail=5, source=mock.ANY, since=None, until=None
+    )
     assert "line1" in result.output
 
 
@@ -101,7 +103,9 @@ def test_job_run_with_wait(mock_project):
     mock_project.get_job_api.return_value = api
     result = CliRunner().invoke(cli, ["job", "run", "etl", "--wait"])
     assert result.exit_code == 0, result.output
-    job.run.assert_called_with(args=None, await_termination=True)
+    job.run.assert_called_with(
+        args=None, await_termination=True, start_time=None, end_time=None
+    )
 
 
 def test_job_schedule(mock_project):
@@ -112,9 +116,12 @@ def test_job_schedule(mock_project):
     mock_project.get_job_api.return_value = api
     result = CliRunner().invoke(cli, ["job", "schedule", "etl", "0 0 * * * ?"])
     assert result.exit_code == 0, result.output
-    job.schedule.assert_called_with(
-        cron_expression="0 0 * * * ?", start_time=None, end_time=None
-    )
+    # Use call_args + kwargs check rather than a full assert_called_with so the
+    # test isn't tied to every backfill/catchup option the schedule API grows.
+    kwargs = job.schedule.call_args.kwargs
+    assert kwargs["cron_expression"] == "0 0 * * * ?"
+    assert kwargs["start_time"] is None
+    assert kwargs["end_time"] is None
 
 
 def test_job_unschedule(mock_project):
@@ -159,26 +166,30 @@ def test_job_logs(mock_project):
     execution.download_logs.assert_called_once()
 
 
-# --- dataset ---------------------------------------------------------------
+# --- files (formerly `dataset`) -------------------------------------------
 
 
-def test_dataset_mkdir(mock_project):
+def test_files_mkdir(mock_project):
     api = mock.MagicMock()
     api.mkdir.return_value = "/Projects/demo/newdir"
     mock_project.get_dataset_api.return_value = api
-    result = CliRunner().invoke(cli, ["dataset", "mkdir", "/Projects/demo/newdir"])
+    result = CliRunner().invoke(cli, ["files", "mkdir", "/Projects/demo/newdir"])
     assert result.exit_code == 0, result.output
     api.mkdir.assert_called_with("/Projects/demo/newdir")
 
 
-def test_dataset_upload_strips_matching_basename(mock_project, tmp_path):
+def test_files_upload_strips_matching_basename(mock_project, tmp_path):
+    # When the destination basename equals the source filename, `files upload`
+    # strips it: the SDK's upload() takes a *parent* path and re-appends the
+    # local basename, so passing the full path through would double it
+    # (e.g. .../key.json/key.json).
     api = mock.MagicMock()
     api.upload.return_value = "Resources/key.json"
     mock_project.get_dataset_api.return_value = api
     src = tmp_path / "key.json"
     src.write_text("{}")
     result = CliRunner().invoke(
-        cli, ["dataset", "upload", str(src), "Resources/key.json"]
+        cli, ["files", "upload", str(src), "Resources/key.json"]
     )
     assert result.exit_code == 0, result.output
     api.upload.assert_called_with(
@@ -186,35 +197,33 @@ def test_dataset_upload_strips_matching_basename(mock_project, tmp_path):
     )
 
 
-def test_dataset_upload_keeps_parent_when_basename_differs(mock_project, tmp_path):
+def test_files_upload_to_directory(mock_project, tmp_path):
     api = mock.MagicMock()
     api.upload.return_value = "Resources/folder/key.json"
     mock_project.get_dataset_api.return_value = api
     src = tmp_path / "key.json"
     src.write_text("{}")
-    result = CliRunner().invoke(
-        cli, ["dataset", "upload", str(src), "Resources/folder"]
-    )
+    result = CliRunner().invoke(cli, ["files", "upload", str(src), "Resources/folder"])
     assert result.exit_code == 0, result.output
     api.upload.assert_called_with(
         local_path=str(src), upload_path="Resources/folder", overwrite=False
     )
 
 
-def test_dataset_remove(mock_project):
+def test_files_remove(mock_project):
     api = mock.MagicMock()
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(
-        cli, ["dataset", "remove", "/Projects/demo/stale", "--yes"]
+        cli, ["files", "remove", "/Projects/demo/stale", "--yes"]
     )
     assert result.exit_code == 0, result.output
     api.remove.assert_called_with("/Projects/demo/stale")
 
 
-# --- connector writes -----------------------------------------------------
+# --- datasource (formerly `connector`) writes -----------------------------
 
 
-def test_connector_create_jdbc_posts_body(mock_project):
+def test_datasource_create_jdbc_posts_body(mock_project):
     fs = mock_project.get_feature_store.return_value
     fs.id = 67
     fake_client = mock.MagicMock()
@@ -223,7 +232,7 @@ def test_connector_create_jdbc_posts_body(mock_project):
         result = CliRunner().invoke(
             cli,
             [
-                "connector",
+                "datasource",
                 "create",
                 "jdbc",
                 "mydb",
@@ -244,87 +253,31 @@ def test_connector_create_jdbc_posts_body(mock_project):
     assert {"name": "user", "value": "u"} in body["arguments"]
 
 
-def test_connector_delete_calls_rest(mock_project):
+def test_datasource_delete_calls_rest(mock_project):
     fs = mock_project.get_feature_store.return_value
     fs.id = 67
     fake_client = mock.MagicMock()
     fake_client._project_id = 119
     with mock.patch("hopsworks_common.client.get_instance", return_value=fake_client):
-        result = CliRunner().invoke(cli, ["connector", "delete", "mydb", "--yes"])
+        result = CliRunner().invoke(cli, ["datasource", "delete", "mydb", "--yes"])
     assert result.exit_code == 0, result.output
     call = fake_client._send_request.call_args
     assert call.args[0] == "DELETE"
     assert "mydb" in call.args[1]
 
 
-def test_connector_databases_delegates_to_sdk(mock_project):
+def test_datasource_databases_delegates_to_sdk(mock_project):
     fs = mock_project.get_feature_store.return_value
     ds = mock.MagicMock()
     ds.get_databases.return_value = ["db1", "db2"]
     fs.get_data_source.return_value = ds
-    result = CliRunner().invoke(cli, ["connector", "databases", "mydb"])
+    result = CliRunner().invoke(cli, ["datasource", "databases", "mydb"])
     assert result.exit_code == 0, result.output
     assert "db1" in result.output
 
 
-# --- chart -----------------------------------------------------------------
-
-
-def test_chart_list(mock_project):
-    api = mock.MagicMock()
-    api.list_charts.return_value = [
-        {"id": 1, "title": "Revenue", "description": "", "url": "/charts/r.html"}
-    ]
-    mock_project.get_chart_api.return_value = api
-    result = CliRunner().invoke(cli, ["chart", "list"])
-    assert result.exit_code == 0, result.output
-    assert "Revenue" in result.output
-
-
-def test_chart_create(mock_project):
-    api = mock.MagicMock()
-    api.create_chart.return_value = {"id": 1, "title": "Revenue"}
-    mock_project.get_chart_api.return_value = api
-    result = CliRunner().invoke(
-        cli, ["chart", "create", "Revenue", "--url", "/charts/r.html"]
-    )
-    assert result.exit_code == 0, result.output
-    api.create_chart.assert_called_once()
-
-
-def test_chart_delete(mock_project):
-    api = mock.MagicMock()
-    mock_project.get_chart_api.return_value = api
-    result = CliRunner().invoke(cli, ["chart", "delete", "1", "--yes"])
-    assert result.exit_code == 0, result.output
-    api.delete_chart.assert_called_with(1)
-
-
-def test_chart_update_requires_field(mock_project):
-    api = mock.MagicMock()
-    mock_project.get_chart_api.return_value = api
-    result = CliRunner().invoke(cli, ["chart", "update", "1"])
-    assert result.exit_code != 0
-
-
-# --- dashboard -------------------------------------------------------------
-
-
-def test_dashboard_list(mock_project):
-    api = mock.MagicMock()
-    api.list_dashboards.return_value = [{"id": 1, "name": "Ops", "charts": [{"id": 5}]}]
-    mock_project.get_dashboard_api.return_value = api
-    result = CliRunner().invoke(cli, ["dashboard", "list"])
-    assert result.exit_code == 0, result.output
-    assert "Ops" in result.output
-
-
-def test_dashboard_add_chart_delegates(mock_project):
-    api = mock.MagicMock()
-    mock_project.get_dashboard_api.return_value = api
-    result = CliRunner().invoke(cli, ["dashboard", "add-chart", "1", "--chart", "5"])
-    assert result.exit_code == 0, result.output
-    api.add_chart.assert_called_with(1, 5)
+# `chart` and `dashboard` top-level commands were removed — Superset is now
+# the single home for that workflow (see test_superset_dashboard_* below).
 
 
 # --- superset --------------------------------------------------------------

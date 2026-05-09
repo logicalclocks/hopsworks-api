@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import logging
 from unittest.mock import patch
 
 from hsfs import feature, util
@@ -35,33 +36,40 @@ class TestApplyDataIntervalDefaults:
         assert end == "2024-07-01"
         assert capsys.readouterr().out == ""
 
-    def test_fills_both_from_env_when_unset(self, capsys):
+    def test_fills_both_from_env_when_unset(self, caplog):
+        # The notice is emitted via _logger.info (deliberately not stdout, so
+        # SDK / CLI --json callers don't get a surprise line) — capture it
+        # through caplog instead of capsys.
         env = {
             "HOPS_START_TIME": "2026-01-01T00:00:00Z",
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",
         }
-        with patch.dict("os.environ", env, clear=False):
+        with caplog.at_level(logging.INFO, logger="hsfs.util"), patch.dict(
+            "os.environ", env, clear=False
+        ):
             start, end = util.apply_scheduler_time_defaults(None, None)
         assert start == "2026-01-01T00:00:00Z"
         assert end == "2026-02-01T00:00:00Z"
-        out = capsys.readouterr().out
-        assert "[hopsworks] Using scheduler-injected data interval:" in out
-        assert "start_time=2026-01-01T00:00:00Z" in out
-        assert "end_time=2026-02-01T00:00:00Z" in out
+        msg = caplog.text
+        assert "Using scheduler-injected data interval:" in msg
+        assert "start_time=2026-01-01T00:00:00Z" in msg
+        assert "end_time=2026-02-01T00:00:00Z" in msg
 
-    def test_fills_only_missing_side(self, capsys):
+    def test_fills_only_missing_side(self, caplog):
         # Only end_time is missing — start_time passes through, end_time is filled.
         env = {
             "HOPS_START_TIME": "2026-01-01T00:00:00Z",
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",
         }
-        with patch.dict("os.environ", env, clear=False):
+        with caplog.at_level(logging.INFO, logger="hsfs.util"), patch.dict(
+            "os.environ", env, clear=False
+        ):
             start, end = util.apply_scheduler_time_defaults("2024-06-01", None)
         assert start == "2024-06-01"
         assert end == "2026-02-01T00:00:00Z"
-        out = capsys.readouterr().out
-        assert "end_time=2026-02-01T00:00:00Z" in out
-        assert "start_time" not in out
+        msg = caplog.text
+        assert "end_time=2026-02-01T00:00:00Z" in msg
+        assert "start_time" not in msg
 
     def test_returns_none_when_no_env_and_no_args(self, capsys):
         # Neither env vars nor explicit args: stay None and print nothing.
