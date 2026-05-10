@@ -37,7 +37,11 @@ def _row(env: Any) -> dict[str, Any]:
 @env_group.command("list")
 @click.pass_context
 def env_list(ctx: click.Context) -> None:
-    """List Python environments in the current project."""
+    """List Python environments in the current project.
+
+    Args:
+        ctx: Click context.
+    """
     envs = _api(ctx).get_environments() or []
     rows = [_row(e) for e in envs]
     if output.JSON_MODE:
@@ -79,6 +83,12 @@ def env_clone(
     Blocks until the backend finishes provisioning. This usually takes
     several minutes — the new environment is built from the base image
     and any post-install steps run before the call returns.
+
+    Args:
+        ctx: Click context.
+        new_name: Name for the new environment.
+        source: Existing environment to clone from.
+        description: Optional description for the new environment.
     """
     output.warn(
         "Cloning '%s' to '%s' — this can take several minutes. Waiting for "
@@ -127,6 +137,11 @@ def env_install(
     Blocks until the install completes. This usually takes several
     minutes — the file is uploaded, conda/pip resolves the dependencies,
     and the resulting libraries are committed to the environment image.
+
+    Args:
+        ctx: Click context.
+        env_name: Environment to install into.
+        requirements_file: Path to a requirements.txt file.
     """
     api = _api(ctx)
     try:

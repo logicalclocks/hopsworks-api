@@ -100,7 +100,11 @@ class ShareApi:
             raise
 
     def unshare_feature_store(self, target_project: str | int) -> None:
-        """Revoke a feature-store-level share with another project."""
+        """Revoke a feature-store-level share with another project.
+
+        Parameters:
+            target_project: Project name or numeric id whose share is being revoked.
+        """
         target_id = _resolve_target_project_id(target_project)
         _client = client.get_instance()
         path_params = [
@@ -184,6 +188,9 @@ class ShareApi:
         the whole feature store was shared rather than an individual
         feature group).
 
+        Returns:
+            One dict per share, mirroring the backend payload above.
+
         Raises:
             PermissionError: If the caller lacks Data Owner in the source
                 project.
@@ -218,6 +225,12 @@ class ShareApi:
         columns were shared), and ``features`` (the column whitelist
         when not shared entirely; empty/null otherwise).
 
+        Parameters:
+            feature_group_id: Numeric feature-group id.
+
+        Returns:
+            One dict per share, mirroring the backend payload above.
+
         Raises:
             PermissionError: If the caller lacks Data Owner in the source
                 project.
@@ -246,7 +259,12 @@ class ShareApi:
     def unshare_feature_group(
         self, feature_group_id: int, target_project: str | int
     ) -> None:
-        """Revoke a feature-group-level share with another project."""
+        """Revoke a feature-group-level share with another project.
+
+        Parameters:
+            feature_group_id: Numeric feature-group id.
+            target_project: Project name or numeric id whose share is being revoked.
+        """
         target_id = _resolve_target_project_id(target_project)
         _client = client.get_instance()
         path_params = [

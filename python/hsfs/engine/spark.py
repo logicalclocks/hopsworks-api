@@ -421,24 +421,23 @@ class Engine:
                 nullable_schema = copy.deepcopy(lowercase_dataframe.schema)
                 for struct_field in nullable_schema:
                     struct_field.nullable = True
-                # Prefer the RDD round-trip on classic PySpark — ``DataFrame.to()``
-                # only reconciles names/casts and silently keeps the source
-                # nullability when the column has no NULL rows, which leaves
-                # ``nullable=False`` columns unchanged and breaks Hudi/Delta
-                # writers downstream. ``createDataFrame(rdd, schema)`` rebuilds
-                # the plan so the new nullability sticks. Spark Connect has no
-                # ``.rdd`` accessor; fall back to ``.to()`` there and accept
-                # the limitation (Connect users should land on already-nullable
-                # frames anyway).
-                connect_df = type(lowercase_dataframe).__module__.startswith(
-                    "pyspark.sql.connect"
+                # Relax every column to nullable=True without using ``.rdd``
+                # (Spark Connect has no ``.rdd`` accessor — see the dedicated
+                # regression test ``test_convert_to_default_dataframe_does_not_call_rdd``)
+                # and without using ``DataFrame.to(schema)`` alone (it only
+                # reconciles names/casts and keeps the source nullability when
+                # the column has no NULL rows, leaving ``nullable=False`` intact
+                # and breaking Hudi/Delta writers downstream).
+                #
+                # Trick: ``unionByName`` widens nullability — the result field
+                # is nullable iff either side is. Unioning the frame with an
+                # empty all-nullable frame of the same schema therefore
+                # rebuilds the plan with every column nullable=True, on both
+                # classic PySpark and Spark Connect.
+                empty_nullable = self._spark_session.createDataFrame(
+                    [], nullable_schema
                 )
-                if not connect_df:
-                    lowercase_dataframe = self._spark_session.createDataFrame(
-                        lowercase_dataframe.rdd, nullable_schema
-                    )
-                elif hasattr(lowercase_dataframe, "to"):
-                    lowercase_dataframe = lowercase_dataframe.to(nullable_schema)
+                lowercase_dataframe = empty_nullable.unionByName(lowercase_dataframe)
 
             return lowercase_dataframe
         if dataframe == "spine":

@@ -229,6 +229,14 @@ def job_run(
     SDK and surface inside the job as ``HOPS_START_TIME`` /
     ``HOPS_END_TIME``. Useful when you want to nudge a single run to
     consume a specific data window without creating a schedule.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        app_args: Argument string passed to this execution.
+        wait: Block until the execution terminates.
+        start_time: ISO timestamp for ``HOPS_START_TIME``.
+        end_time: ISO timestamp for ``HOPS_END_TIME``.
     """
     if end_time is not None and start_time is None:
         raise click.UsageError("--end-time requires --start-time.")
@@ -290,6 +298,14 @@ def job_backfill(
     ``HOPS_END_TIME`` env vars on the execution); the difference is that
     both timestamps are required, signalling intent to backfill a fixed
     historical interval rather than a normal one-off run.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        start_time: ISO timestamp for the start of the backfill window.
+        end_time: ISO timestamp for the end of the backfill window.
+        app_args: Argument string passed to this execution.
+        wait: Block until the execution terminates.
     """
     if end_time <= start_time:
         raise click.UsageError("--end-time must be strictly after --start-time.")
@@ -474,6 +490,18 @@ def job_schedule(
     ``--end-offset-seconds`` (relative to the fire time). ``--catchup``
     replays missed intervals after an outage; ``--max-catchup-runs``
     caps how many missed intervals are replayed.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        cron: Quartz cron expression.
+        start_time: ISO timestamp for the first trigger.
+        end_time: ISO timestamp for the last trigger.
+        start_offset_seconds: Per-fire offset for ``HOPS_START_TIME``.
+        end_offset_seconds: Per-fire offset for ``HOPS_END_TIME``.
+        catchup: Replay missed fires on recovery.
+        max_active_runs: Upper bound on concurrent executions.
+        max_catchup_runs: Upper bound on missed intervals to replay during catchup.
     """
     job = _get_job(ctx, name)
     try:

@@ -198,6 +198,15 @@ def trino_query(
 
     Provide the SQL as a positional argument, or use ``-f`` to read from a
     file, or ``-i`` to read from stdin (useful in shell pipelines).
+
+    Args:
+        ctx: Click context.
+        sql: SQL string passed positionally.
+        sql_file: Path to a file containing SQL.
+        from_stdin: Read SQL from standard input.
+        catalog: Trino catalog override.
+        schema: Trino schema override.
+        limit: Soft cap on rows printed.
     """
     sources = [bool(sql), bool(sql_file), bool(from_stdin)]
     if sum(sources) != 1:
@@ -219,7 +228,11 @@ def trino_query(
 @trino_group.command("catalogs")
 @click.pass_context
 def trino_catalogs(ctx: click.Context) -> None:
-    """List Trino catalogs visible to the current user."""
+    """List Trino catalogs visible to the current user.
+
+    Args:
+        ctx: Click context.
+    """
     _execute(ctx, "SHOW CATALOGS", catalog=None, schema=None, limit=0)
 
 
@@ -227,7 +240,12 @@ def trino_catalogs(ctx: click.Context) -> None:
 @click.argument("catalog")
 @click.pass_context
 def trino_schemas(ctx: click.Context, catalog: str) -> None:
-    """List schemas in CATALOG."""
+    """List schemas in CATALOG.
+
+    Args:
+        ctx: Click context.
+        catalog: Trino catalog name.
+    """
     _execute(ctx, f"SHOW SCHEMAS FROM {catalog}", catalog=None, schema=None, limit=0)
 
 
@@ -238,6 +256,10 @@ def trino_tables(ctx: click.Context, target: str) -> None:
     """List tables in TARGET (``<catalog>.<schema>`` or just ``<schema>``).
 
     When TARGET has no dot the active project's default catalog is assumed.
+
+    Args:
+        ctx: Click context.
+        target: ``<catalog>.<schema>`` or just ``<schema>``.
     """
     if "." in target:
         cat, sch = target.split(".", 1)
@@ -255,6 +277,10 @@ def trino_describe(ctx: click.Context, table_ref: str) -> None:
     """Describe TABLE_REF (``<catalog>.<schema>.<table>`` or ``<schema>.<table>``).
 
     Output is one row per column with name, type, extra-info, and comment.
+
+    Args:
+        ctx: Click context.
+        table_ref: ``<catalog>.<schema>.<table>`` or ``<schema>.<table>``.
     """
     parts = table_ref.split(".")
     if len(parts) not in (2, 3):
@@ -270,7 +296,11 @@ def trino_describe(ctx: click.Context, table_ref: str) -> None:
 @trino_group.command("info")
 @click.pass_context
 def trino_info(ctx: click.Context) -> None:
-    """Show the host/port/user the CLI would connect with."""
+    """Show the host/port/user the CLI would connect with.
+
+    Args:
+        ctx: Click context.
+    """
     api = _api(ctx)
     try:
         host = api.get_host()

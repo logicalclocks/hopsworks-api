@@ -602,6 +602,18 @@ class ServingEngine:
 
         Programmatic counterpart to :py:meth:`get_logs`. Never prints; the
         caller decides what to do with the returned value.
+
+        Parameters:
+            deployment_instance: The deployment whose logs to read.
+            component: Which deployment component to read (``predictor``, ``transformer``).
+            tail: Maximum number of recent log entries to fetch.
+            source: Log source (``opensearch`` or ``kubernetes``).
+            since: ISO-8601 lower bound for log timestamps, if any.
+            until: ISO-8601 upper bound for log timestamps, if any.
+            pod: Specific pod name to read logs for, if any.
+
+        Returns:
+            All matching log chunks concatenated into a single string.
         """
         chunks = self._serving_api.get_logs(
             deployment_instance,
@@ -635,6 +647,18 @@ class ServingEngine:
         - ``timeout`` (seconds, optional) elapses,
         - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
         - the caller breaks out of the loop / closes the generator.
+
+        Parameters:
+            deployment_instance: The deployment whose logs to tail.
+            component: Which deployment component to tail (``predictor``, ``transformer``).
+            interval: Seconds between successive polls.
+            source: Log source (``opensearch`` or ``kubernetes``).
+            since: ISO-8601 starting cursor, or ``"now"`` for new-only.
+            timeout: Stop after this many seconds, if set.
+            stop_on_status: Stop when the deployment status matches this value.
+
+        Yields:
+            Log text observed since the previous yield.
         """
         # OpenSearch documents are uniquely identified by ``doc_id`` and
         # ordered by ``timestamp``; this state suffices to dedupe across

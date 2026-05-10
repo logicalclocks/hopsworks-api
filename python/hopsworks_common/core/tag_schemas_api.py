@@ -68,6 +68,9 @@ class TagSchemasApi:
         Parameters:
             name: Schema name.
 
+        Returns:
+            The raw schema payload from the backend.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the schema does
                 not exist.
@@ -108,6 +111,9 @@ class TagSchemasApi:
                 tag instances to entities).
             schema: JSON-Schema definition. May be a Python dict (the
                 preferred form) or a JSON string already serialized.
+
+        Returns:
+            The created schema payload as returned by the backend.
 
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
