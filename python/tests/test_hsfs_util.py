@@ -44,8 +44,9 @@ class TestApplyDataIntervalDefaults:
             "HOPS_START_TIME": "2026-01-01T00:00:00Z",
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",
         }
-        with caplog.at_level(logging.INFO, logger="hsfs.util"), patch.dict(
-            "os.environ", env, clear=False
+        with (
+            caplog.at_level(logging.INFO, logger="hsfs.util"),
+            patch.dict("os.environ", env, clear=False),
         ):
             start, end = util.apply_scheduler_time_defaults(None, None)
         assert start == "2026-01-01T00:00:00Z"
@@ -61,8 +62,9 @@ class TestApplyDataIntervalDefaults:
             "HOPS_START_TIME": "2026-01-01T00:00:00Z",
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",
         }
-        with caplog.at_level(logging.INFO, logger="hsfs.util"), patch.dict(
-            "os.environ", env, clear=False
+        with (
+            caplog.at_level(logging.INFO, logger="hsfs.util"),
+            patch.dict("os.environ", env, clear=False),
         ):
             start, end = util.apply_scheduler_time_defaults("2024-06-01", None)
         assert start == "2024-06-01"

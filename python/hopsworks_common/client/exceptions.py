@@ -309,8 +309,12 @@ class PlatformIntelligenceException(Exception):
 
     Either the cluster's LLM is not configured (admin has not set
     `PLATFORM_INTELLIGENCE_LLM_API_KEY`) or the LLM call itself failed.
-    Inspect [`reason`][hopsworks.client.exceptions.PlatformIntelligenceException.reason]
-    to disambiguate.
+    Inspect the ``reason`` attribute, which is set to one of the constants
+    below, to disambiguate.
+
+    Attributes:
+        NOT_CONFIGURED: Reason value when the cluster has no LLM API key configured.
+        INFERENCE_FAILED: Reason value when the LLM call itself failed.
     """
 
     NOT_CONFIGURED = "not_configured"
