@@ -513,13 +513,22 @@ class TestModelEngine:
     @pytest.mark.parametrize(
         "model_path,expected_hdfs_path",
         [
+            # /hopsfs/ is the per-project mount: strip the prefix to get a
+            # project-relative dataset path.
             (
-                "/hopsfs/Projects/demo/Models/model.pkl",
-                "Projects/demo/Models/model.pkl",
+                "/hopsfs/Models/model.pkl",
+                "Models/model.pkl",
             ),
+            # /mnt/hopsfs/ is the cluster-wide mount rooted at /Projects/, so
+            # the path is /mnt/hopsfs/<projectName>/<rest>. Strip both segments.
             (
-                "/mnt/hopsfs/Projects/demo/Models/model.pkl",
-                "/Projects/demo/Models/model.pkl",
+                "/mnt/hopsfs/demo/Models/model.pkl",
+                "Models/model.pkl",
+            ),
+            # The actual failing case from the loadtest run on 2026-05-09.
+            (
+                "/mnt/hopsfs/demo/Resources/workflows/models/tensorflow",
+                "Resources/workflows/models/tensorflow",
             ),
         ],
     )
@@ -545,12 +554,12 @@ class TestModelEngine:
         "model_path,expected_hdfs_path",
         [
             (
-                "/hopsfs/Projects/demo/hopsfs/archive/model.pkl",
-                "Projects/demo/hopsfs/archive/model.pkl",
+                "/hopsfs/Models/hopsfs/archive/model.pkl",
+                "Models/hopsfs/archive/model.pkl",
             ),
             (
-                "/mnt/hopsfs/Projects/demo/mnt/hopsfs/archive/model.pkl",
-                "/Projects/demo/mnt/hopsfs/archive/model.pkl",
+                "/mnt/hopsfs/demo/Models/mnt/hopsfs/archive/model.pkl",
+                "Models/mnt/hopsfs/archive/model.pkl",
             ),
         ],
     )
@@ -569,12 +578,12 @@ class TestModelEngine:
         "model_path,expected_hdfs_path",
         [
             (
-                "/hopsfs/Projects/demo/Models/model.pkl",
-                "Projects/demo/Models/model.pkl",
+                "/hopsfs/Models/model.pkl",
+                "Models/model.pkl",
             ),
             (
-                "/mnt/hopsfs/Projects/demo/Models/model.pkl",
-                "/Projects/demo/Models/model.pkl",
+                "/mnt/hopsfs/demo/Models/model.pkl",
+                "Models/model.pkl",
             ),
         ],
     )
@@ -633,6 +642,82 @@ class TestModelEngine:
             upload_configuration=upload_configuration,
         )
         copy_or_move.assert_not_called()
+
+
+class TestModelEngineExportFastSlowPath:
+    """Pin the slow/fast-path dispatch through to the leaf I/O calls.
+
+    The other TestModelEngine cases mock _copy_or_move_hopsfs_model away,
+    so they only assert on the *normalized* path passed to it. These tests
+    leave _copy_or_move_hopsfs_model intact and mock only _dataset_api and
+    _engine, so the path that actually reaches _dataset_api.get is asserted
+    directly. That's where the HWORKS-2731 regression manifested — the
+    normalizer produced a malformed path and the bug was only visible at
+    the dataset_api call site.
+    """
+
+    @pytest.mark.parametrize(
+        "model_path,expected_dataset_get_arg",
+        [
+            # /hopsfs/ — per-project mount.
+            ("/hopsfs/Resources/foo/bar.pkl", "Resources/foo/bar.pkl"),
+            # /mnt/hopsfs/ — cluster-wide mount, rooted at /Projects/.
+            ("/mnt/hopsfs/demo/Resources/foo/bar.pkl", "Resources/foo/bar.pkl"),
+            # The actual failing case from the 2026-05-09 loadtest run.
+            (
+                "/mnt/hopsfs/demo/Resources/workflows/models/tensorflow",
+                "Resources/workflows/models/tensorflow",
+            ),
+        ],
+    )
+    def test_fast_path_passes_project_relative_path_to_dataset_api(
+        self, mocker, model_path, expected_dataset_get_arg
+    ):
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+        engine = model_engine.ModelEngine()
+        engine._dataset_api.get.return_value = {
+            "attributes": {
+                "dir": False,
+                "path": "/Projects/demo/" + expected_dataset_get_arg,
+            },
+        }
+
+        engine._save_model_from_local_or_hopsfs_mount(
+            model_instance=mocker.Mock(model_files_path="Models/test/1/Files"),
+            model_path=model_path,
+            keep_original_files=True,
+            update_upload_progress=mocker.Mock(),
+        )
+
+        # Regression guard: must be project-relative — NOT "/<projectName>/<rest>".
+        engine._dataset_api.get.assert_called_once_with(expected_dataset_get_arg)
+        # Fast path: HopsFS-internal copy, no chunked HTTP upload.
+        engine._engine.copy.assert_called_once()
+        engine._engine.upload.assert_not_called()
+
+    def test_slow_path_uses_engine_upload_for_non_mount_path(self, mocker):
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+        mocker.patch("os.path.isdir", return_value=False)
+        engine = model_engine.ModelEngine()
+
+        engine._save_model_from_local_or_hopsfs_mount(
+            model_instance=mocker.Mock(model_files_path="Models/test/1/Files"),
+            model_path="/some/local/model.pkl",
+            keep_original_files=True,
+            update_upload_progress=mocker.Mock(),
+            upload_configuration={"chunk_size": 10},
+        )
+
+        # Slow path: chunked HTTP upload, no HopsFS-internal copy/move and no
+        # dataset_api lookup.
+        engine._engine.upload.assert_called_once()
+        engine._engine.copy.assert_not_called()
+        engine._engine.move.assert_not_called()
+        engine._dataset_api.get.assert_not_called()
 
 
 class TestModelNameValidation:
