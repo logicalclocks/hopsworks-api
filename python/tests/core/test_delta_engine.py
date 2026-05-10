@@ -706,6 +706,25 @@ class TestDeltaEngine:
         ]
         assert len(table.columns) == df.shape[1]
 
+    def test_prepare_df_for_delta_arrow_table_casts_float16(self):
+        # PyArrow tables (e.g. produced from polars.DataFrame.to_arrow()) must be
+        # accepted directly so the float16->float32 cast still runs; Delta Lake
+        # rejects Float16 outright.
+        import pyarrow as pa
+
+        table = pa.table(
+            {
+                "id": pa.array([1, 2], type=pa.int32()),
+                "f16": pa.array([1.5, 2.5], type=pa.float16()),
+            }
+        )
+
+        result = DeltaEngine._prepare_df_for_delta(table)
+
+        assert isinstance(result, pa.Table)
+        assert result.schema.field("f16").type == pa.float32()
+        assert result.column("f16").to_pylist() == [1.5, 2.5]
+
     def test_prepare_df_for_delta_does_not_mutate_shallow_copy_input(self):
         # Arrange
         # Simulate the real call path: convert_to_default_dataframe produces a
