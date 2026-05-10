@@ -17,6 +17,11 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+from hopsworks_common.client.exceptions import (
+    PlatformIntelligenceException,
+    RestAPIError,
+)
 from hsfs import feature, storage_connector
 from hsfs.core import data_source, data_source_api
 from hsfs.core import data_source_data as dsd
@@ -217,3 +222,97 @@ class TestDataSourceApiInferMetadata:
             ]
         }
         assert isinstance(result, im.InferredMetadata)
+
+    def _make_rest_api_error(self, error_code: int) -> RestAPIError:
+        # Build a real RestAPIError without going through HTTP — we just need
+        # the parsed-error-object path to set self.error_code to our value.
+        response = MagicMock()
+        response.json.return_value = {"errorCode": error_code, "errorMsg": "x"}
+        response.status_code = 400
+        response.reason = "Bad Request"
+        response.content = b""
+        return RestAPIError("http://test/url", response)
+
+    def test_llm_not_configured_raises_platform_intelligence_exception(self):
+        # Arrange — backend returns BrewerErrorCode.LLM_NOT_CONFIGURED (520012)
+        sc_mock = MagicMock()
+        sc_mock._featurestore_id = 1
+        sc_mock._name = "c"
+        preview_data = dsd.DataSourceData(
+            features=[feature.Feature(name="x", type="string")], preview=[]
+        )
+        api = data_source_api.DataSourceApi()
+
+        class _StubClient:
+            _project_id = 1
+
+            def _send_request(self, *_args, **_kwargs):
+                raise data_source_api._BREWER_LLM_NOT_CONFIGURED  # placeholder
+
+        # Act / Assert
+        with (
+            patch(
+                "hsfs.core.data_source_api.client.get_instance",
+                return_value=MagicMock(
+                    _project_id=1,
+                    _send_request=MagicMock(
+                        side_effect=self._make_rest_api_error(520012)
+                    ),
+                ),
+            ),
+            pytest.raises(PlatformIntelligenceException) as excinfo,
+        ):
+            api.infer_metadata(sc_mock, preview_data)
+
+        assert excinfo.value.reason == PlatformIntelligenceException.NOT_CONFIGURED
+        assert "not enabled" in str(excinfo.value).lower()
+
+    def test_inference_failed_raises_platform_intelligence_exception(self):
+        # Arrange — backend returns BrewerErrorCode.METADATA_INFERENCE_FAILED (520013)
+        sc_mock = MagicMock()
+        sc_mock._featurestore_id = 1
+        sc_mock._name = "c"
+        preview_data = dsd.DataSourceData(
+            features=[feature.Feature(name="x", type="string")], preview=[]
+        )
+        api = data_source_api.DataSourceApi()
+
+        with (
+            patch(
+                "hsfs.core.data_source_api.client.get_instance",
+                return_value=MagicMock(
+                    _project_id=1,
+                    _send_request=MagicMock(
+                        side_effect=self._make_rest_api_error(520013)
+                    ),
+                ),
+            ),
+            pytest.raises(PlatformIntelligenceException) as excinfo,
+        ):
+            api.infer_metadata(sc_mock, preview_data)
+
+        assert excinfo.value.reason == PlatformIntelligenceException.INFERENCE_FAILED
+
+    def test_unrelated_rest_error_is_not_translated(self):
+        # Arrange — any other backend error must surface as RestAPIError, not PIE.
+        sc_mock = MagicMock()
+        sc_mock._featurestore_id = 1
+        sc_mock._name = "c"
+        preview_data = dsd.DataSourceData(
+            features=[feature.Feature(name="x", type="string")], preview=[]
+        )
+        api = data_source_api.DataSourceApi()
+
+        with (
+            patch(
+                "hsfs.core.data_source_api.client.get_instance",
+                return_value=MagicMock(
+                    _project_id=1,
+                    _send_request=MagicMock(
+                        side_effect=self._make_rest_api_error(170000)
+                    ),
+                ),
+            ),
+            pytest.raises(RestAPIError),
+        ):
+            api.infer_metadata(sc_mock, preview_data)

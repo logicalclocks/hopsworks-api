@@ -22,6 +22,7 @@ import humps
 from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
+from hopsworks_common.core.variable_api import VariableApi
 from hsfs import storage_connector as sc
 
 
@@ -309,6 +310,32 @@ class DataSource:
         return self._storage_connector.get_metadata(self)
 
     @public
+    @staticmethod
+    def is_platform_intelligence_enabled() -> bool:
+        """Check whether platform intelligence (LLM-backed metadata inference) is enabled.
+
+        Reflects whether the cluster admin has configured an LLM API key via
+        `PLATFORM_INTELLIGENCE_LLM_API_KEY`.
+        Use this to gate calls to
+        [`infer_metadata`][hsfs.core.data_source.DataSource.infer_metadata]
+        before paying for a preview fetch.
+
+        Example:
+            ```python
+            fs = ...
+
+            table = fs.get_data_source("test_data_source").get_tables()[0]
+
+            if table.is_platform_intelligence_enabled():
+                inferred = table.infer_metadata()
+            ```
+
+        Returns:
+            `True` if platform intelligence is enabled, `False` otherwise.
+        """
+        return VariableApi().get_platform_intelligence_enabled()
+
+    @public
     def infer_metadata(
         self,
         preview_data: dsd.DataSourceData | None = None,
@@ -338,6 +365,9 @@ class DataSource:
 
         Returns:
             An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+
+        Raises:
+            hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.
         """
         return self._storage_connector.infer_metadata(self, preview_data=preview_data)
 

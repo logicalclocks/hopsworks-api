@@ -524,6 +524,9 @@ class StorageConnector(ABC):
 
         Returns:
             An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+
+        Raises:
+            hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.
         """
         if preview_data is None:
             preview_data = self.get_data(data_source)

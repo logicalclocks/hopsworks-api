@@ -19,6 +19,10 @@ import json
 from typing import TYPE_CHECKING
 
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import (
+    PlatformIntelligenceException,
+    RestAPIError,
+)
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_data as dsd
 from hsfs.core import inferred_metadata as im
@@ -26,6 +30,12 @@ from hsfs.core import inferred_metadata as im
 
 if TYPE_CHECKING:
     from hsfs import storage_connector as sc
+
+
+# Backend BrewerErrorCode values: range 520000 + the per-code offset, see
+# RESTCodes.java::BrewerErrorCode in hopsworks-rest-utils.
+_BREWER_LLM_NOT_CONFIGURED = 520012
+_BREWER_METADATA_INFERENCE_FAILED = 520013
 
 
 class DataSourceApi:
@@ -233,11 +243,30 @@ class DataSourceApi:
                 {"name": feature.name, "type": feature.type, "values": values}
             )
 
-        return im.InferredMetadata.from_response_json(
-            _client._send_request(
+        try:
+            response = _client._send_request(
                 "POST",
                 path_params,
                 headers={"content-type": "application/json"},
                 data=json.dumps({"columns": columns}),
             )
-        )
+        except RestAPIError as err:
+            # Translate the two backend BrewerErrorCodes the inference path
+            # can raise into a typed exception so callers don't have to
+            # string-match server messages.
+            if err.error_code == _BREWER_LLM_NOT_CONFIGURED:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.NOT_CONFIGURED,
+                    "Platform intelligence is not enabled on this Hopsworks "
+                    "cluster: the LLM API key is not configured. Ask the "
+                    "cluster admin to set PLATFORM_INTELLIGENCE_LLM_API_KEY.",
+                ) from err
+            if err.error_code == _BREWER_METADATA_INFERENCE_FAILED:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.INFERENCE_FAILED,
+                    "Platform intelligence call failed while inferring "
+                    f"metadata: {err}",
+                ) from err
+            raise
+
+        return im.InferredMetadata.from_response_json(response)

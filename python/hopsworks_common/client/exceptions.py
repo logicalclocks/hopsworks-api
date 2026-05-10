@@ -302,5 +302,24 @@ class DataSourceException(Exception):
     """Generic data source exception."""
 
 
+@public("hopsworks.client.exceptions.PlatformIntelligenceException")
+@also_available_as("hsml.client.exceptions.PlatformIntelligenceException")
+class PlatformIntelligenceException(Exception):
+    """Raised when a platform-intelligence call cannot be served.
+
+    Either the cluster's LLM is not configured (admin has not set
+    `PLATFORM_INTELLIGENCE_LLM_API_KEY`) or the LLM call itself failed.
+    Inspect [`reason`][hopsworks.client.exceptions.PlatformIntelligenceException.reason]
+    to disambiguate.
+    """
+
+    NOT_CONFIGURED = "not_configured"
+    INFERENCE_FAILED = "inference_failed"
+
+    def __init__(self, reason: str, message: str) -> None:
+        self.reason = reason
+        super().__init__(message)
+
+
 class TrinoException(Exception):
     """Generic Trino exception."""

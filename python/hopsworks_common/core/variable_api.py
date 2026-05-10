@@ -122,6 +122,17 @@ class VariableApi:
         """
         return self.get_variable("enable_flyingduck") == "true"
 
+    def get_platform_intelligence_enabled(self) -> bool:
+        """Check if the platform-intelligence LLM is configured on the backend.
+
+        Returns:
+            `True` if the cluster admin has configured an LLM API key, `False` otherwise.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self.get_variable("platformIntelligenceEnabled") == "true"
+
     def get_loadbalancer_external_domain(
         self,
         service: Literal[
