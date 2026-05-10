@@ -14,8 +14,13 @@
 #   limitations under the License.
 #
 
-from hsfs import storage_connector
-from hsfs.core import data_source
+import json
+from unittest.mock import MagicMock, patch
+
+from hsfs import feature, storage_connector
+from hsfs.core import data_source, data_source_api
+from hsfs.core import data_source_data as dsd
+from hsfs.core import inferred_metadata as im
 
 
 class TestDataSource:
@@ -113,3 +118,102 @@ class TestDataSource:
 
         # Act / Assert
         ds._update_storage_connector(None)
+
+
+class TestInferredMetadata:
+    def test_from_response_json_decamelizes(self):
+        # Arrange
+        payload = {
+            "features": [
+                {
+                    "originalName": "USER_ID",
+                    "newName": "user_id",
+                    "type": "bigint",
+                    "description": "Unique user identifier.",
+                },
+                {
+                    "originalName": "TS",
+                    "newName": "event_time",
+                    "type": "timestamp",
+                    "description": "When the event occurred.",
+                },
+            ],
+            "suggestedPrimaryKey": ["user_id"],
+            "suggestedEventTime": "event_time",
+        }
+
+        # Act
+        inferred = im.InferredMetadata.from_response_json(payload)
+
+        # Assert
+        assert len(inferred.features) == 2
+        assert inferred.features[0].original_name == "USER_ID"
+        assert inferred.features[0].new_name == "user_id"
+        assert inferred.features[0].type == "bigint"
+        assert inferred.suggested_primary_key == ["user_id"]
+        assert inferred.suggested_event_time == "event_time"
+
+
+class TestDataSourceApiInferMetadata:
+    def test_builds_columns_payload_from_preview(self):
+        # Arrange — features and a 2-row preview where each row.values is a list
+        # of {value0=col_name, value1=cell_value} pairs (mirrors the Java DTO).
+        features = [
+            feature.Feature(name="col_a", type="string"),
+            feature.Feature(name="col_b", type="bigint"),
+        ]
+        preview = [
+            {
+                "values": [
+                    {"value0": "col_a", "value1": "x1"},
+                    {"value0": "col_b", "value1": "1"},
+                ]
+            },
+            {
+                "values": [
+                    {"value0": "col_a", "value1": "x2"},
+                    {"value0": "col_b", "value1": "2"},
+                ]
+            },
+        ]
+        preview_data = dsd.DataSourceData(features=features, preview=preview)
+
+        sc = MagicMock()
+        sc._featurestore_id = 99
+        sc._name = "my_conn"
+
+        api = data_source_api.DataSourceApi()
+
+        captured: dict = {}
+
+        class _StubClient:
+            _project_id = 1
+
+            def _send_request(self, method, path_params, **kwargs):
+                captured["method"] = method
+                captured["path_params"] = path_params
+                captured["data"] = kwargs.get("data")
+                return {
+                    "features": [],
+                    "suggestedPrimaryKey": [],
+                    "suggestedEventTime": None,
+                }
+
+        # Act
+        with patch(
+            "hsfs.core.data_source_api.client.get_instance",
+            return_value=_StubClient(),
+        ):
+            result = api.infer_metadata(sc, preview_data)
+
+        # Assert — endpoint shape and per-column samples are correct
+        assert captured["method"] == "POST"
+        assert captured["path_params"][-2:] == ["data_source", "infer-metadata"]
+        body = json.loads(captured["data"])
+        assert body == {
+            "columns": [
+                {"name": "col_a", "type": "string", "values": ["x1", "x2"]},
+                {"name": "col_b", "type": "bigint", "values": ["1", "2"]},
+            ]
+        }
+        assert isinstance(result, im.InferredMetadata)

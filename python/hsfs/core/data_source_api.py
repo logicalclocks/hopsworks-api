@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from hopsworks_common import client
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_data as dsd
+from hsfs.core import inferred_metadata as im
 
 
 if TYPE_CHECKING:
@@ -195,3 +196,48 @@ class DataSourceApi:
         query_params = data_source.to_dict()
 
         return _client._send_request("GET", path_params, query_params)
+
+    def infer_metadata(
+        self,
+        storage_connector: sc.StorageConnector,
+        preview_data: dsd.DataSourceData,
+    ) -> im.InferredMetadata:
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "data_source",
+            "infer-metadata",
+        ]
+
+        # Backend Row.values is a list of Pair<String, String> rendered as
+        # {"value0": col_name, "value1": cell_value}. Pull out the cell value
+        # at column index i for each row to build per-column samples.
+        preview_rows = preview_data.preview or []
+        columns = []
+        for i, feature in enumerate(preview_data.features or []):
+            values = []
+            for row in preview_rows:
+                row_values = row.get("values") if isinstance(row, dict) else None
+                cell = (
+                    row_values[i]
+                    if isinstance(row_values, list) and i < len(row_values)
+                    else None
+                )
+                values.append(cell.get("value1") if isinstance(cell, dict) else None)
+            columns.append(
+                {"name": feature.name, "type": feature.type, "values": values}
+            )
+
+        return im.InferredMetadata.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers={"content-type": "application/json"},
+                data=json.dumps({"columns": columns}),
+            )
+        )

@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     import pandas as pd
     from hsfs.core.data_source_data import DataSourceData
     from hsfs.core.explicit_provenance import Links
+    from hsfs.core.inferred_metadata import InferredMetadata
     from hsfs.feature_group import FeatureGroup
     from hsfs.training_dataset import TrainingDataset
 
@@ -493,6 +494,40 @@ class StorageConnector(ABC):
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api.get_metadata(data_source)
+
+    @public
+    def infer_metadata(
+        self,
+        data_source: ds.DataSource,
+        preview_data: DataSourceData | None = None,
+    ) -> InferredMetadata:
+        """Use platform intelligence to infer feature metadata for a data source table.
+
+        Calls the same backend used by the "Infer metadata" button in the UI when
+        creating an external feature group: an LLM proposes per-column renames,
+        Hopsworks types, descriptions, and a suggested primary key and event time.
+
+        Example:
+            ```python
+            fs = ...
+
+            sc = fs.get_storage_connector("conn_name")
+
+            tables = sc.get_tables("database_name")
+
+            inferred = sc.infer_metadata(tables[0])
+            ```
+
+        Parameters:
+            data_source: The data source (typically a table returned by `get_tables`) to infer metadata for.
+            preview_data: Pre-fetched preview data to skip a server round-trip; if `None`, a preview is fetched via `get_data`.
+
+        Returns:
+            An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+        """
+        if preview_data is None:
+            preview_data = self.get_data(data_source)
+        return self._data_source_api.infer_metadata(self, preview_data)
 
     def _get_no_sql_data(
         self, data_source: ds.DataSource, use_cached=True

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from hsfs import feature_group as fg
     from hsfs.core import data_source_data as dsd
     from hsfs.core.explicit_provenance import Links
+    from hsfs.core.inferred_metadata import InferredMetadata
     from hsfs.training_dataset import TrainingDataset
 
 
@@ -306,6 +307,39 @@ class DataSource:
             A dictionary containing metadata about the data source.
         """
         return self._storage_connector.get_metadata(self)
+
+    @public
+    def infer_metadata(
+        self,
+        preview_data: dsd.DataSourceData | None = None,
+    ) -> InferredMetadata:
+        """Use platform intelligence to infer feature metadata for this data source.
+
+        Calls the same backend used by the "Infer metadata" button in the UI
+        when creating an external feature group: an LLM proposes per-column
+        renames, Hopsworks types, descriptions, and a suggested primary key
+        and event time.
+
+        Example:
+            ```python
+            fs = ...
+
+            table = fs.get_data_source("test_data_source").get_tables()[0]
+
+            inferred = table.infer_metadata()
+            for f in inferred.features:
+                print(f.original_name, "->", f.new_name, f.type, f.description)
+            print("primary key:", inferred.suggested_primary_key)
+            print("event time:", inferred.suggested_event_time)
+            ```
+
+        Parameters:
+            preview_data: Pre-fetched preview data to skip a server round-trip; if `None`, a preview is fetched via `get_data`.
+
+        Returns:
+            An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+        """
+        return self._storage_connector.infer_metadata(self, preview_data=preview_data)
 
     @public
     def get_feature_groups_provenance(self) -> Links | None:
