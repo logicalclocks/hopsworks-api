@@ -182,6 +182,76 @@ def test_datasource_info(mock_project):
     assert "my_sf" in result.output
 
 
+def test_datasource_infer_metadata(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    target_table = mock.MagicMock()
+    target_table.table = "users"
+    inferred = mock.MagicMock()
+    inferred_feature = mock.MagicMock()
+    inferred_feature.original_name = "USER_ID"
+    inferred_feature.new_name = "user_id"
+    inferred_feature.type = "bigint"
+    inferred_feature.description = "Unique user identifier."
+    inferred.features = [inferred_feature]
+    inferred.suggested_primary_key = ["user_id"]
+    inferred.suggested_event_time = None
+    target_table.infer_metadata.return_value = inferred
+
+    other_table = mock.MagicMock()
+    other_table.table = "events"
+
+    ds = mock.MagicMock()
+    ds.get_tables.return_value = [other_table, target_table]
+    fs.get_data_source.return_value = ds
+
+    result = CliRunner().invoke(
+        cli, ["datasource", "infer-metadata", "my_sf", "users", "--database", "DB"]
+    )
+
+    assert result.exit_code == 0, result.output
+    ds.get_tables.assert_called_with(database="DB")
+    target_table.infer_metadata.assert_called_once()
+    assert "user_id" in result.output
+    assert "USER_ID" in result.output
+    assert "bigint" in result.output
+    assert "Suggested primary key" in result.output
+
+
+def test_datasource_infer_metadata_table_not_found(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    ds = mock.MagicMock()
+    ds.get_tables.return_value = []
+    fs.get_data_source.return_value = ds
+
+    result = CliRunner().invoke(
+        cli, ["datasource", "infer-metadata", "my_sf", "missing"]
+    )
+
+    assert result.exit_code != 0
+    assert "not found" in result.output.lower()
+
+
+def test_datasource_infer_metadata_platform_intelligence_disabled(mock_project):
+    from hopsworks_common.client.exceptions import PlatformIntelligenceException
+
+    fs = mock_project.get_feature_store.return_value
+    target_table = mock.MagicMock()
+    target_table.table = "users"
+    target_table.infer_metadata.side_effect = PlatformIntelligenceException(
+        PlatformIntelligenceException.NOT_CONFIGURED,
+        "Platform intelligence is not enabled on this Hopsworks cluster.",
+    )
+
+    ds = mock.MagicMock()
+    ds.get_tables.return_value = [target_table]
+    fs.get_data_source.return_value = ds
+
+    result = CliRunner().invoke(cli, ["datasource", "infer-metadata", "my_sf", "users"])
+
+    assert result.exit_code != 0
+    assert "not enabled" in result.output.lower()
+
+
 # --- td --------------------------------------------------------------------
 
 

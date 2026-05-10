@@ -388,6 +388,68 @@ def connector_preview(ctx: click.Context, name: str) -> None:
     click.echo(str(data))
 
 
+@datasource_group.command("infer-metadata")
+@click.argument("name")
+@click.argument("table")
+@click.option("--database", help="Database the table lives in (connector-dependent).")
+@click.pass_context
+def connector_infer_metadata(
+    ctx: click.Context, name: str, table: str, database: str | None
+) -> None:
+    """Use platform intelligence to infer feature metadata for a table.
+
+    Calls the same LLM-backed endpoint as the "Infer metadata" button in the
+    UI: suggests a renamed feature name, Hopsworks type, and description per
+    column, plus a primary key and event time. Use this before mounting an
+    external table as an external feature group, or before creating a new
+    feature group from it.
+
+    Args:
+        ctx: Click context.
+        name: Connector name.
+        table: Table name to infer metadata for.
+        database: Database that contains the table.
+    """
+    from hopsworks_common.client.exceptions import PlatformIntelligenceException
+
+    fs = session.get_feature_store(ctx)
+    try:
+        ds = fs.get_data_source(name)
+        tables = ds.get_tables(database=database) or []
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not list tables: {exc}") from exc
+
+    match = next((t for t in tables if getattr(t, "table", None) == table), None)
+    if match is None:
+        raise click.ClickException(
+            f"Table '{table}' not found in connector '{name}'"
+            + (f" / database '{database}'" if database else "")
+        )
+
+    try:
+        inferred = match.infer_metadata()
+    except PlatformIntelligenceException as exc:
+        raise click.ClickException(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Infer metadata failed: {exc}") from exc
+
+    if output.JSON_MODE:
+        output.print_json(inferred.to_dict())
+        return
+
+    rows = [
+        [f.original_name, f.new_name, f.type, output.first_line(f.description)]
+        for f in inferred.features
+    ]
+    output.print_table(["ORIGINAL", "NEW", "TYPE", "DESCRIPTION"], rows)
+    if inferred.suggested_primary_key:
+        click.echo(
+            f"Suggested primary key: {', '.join(inferred.suggested_primary_key)}"
+        )
+    if inferred.suggested_event_time:
+        click.echo(f"Suggested event time: {inferred.suggested_event_time}")
+
+
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
     fs = session.get_feature_store(ctx)
     from hopsworks_common.core import rest
