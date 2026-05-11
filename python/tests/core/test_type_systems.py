@@ -14,11 +14,12 @@
 #   limitations under the License.
 #
 import datetime
+import decimal
 
 import pytest
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import type_systems
-from hsfs.core.constants import HAS_PANDAS, HAS_PYARROW
+from hsfs.core.constants import HAS_PANDAS, HAS_POLARS, HAS_PYARROW
 
 
 if HAS_PYARROW:
@@ -29,6 +30,9 @@ if HAS_PANDAS:
     import pandas as pd
 
     rng_engine = np.random.default_rng(42)
+
+if HAS_POLARS:
+    import polars as pl
 
 
 class TestTypeSystems:
@@ -876,3 +880,134 @@ class TestTypeSystems:
 
         # Assert
         assert str(e_info.value) == "Not supported type wrong."
+
+
+@pytest.mark.skipif(not HAS_POLARS, reason="Polars is not installed.")
+class TestCastPolarsColumnToOfflineType:
+    """Direct unit tests for the per-branch cast logic shared across polars versions."""
+
+    def test_timestamp_drops_timezone(self):
+        # Arrange
+        series = pl.Series(
+            "ts",
+            [datetime.datetime(2024, 1, 1, 12, 0)],
+            dtype=pl.Datetime(time_zone="UTC"),
+        )
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "timestamp")
+
+        # Assert
+        assert result.dtype == pl.Datetime(time_zone=None)
+        assert result.to_list() == [datetime.datetime(2024, 1, 1, 12, 0)]
+
+    def test_date(self):
+        # Arrange
+        series = pl.Series(
+            "d",
+            [datetime.datetime(2024, 1, 1)],
+            dtype=pl.Datetime(time_zone=None),
+        )
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "date")
+
+        # Assert
+        assert result.dtype == pl.Date
+        assert result.to_list() == [datetime.date(2024, 1, 1)]
+
+    def test_array_parses_string_literals(self):
+        # Arrange - array<int> values arrive as repr strings from Hopsworks
+        series = pl.Series("a", ["[1, 2, 3]", "[4, 5]"], dtype=pl.String)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "array<int>")
+
+        # Assert
+        assert result.to_list() == [[1, 2, 3], [4, 5]]
+
+    def test_array_passes_through_already_parsed_lists(self):
+        # Arrange - input column is already pl.List, e.g. parsed upstream
+        series = pl.Series("a", [[1, 2, 3], [4, 5]], dtype=pl.List(pl.Int64))
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "array<int>")
+
+        # Assert
+        assert result.to_list() == [[1, 2, 3], [4, 5]]
+
+    def test_struct_parses_dict_literals(self):
+        # Arrange - struct<...> values arrive as repr strings
+        series = pl.Series("s", ["{'k': 1}", "{'k': 2}"], dtype=pl.String)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(
+            series, "struct<k:int>"
+        )
+
+        # Assert
+        assert result.to_list() == [{"k": 1}, {"k": 2}]
+
+    def test_boolean_parses_string_literals(self):
+        # Arrange - "boolean" branch shares the literal_eval path with array/struct
+        series = pl.Series("b", ["True", "False"], dtype=pl.String)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "boolean")
+
+        # Assert
+        assert result.to_list() == [True, False]
+
+    def test_boolean_passes_through_native_bools(self):
+        # Arrange - already-typed bool column, no string parsing required
+        series = pl.Series("b", [True, False, None], dtype=pl.Boolean)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "boolean")
+
+        # Assert
+        assert result.to_list() == [True, False, None]
+
+    def test_string_stringifies_values(self):
+        # Arrange
+        series = pl.Series("v", [1, 2, 3], dtype=pl.Int64)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "string")
+
+        # Assert
+        assert result.to_list() == ["1", "2", "3"]
+
+    def test_decimal_returns_decimal_objects(self):
+        # Arrange
+        series = pl.Series("d", ["1.50", "2.75"], dtype=pl.String)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(
+            series, "decimal(10,2)"
+        )
+
+        # Assert
+        assert result.to_list() == [decimal.Decimal("1.50"), decimal.Decimal("2.75")]
+
+    def test_basic_dtype_uses_mapping(self):
+        # Arrange - "int" maps to pl.Int32 via polars_offline_dtype_mapping
+        series = pl.Series("v", [1, 2, 3], dtype=pl.Int64)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(series, "int")
+
+        # Assert
+        assert result.dtype == pl.Int32
+
+    def test_unknown_offline_type_returns_input_unchanged(self):
+        # Arrange - graceful fallback for unrecognized types
+        series = pl.Series("v", [1, 2, 3], dtype=pl.Int64)
+
+        # Act
+        result = type_systems.cast_polars_column_to_offline_type(
+            series, "not_a_real_type"
+        )
+
+        # Assert
+        assert result is series

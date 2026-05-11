@@ -19,11 +19,47 @@ import pandas as pd
 import pytest
 from hsfs import feature_group, validation_report
 from hsfs.core import great_expectation_engine
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
+
+
+def _make_ge_expectation_suite(name, expectations, meta):
+    """Construct a GE ExpectationSuite with version-correct kwargs."""
+    if GE_MAJOR == 1:
+        return great_expectations.core.ExpectationSuite(
+            name=name, expectations=expectations, meta=meta
+        )
+    return great_expectations.core.ExpectationSuite(
+        expectation_suite_name=name, expectations=expectations, meta=meta
+    )
+
+
+def _make_ge_expectation_configuration(expectation_type, kwargs, meta):
+    """Construct a GE ExpectationConfiguration with version-correct kwargs."""
+    if GE_MAJOR == 1:
+        from great_expectations.expectations.expectation_configuration import (
+            ExpectationConfiguration,
+        )
+
+        return ExpectationConfiguration(type=expectation_type, kwargs=kwargs, meta=meta)
+    return great_expectations.core.ExpectationConfiguration(
+        expectation_type=expectation_type, kwargs=kwargs, meta=meta
+    )
+
+
+def _make_ge_suite_validation_result():
+    """Construct an empty ExpectationSuiteValidationResult across versions.
+
+    GE 1.x added required positional kwargs (success, results, suite_name).
+    """
+    if GE_MAJOR == 1:
+        return great_expectations.core.ExpectationSuiteValidationResult(
+            success=True, results=[], suite_name=""
+        )
+    return great_expectations.core.ExpectationSuiteValidationResult()
 
 
 class TestGreatExpectationEngine:
@@ -213,9 +249,7 @@ class TestGreatExpectationEngine:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.engine.get_instance")
 
-        suite = great_expectations.core.ExpectationSuite(
-            expectation_suite_name="suite_name",
-        )
+        suite = _make_ge_expectation_suite(name="suite_name", expectations=[], meta={})
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -223,8 +257,8 @@ class TestGreatExpectationEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             partition_key=[],
-            expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+            expectation_suite=_make_ge_expectation_suite(
+                name="attached_to_feature_group", expectations=[], meta={}
             ),
         )
 
@@ -266,8 +300,8 @@ class TestGreatExpectationEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             partition_key=[],
-            expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+            expectation_suite=_make_ge_expectation_suite(
+                name="attached_to_feature_group", expectations=[], meta={}
             ),
         )
 
@@ -307,8 +341,8 @@ class TestGreatExpectationEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             partition_key=[],
-            expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+            expectation_suite=_make_ge_expectation_suite(
+                name="attached_to_feature_group", expectations=[], meta={}
             ),
         )
 
@@ -346,8 +380,8 @@ class TestGreatExpectationEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             partition_key=[],
-            expectation_suite=great_expectations.core.ExpectationSuite(
-                expectation_suite_name="attached_to_feature_group",
+            expectation_suite=_make_ge_expectation_suite(
+                name="attached_to_feature_group", expectations=[], meta={}
             ),
         )
 
@@ -481,7 +515,7 @@ class TestGreatExpectationEngine:
             partition_key=[],
         )
 
-        report = great_expectations.core.ExpectationSuiteValidationResult()
+        report = _make_ge_suite_validation_result()
 
         mock_save_validation_report = mocker.patch(
             "hsfs.feature_group.FeatureGroup.save_validation_report"
@@ -526,7 +560,7 @@ class TestGreatExpectationEngine:
             partition_key=[],
         )
 
-        report = great_expectations.core.ExpectationSuiteValidationResult()
+        report = _make_ge_suite_validation_result()
 
         mock_save_validation_report = mocker.patch(
             "hsfs.feature_group.FeatureGroup.save_validation_report"
@@ -571,7 +605,7 @@ class TestGreatExpectationEngine:
             partition_key=[],
         )
 
-        report = great_expectations.core.ExpectationSuiteValidationResult()
+        report = _make_ge_suite_validation_result()
 
         mock_save_validation_report = mocker.patch(
             "hsfs.feature_group.FeatureGroup.save_validation_report"
@@ -624,3 +658,267 @@ class TestGreatExpectationEngine:
                 dataframe=df,
                 expectation_suite=suite,
             )
+
+
+# Spark engine path (hsfs/engine/spark.py:1538) is intentionally not exercised
+# here - Spark is not available in the unit test environment. Locking down the
+# Spark validate_with_great_expectations behavior is deferred to integration tests.
+class TestGreatExpectationEngineEndToEnd:
+    """End-to-end tests that exercise the real great_expectations call.
+
+    The existing TestGreatExpectationEngine mocks engine.get_instance() so it
+    never reaches the GE library. These tests intentionally do call into GE so
+    that an upgrade-time regression in the GE-boundary surfaces here.
+    """
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS,
+        reason="great_expectations not installed",
+    )
+    def test_validate_pandas_dataframe_succeeds(self):
+        from hsfs.engine import python as python_engine
+
+        # Arrange
+        df = pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Carol"]})
+        suite = _make_ge_expectation_suite(
+            name="suite",
+            expectations=[
+                _make_ge_expectation_configuration(
+                    "expect_column_values_to_not_be_null",
+                    {"column": "id"},
+                    {},
+                ),
+            ],
+            meta={},
+        )
+
+        # Act
+        report = python_engine.Engine().validate_with_great_expectations(
+            dataframe=df, expectation_suite=suite
+        )
+
+        # Assert
+        assert report.success is True
+        assert len(report.results) == 1
+        assert report.results[0].success is True
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS,
+        reason="great_expectations not installed",
+    )
+    def test_validate_pandas_dataframe_fails(self):
+        from hsfs.engine import python as python_engine
+
+        # Arrange
+        df = pd.DataFrame({"id": [1, None, 3]})
+        suite = _make_ge_expectation_suite(
+            name="suite",
+            expectations=[
+                _make_ge_expectation_configuration(
+                    "expect_column_values_to_not_be_null",
+                    {"column": "id"},
+                    {},
+                ),
+            ],
+            meta={},
+        )
+
+        # Act
+        report = python_engine.Engine().validate_with_great_expectations(
+            dataframe=df, expectation_suite=suite
+        )
+
+        # Assert
+        assert report.success is False
+        assert report.results[0].success is False
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS,
+        reason="great_expectations not installed",
+    )
+    def test_validate_pandas_dataframe_returns_ge_type(self):
+        from hsfs.engine import python as python_engine
+
+        # Arrange
+        df = pd.DataFrame({"id": [1, 2]})
+        suite = _make_ge_expectation_suite(
+            name="suite",
+            expectations=[],
+            meta={},
+        )
+
+        # Act
+        report = python_engine.Engine().validate_with_great_expectations(
+            dataframe=df, expectation_suite=suite
+        )
+
+        # Assert
+        # The SDK depends on this exact return type for to_json_dict / serialization.
+        assert isinstance(
+            report, great_expectations.core.ExpectationSuiteValidationResult
+        )
+
+    @pytest.mark.skipif(
+        GE_MAJOR != 1,
+        reason="GE 1.x batch.validate only accepts result_format and expectation_parameters; the legacy kwarg surface differs.",
+    )
+    def test_validate_propagates_result_format_to_ge_v1(self):
+        from hsfs.engine import python as python_engine
+
+        # Arrange
+        df = pd.DataFrame({"id": [1, 2, None, 4, 5]})
+        suite = _make_ge_expectation_suite(
+            name="suite",
+            expectations=[
+                _make_ge_expectation_configuration(
+                    "expect_column_values_to_not_be_null", {"column": "id"}, {}
+                ),
+            ],
+            meta={},
+        )
+
+        # Act: COMPLETE format must surface the per-row indices that SUMMARY omits.
+        report = python_engine.Engine().validate_with_great_expectations(
+            dataframe=df,
+            expectation_suite=suite,
+            ge_validate_kwargs={"result_format": "COMPLETE"},
+        )
+
+        # Assert: presence of unexpected_index_list is the discriminator between
+        # COMPLETE and the default SUMMARY result format.
+        assert "unexpected_index_list" in report.results[0].result
+
+    @pytest.mark.skipif(
+        GE_MAJOR != 1,
+        reason="GE 1.x suite parameters use the $PARAMETER placeholder syntax.",
+    )
+    def test_validate_propagates_expectation_parameters_to_ge_v1(self):
+        from hsfs.engine import python as python_engine
+
+        # Arrange: the suite uses a $PARAMETER placeholder bound at validate time.
+        df = pd.DataFrame({"id": [5, 6, 7, 8, 9]})
+        suite = _make_ge_expectation_suite(
+            name="suite",
+            expectations=[
+                _make_ge_expectation_configuration(
+                    "expect_column_min_to_be_between",
+                    {
+                        "column": "id",
+                        "min_value": {"$PARAMETER": "lo"},
+                        "max_value": 100,
+                    },
+                    {},
+                ),
+            ],
+            meta={},
+        )
+        engine = python_engine.Engine()
+
+        # Act
+        passing = engine.validate_with_great_expectations(
+            dataframe=df,
+            expectation_suite=suite,
+            ge_validate_kwargs={"expectation_parameters": {"lo": 5}},
+        )
+        failing = engine.validate_with_great_expectations(
+            dataframe=df,
+            expectation_suite=suite,
+            ge_validate_kwargs={"expectation_parameters": {"lo": 100}},
+        )
+
+        # Assert: the parameter binding actually reaches the validator.
+        assert passing.success is True
+        assert failing.success is False
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS,
+        reason="great_expectations not installed",
+    )
+    def test_validate_with_polars_converts_to_pandas(self):
+        polars = pytest.importorskip("polars")
+        from hsfs.engine import python as python_engine
+
+        # Arrange
+        df = polars.DataFrame({"id": [1, 2, 3]})
+        suite = _make_ge_expectation_suite(
+            name="suite",
+            expectations=[
+                _make_ge_expectation_configuration(
+                    "expect_column_values_to_not_be_null",
+                    {"column": "id"},
+                    {},
+                ),
+            ],
+            meta={},
+        )
+
+        # Act
+        with pytest.warns(util_warning_for_polars()):
+            report = python_engine.Engine().validate_with_great_expectations(
+                dataframe=df, expectation_suite=suite
+            )
+
+        # Assert
+        assert report.success is True
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS,
+        reason="great_expectations not installed",
+    )
+    def test_orchestrated_validate_returns_validation_report(self, mocker):
+        from hsfs.engine import python as python_engine
+
+        # Arrange
+        feature_store_id = 99
+        mocker.patch("hsfs.engine.get_type")
+        # Use a real Python engine so the orchestrator reaches the real GE call.
+        mocker.patch("hsfs.engine.get_instance", return_value=python_engine.Engine())
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+        )
+        df = pd.DataFrame({"id": [1, 2, 3]})
+        suite = es.ExpectationSuite(
+            expectation_suite_name="suite",
+            expectations=[
+                {
+                    "expectation_type": "expect_column_values_to_not_be_null",
+                    "kwargs": {"column": "id"},
+                    "meta": {},
+                }
+            ],
+            meta={},
+            run_validation=True,
+        )
+        ge_engine = great_expectation_engine.GreatExpectationEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        result = ge_engine.validate(
+            feature_group=fg,
+            dataframe=df,
+            expectation_suite=suite,
+            save_report=False,
+            ge_type=False,
+        )
+
+        # Assert
+        # ge_type=False asks for the Hopsworks ValidationReport wrapper.
+        assert isinstance(result, validation_report.ValidationReport)
+        assert result.success is True
+        # The wrapper must round-trip back through to_ge_type without errors.
+        ge_report = result.to_ge_type()
+        assert isinstance(
+            ge_report, great_expectations.core.ExpectationSuiteValidationResult
+        )
+
+
+def util_warning_for_polars():
+    """Return the warning class emitted when Polars data is auto-converted."""
+    from hsfs import util
+
+    return util.FeatureGroupWarning

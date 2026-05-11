@@ -225,6 +225,8 @@ class Model:
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
         env_vars: dict | None = None,
+        vllm_variant: str | None = None,
+        vllm_image_tag: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -261,6 +263,8 @@ class Model:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The inference environment to use.
             env_vars: Environment variables to set on the predictor.
+            vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -286,6 +290,8 @@ class Model:
             api_protocol=api_protocol,
             environment=environment,
             env_vars=env_vars,
+            vllm_variant=vllm_variant,
+            vllm_image_tag=vllm_image_tag,
         )
 
         return predictor.deploy()

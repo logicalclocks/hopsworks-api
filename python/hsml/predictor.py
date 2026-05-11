@@ -78,6 +78,8 @@ class Predictor(DeployableComponent):
         project_namespace: str = None,
         scaling_configuration: PredictorScalingConfig | dict | Default | None = None,
         env_vars: dict[str, str] | None = None,
+        vllm_variant: str | None = None,
+        vllm_image_tag: str | None = None,
         **kwargs,
     ):
         serving_tool = (
@@ -126,6 +128,8 @@ class Predictor(DeployableComponent):
         self._project_namespace = project_namespace
         self._project_name = None
         self._env_vars = env_vars
+        self._vllm_variant = vllm_variant
+        self._vllm_image_tag = vllm_image_tag
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -331,6 +335,12 @@ class Predictor(DeployableComponent):
         kwargs["scaling_configuration"] = PredictorScalingConfig.from_json(
             json_decamelized
         )
+        kwargs["vllm_variant"] = util.extract_field_from_json(
+            json_decamelized, "vllm_variant"
+        )
+        kwargs["vllm_image_tag"] = util.extract_field_from_json(
+            json_decamelized, "vllm_image_tag"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -357,6 +367,12 @@ class Predictor(DeployableComponent):
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
         }
+        if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
+            json = {
+                **json,
+                "vllmVariant": self._vllm_variant,
+                "vllmImageTag": self._vllm_image_tag,
+            }
         if self.model_name is not None:
             json = {**json, "modelName": self._model_name}
         if self.model_path is not None:
@@ -621,6 +637,26 @@ class Predictor(DeployableComponent):
     @project_name.setter
     def project_name(self, project_name: str):
         self._project_name = project_name
+
+    @public
+    @property
+    def vllm_variant(self):
+        """VLLM image variant for this predictor (VLLM or VLLM_OMNI)."""
+        return self._vllm_variant
+
+    @vllm_variant.setter
+    def vllm_variant(self, vllm_variant: str):
+        self._vllm_variant = vllm_variant
+
+    @public
+    @property
+    def vllm_image_tag(self):
+        """VLLM image tag override; None means use the cluster default."""
+        return self._vllm_image_tag
+
+    @vllm_image_tag.setter
+    def vllm_image_tag(self, vllm_image_tag: str):
+        self._vllm_image_tag = vllm_image_tag
 
     @public
     def get_endpoint_url(self) -> str | None:

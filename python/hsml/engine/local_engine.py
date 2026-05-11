@@ -16,8 +16,9 @@
 
 import os
 
+from hopsworks_common.core import dataset_api
 from hsml import client
-from hsml.core import dataset_api, hdfs_api, model_api
+from hsml.core import hdfs_api, model_api
 
 
 class LocalEngine:

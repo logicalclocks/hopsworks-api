@@ -89,6 +89,9 @@ class App:
         self._memory_usage = memory_usage
         self._cpu_requested = cpu_requested
         self._memory_requested = memory_requested
+        # Runtime env-var override; set by AppApi.create_app() and applied on run().
+        # Not part of the persisted app config — the backend has no field for it.
+        self._env_vars: dict[str, str] | None = None
 
         self._app_api = app_api.AppApi()
 
@@ -197,7 +200,10 @@ class App:
             hopsworks.client.exceptions.JobExecutionException: If the app fails to start or the serving timeout is exceeded.
         """
         _logger.info("Starting app: %s", self._name)
-        self._app_api._start(self._name)
+        if self._env_vars:
+            self._app_api._start(self._name, env_vars=self._env_vars)
+        else:
+            self._app_api._start(self._name)
 
         if await_serving:
             _logger.info("Waiting for app to become ready...")

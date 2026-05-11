@@ -42,6 +42,18 @@ confluent_kafka_not_installed_message = (
 HAS_GREAT_EXPECTATIONS: bool = (
     importlib.util.find_spec("great_expectations") is not None
 )
+GE_MAJOR: int | None = None
+if HAS_GREAT_EXPECTATIONS:
+    # GE 1.x's _docs_decorators logs an INFO line for every closure it scans
+    # during module init (DataSourceManager._register_* / _bind_asset_factory_*),
+    # producing hundreds of useless lines on every SDK import. Suppress before
+    # the great_expectations import so module-init chatter never fires.
+    import logging
+
+    logging.getLogger("great_expectations._docs_decorators").setLevel(logging.WARNING)
+    import great_expectations as _ge
+
+    GE_MAJOR = int(_ge.__version__.split(".")[0])
 great_expectations_not_installed_message = (
     "Great Expectations package not found. "
     "If you want to use data validation with Hopsworks you can install the corresponding extras via "

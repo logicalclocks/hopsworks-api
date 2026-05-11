@@ -84,6 +84,7 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.core.constants import (
+    GE_MAJOR,
     HAS_AIOMYSQL,
     HAS_GREAT_EXPECTATIONS,
     HAS_NUMPY,
@@ -862,6 +863,18 @@ class Engine:
             dataframe = dataframe.to_pandas()
         if ge_validate_kwargs is None:
             ge_validate_kwargs = {}
+        if GE_MAJOR == 1:
+            # GE 1.x removed from_pandas; use the get_context + dataframe asset chain.
+            context = great_expectations.get_context(mode="ephemeral")
+            data_source = context.data_sources.add_pandas("hopsworks_pandas")
+            asset = data_source.add_dataframe_asset("hopsworks_asset")
+            batch_definition = asset.add_batch_definition_whole_dataframe(
+                "hopsworks_batch"
+            )
+            batch = batch_definition.get_batch(
+                batch_parameters={"dataframe": dataframe}
+            )
+            return batch.validate(expectation_suite, **ge_validate_kwargs)
         return great_expectations.from_pandas(
             dataframe, expectation_suite=expectation_suite
         ).validate(**ge_validate_kwargs)
@@ -913,9 +926,18 @@ class Engine:
                     dataframe_copy[col].dtype, pd.core.dtypes.dtypes.DatetimeTZDtype
                 ):
                     dataframe_copy[col] = dataframe_copy[col].dt.tz_convert(None)
-                elif HAS_POLARS and isinstance(dataframe_copy[col].dtype, pl.Datetime):
+                elif (
+                    HAS_POLARS
+                    and isinstance(dataframe_copy[col].dtype, pl.Datetime)
+                    and dataframe_copy[col].dtype.time_zone is not None
+                ):
+                    # cast to tz-naive Datetime; this converts the wall-clock to UTC
+                    # first, mirroring pandas' dt.tz_convert(None). Plain
+                    # dt.replace_time_zone(None) would just drop the tz and leave
+                    # the wall-clock time, silently producing different values for
+                    # non-UTC zones than the pandas branch above.
                     dataframe_copy = dataframe_copy.with_columns(
-                        pl.col(col).dt.replace_time_zone(None)
+                        pl.col(col).cast(pl.Datetime(time_zone=None))
                     )
             return dataframe_copy
         if dataframe == "spine":
@@ -1120,9 +1142,14 @@ class Engine:
                     threshold = datetime.now(tz=timezone.utc) - timedelta(
                         seconds=feature_group.ttl
                     )
+                    # cast (rather than dt.replace_time_zone("UTC")) so that
+                    # tz-aware columns convert to the UTC instant; replace_time_zone
+                    # only relabels and would silently misclassify rows from non-UTC
+                    # zones. Naive datetimes are interpreted as UTC, mirroring the
+                    # pandas branch's pd.to_datetime(..., utc=True).
                     return (
                         dataframe[event_time]
-                        .dt.replace_time_zone("UTC")
+                        .cast(pl.Datetime(time_zone="UTC"))
                         .gt(threshold)
                         .to_list()
                     )
@@ -1327,7 +1354,12 @@ class Engine:
     ) -> tuple[pd.DataFrame | pl.DataFrame, pd.DataFrame | pl.DataFrame | None]:
         if labels:
             labels_df = df[labels]
-            df_new = df.drop(columns=labels)
+            if HAS_POLARS and isinstance(
+                df, (pl.DataFrame, pl.dataframe.frame.DataFrame)
+            ):
+                df_new = df.drop(labels)
+            else:
+                df_new = df.drop(columns=labels)
             return (
                 self._return_dataframe_type(df_new, dataframe_type),
                 self._return_dataframe_type(labels_df, dataframe_type),

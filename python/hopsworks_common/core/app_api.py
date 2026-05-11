@@ -80,6 +80,7 @@ class AppApi:
         environment: str = "python-app-pipeline",
         memory: int = 2048,
         cores: float = 1.0,
+        env_vars: dict[str, str] | None = None,
     ) -> app.App:
         """Create a new Streamlit app.
 
@@ -105,6 +106,8 @@ class AppApi:
             environment: Python environment name (default: "python-app-pipeline").
             memory: Memory in MB (default: 2048).
             cores: CPU cores (default: 1.0).
+            env_vars: Per-runtime env vars applied when the app is started.
+                These override account-level env vars for this app's executions.
 
         Returns:
             The created App object.
@@ -133,11 +136,19 @@ class AppApi:
             "PUT", path_params, headers=headers, data=json.dumps(config)
         )
 
-        # Return the app from the apps endpoint
-        return self.get_app(name)
+        created = self.get_app(name)
+        # env_vars is a runtime-only override applied at start time; the backend
+        # has no app-config field for it, so attach it to the returned object.
+        created._env_vars = dict(env_vars) if env_vars else None
+        return created
 
-    def _start(self, app_name: str):
-        """Start an app execution."""
+    def _start(self, app_name: str, env_vars: dict[str, str] | None = None):
+        """Start an app execution.
+
+        When ``env_vars`` is provided, POSTs a JSON body with ``envVars`` so the
+        backend applies the runtime override; otherwise falls back to the legacy
+        text/plain POST that Jersey dispatches to the no-body start handler.
+        """
         _client = client.get_instance()
         path_params = [
             "project",
@@ -146,6 +157,12 @@ class AppApi:
             app_name,
             "executions",
         ]
+        if env_vars:
+            headers = {"content-type": "application/json"}
+            body = {"envVars": dict(env_vars)}
+            return _client._send_request(
+                "POST", path_params, headers=headers, data=json.dumps(body)
+            )
         headers = {"content-type": "text/plain"}
         return _client._send_request("POST", path_params, headers=headers)
 
