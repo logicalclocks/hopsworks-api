@@ -14,4 +14,4 @@
 #   limitations under the License.
 #
 
-__version__ = "4.7.4"
+__version__ = "4.7.5"
