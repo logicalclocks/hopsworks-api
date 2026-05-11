@@ -3,12 +3,15 @@
 The global ``--json`` / ``-o json`` flag flips a module-level ``JSON_MODE``
 that causes every render helper to emit JSON instead of ANSI-decorated text.
 When JSON mode is active the ``success``/``info``/``warn`` helpers are silent
-so that stdout contains only the machine-readable payload.
+and the SDK's own stdout chatter (login banner, ``Python Engine initialized``,
+``Connection closed``, etc.) is rerouted to stderr so stdout carries the
+machine-readable payload alone.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +21,8 @@ if TYPE_CHECKING:
 
 
 JSON_MODE: bool = False
+_REAL_STDOUT: Any = None
+_NOISY_LOGGERS = ("hopsworks", "hopsworks_common", "hsfs", "hsml")
 
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
@@ -57,24 +62,71 @@ def first_line(value: str | None, empty: str = "-") -> str:
 def set_json_mode(enabled: bool) -> None:
     """Toggle JSON mode for the current process.
 
+    Enabling JSON mode also isolates stdout from SDK chatter: every Python
+    ``print``, the ``hopsworks``/``hsfs``/``hsml`` log handlers, and the
+    SDK's "Logged in to project" banner all get rerouted to stderr so the
+    payload emitted by :func:`print_json` / :func:`print_table` is the only
+    thing on stdout.
+    The isolation is idempotent and only takes effect once per process.
+
     Args:
         enabled: When True, render helpers emit JSON and info/warn are silenced.
     """
     global JSON_MODE
     JSON_MODE = enabled
+    if enabled:
+        _isolate_stdout()
+
+
+def _isolate_stdout() -> None:
+    """Move SDK stdout chatter to stderr; remember the real stdout for JSON.
+
+    The SDK calls ``logging.basicConfig(stream=sys.stdout)`` at import time,
+    so root-logger handlers already hold a reference to the original
+    ``sys.stdout`` file object. We snapshot the current ``sys.stdout`` each
+    time so JSON output lands wherever the caller expects (including a
+    Click ``CliRunner`` buffer in tests, which is replaced per invocation),
+    swap ``sys.stdout`` so any later ``print`` lands on stderr, patch
+    existing root-logger handlers that point at the captured stdout, and
+    raise the minimum level on the noisy SDK loggers so they do not spam
+    the user in JSON mode.
+    Safe to call more than once.
+    """
+    global _REAL_STDOUT
+
+    _REAL_STDOUT = sys.stdout
+    sys.stdout = sys.stderr
+
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if (
+            isinstance(handler, logging.StreamHandler)
+            and handler.stream is _REAL_STDOUT
+        ):
+            handler.setStream(sys.stderr)
+
+    for name in _NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def print_json(obj: Any) -> None:
-    """Serialize ``obj`` as pretty-printed JSON on stdout.
+    """Serialize ``obj`` as pretty-printed JSON on the real stdout.
 
     Uses ``default=str`` so SDK objects with ``datetime``/``UUID`` attributes
     serialize cleanly without the caller pre-converting them.
+    Writes to the stdout captured before :func:`_isolate_stdout` swapped
+    ``sys.stdout`` so the payload survives the isolation hop. When isolation
+    has not been triggered (e.g. JSON mode was never enabled, or print_json
+    is called from a non-CLI context), falls back to the current
+    ``sys.stdout``.
 
     Args:
         obj: The value to serialize.
     """
-    sys.stdout.write(json.dumps(obj, indent=2, default=str, sort_keys=False))
-    sys.stdout.write("\n")
+    out = _REAL_STDOUT if _REAL_STDOUT is not None else sys.stdout
+    out.write(json.dumps(obj, indent=2, default=str, sort_keys=False))
+    out.write("\n")
+    out.flush()
 
 
 def print_table(headers: Sequence[str], rows: Iterable[Sequence[Any]]) -> None:
