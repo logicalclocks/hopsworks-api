@@ -91,7 +91,6 @@ class OnlineConfig:
     def table_space(self, table_space: str) -> None:
         self._table_space = table_space
 
-    @public
     @property
     def primary_key_index_type(self) -> str | None:
         """Primary key index type for the online feature store table.
