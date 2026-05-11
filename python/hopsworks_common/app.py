@@ -200,7 +200,10 @@ class App:
             hopsworks.client.exceptions.JobExecutionException: If the app fails to start or the serving timeout is exceeded.
         """
         _logger.info("Starting app: %s", self._name)
-        self._app_api._start(self._name, env_vars=self._env_vars)
+        if self._env_vars:
+            self._app_api._start(self._name, env_vars=self._env_vars)
+        else:
+            self._app_api._start(self._name)
 
         if await_serving:
             _logger.info("Waiting for app to become ready...")

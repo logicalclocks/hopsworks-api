@@ -279,6 +279,23 @@ class TestApp:
         mock_api.return_value._start.assert_called_once_with("my_app")
         assert result._state == "RUNNING"
 
+    def test_run_passes_env_vars(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+
+        refreshed = App(name="my_app", state="RUNNING", serving=False)
+        mock_api.return_value.get_app.return_value = refreshed
+
+        app = App(name="my_app", state="STOPPED")
+        app._app_api = mock_api.return_value
+        app._env_vars = {"FOO": "bar"}
+
+        app.run(await_serving=False)
+
+        mock_api.return_value._start.assert_called_once_with(
+            "my_app", env_vars={"FOO": "bar"}
+        )
+
     def test_stop_when_not_running(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
         mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
