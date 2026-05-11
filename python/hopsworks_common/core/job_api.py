@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_common import (
@@ -38,6 +39,34 @@ if TYPE_CHECKING:
     )
 
 from hopsworks_apigen import public
+
+
+_DEPLOY_DEFAULT_REMOTE_DIR = "/Resources/jobs"
+_DEPLOY_EXTENSION_TO_TYPE: dict[str, str] = {
+    ".py": "PYTHON",
+    ".jar": "SPARK",
+}
+
+
+def _infer_job_type(local_path: str) -> str:
+    """Pick a job type from a script's extension.
+
+    Args:
+        local_path: Path to the local script.
+
+    Returns:
+        A job type string accepted by :meth:`JobApi.get_configuration`.
+
+    Raises:
+        ValueError: When the extension is not in the lookup table.
+    """
+    ext = os.path.splitext(local_path)[1].lower()
+    inferred = _DEPLOY_EXTENSION_TO_TYPE.get(ext)
+    if inferred:
+        return inferred
+    raise ValueError(
+        f"Cannot infer job type from extension '{ext}'. Pass the type explicitly."
+    )
 
 
 @public(
@@ -89,6 +118,87 @@ class JobApi:
         )
         print(f"Job created successfully, explore it at {created_job.get_url()}")
         return created_job
+
+    @public
+    @usage.method_logger
+    def deploy(
+        self,
+        local_path: str,
+        name: str,
+        type: Literal["SPARK", "PYSPARK", "PYTHON", "PYTHON_APP", "DOCKER", "FLINK"]
+        | None = None,
+        environment_name: str | None = None,
+        args: str | None = None,
+        remote_dir: str | None = None,
+        overwrite: bool = True,
+    ) -> job.Job:
+        """Upload a local script and register or update a job that runs it.
+
+        Composes the existing upload and create-or-update primitives so a
+        caller can ship a pipeline file end-to-end in one call.
+        The job type is inferred from the script's extension when not given
+        (``.py`` becomes ``PYTHON``, ``.jar`` becomes ``SPARK``).
+        Re-deploying the same ``name`` is idempotent: the script is
+        overwritten in place and the job definition is updated, not
+        duplicated.
+
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        api = project.get_job_api()
+
+        job = api.deploy(
+            "feature_pipeline.py",
+            name="feature_pipeline",
+            environment_name="python-feature-pipeline",
+        )
+        job.schedule(cron_expression="0 0 * * * ?")
+        ```
+
+        Parameters:
+            local_path: Path to a local file (``.py``, ``.jar``, ...).
+            name: Job name. Re-deploying with the same name updates in place.
+            type: Job type override; inferred from the extension if omitted.
+            environment_name: Python environment for PYTHON / PYSPARK jobs.
+            args: Default arguments stored on the job definition.
+            remote_dir: HopsFS directory the script lands in. Defaults to
+                ``/Resources/jobs/<name>``.
+            overwrite: Overwrite an existing script in HopsFS.
+
+        Returns:
+            The created or updated job.
+
+        Raises:
+            FileNotFoundError: When ``local_path`` does not exist.
+            ValueError: When the job type cannot be inferred and was not
+                supplied.
+            hopsworks.client.exceptions.RestAPIError: When the backend
+                rejects the upload or the job definition.
+        """
+        if not os.path.isfile(local_path):
+            raise FileNotFoundError(local_path)
+
+        resolved_type = type.upper() if type else _infer_job_type(local_path)
+
+        dest_dir = (remote_dir or f"{_DEPLOY_DEFAULT_REMOTE_DIR}/{name}").rstrip("/")
+        basename = os.path.basename(local_path)
+        app_path = f"{dest_dir}/{basename}"
+
+        from hopsworks_common.core import dataset_api
+
+        dataset_api.DatasetApi().upload(
+            local_path=local_path, upload_path=dest_dir, overwrite=overwrite
+        )
+
+        config = self.get_configuration(resolved_type)
+        config["appPath"] = app_path
+        if args:
+            config["defaultArgs"] = args
+        if environment_name:
+            config["environmentName"] = environment_name
+
+        return self.create_job(name=name, config=config)
 
     @public
     @usage.method_logger

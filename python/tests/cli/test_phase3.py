@@ -124,6 +124,81 @@ def test_job_schedule(mock_project):
     assert kwargs["end_time"] is None
 
 
+def test_job_deploy_uploads_and_registers(mock_project, tmp_path):
+    script = tmp_path / "feature_pipeline.py"
+    script.write_text("print('hi')\n")
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    job.name = "feature_pipeline"
+    api.deploy.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(
+        cli,
+        [
+            "job",
+            "deploy",
+            str(script),
+            "--name",
+            "feature_pipeline",
+            "--env",
+            "python-feature-pipeline",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    api.deploy.assert_called_once()
+    kwargs = api.deploy.call_args.kwargs
+    assert kwargs["local_path"] == str(script)
+    assert kwargs["name"] == "feature_pipeline"
+    assert kwargs["environment_name"] == "python-feature-pipeline"
+    job.schedule.assert_not_called()
+    job.run.assert_not_called()
+
+
+def test_job_deploy_chains_schedule_and_run(mock_project, tmp_path):
+    script = tmp_path / "feature_pipeline.py"
+    script.write_text("print('hi')\n")
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    execution = mock.MagicMock()
+    execution.id, execution.state = 7, "FINISHED"
+    job.run.return_value = execution
+    api.deploy.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(
+        cli,
+        [
+            "job",
+            "deploy",
+            str(script),
+            "--name",
+            "feature_pipeline",
+            "--cron",
+            "0 0 * * * ?",
+            "--run",
+            "--wait",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    schedule_kwargs = job.schedule.call_args.kwargs
+    assert schedule_kwargs["cron_expression"] == "0 0 * * * ?"
+    run_kwargs = job.run.call_args.kwargs
+    assert run_kwargs["await_termination"] is True
+
+
+def test_job_deploy_wait_without_run_errors(mock_project, tmp_path):
+    script = tmp_path / "feature_pipeline.py"
+    script.write_text("print('hi')\n")
+    api = mock.MagicMock()
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(
+        cli,
+        ["job", "deploy", str(script), "--name", "feature_pipeline", "--wait"],
+    )
+    assert result.exit_code != 0
+    assert "--run" in result.output
+    api.deploy.assert_not_called()
+
+
 def test_job_unschedule(mock_project):
     api = mock.MagicMock()
     job = mock.MagicMock()
