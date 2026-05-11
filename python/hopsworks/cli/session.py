@@ -100,3 +100,26 @@ def get_feature_store(ctx: click.Context) -> Any:
     fs = project.get_feature_store()
     obj["fs"] = fs
     return fs
+
+
+def get_feature_stores(ctx: click.Context) -> list[Any]:
+    """Return every feature store visible to the active project; cached.
+
+    The list includes the project's own feature store plus any feature
+    stores shared with it.
+    Use this when a command needs to resolve a feature group or feature
+    view by name that may live in a shared store.
+
+    Args:
+        ctx: Click context.
+
+    Returns:
+        Feature store objects, one per visible store.
+    """
+    obj: dict[str, Any] = ctx.ensure_object(dict)
+    if obj.get("all_fs") is not None:
+        return obj["all_fs"]
+    project = get_project(ctx)
+    stores = list(project.get_feature_stores())
+    obj["all_fs"] = stores
+    return stores

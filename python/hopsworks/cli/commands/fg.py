@@ -42,11 +42,10 @@ def fg_list(ctx: click.Context, current_only: bool) -> None:
         ctx: Click context.
         current_only: When True, skip shared feature stores.
     """
-    project = session.get_project(ctx)
     stores = (
         [session.get_feature_store(ctx)]
         if current_only
-        else project.get_feature_stores()
+        else session.get_feature_stores(ctx)
     )
     rows = []
     for fs in stores:
@@ -157,11 +156,41 @@ def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
 
 
 def _get_fg(ctx: click.Context, name: str, version: int | None) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        return fs.get_feature_group(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature group '{name}' not found: {exc}") from exc
+    """Resolve a feature group by name across every visible feature store.
+
+    The SDK's ``fs.get_feature_group`` returns ``None`` when the feature group
+    is missing from the feature store it was called on, so a project-scoped
+    lookup would silently miss feature groups shared from other projects.
+    Walking every store the project can see avoids that footgun and surfaces
+    a clear error when nothing matches.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Specific version, or ``None`` to let the SDK pick the default.
+
+    Returns:
+        The matching feature group from the first store that owns it.
+
+    Raises:
+        click.ClickException: When no visible feature store has a feature
+            group with the given name (and version, when supplied).
+    """
+    last_exc: Exception | None = None
+    for fs in session.get_feature_stores(ctx):
+        try:
+            fg = fs.get_feature_group(name, version=version)
+        except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+            last_exc = exc
+            continue
+        if fg is not None:
+            return fg
+    where = f"v{version}" if version is not None else "(default version)"
+    detail = f": {last_exc}" if last_exc is not None else ""
+    raise click.ClickException(
+        f"Feature group '{name}' {where} not found in any visible feature "
+        f"store. Run `hops fg list` to see what is available{detail}."
+    )
 
 
 def _fg_type_label(fg: Any) -> str:
@@ -474,21 +503,12 @@ def fg_derive(
         description: Free-form description.
     """
     fs = session.get_feature_store(ctx)
-    try:
-        base = fs.get_feature_group(base_fg)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
-
+    base = _get_fg(ctx, base_fg, None)
     query = base.select_all()
     parents = [base]
     for raw in joins:
         spec = _parse_join(raw)
-        try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(
-                f"Joined FG '{spec.fg_name}' not found: {exc}"
-            ) from exc
+        other = _get_fg(ctx, spec.fg_name, spec.version)
         parents.append(other)
         query = query.join(
             other.select_all(),

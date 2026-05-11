@@ -38,11 +38,10 @@ def fv_list(ctx: click.Context, current_only: bool) -> None:
         ctx: Click context.
         current_only: When True, skip shared feature stores.
     """
-    project = session.get_project(ctx)
     stores = (
         [session.get_feature_store(ctx)]
         if current_only
-        else project.get_feature_stores()
+        else session.get_feature_stores(ctx)
     )
     rows = []
     for fs in stores:
@@ -75,11 +74,7 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
         name: Feature view name.
         version: Specific version to inspect.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     if output.JSON_MODE:
         output.print_json(_fv_to_dict(fv))
@@ -107,6 +102,44 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
             for f in features
         ]
         output.print_table(["NAME", "TYPE", "LABEL"], rows)
+
+
+def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
+    """Resolve a feature view by name across every visible feature store.
+
+    The SDK's ``fs.get_feature_view`` is scoped to one feature store, so a
+    project-scoped lookup misses feature views in stores shared from other
+    projects.
+    Walking every visible store returns the first match and surfaces a clear
+    error when nothing is found.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Specific version, or ``None`` to let the SDK pick the default.
+
+    Returns:
+        The matching feature view from the first store that owns it.
+
+    Raises:
+        click.ClickException: When no visible feature store has a feature
+            view with the given name (and version, when supplied).
+    """
+    last_exc: Exception | None = None
+    for fs in session.get_feature_stores(ctx):
+        try:
+            fv = fs.get_feature_view(name, version=version)
+        except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+            last_exc = exc
+            continue
+        if fv is not None:
+            return fv
+    where = f"v{version}" if version is not None else "(default version)"
+    detail = f": {last_exc}" if last_exc is not None else ""
+    raise click.ClickException(
+        f"Feature view '{name}' {where} not found in any visible feature "
+        f"store. Run `hops fv list` to see what is available{detail}."
+    )
 
 
 def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
@@ -206,23 +239,16 @@ def fv_create(
     """
     fs = session.get_feature_store(ctx)
     base_name, base_ver = _split_name_version(base_fg)
-    try:
-        base = fs.get_feature_group(base_name, version=base_ver)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+    from hopsworks.cli.commands import fg as fg_cmd
 
+    base = fg_cmd._get_fg(ctx, base_name, base_ver)
     query = base.select_all()
     for raw in joins:
         try:
             spec = joinspec.parse(raw)
         except joinspec.JoinSpecError as exc:
             raise click.BadParameter(str(exc), param_hint="--join") from exc
-        try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(
-                f"Joined FG '{spec.fg_name}' not found: {exc}"
-            ) from exc
+        other = fg_cmd._get_fg(ctx, spec.fg_name, spec.version)
         query = query.join(
             other.select_all(),
             on=[spec.on] if not spec.right_on else None,
@@ -272,12 +298,7 @@ def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> No
         version: Feature view version.
         entry: Comma-separated ``key=value`` pairs for the primary keys.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
-
+    fv = _get_fv(ctx, name, version)
     entry_dict = _parse_entry(entry)
     try:
         vector = fv.get_feature_vector(entry=entry_dict, return_type="list")
@@ -325,12 +346,7 @@ def fv_read(
         start_time: ISO timestamp lower bound.
         end_time: ISO timestamp upper bound.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
-
+    fv = _get_fv(ctx, name, version)
     try:
         df = fv.get_batch_data(
             start_time=start_time,
@@ -376,11 +392,7 @@ def fv_delete(
         yes: Skip confirmation when True.
         force: Pass ``force=True`` to the SDK.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     if not yes and not output.JSON_MODE:
         click.confirm(

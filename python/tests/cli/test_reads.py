@@ -115,7 +115,33 @@ def test_fg_info_renders_fields(mock_project):
     assert "id" in result.output
 
 
-def test_fg_info_not_found(mock_project):
+def test_fg_info_walks_shared_stores(mock_project):
+    own_fs = mock_project.get_feature_store.return_value
+    own_fs.get_feature_group.return_value = None
+    shared_fs = mock.MagicMock(name="SharedFeatureStore")
+    shared_fs.project_name = "hopsworks_default"
+    shared_fs.get_feature_group.return_value = _feature_group("btc_blocks", version=2)
+    mock_project.get_feature_stores.return_value = [own_fs, shared_fs]
+    result = CliRunner().invoke(cli, ["fg", "info", "btc_blocks", "--version", "2"])
+    assert result.exit_code == 0, result.output
+    assert "btc_blocks" in result.output
+    own_fs.get_feature_group.assert_called_with("btc_blocks", version=2)
+    shared_fs.get_feature_group.assert_called_with("btc_blocks", version=2)
+
+
+def test_fg_info_not_found_anywhere(mock_project):
+    own_fs = mock_project.get_feature_store.return_value
+    own_fs.get_feature_group.return_value = None
+    shared_fs = mock.MagicMock(name="SharedFeatureStore")
+    shared_fs.get_feature_group.return_value = None
+    mock_project.get_feature_stores.return_value = [own_fs, shared_fs]
+    result = CliRunner().invoke(cli, ["fg", "info", "absent"])
+    assert result.exit_code != 0
+    assert "absent" in result.output
+    assert "hops fg list" in result.output
+
+
+def test_fg_info_not_found_when_sdk_raises(mock_project):
     fs = mock_project.get_feature_store.return_value
     fs.get_feature_group.side_effect = RuntimeError("missing")
     result = CliRunner().invoke(cli, ["fg", "info", "absent"])
@@ -209,6 +235,33 @@ def test_fv_info(mock_project):
     result = CliRunner().invoke(cli, ["fv", "info", "fraud_fv"])
     assert result.exit_code == 0, result.output
     assert "fraud_fv" in result.output
+
+
+def test_fv_info_walks_shared_stores(mock_project):
+    own_fs = mock_project.get_feature_store.return_value
+    own_fs.get_feature_view.return_value = None
+    shared_fs = mock.MagicMock(name="SharedFeatureStore")
+    shared_fs.project_name = "hopsworks_default"
+    shared = mock.MagicMock()
+    shared.id, shared.name, shared.version = 22, "shared_fv", 1
+    shared.labels, shared.description, shared.features = [], "", []
+    shared_fs.get_feature_view.return_value = shared
+    mock_project.get_feature_stores.return_value = [own_fs, shared_fs]
+    result = CliRunner().invoke(cli, ["fv", "info", "shared_fv", "--version", "1"])
+    assert result.exit_code == 0, result.output
+    assert "shared_fv" in result.output
+
+
+def test_fv_info_not_found_anywhere(mock_project):
+    own_fs = mock_project.get_feature_store.return_value
+    own_fs.get_feature_view.return_value = None
+    shared_fs = mock.MagicMock(name="SharedFeatureStore")
+    shared_fs.get_feature_view.return_value = None
+    mock_project.get_feature_stores.return_value = [own_fs, shared_fs]
+    result = CliRunner().invoke(cli, ["fv", "info", "absent"])
+    assert result.exit_code != 0
+    assert "absent" in result.output
+    assert "hops fv list" in result.output
 
 
 # --- datasource ------------------------------------------------------------
