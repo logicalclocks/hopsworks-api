@@ -322,15 +322,33 @@ def test_transformation_create_rejects_no_source(mock_project):
     assert result.exit_code != 0
 
 
-@pytest.mark.parametrize(
-    "src",
-    [
-        "def no_decorator(x): return x",
-        "from hsfs.hopsworks_udf import udf\n\n@udf(float)\ndef a(x): return x\n@udf(float)\ndef b(x): return x\n",
-    ],
-)
-def test_transformation_create_validates_single_udf(mock_project, tmp_path, src):
+def test_transformation_create_rejects_source_with_no_udf(mock_project, tmp_path):
     f = tmp_path / "bad.py"
-    f.write_text(src)
+    f.write_text("def no_decorator(x): return x")
     result = CliRunner().invoke(cli, ["transformation", "create", "--file", str(f)])
     assert result.exit_code != 0
+
+
+def test_transformation_create_registers_every_udf(mock_project, tmp_path):
+    src = tmp_path / "many.py"
+    src.write_text(
+        "from hsfs.hopsworks_udf import udf\n\n"
+        "@udf(float)\n"
+        "def a(x):\n"
+        "    return x * 2\n"
+        "@udf(float)\n"
+        "def b(x):\n"
+        "    return x + 1\n"
+    )
+    fs = mock_project.get_feature_store.return_value
+    created_tf = mock.MagicMock()
+    created_tf.version = 1
+    fs.create_transformation_function.return_value = created_tf
+    with mock.patch("hsfs.hopsworks_udf.udf", return_value=lambda fn: fn):
+        result = CliRunner().invoke(
+            cli, ["transformation", "create", "--file", str(src)]
+        )
+    assert result.exit_code == 0, result.output
+    assert fs.create_transformation_function.call_count == 2
+    assert "a v1" in result.output
+    assert "b v1" in result.output

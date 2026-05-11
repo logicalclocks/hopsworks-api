@@ -209,7 +209,11 @@ def _fv_to_dict(fv: Any) -> dict[str, Any]:
     "--transform",
     "transforms",
     multiple=True,
-    help='Attach a transformation function, repeatable: "function_name:column".',
+    help=(
+        'Attach a transformation function, repeatable: "function_name:column" '
+        'picks the SDK default (v1); "function_name[version]:column" pins a '
+        "specific version."
+    ),
 )
 @click.option("--labels", help="Comma-separated label columns.")
 @click.option("--version", type=int, help="Feature view version.")
@@ -444,18 +448,47 @@ def _parse_entry(entry: str) -> dict[str, Any]:
 
 
 def _resolve_transforms(fs: Any, transforms: tuple[str, ...]) -> list[Any]:
+    """Resolve ``--transform`` specs to attached transformation functions.
+
+    Accepts two shapes:
+
+    - ``fn:col`` picks the SDK default (currently version 1, per
+      ``get_transformation_function``'s documented behaviour).
+    - ``fn[v]:col`` pins to a specific version, which matters when the
+      function has been re-registered (e.g. after a fix) and the default
+      v1 is broken.
+
+    Args:
+        fs: Resolved feature store.
+        transforms: Repeatable ``--transform`` values as Click receives them.
+
+    Returns:
+        Transformation function instances ready to pass to
+        ``fs.create_feature_view(transformation_functions=...)``.
+    """
     if not transforms:
         return []
     resolved: list[Any] = []
     for spec in transforms:
         if ":" not in spec:
             raise click.BadParameter(
-                f"Transform '{spec}' must be 'function:column'.",
+                f"Transform '{spec}' must be 'function:column' or 'function[version]:column'.",
                 param_hint="--transform",
             )
         fn_name, _, col = spec.partition(":")
+        fn_name = fn_name.strip()
+        version: int | None = None
+        if "[" in fn_name and fn_name.endswith("]"):
+            fn_name, _, version_str = fn_name[:-1].partition("[")
+            try:
+                version = int(version_str)
+            except ValueError as exc:
+                raise click.BadParameter(
+                    f"Transform version '{version_str}' must be an integer.",
+                    param_hint="--transform",
+                ) from exc
         try:
-            fn = fs.get_transformation_function(name=fn_name.strip())
+            fn = fs.get_transformation_function(name=fn_name, version=version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Transformation '{fn_name}' not found: {exc}"

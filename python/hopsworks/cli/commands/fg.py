@@ -601,7 +601,52 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
         to_dict = getattr(stats, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else {"stats": str(stats)})
         return
-    output.info("%s", stats)
+    fds = getattr(stats, "feature_descriptive_statistics", None) or []
+    if not fds:
+        output.info("No descriptive statistics available for %s.", name)
+        return
+    rows = []
+    for f in fds:
+        rows.append(
+            [
+                getattr(f, "feature_name", "?"),
+                getattr(f, "feature_type", "-"),
+                getattr(f, "count", "-"),
+                _fmt_num(getattr(f, "min", None)),
+                _fmt_num(getattr(f, "max", None)),
+                _fmt_num(getattr(f, "mean", None)),
+                _fmt_num(getattr(f, "stddev", None)),
+                _fmt_num(getattr(f, "completeness", None)),
+            ]
+        )
+    output.print_table(
+        ["FEATURE", "TYPE", "COUNT", "MIN", "MAX", "MEAN", "STDDEV", "COMPLETENESS"],
+        rows,
+    )
+
+
+def _fmt_num(value: Any) -> str:
+    """Render a numeric metric for the stats table, dropping needless precision.
+
+    The Hopsworks statistics payload mixes ``None`` (no value), integers, and
+    doubles with up-to-15-digit precision. Show four significant digits so the
+    table stays scannable while large magnitudes survive intact.
+    """
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int,)):
+        return str(value)
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if f == 0:
+        return "0"
+    if abs(f) >= 1000:
+        return f"{f:,.0f}"
+    return f"{f:.4g}"
 
 
 @fg_group.command("search")
