@@ -30,33 +30,27 @@ class TestOnlineConfig:
 
         assert config.primary_key_index_type == "HASH"
 
-    def test_primary_key_index_type_btree(self):
-        config = OnlineConfig(primary_key_index_type="BTREE")
+    def test_primary_key_index_type_ordered(self):
+        config = OnlineConfig(primary_key_index_type="ORDERED")
 
-        assert config.primary_key_index_type == "BTREE"
-
-    def test_primary_key_index_type_hash_and_btree(self):
-        config = OnlineConfig(primary_key_index_type="HASH_AND_BTREE")
-
-        assert config.primary_key_index_type == "HASH_AND_BTREE"
+        assert config.primary_key_index_type == "ORDERED"
 
     def test_primary_key_index_type_case_normalization(self):
         assert (
             OnlineConfig(primary_key_index_type="hash").primary_key_index_type == "HASH"
         )
         assert (
-            OnlineConfig(primary_key_index_type="Btree").primary_key_index_type
-            == "BTREE"
-        )
-        assert (
-            OnlineConfig(primary_key_index_type="hash_and_btree").primary_key_index_type
-            == "HASH_AND_BTREE"
+            OnlineConfig(primary_key_index_type="Ordered").primary_key_index_type
+            == "ORDERED"
         )
 
     def test_primary_key_index_type_invalid_rejected(self):
-        # "ORDERED" was a previously-accepted name; now invalid. Useful regression check.
         with pytest.raises(ValueError, match="Invalid primary_key_index_type"):
-            OnlineConfig(primary_key_index_type="ORDERED")
+            OnlineConfig(primary_key_index_type="BTREE")
+
+    def test_primary_key_index_type_non_string_rejected(self):
+        with pytest.raises(TypeError, match="must be a string or None"):
+            OnlineConfig(primary_key_index_type=42)
 
     def test_primary_key_index_type_setter_validates(self):
         config = OnlineConfig()
@@ -91,14 +85,14 @@ class TestOnlineConfig:
         payload = {
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "ts_1",
-            "primaryKeyIndexType": "BTREE",
+            "primaryKeyIndexType": "ORDERED",
         }
 
         config = OnlineConfig.from_response_json(payload)
 
         assert config.online_comments == ["NDB_TABLE=READ_BACKUP=1"]
         assert config.table_space == "ts_1"
-        assert config.primary_key_index_type == "BTREE"
+        assert config.primary_key_index_type == "ORDERED"
 
     def test_from_response_json_missing_primary_key_index_type(self):
         # Server may omit primaryKeyIndexType for legacy / shared feature groups.

@@ -467,6 +467,7 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "tt",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_online_disk_true(self, mocker):
@@ -492,6 +493,7 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": None,
             "tableSpace": "ts_1",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_online_disk_true_override_online_config(self, mocker):
@@ -521,6 +523,7 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "ts_1",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_online_disk_false(self, mocker):
@@ -543,7 +546,11 @@ class TestFeatureGroup:
 
         # Assert
         assert variable_api_mock.call_count == 0
-        assert fg._online_config.to_dict() == {"onlineComments": None, "tableSpace": ""}
+        assert fg._online_config.to_dict() == {
+            "onlineComments": None,
+            "tableSpace": "",
+            "primaryKeyIndexType": None,
+        }
 
     def test_feature_group_online_disk_false_override_online_config(self, mocker):
         # Arrange
@@ -572,6 +579,7 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_data_source_update_storage_connector(self, mocker):

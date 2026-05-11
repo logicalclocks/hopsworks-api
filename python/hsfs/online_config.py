@@ -22,9 +22,8 @@ from hopsworks_apigen import public
 
 
 INDEX_TYPE_HASH = "HASH"
-INDEX_TYPE_BTREE = "BTREE"
-INDEX_TYPE_HASH_AND_BTREE = "HASH_AND_BTREE"
-_VALID_INDEX_TYPES = (INDEX_TYPE_HASH, INDEX_TYPE_BTREE, INDEX_TYPE_HASH_AND_BTREE)
+INDEX_TYPE_ORDERED = "ORDERED"
+_VALID_INDEX_TYPES = (INDEX_TYPE_HASH, INDEX_TYPE_ORDERED)
 
 
 @public
@@ -48,6 +47,11 @@ class OnlineConfig:
     def _normalize_primary_key_index_type(value: str | None) -> str | None:
         if value is None:
             return None
+        if not isinstance(value, str):
+            raise TypeError(
+                f"primary_key_index_type must be a string or None, "
+                f"got {type(value).__name__}."
+            )
         normalized = value.upper()
         if normalized not in _VALID_INDEX_TYPES:
             raise ValueError(
@@ -93,7 +97,7 @@ class OnlineConfig:
 
     @public
     @property
-    def primary_key_index_type(self) -> str:
+    def primary_key_index_type(self) -> str | None:
         """Primary key index type for the online feature store table.
 
         Controls which RonDB index structures back the primary key.
@@ -104,15 +108,12 @@ class OnlineConfig:
               Lowest memory footprint and write overhead.
               Range scans over the primary key are not supported.
               Choose this for pure online-serving feature groups that only retrieve by exact key.
-            * `"BTREE"` — Ordered-only index (RonDB T-tree, exposed as `USING BTREE`).
-              Supports range scans over the primary key but has slower point lookups than a hash index.
-              Rarely needed for online feature groups; prefer this only when you query the primary key with range predicates such as `BETWEEN` or `>=`.
-            * `"HASH_AND_BTREE"` — Both hash and ordered indexes on the primary key (RonDB default when no `USING` modifier is given).
+            * `"ORDERED"` — Both hash and ordered indexes on the primary key (RonDB default; emitted as `PRIMARY KEY (...)` with no `USING` modifier).
               Supports point lookups via the hash index and range scans via the ordered index.
-              Costs more memory and write throughput than either single index.
-              Choose this when access patterns are mixed or unknown.
-            * `None` (default, unset) — No modifier emitted.
-              The server applies a TTL-driven fallback: hash-only (`USING HASH`) when TTL is disabled, and `HASH_AND_BTREE` when TTL is enabled so that the TTL cleaner can range-scan by event time.
+              Costs more memory and write throughput than a hash-only index.
+              Choose this when access patterns are mixed or when range scans over the primary key are needed.
+            * `None` (default, unset) — No value sent.
+              The server applies a TTL-driven fallback: hash-only (`USING HASH`) when TTL is disabled, and the NDB default (hash + ordered) when TTL is enabled so the TTL cleaner can range-scan by event time.
 
         Warning: Create-only
             Set at feature group creation time only.
@@ -122,7 +123,7 @@ class OnlineConfig:
         return self._primary_key_index_type
 
     @primary_key_index_type.setter
-    def primary_key_index_type(self, primary_key_index_type: str) -> None:
+    def primary_key_index_type(self, primary_key_index_type: str | None) -> None:
         self._primary_key_index_type = self._normalize_primary_key_index_type(
             primary_key_index_type
         )

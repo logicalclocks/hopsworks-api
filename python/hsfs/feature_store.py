@@ -814,8 +814,8 @@ class FeatureStore:
                 - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
                 - `table_space`: Name of the RonDB tablespace for on-disk storage.
                   Overridden by `online_disk=True`.
-                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"BTREE"` (ordered-only, supports range scans), `"HASH_AND_BTREE"` (both), or unset.
-                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, `"HASH_AND_BTREE"` when TTL is enabled.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
                   See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
                   Set at feature group creation time only — cannot be changed after the table exists.
             offline_backfill_every_hr:
@@ -1048,8 +1048,8 @@ class FeatureStore:
                 - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
                 - `table_space`: Name of the RonDB tablespace for on-disk storage.
                   Overridden by `online_disk=True`.
-                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"BTREE"` (ordered-only, supports range scans), `"HASH_AND_BTREE"` (both), or unset.
-                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, `"HASH_AND_BTREE"` when TTL is enabled.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
                   See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
                   Set at feature group creation time only — cannot be changed after the table exists.
             offline_backfill_every_hr:
@@ -1437,8 +1437,8 @@ class FeatureStore:
                 - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
                 - `table_space`: Name of the RonDB tablespace for on-disk storage.
                   Overridden by `online_disk=True`.
-                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"BTREE"` (ordered-only, supports range scans), `"HASH_AND_BTREE"` (both), or unset.
-                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, `"HASH_AND_BTREE"` when TTL is enabled.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
                   See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
                   Set at feature group creation time only — cannot be changed after the table exists.
             data_source:
