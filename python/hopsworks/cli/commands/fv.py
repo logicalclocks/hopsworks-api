@@ -21,27 +21,46 @@ def fv_group() -> None:
 
 
 @fv_group.command("list")
+@click.option(
+    "--current-only",
+    is_flag=True,
+    help="Only the active project's feature store; skip shared stores.",
+)
 @click.pass_context
-def fv_list(ctx: click.Context) -> None:
-    """List every feature view in the active project's feature store.
+def fv_list(ctx: click.Context, current_only: bool) -> None:
+    """List every feature view the caller can see.
+
+    Walks the active project's own feature store and any feature stores
+    shared with the project so shared views are visible in one view.
+    Pass ``--current-only`` to restrict the listing to the active project.
 
     Args:
         ctx: Click context.
+        current_only: When True, skip shared feature stores.
     """
-    fs = session.get_feature_store(ctx)
-    items = _list_feature_views(fs)
+    project = session.get_project(ctx)
+    stores = (
+        [session.get_feature_store(ctx)]
+        if current_only
+        else project.get_feature_stores()
+    )
     rows = []
-    for item in items:
-        rows.append(
-            [
-                item.get("id", "?"),
-                item.get("name", "?"),
-                item.get("version", "?"),
-                ", ".join(item.get("labels", []) or []) or "-",
-                output.first_line(item.get("description"), empty=""),
-            ]
-        )
-    output.print_table(["ID", "NAME", "VERSION", "LABELS", "DESCRIPTION"], rows)
+    for fs in stores:
+        project_name = getattr(fs, "project_name", "?")
+        for item in _list_feature_views(fs):
+            rows.append(
+                [
+                    project_name,
+                    item.get("id", "?"),
+                    item.get("name", "?"),
+                    item.get("version", "?"),
+                    ", ".join(item.get("labels", []) or []) or "-",
+                    output.first_line(item.get("description"), empty=""),
+                ]
+            )
+    output.print_table(
+        ["PROJECT", "ID", "NAME", "VERSION", "LABELS", "DESCRIPTION"], rows
+    )
 
 
 @fv_group.command("info")

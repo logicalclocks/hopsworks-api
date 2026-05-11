@@ -66,6 +66,37 @@ def test_fg_list_json(mock_project):
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
     assert payload[0]["NAME"] == "transactions"
+    assert payload[0]["PROJECT"] == "demo"
+
+
+def test_fg_list_spans_shared_stores(mock_project):
+    own_fs = mock_project.get_feature_store.return_value
+    own_fs.get_feature_groups.return_value = [_feature_group("own_fg", 1)]
+    shared_fs = mock.MagicMock(name="SharedFeatureStore")
+    shared_fs.project_name = "hopsworks_default"
+    shared_fs.get_feature_groups.return_value = [
+        _feature_group("shared_fg", 1, online=True),
+    ]
+    mock_project.get_feature_stores.return_value = [own_fs, shared_fs]
+    result = CliRunner().invoke(cli, ["fg", "list"])
+    assert result.exit_code == 0, result.output
+    assert "own_fg" in result.output
+    assert "shared_fg" in result.output
+    assert "hopsworks_default" in result.output
+
+
+def test_fg_list_current_only_skips_shared(mock_project):
+    own_fs = mock_project.get_feature_store.return_value
+    own_fs.get_feature_groups.return_value = [_feature_group("own_fg", 1)]
+    shared_fs = mock.MagicMock(name="SharedFeatureStore")
+    shared_fs.project_name = "other"
+    shared_fs.get_feature_groups.return_value = [_feature_group("shared_fg", 1)]
+    mock_project.get_feature_stores.return_value = [own_fs, shared_fs]
+    result = CliRunner().invoke(cli, ["fg", "list", "--current-only"])
+    assert result.exit_code == 0, result.output
+    assert "own_fg" in result.output
+    assert "shared_fg" not in result.output
+    mock_project.get_feature_stores.assert_not_called()
 
 
 def test_fg_info_renders_fields(mock_project):
@@ -137,6 +168,36 @@ def test_fv_list_hits_rest_endpoint(mock_project):
         result = CliRunner().invoke(cli, ["fv", "list"])
     assert result.exit_code == 0, result.output
     assert "fraud_fv" in result.output
+    assert "demo" in result.output
+
+
+def test_fv_list_spans_shared_stores(mock_project):
+    own_fs = mock_project.get_feature_store.return_value
+    shared_fs = mock.MagicMock(name="SharedFeatureStore")
+    shared_fs.project_name = "hopsworks_default"
+    mock_project.get_feature_stores.return_value = [own_fs, shared_fs]
+
+    def fake_list(fs):
+        if fs is shared_fs:
+            return [
+                {
+                    "id": 22,
+                    "name": "shared_fv",
+                    "version": 1,
+                    "labels": [],
+                    "description": "",
+                },
+            ]
+        return [
+            {"id": 11, "name": "own_fv", "version": 1, "labels": [], "description": ""},
+        ]
+
+    with mock.patch.object(fv_cmd, "_list_feature_views", side_effect=fake_list):
+        result = CliRunner().invoke(cli, ["fv", "list"])
+    assert result.exit_code == 0, result.output
+    assert "own_fv" in result.output
+    assert "shared_fv" in result.output
+    assert "hopsworks_default" in result.output
 
 
 def test_fv_info(mock_project):

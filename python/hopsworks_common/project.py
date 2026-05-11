@@ -187,6 +187,33 @@ class Project:
         return client.get_connection().get_feature_store(name)
 
     @public
+    def get_feature_stores(self) -> list[FeatureStore]:
+        """List every feature store visible to this project.
+
+        Returns the project's own feature store plus any feature stores
+        shared with it.
+        Useful when an operation needs to span shared stores, for example
+        listing every feature group the caller can read.
+
+        Example: Iterate over every feature store the caller can see
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            for fs in project.get_feature_stores():
+                print(fs.project_name, fs.name)
+            ```
+
+        Returns:
+            List of feature store handles, one per visible store.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return client.get_connection().get_feature_stores()
+
+    @public
     def get_model_registry(self) -> ModelRegistry:
         """Connect to Project's Model Registry API.
 

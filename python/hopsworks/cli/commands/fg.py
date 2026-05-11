@@ -25,27 +25,44 @@ def fg_group() -> None:
 
 
 @fg_group.command("list")
+@click.option(
+    "--current-only",
+    is_flag=True,
+    help="Only the active project's feature store; skip shared stores.",
+)
 @click.pass_context
-def fg_list(ctx: click.Context) -> None:
-    """List all feature groups in the active project's feature store.
+def fg_list(ctx: click.Context, current_only: bool) -> None:
+    """List every feature group the caller can see.
+
+    Walks the active project's own feature store and any feature stores
+    shared with the project so shared groups are visible in one view.
+    Pass ``--current-only`` to restrict the listing to the active project.
 
     Args:
         ctx: Click context.
+        current_only: When True, skip shared feature stores.
     """
-    fs = session.get_feature_store(ctx)
-    fgs = fs.get_feature_groups()
+    project = session.get_project(ctx)
+    stores = (
+        [session.get_feature_store(ctx)]
+        if current_only
+        else project.get_feature_stores()
+    )
     rows = []
-    for fg in fgs:
-        rows.append(
-            [
-                getattr(fg, "id", "?"),
-                getattr(fg, "name", "?"),
-                getattr(fg, "version", "?"),
-                _fg_type_label(fg),
-                "yes" if getattr(fg, "online_enabled", False) else "no",
-            ]
-        )
-    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE"], rows)
+    for fs in stores:
+        project_name = getattr(fs, "project_name", "?")
+        for fg in fs.get_feature_groups():
+            rows.append(
+                [
+                    project_name,
+                    getattr(fg, "id", "?"),
+                    getattr(fg, "name", "?"),
+                    getattr(fg, "version", "?"),
+                    _fg_type_label(fg),
+                    "yes" if getattr(fg, "online_enabled", False) else "no",
+                ]
+            )
+    output.print_table(["PROJECT", "ID", "NAME", "VERSION", "TYPE", "ONLINE"], rows)
 
 
 @fg_group.command("info")

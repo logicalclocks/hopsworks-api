@@ -60,7 +60,9 @@ def mock_project(authed_config):
     fs = mock.MagicMock(name="FeatureStore")
     fs.id = 67
     fs.name = "demo_featurestore"
+    fs.project_name = "demo"
     project.get_feature_store.return_value = fs
+    project.get_feature_stores.return_value = [fs]
 
     with (
         mock.patch.object(session, "get_project", return_value=project),

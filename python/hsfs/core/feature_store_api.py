@@ -34,3 +34,21 @@ class FeatureStoreApi:
         return hsfs.feature_store.FeatureStore.from_response_json(
             _client._send_request("GET", path_params)
         )
+
+    def get_all(self) -> list[hsfs.feature_store.FeatureStore]:
+        """Get every feature store visible to the active project.
+
+        Includes the project's own feature store plus any feature stores
+        shared with the project.
+        The list mirrors what the Hopsworks UI shows in its feature-store picker.
+
+        Returns:
+            Feature store metadata objects for every visible store.
+        """
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "featurestores"]
+        payload = _client._send_request("GET", path_params) or []
+        return [
+            hsfs.feature_store.FeatureStore.from_response_json(entry)
+            for entry in payload
+        ]

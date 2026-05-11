@@ -181,6 +181,21 @@ class Connection:
 
     @usage.method_logger
     @connected
+    def get_feature_stores(self) -> list[feature_store.FeatureStore]:
+        """List every feature store visible to the active project.
+
+        Includes the project's own feature store plus any feature stores
+        shared with the project.
+        Use this when an operation needs to span shared stores, for example
+        listing every feature group the caller can read.
+
+        Returns:
+            Feature store handle objects, one per visible store.
+        """
+        return self._feature_store_api.get_all()
+
+    @usage.method_logger
+    @connected
     def get_model_registry(self, project: str | None = None) -> ModelRegistry:
         """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
 
