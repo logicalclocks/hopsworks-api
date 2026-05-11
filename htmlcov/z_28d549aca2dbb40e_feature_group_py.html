@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hsfs/feature_group.py: 74%</title>
+    <title>Coverage for python/hsfs/feature_group.py: 73%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_9ff733b0.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python&#8201;/&#8201;hsfs&#8201;/&#8201;feature_group.py</b>:
-            <span class="pc_cov">74%</span>
+            <span class="pc_cov">73%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">1275 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">940<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">335<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">931<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">344<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">14<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_28d549aca2dbb40e_feature_group_commit_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-05-11 12:32 +0000
+            created at 2026-05-11 12:43 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -1433,11 +1433,11 @@
     <p class="pln"><span class="n"><a id="t1351" href="#t1351">1351</a></span><span class="t"><span class="str">            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1352" href="#t1352">1352</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1353" href="#t1353">1353</a></span><span class="t">        <span class="com"># Avoid throwing an error if Feature Group not initialised.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1354" href="#t1354">1354</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_id</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1355" href="#t1355">1355</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite_engine</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1354" href="#t1354">1354</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_id</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1355" href="#t1355">1355</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite_engine</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1356" href="#t1356">1356</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1357" href="#t1357">1357</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span> <span class="key">and</span> <span class="nam">ge_type</span> <span class="key">is</span> <span class="key">True</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1358" href="#t1358">1358</a></span><span class="t">            <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span><span class="op">.</span><span class="nam">to_ge_type</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1357" href="#t1357">1357</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span> <span class="key">and</span> <span class="nam">ge_type</span> <span class="key">is</span> <span class="key">True</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1358" href="#t1358">1358</a></span><span class="t">            <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span><span class="op">.</span><span class="nam">to_ge_type</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1359" href="#t1359">1359</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1360" href="#t1360">1360</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1361" href="#t1361">1361</a></span><span class="t">    <span class="op">@</span><span class="nam">public</span>&nbsp;</span><span class="r"></span></p>
@@ -1492,15 +1492,15 @@
     <p class="run"><span class="n"><a id="t1410" href="#t1410">1410</a></span><span class="t">        <span class="key">if</span> <span class="nam">HAS_GREAT_EXPECTATIONS</span> <span class="key">and</span> <span class="nam">isinstance</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1411" href="#t1411">1411</a></span><span class="t">            <span class="nam">expectation_suite</span><span class="op">,</span> <span class="nam">great_expectations</span><span class="op">.</span><span class="nam">core</span><span class="op">.</span><span class="nam">ExpectationSuite</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t1412" href="#t1412">1412</a></span><span class="t">        <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1413" href="#t1413">1413</a></span><span class="t">            <span class="nam">tmp_expectation_suite</span> <span class="op">=</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1414" href="#t1414">1414</a></span><span class="t">                <span class="nam">hsfs</span><span class="op">.</span><span class="nam">expectation_suite</span><span class="op">.</span><span class="nam">ExpectationSuite</span><span class="op">.</span><span class="nam">from_ge_type</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1415" href="#t1415">1415</a></span><span class="t">                    <span class="nam">ge_expectation_suite</span><span class="op">=</span><span class="nam">expectation_suite</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1416" href="#t1416">1416</a></span><span class="t">                    <span class="nam">run_validation</span><span class="op">=</span><span class="nam">run_validation</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1417" href="#t1417">1417</a></span><span class="t">                    <span class="nam">validation_ingestion_policy</span><span class="op">=</span><span class="nam">validation_ingestion_policy</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1418" href="#t1418">1418</a></span><span class="t">                    <span class="nam">feature_store_id</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">_feature_store_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1419" href="#t1419">1419</a></span><span class="t">                    <span class="nam">feature_group_id</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1420" href="#t1420">1420</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1421" href="#t1421">1421</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1413" href="#t1413">1413</a></span><span class="t">            <span class="nam">tmp_expectation_suite</span> <span class="op">=</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1414" href="#t1414">1414</a></span><span class="t">                <span class="nam">hsfs</span><span class="op">.</span><span class="nam">expectation_suite</span><span class="op">.</span><span class="nam">ExpectationSuite</span><span class="op">.</span><span class="nam">from_ge_type</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1415" href="#t1415">1415</a></span><span class="t">                    <span class="nam">ge_expectation_suite</span><span class="op">=</span><span class="nam">expectation_suite</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1416" href="#t1416">1416</a></span><span class="t">                    <span class="nam">run_validation</span><span class="op">=</span><span class="nam">run_validation</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1417" href="#t1417">1417</a></span><span class="t">                    <span class="nam">validation_ingestion_policy</span><span class="op">=</span><span class="nam">validation_ingestion_policy</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1418" href="#t1418">1418</a></span><span class="t">                    <span class="nam">feature_store_id</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">_feature_store_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1419" href="#t1419">1419</a></span><span class="t">                    <span class="nam">feature_group_id</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1420" href="#t1420">1420</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t1421" href="#t1421">1421</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1422" href="#t1422">1422</a></span><span class="t">        <span class="key">elif</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">expectation_suite</span><span class="op">,</span> <span class="nam">hsfs</span><span class="op">.</span><span class="nam">expectation_suite</span><span class="op">.</span><span class="nam">ExpectationSuite</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1423" href="#t1423">1423</a></span><span class="t">            <span class="nam">tmp_expectation_suite</span> <span class="op">=</span> <span class="nam">expectation_suite</span><span class="op">.</span><span class="nam">to_json_dict</span><span class="op">(</span><span class="nam">decamelize</span><span class="op">=</span><span class="key">True</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1424" href="#t1424">1424</a></span><span class="t">            <span class="nam">tmp_expectation_suite</span><span class="op">[</span><span class="str">"feature_group_id"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_id</span>&nbsp;</span><span class="r"></span></p>
@@ -1514,7 +1514,7 @@
     <p class="mis mis2 show_mis"><span class="n"><a id="t1432" href="#t1432">1432</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1433" href="#t1433">1433</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1434" href="#t1434">1434</a></span><span class="t">        <span class="key">if</span> <span class="nam">overwrite</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1435" href="#t1435">1435</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">delete_expectation_suite</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1435" href="#t1435">1435</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">delete_expectation_suite</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1436" href="#t1436">1436</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1437" href="#t1437">1437</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_id</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1438" href="#t1438">1438</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite_engine</span><span class="op">.</span><span class="nam">save</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -1543,9 +1543,9 @@
     <p class="pln"><span class="n"><a id="t1461" href="#t1461">1461</a></span><span class="t"><span class="str">        Raises:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1462" href="#t1462">1462</a></span><span class="t"><span class="str">            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1463" href="#t1463">1463</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1464" href="#t1464">1464</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">get_expectation_suite</span><span class="op">(</span><span class="op">)</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1465" href="#t1465">1465</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite_engine</span><span class="op">.</span><span class="nam">delete</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span><span class="op">.</span><span class="nam">id</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1466" href="#t1466">1466</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span> <span class="op">=</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1464" href="#t1464">1464</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">get_expectation_suite</span><span class="op">(</span><span class="op">)</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1465" href="#t1465">1465</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite_engine</span><span class="op">.</span><span class="nam">delete</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span><span class="op">.</span><span class="nam">id</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1466" href="#t1466">1466</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_expectation_suite</span> <span class="op">=</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1467" href="#t1467">1467</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1468" href="#t1468">1468</a></span><span class="t">    <span class="op">@</span><span class="nam">public</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1469" href="#t1469">1469</a></span><span class="t">    <span class="key">def</span> <span class="nam">get_latest_validation_report</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -5856,7 +5856,7 @@
             <a class="nav" href="z_28d549aca2dbb40e_feature_group_commit_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.13.5">coverage.py v7.13.5</a>,
-            created at 2026-05-11 12:32 +0000
+            created at 2026-05-11 12:43 +0000
         </p>
     </div>
 </footer>
