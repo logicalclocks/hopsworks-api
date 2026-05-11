@@ -188,6 +188,8 @@ class ModelServing:
         environment: str | None = None,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         env_vars: dict | None = None,
+        vllm_variant: str | None = None,
+        vllm_image_tag: str | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -230,6 +232,8 @@ class ModelServing:
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
+            vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
 
         Returns:
             The predictor metadata object.
@@ -251,6 +255,8 @@ class ModelServing:
             environment=environment,
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
+            vllm_variant=vllm_variant,
+            vllm_image_tag=vllm_image_tag,
         )
 
     @public
