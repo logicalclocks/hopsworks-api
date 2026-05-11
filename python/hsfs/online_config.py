@@ -112,8 +112,7 @@ class OnlineConfig:
               Supports point lookups via the hash index and range scans via the ordered index.
               Costs more memory and write throughput than a hash-only index.
               Choose this when access patterns are mixed or when range scans over the primary key are needed.
-            * `None` (default, unset) — No value sent.
-              The server applies a TTL-driven fallback: hash-only (`USING HASH`) when TTL is disabled, and the NDB default (hash + ordered) when TTL is enabled so the TTL cleaner can range-scan by event time.
+            * `None` (default, unset) — The server applies a TTL-driven fallback: hash-only (`USING HASH`) when TTL is disabled, and the NDB default (hash + ordered) when TTL is enabled.
 
         Warning: Create-only
             Set at feature group creation time only.
