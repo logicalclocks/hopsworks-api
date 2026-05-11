@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
+from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
-from hsml.client.exceptions import ModelServingException
 from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
