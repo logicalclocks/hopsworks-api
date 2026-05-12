@@ -17,6 +17,8 @@
 import os
 import zipfile
 
+import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder
+import build.env  # noqa: F401  # eagerly load so test patches resolve build.env.DefaultIsolatedEnv
 import pytest
 from hopsworks_common.client.exceptions import RestAPIError
 from hsml import model_serving
@@ -288,8 +290,8 @@ class TestDeployAgentPackage:
 
     def _patch_builder(self, mocker, wheel_path, top_level="my_agent"):
         self._write_wheel(wheel_path, top_level=top_level)
-        mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
-        mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
+        mocker.patch("build.env.DefaultIsolatedEnv")
+        mock_builder = mocker.patch("build.ProjectBuilder")
         mock_builder.from_isolated_env.return_value.build.return_value = str(wheel_path)
         return mock_builder
 
@@ -354,8 +356,8 @@ class TestDeployAgentPackage:
             self._write_wheel(os.path.join(output_directory, wheel_filename))
             return wheel_filename  # basename only, as on older `build` versions
 
-        mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
-        mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
+        mocker.patch("build.env.DefaultIsolatedEnv")
+        mock_builder = mocker.patch("build.ProjectBuilder")
         mock_builder.from_isolated_env.return_value.build.side_effect = fake_build
 
         captured_uploads = []
@@ -468,8 +470,8 @@ class TestDeployAgentPackage:
         with zipfile.ZipFile(wheel_local, "w") as z:
             z.writestr("my_agent/__init__.py", "")
 
-        mocker.patch("hsml.model_serving.DefaultIsolatedEnv")
-        mock_builder = mocker.patch("hsml.model_serving.ProjectBuilder")
+        mocker.patch("build.env.DefaultIsolatedEnv")
+        mock_builder = mocker.patch("build.ProjectBuilder")
         mock_builder.from_isolated_env.return_value.build.return_value = str(
             wheel_local
         )
