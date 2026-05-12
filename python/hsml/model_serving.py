@@ -41,6 +41,9 @@ except ImportError:
     import tomli as tomllib
 
 
+_AGENT_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
 if TYPE_CHECKING:
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_endpoint import InferenceEndpoint
@@ -644,9 +647,6 @@ class ModelServing:
 
     def __repr__(self):
         return f"ModelServing(project: {self._project_name!r})"
-
-
-_AGENT_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _validate_agent_identifier(value: str, field: str) -> None:
