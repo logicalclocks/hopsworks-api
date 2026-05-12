@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 from unittest import mock
 
-import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 

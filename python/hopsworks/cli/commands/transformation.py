@@ -88,6 +88,7 @@ def transformation_create(
         ctx: Click context.
         file_path: Python source path.
         code: Inline Python source.
+        version: Initial version for the registered transformation functions.
     """
     if not file_path and not code:
         raise click.UsageError("Provide either --file or --code.")
