@@ -122,6 +122,28 @@ class Deployment:
 
     @public
     @usage.method_logger
+    def restart(
+        self,
+        await_stopped: int | None = 600,
+        await_running: int | None = 600,
+    ) -> None:
+        """Restart the deployment so it picks up the latest code and environment state.
+
+        If the deployment is already stopped, it is started in place.
+
+        Parameters:
+            await_stopped: Awaiting time (seconds) for the deployment to stop.
+            await_running: Awaiting time (seconds) for the deployment to start again.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        if not self.is_stopped():
+            self.stop(await_stopped=await_stopped)
+        self.start(await_running=await_running)
+
+    @public
+    @usage.method_logger
     def delete(self, force: bool = False):
         """Delete the deployment.
 

@@ -59,6 +59,7 @@ dependencies = [
     "click>=8.1",
     "tomli>=2.0; python_version < '3.11'",
     "tomli-w>=1.0",
+    "build",
 ]
 
 [project.scripts]

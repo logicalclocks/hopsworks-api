@@ -176,6 +176,39 @@ class Environment:
 
     @public
     @usage.method_logger
+    def uninstall(
+        self, library_name: str, await_uninstallation: bool | None = True
+    ) -> None:
+        """Uninstall a library from the environment.
+
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+
+        env_api = project.get_environment_api()
+        env = env_api.get_environment("my_custom_environment")
+
+        env.uninstall("matplotlib")
+        ```
+
+        Parameters:
+            library_name: Name of the installed library to remove.
+            await_uninstallation: If `True` the method returns only when the uninstallation finishes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        # Wait for any ongoing environment operations
+        self._environment_engine.await_environment_command(self.name)
+
+        self._library_api._uninstall(library_name, self.name)
+
+        if await_uninstallation:
+            self._environment_engine.await_library_command(self.name, library_name)
+
+    @public
+    @usage.method_logger
     def delete(self):
         """Delete the environment.
 
