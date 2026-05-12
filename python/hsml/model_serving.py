@@ -22,8 +22,6 @@ import tempfile
 import zipfile
 from typing import TYPE_CHECKING
 
-from build import ProjectBuilder
-from build.env import DefaultIsolatedEnv
 from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.client.exceptions import RestAPIError
@@ -515,9 +513,13 @@ class ModelServing:
         script_file = util.convert_to_abs(script_file, self._project_name)
 
         if requirements is not None:
-            req_remote = ds_api.upload(
-                os.path.abspath(requirements), agent_dir, overwrite=True
-            )
+            requirements_abs = os.path.abspath(requirements)
+            if not os.path.isfile(requirements_abs):
+                raise ValueError(
+                    "requirements must be a path to an existing file: "
+                    + requirements_abs
+                )
+            req_remote = ds_api.upload(requirements_abs, agent_dir, overwrite=True)
             env.install_requirements(req_remote)
 
         predictor = Predictor.for_server(
@@ -692,6 +694,10 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
 
     Returns the remote path of the runner script to use as `script_file`.
     """
+    from build.env import DefaultIsolatedEnv
+
+    from build import ProjectBuilder
+
     pkg_name = _read_package_name(package_dir)
 
     with tempfile.TemporaryDirectory() as build_dir:

@@ -377,7 +377,15 @@ def _get_agent(ctx: click.Context, name: str) -> Any:
 
 
 def _is_agent(d: Any) -> bool:
-    """Identify server-only (agent) deployments: no model attached."""
+    """Identify server-only (agent) deployments with no attached model.
+
+    Prefer the SDK-provided ``has_model`` attribute when available because it
+    accounts for the full deployment model attachment state.
+    Fall back to the legacy ``model_name`` heuristic for non-SDK objects.
+    """
+    has_model = getattr(d, "has_model", None)
+    if has_model is not None:
+        return not bool(has_model)
     return getattr(d, "model_name", None) in (None, "")
 
 
