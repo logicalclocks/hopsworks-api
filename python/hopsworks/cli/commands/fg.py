@@ -440,6 +440,7 @@ def fg_insert(
     elif file_path:
         path = Path(file_path)
         df = pd.read_csv(path) if path.suffix.lower() == ".csv" else pd.read_json(path)
+        _coerce_temporal_columns(df, fg)
     else:
         data = sys.stdin.read()
         if not data.strip():
@@ -447,6 +448,7 @@ def fg_insert(
                 "No data provided. Pass --file, --generate N, or pipe JSON on stdin."
             )
         df = pd.DataFrame(json.loads(data))
+        _coerce_temporal_columns(df, fg)
 
     write_options = {"start_offline_materialization": False} if online else None
 
@@ -869,6 +871,29 @@ def _generate_dataframe(fg: Any, n: int) -> Any:
         dtype = str(getattr(feat, "type", "") or "").lower()
         data[name] = [_synth_value(dtype, i) for i in range(n)]
     return pd.DataFrame(data)
+
+
+def _coerce_temporal_columns(df: Any, fg: Any) -> None:
+    """Cast string columns to datetime when the FG schema expects timestamp/date.
+
+    JSON and CSV carry timestamps as ISO strings, but ``fg.insert()`` matches by
+    pandas dtype and rejects ``object`` columns where it expects ``datetime64``.
+    Inspect the FG's features and coerce in place so the user does not have to.
+
+    Args:
+        df: The DataFrame to coerce in place.
+        fg: The feature group whose schema dictates which columns to cast.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    schema = getattr(fg, "columns", None) or getattr(fg, "features", None) or []
+    for feat in schema:
+        dtype = (getattr(feat, "type", "") or "").lower()
+        col = getattr(feat, "name", None)
+        if not col or col not in df.columns:
+            continue
+        if "timestamp" in dtype or "date" in dtype:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
 
 
 def _synth_value(dtype: str, i: int) -> Any:
