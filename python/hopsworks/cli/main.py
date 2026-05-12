@@ -39,6 +39,7 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "env": "hopsworks.cli.commands.env:env_group",
     "job": "hopsworks.cli.commands.job:job_group",
     "app": "hopsworks.cli.commands.app:app_group",
+    "agent": "hopsworks.cli.commands.agent:agent_group",
     "transformation": "hopsworks.cli.commands.transformation:transformation_group",
     "superset": "hopsworks.cli.commands.superset:superset_group",
     "search": "hopsworks.cli.commands.search:search_group",
