@@ -19,9 +19,6 @@ jobs:
         with:
           java-version: "8"
           distribution: "adopt"
-          server-id: HopsEE
-          server-username: NEXUS_USER
-          server-password: NEXUS_PASSWORD
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -32,10 +29,7 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Test
         working-directory: ./java
-        env:
-          NEXUS_USER: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-        run: mvn clean test -Pspark-3.5,with-hops-ee
+        run: mvn clean test -Pspark-3.5 -Dspark.version=3.5.5 -Dhudi.version=1.0.2
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -53,9 +47,6 @@ jobs:
         with:
           java-version: "8"
           distribution: "adopt"
-          server-id: HopsEE
-          server-username: NEXUS_USER
-          server-password: NEXUS_PASSWORD
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -67,10 +58,7 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        env:
-          NEXUS_USER: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-        run: mvn clean test -Pspark-3.5,with-hops-ee
+        run: mvn clean test -Pspark-3.5 -Dspark.version=3.5.5 -Dhudi.version=1.0.2
 
   unit_tests_spark35:
     name: Unit Tests
@@ -88,9 +76,6 @@ jobs:
         with:
           java-version: "8"
           distribution: "adopt"
-          server-id: HopsEE
-          server-username: NEXUS_USER
-          server-password: NEXUS_PASSWORD
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -103,7 +88,4 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        env:
-          NEXUS_USER: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-        run: mvn clean test -Pspark-3.5,with-hops-ee
+        run: mvn clean test -Pspark-3.5 -Dspark.version=3.5.5 -Dhudi.version=1.0.2
