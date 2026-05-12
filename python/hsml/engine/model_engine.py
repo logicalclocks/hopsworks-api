@@ -264,9 +264,15 @@ class ModelEngine:
         upload_configuration=None,
     ):
         """Save model files from a local path. The local path can be on hopsfs mount."""
-        # check hopsfs mount
+        # The path may live under ``/hopsfs/`` or ``/mnt/hopsfs/`` without being
+        # reachable via the dataset API (per-pod mount layouts vary, FUSE writes
+        # may not yet have synced, or the path may simply be outside the project
+        # dataset tree). Verify the normalized path actually exists before
+        # treating it as a HopsFS move; otherwise fall back to a regular upload.
         from_hdfs_model_path = self._normalize_hopsfs_mount_path(model_path)
-        if from_hdfs_model_path is not None:
+        if from_hdfs_model_path is not None and self._dataset_api.path_exists(
+            from_hdfs_model_path
+        ):
             self._copy_or_move_hopsfs_model(
                 from_hdfs_model_path=from_hdfs_model_path,
                 to_model_files_path=model_instance.model_files_path,
