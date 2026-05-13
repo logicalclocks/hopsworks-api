@@ -34,3 +34,4 @@ Orchestration briefs the in-app Wizard pastes into Claude Code in the Terminal. 
 
 - @docs/wizard/time-series.md — end-to-end ML system on Hopsworks: raw FGs to deployed Streamlit app
 - @docs/wizard/research.md — autonomous research loop on a feature view, logged to a FG and the model registry
+- @docs/wizard/friction-log.md — issues hit running the time-series brief end-to-end (ETH block-count regressor), with fix proposals
