@@ -290,6 +290,85 @@ actual command is `hops deployment info <name>`. Minor — just a doc mismatch.
 
 ---
 
+## 16. 🛑 `hops app create --path` rejects absolute HopsFS paths
+
+```
+$ hops app create ethblocksforecast --path /hopsfs/Users/meb10000/app.py --start
+HTTP 400, errorCode 130047, "The configured application file
+hdfs:///Projects/onboarding_project_test//hopsfs/Users/meb10000/app.py does not exist."
+```
+
+The CLI naively concatenates the project root with the value of `--path`,
+which produces a doubled-`//` HDFS URL when the user passes the mounted
+absolute path. Required path is project-relative
+(`Users/meb10000/app.py`).
+
+This is the opposite of how `hops job deploy <path>` works (which accepts the
+local/absolute path and auto-uploads). Two adjacent CLIs disagree on path
+semantics.
+
+**Fix proposal**: pick one — either auto-strip the `/hopsfs/` mount prefix in
+`hops app create`, or have it upload from a local path the way
+`hops job deploy` does.
+
+---
+
+## 17. 🔧 `hops app start --wait` doesn't exist; only `--no-wait` does
+
+The wizard instructions used `hops deployment start <name>` (deployment, which
+has `--wait`) and I assumed apps shared the flag. `hops app start` accepts
+`--no-wait` only — `start` blocks by default. Two-CLI consistency would help.
+
+---
+
+## 19. 🛑 `deployment.predict(inputs=...)` blows up on `datetime.date` instances
+
+```
+TypeError: Object of type date is not JSON serializable
+  File ".../hsml/core/serving_api.py", line 284, in _send_inference_request_via_rest_protocol
+    data=json.dumps(data),
+```
+
+The SDK does a bare `json.dumps(data)` on the inference payload — no
+`default=str` fallback, no datetime handler. So if you do the natural thing in
+a Streamlit app:
+
+```python
+deployment.predict(inputs=[{"day": latest["day"].date()}])  # KABOOM
+```
+
+…you get a confusing `TypeError` that points at the SDK internals, not at your
+input.
+
+Combined with #13 (`get_feature_vectors` requires `datetime.date` for batch
+lookup on the server side), there's a real cliff: the SDK forces you to send a
+string, then the FV silently returns 0 rows for that string unless the
+predictor converts it back to a date. The predictor I wrote has a `_to_date`
+shim exactly to bridge this gap.
+
+**Fix proposal**: use `json.dumps(data, default=str)` in
+`_send_inference_request_via_rest_protocol`, or make `get_feature_vectors`
+accept ISO date strings. Either one removes the cliff.
+
+---
+
+## 18. 🔧 `python-app-pipeline` env lacks `plotly`
+
+The default Streamlit-friendly env doesn't include `plotly`. Surprising for a
+"build interactive apps" environment. The runtime failure surfaces as
+`ModuleNotFoundError: No module named 'plotly'` inside the app log, which
+means the user has already paid for the upload + start cycle before noticing.
+
+**Fix proposal**: either (a) include `plotly` in `python-app-pipeline` (it's
+the default for a reason), or (b) make `hops env list` show installed packages
+so the user can pick a compatible env, or (c) have `hops app create` lint
+imports against the env's package list before uploading.
+
+(Altair is bundled with Streamlit and worked fine — but the user shouldn't
+have to discover that via a crash.)
+
+---
+
 ## 15. 🔧 hops-online-inference skill examples are sklearn-pkl-centric
 
 Every example uses
