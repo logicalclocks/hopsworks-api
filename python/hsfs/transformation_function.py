@@ -25,6 +25,7 @@ from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
+from hopsworks_common.version import __version__ as current_version
 from hsfs import util
 from hsfs.core import transformation_function_engine
 from hsfs.decorators import typechecked
@@ -242,7 +243,11 @@ class TransformationFunction:
         Returns:
             Dictionary that contains all data required to json serialize the object.
         """
-        backend_version = client.get_connection().backend_version
+        backend_version = (
+            client.get_connection().backend_version
+            if client.get_connection()
+            else current_version
+        )
 
         return {
             "id": self._id,

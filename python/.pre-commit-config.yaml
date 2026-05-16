@@ -6,3 +6,9 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+  - repo: https://github.com/jshwi/docsig
+    rev: v0.80.0
+    hooks:
+      - id: docsig
+        files: ^(hopsworks_common|hopsworks|hsfs|hsml)/
+        types: [python]

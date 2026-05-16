@@ -76,6 +76,7 @@ python = [
     "hops-deltalake==1.4.0-post1; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
     "httpx<=0.28.1",
 ]
+viz = ["graphviz>=0.20"]
 sqlalchemy-1 = [
     "pandas<2.2.0; python_version < '3.13'",
     "sqlalchemy<2.0.0",

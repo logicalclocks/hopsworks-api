@@ -108,7 +108,6 @@ from hsfs import (
     feature_view,
     training_dataset,
     training_dataset_feature,
-    transformation_function,
     util,
 )
 from hsfs import feature_group as fg_mod
@@ -117,6 +116,7 @@ from hsfs.core import (
     delta_engine,
     hudi_engine,
     kafka_engine,
+    transformation_execution_dag,
     transformation_function_engine,
 )
 from hsfs.core.constants import GE_MAJOR, HAS_AVRO, HAS_GREAT_EXPECTATIONS
@@ -1035,6 +1035,7 @@ class Engine:
         dataframe_type: str,
         training_dataset_version: int | None = None,
         transformation_context: dict[str, Any] | None = None,
+        n_processes: int = None,
     ):
         """Function that creates or retrieves already created the training dataset.
 
@@ -1049,6 +1050,7 @@ class Engine:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
                 If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of processes to use for parallel execution of transformation functions. This parameter is not applicable in the spark engine.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1139,7 +1141,7 @@ class Engine:
                 dataset = dataset.coalesce(1)
             path = training_dataset.location + "/" + training_dataset.name
             return self._write_training_dataset_single(
-                feature_view_obj.transformation_functions,
+                feature_view_obj._model_dependent_transformation_execution_graph,
                 dataset,
                 training_dataset.data_source.storage_connector,
                 training_dataset.data_format,
@@ -1173,7 +1175,7 @@ class Engine:
             write_options,
             save_mode,
             to_df=to_df,
-            transformation_functions=feature_view_obj.transformation_functions,
+            execution_graph=feature_view_obj._model_dependent_transformation_execution_graph,
             transformation_context=transformation_context,
         )
 
@@ -1344,15 +1346,13 @@ class Engine:
         write_options,
         save_mode,
         to_df=False,
-        transformation_functions: list[
-            transformation_function.TransformationFunction
-        ] = None,
+        execution_graph=None,
         transformation_context: dict[str, Any] = None,
     ):
         for split_name, feature_dataframe in feature_dataframes.items():
             split_path = training_dataset.location + "/" + str(split_name)
             feature_dataframes[split_name] = self._write_training_dataset_single(
-                transformation_functions,
+                execution_graph,
                 feature_dataframe,
                 training_dataset.data_source.storage_connector,
                 training_dataset.data_format,
@@ -1369,7 +1369,7 @@ class Engine:
 
     def _write_training_dataset_single(
         self,
-        transformation_functions,
+        execution_graph,
         feature_dataframe,
         storage_connector,
         data_format,
@@ -1381,7 +1381,7 @@ class Engine:
     ):
         # apply transformation functions (they are applied separately to each split)
         feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-            transformation_functions=transformation_functions,
+            execution_graph=execution_graph,
             data=feature_dataframe,
             online=False,
             transformation_context=transformation_context,
@@ -1857,39 +1857,42 @@ class Engine:
 
     def _apply_transformation_function(
         self,
-        transformation_functions: list[transformation_function.TransformationFunction],
+        execution_graph: transformation_execution_dag.TransformationExecutionDAG,
         dataset: DataFrame,
-        transformation_context: dict[str, Any] | None = None,
-        expected_features: set[str] | None = None,
-    ) -> DataFrame:
-        """Apply transformation function to the dataframe.
+        transformation_context: dict[str, Any] = None,
+        expected_features: set[str] = None,
+        request_parameters: dict[str, Any] = None,
+    ):
+        """Apply transformation functions to a Spark DataFrame.
+
+        Chains ``.withColumn()`` calls in topological order so Spark's
+        Catalyst optimizer sees the full plan and handles scheduling,
+        parallelism, and pipelining internally — no Python-side DAG
+        scheduling is needed.
 
         Parameters:
-            transformation_functions: List of transformation functions.
-            dataset: A spark dataframe.
-            transformation_context:
-                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
-                If no context variables are provided, this parameter defaults to `None`.
+            execution_graph: The transformation DAG.
+            dataset: A Spark DataFrame.
+            transformation_context: Context variables passed to UDFs.
+            expected_features: Features to keep even if they appear in
+                ``dropped_features``.
+            request_parameters: Extra columns to add before transformations.
 
         Returns:
-            A spark dataframe with the transformed data.
-
-        Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
+            ``DataFrame``: Spark DataFrame with transformations applied.
         """
-        dropped_features = set()
-        transformations = []
-        transformation_features = []
-        output_col_names = []
-        explode_name = []
-        for tf in transformation_functions:
-            hopsworks_udf = tf.hopsworks_udf
+        # --- Merge request parameters once ---
+        if request_parameters:
+            for c in request_parameters:
+                dataset = dataset.withColumn(c, lit(request_parameters[c]))
 
-            # Setting transformation function context variables.
+        # --- Pre-compute dropped features & set context for all TFs ---
+        dropped_features: set[str] = set()
+        for tf in execution_graph.nodes:
+            hopsworks_udf = tf.hopsworks_udf
             hopsworks_udf.transformation_context = transformation_context
 
-            if tf.hopsworks_udf.dropped_features:
+            if hopsworks_udf.dropped_features:
                 dropped_features.update(
                     {
                         f
@@ -1900,41 +1903,51 @@ class Engine:
                     else hopsworks_udf.dropped_features
                 )
 
-            # Add to dropped features if the feature need to overwritten to avoid ambiguous columns.
             if len(hopsworks_udf.return_types) == 1 and (
                 hopsworks_udf.function_name == hopsworks_udf.output_column_names[0]
             ):
                 dropped_features.update(hopsworks_udf.output_column_names)
 
-            pandas_udf = hopsworks_udf.get_udf()
-            output_col_name = hopsworks_udf.output_column_names[0]
+        # --- Chain transformations in topological order ---
+        # Nodes are already topo-sorted, so every dependency is available
+        # by the time a dependent is reached.  Each .withColumn() is lazy —
+        # Spark's Catalyst optimizer collapses them into a single optimized
+        # plan and executes it in one pass.
+        from pyspark.sql.utils import AnalysisException
 
-            transformations.append(pandas_udf)
-            output_col_names.append(output_col_name)
-            transformation_features.append(hopsworks_udf.transformation_features)
+        try:
+            for tf in execution_graph.nodes:
+                hopsworks_udf = tf.hopsworks_udf
+                output_col_name = hopsworks_udf.output_column_names[0]
 
-            if len(hopsworks_udf.return_types) > 1:
-                explode_name.append(f"{output_col_name}.*")
-            else:
-                explode_name.append(output_col_name)
-
-        untransformed_columns = []  # Untransformed column maintained as a list since order is imported while selecting features.
-        for column in dataset.columns:
-            if column not in dropped_features:
-                untransformed_columns.append(column)
-        # Applying transformations
-        return dataset.select(
-            *untransformed_columns,
-            *[
-                fun(*feature).alias(output_col_name)
-                for fun, feature, output_col_name in zip(
-                    transformations,
-                    transformation_features,
-                    output_col_names,
-                    strict=False,
+                dataset = dataset.withColumn(
+                    output_col_name,
+                    hopsworks_udf.get_udf()(*hopsworks_udf.transformation_features),
                 )
-            ],
-        ).select(*untransformed_columns, *explode_name)
+
+                # Multi-output UDFs produce a struct column.  Explode it
+                # immediately so downstream TFs can reference individual fields.
+                if len(hopsworks_udf.return_types) > 1:
+                    remaining = [c for c in dataset.columns if c != output_col_name]
+                    existing = set(remaining)
+                    collisions = [
+                        s for s in hopsworks_udf.output_column_names if s in existing
+                    ]
+                    if collisions:
+                        raise FeatureStoreException(
+                            f"Multi-output transformation '{hopsworks_udf.function_name}' "
+                            f"produces sub-field(s) {collisions} that collide with "
+                            f"existing columns in the dataset."
+                        )
+                    dataset = dataset.select(*remaining, f"{output_col_name}.*")
+
+            final_columns = [c for c in dataset.columns if c not in dropped_features]
+            return dataset.select(*final_columns)
+        except AnalysisException as e:
+            raise FeatureStoreException(
+                f"Spark failed to resolve a transformation function during DAG "
+                f"execution: {e}"
+            ) from e
 
     def extract_logging_metadata(
         self,

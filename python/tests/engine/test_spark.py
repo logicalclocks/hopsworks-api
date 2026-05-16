@@ -43,6 +43,7 @@ from hsfs.constructor import hudi_feature_group_alias, query
 from hsfs.core import data_source as ds
 from hsfs.core import online_ingestion, training_dataset_engine
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
+from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
@@ -3723,7 +3724,7 @@ class TestSpark:
             write_options=None,
             save_mode=None,
             to_df=False,
-            transformation_functions=[tf("col_0")],
+            execution_graph=TransformationExecutionDAG([tf("col_0")]),
         )
 
         # Assert
@@ -3778,7 +3779,7 @@ class TestSpark:
             write_options=None,
             save_mode=None,
             to_df=True,
-            transformation_functions=[tf("col_0")],
+            execution_graph=TransformationExecutionDAG([tf("col_0")]),
         )
 
         # Assert
@@ -3809,7 +3810,7 @@ class TestSpark:
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
+            execution_graph=TransformationExecutionDAG([tf]),
             feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="csv",
@@ -3856,7 +3857,7 @@ class TestSpark:
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
+            execution_graph=TransformationExecutionDAG([tf]),
             feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="tsv",
@@ -3903,7 +3904,7 @@ class TestSpark:
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
+            execution_graph=TransformationExecutionDAG([tf]),
             feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format=None,
@@ -5807,7 +5808,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -5868,7 +5869,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -5929,7 +5930,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -5993,7 +5994,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
             transformation_context={"test": 20},
         )
@@ -6058,7 +6059,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6122,7 +6123,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6186,7 +6187,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6251,7 +6252,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6316,7 +6317,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6381,7 +6382,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6445,7 +6446,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6509,7 +6510,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6573,7 +6574,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6636,7 +6637,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6699,7 +6700,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6762,7 +6763,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
