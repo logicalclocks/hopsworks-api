@@ -462,3 +462,8 @@ class DataSource:
                 storage_connector._query_table = self.table
         if storage_connector.type == sc.StorageConnector.SQL and self.database:
             storage_connector._database = self.database
+        if storage_connector.type == sc.StorageConnector.MONGODB:
+            if self.database:
+                storage_connector._database = self.database
+            if self.table:
+                storage_connector._collection = self.table
