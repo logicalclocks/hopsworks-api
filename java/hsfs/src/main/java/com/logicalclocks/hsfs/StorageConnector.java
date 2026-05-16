@@ -60,7 +60,8 @@ import java.util.stream.Collectors;
     @JsonSubTypes.Type(value = StorageConnector.GcsConnector.class, name = "GCS"),
     @JsonSubTypes.Type(value = StorageConnector.BigqueryConnector.class, name = "BIGQUERY"),
     @JsonSubTypes.Type(value = StorageConnector.SqlConnector.class, name = "SQL"),
-    @JsonSubTypes.Type(value = StorageConnector.SapHanaConnector.class, name = "SAP_HANA")
+    @JsonSubTypes.Type(value = StorageConnector.SapHanaConnector.class, name = "SAP_HANA"),
+    @JsonSubTypes.Type(value = StorageConnector.MongoDbConnector.class, name = "MONGODB")
 })
 public abstract class StorageConnector {
 
@@ -760,6 +761,108 @@ public abstract class StorageConnector {
       this.password = updatedConnector.getPassword();
       this.application = updatedConnector.getApplication();
       this.arguments = updatedConnector.getArguments();
+    }
+
+    @JsonIgnore
+    public String getPath(String subPath) {
+      return null;
+    }
+  }
+
+  public static class MongoDbConnector extends StorageConnector {
+
+    public static final String MONGODB_FORMAT = "mongodb";
+
+    @Getter @Setter
+    protected String connectionString;
+
+    @Getter @Setter
+    protected String database;
+
+    @Getter @Setter
+    protected String collection;
+
+    @Getter @Setter
+    protected String user;
+
+    @Getter @Setter
+    protected String password;
+
+    @Getter @Setter
+    protected String authSource;
+
+    @Getter @Setter
+    protected String authMechanism;
+
+    @Getter @Setter
+    protected List<Option> options;
+
+    @Override
+    public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
+      if (Strings.isNullOrEmpty(connectionString)) {
+        throw new FeatureStoreException("MongoDB connector requires a connectionString. The connector was likely "
+            + "loaded without credentials (basic info only); refetch it before reading.");
+      }
+      Map<String, String> opts = new HashMap<>();
+      if (options != null) {
+        for (Option o : options) {
+          opts.put(o.getName(), o.getValue());
+        }
+      }
+      opts.put("connection.uri", buildConnectionUri());
+      String effectiveDb = dataSource == null || Strings.isNullOrEmpty(dataSource.getDatabase())
+          ? database : dataSource.getDatabase();
+      if (!Strings.isNullOrEmpty(effectiveDb)) {
+        opts.put("database", effectiveDb);
+      }
+      String effectiveCollection = dataSource == null || Strings.isNullOrEmpty(dataSource.getQuery())
+          ? collection : dataSource.getQuery();
+      if (!Strings.isNullOrEmpty(effectiveCollection)) {
+        opts.put("collection", effectiveCollection);
+      }
+      return opts;
+    }
+
+    private String buildConnectionUri() {
+      String base = connectionString.trim();
+      if (Strings.isNullOrEmpty(user)) {
+        return base;
+      }
+      int schemeEnd = base.indexOf("://");
+      if (schemeEnd < 0) {
+        return base;
+      }
+      String prefix = base.substring(0, schemeEnd + 3);
+      String rest = base.substring(schemeEnd + 3);
+      StringBuilder uri = new StringBuilder(prefix);
+      uri.append(java.net.URLEncoder.encode(user, java.nio.charset.StandardCharsets.UTF_8));
+      if (!Strings.isNullOrEmpty(password)) {
+        uri.append(':').append(java.net.URLEncoder.encode(password, java.nio.charset.StandardCharsets.UTF_8));
+      }
+      uri.append('@').append(rest);
+      char join = uri.indexOf("?") >= 0 ? '&' : '?';
+      if (!Strings.isNullOrEmpty(authSource)) {
+        uri.append(join).append("authSource=")
+            .append(java.net.URLEncoder.encode(authSource, java.nio.charset.StandardCharsets.UTF_8));
+        join = '&';
+      }
+      if (!Strings.isNullOrEmpty(authMechanism)) {
+        uri.append(join).append("authMechanism=")
+            .append(java.net.URLEncoder.encode(authMechanism, java.nio.charset.StandardCharsets.UTF_8));
+      }
+      return uri.toString();
+    }
+
+    public void update() throws FeatureStoreException, IOException {
+      MongoDbConnector updated = (MongoDbConnector) refetch();
+      this.connectionString = updated.getConnectionString();
+      this.database = updated.getDatabase();
+      this.collection = updated.getCollection();
+      this.user = updated.getUser();
+      this.password = updated.getPassword();
+      this.authSource = updated.getAuthSource();
+      this.authMechanism = updated.getAuthMechanism();
+      this.options = updated.getOptions();
     }
 
     @JsonIgnore
