@@ -308,7 +308,34 @@ def connector_create_mongodb(
     auth_mechanism: str | None,
     description: str,
 ) -> None:
-    """Register a MongoDB connector."""
+    """Register a MongoDB connector.
+
+    The ``connection_string`` is a MongoDB URI without embedded credentials
+    (``mongodb://`` or ``mongodb+srv://``); ``user`` and ``password`` are
+    persisted into the Hopsworks secret store and spliced into the URI
+    server-side at read time.
+
+    Args:
+        ctx: Click context.
+        name: Connector name.
+        connection_string: MongoDB URI (`mongodb://host[:port]` or
+            `mongodb+srv://cluster.mongodb.net`) with no embedded
+            ``user:password@`` userinfo.
+        database: Default database the connector points at. The per-FG
+            ``DataSource.database`` overrides this at read time.
+        collection: Default collection (optional). Overridden per-FG by
+            ``DataSource.table``.
+        user: Database user. Persisted as a Hopsworks secret alongside
+            ``password`` and spliced into the URI at read time.
+        password: Database password. Persisted as a Hopsworks secret —
+            never logged or returned in connector responses.
+        auth_source: ``authSource`` URI parameter (typically ``admin``
+            for Atlas users created outside the target database).
+        auth_mechanism: ``authMechanism`` URI parameter (e.g.
+            ``SCRAM-SHA-256``, ``MONGODB-X509``). Leave unset to let the
+            server negotiate the default.
+        description: Free-form description shown in the data-source list.
+    """
     body = {
         "name": name,
         "storageConnectorType": "MONGODB",

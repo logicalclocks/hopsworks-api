@@ -1794,34 +1794,50 @@ class MongoDBConnector(StorageConnector):
         return self._options
 
     def _connection_uri(self) -> str:
-        """Build a connection URI that embeds the secret credentials and the auth parameters."""
+        """Build a connection URI that embeds the secret credentials and the auth parameters.
+
+        ``authSource`` and ``authMechanism`` are always appended to the URI when set —
+        they are valid query parameters independent of whether userinfo is embedded
+        (e.g. a deployment authenticating via TLS client certs still needs
+        ``authMechanism=MONGODB-X509``). Userinfo is spliced in only when ``user``
+        is set; ``password`` remains optional.
+        """
         if not self._connection_string:
             raise DataSourceException(
                 "MongoDB connector requires a connection_string. The connector was likely "
                 "loaded without credentials (basic info only); refetch it before reading."
             )
-        base = self._connection_string.strip()
-        if not self._user:
-            return base
         from urllib.parse import quote_plus
 
+        base = self._connection_string.strip()
         scheme_end = base.find("://")
         if scheme_end < 0:
+            # Malformed URI — surface as-is, the driver's parser will reject it.
             return base
         prefix = base[: scheme_end + 3]
         rest = base[scheme_end + 3 :]
-        userinfo = quote_plus(self._user)
-        if self._password:
-            userinfo = f"{userinfo}:{quote_plus(self._password)}"
-        url = f"{prefix}{userinfo}@{rest}"
+        # Inject userinfo before the host portion only when a user is set.
+        if self._user:
+            userinfo = quote_plus(self._user)
+            if self._password:
+                userinfo = f"{userinfo}:{quote_plus(self._password)}"
+            rest = f"{userinfo}@{rest}"
+        # MongoDB connection-string spec requires a path component (`/`) before
+        # the query string. Add an empty path if the URI doesn't already have
+        # one before the existing query parameters (or before we add ours).
+        host_part, sep_existing, query_existing = rest.partition("?")
+        if "/" not in host_part:
+            host_part = f"{host_part}/"
+        url = f"{prefix}{host_part}"
         params = []
+        if sep_existing:
+            params.append(query_existing)
         if self._auth_source:
             params.append(f"authSource={quote_plus(self._auth_source)}")
         if self._auth_mechanism:
             params.append(f"authMechanism={quote_plus(self._auth_mechanism)}")
         if params:
-            sep = "&" if "?" in url else "?"
-            url = url + sep + "&".join(params)
+            url = url + "?" + "&".join(params)
         return url
 
     @public
@@ -1834,8 +1850,28 @@ class MongoDBConnector(StorageConnector):
         sc = fs.get_storage_connector("mongo_conn")
         client = MongoClient(**sc.connector_options())
         ```
+
+        Forwards any persisted ``self.options`` whose key looks like a
+        ``MongoClient`` constructor kwarg (lowercase letters, digits, and
+        underscores) so operator-set tuning knobs — ``maxPoolSize``,
+        ``serverSelectionTimeoutMS``, ``tlsAllowInvalidCertificates``, etc. —
+        reach the driver. Keys that look like URI parameters (camelCase,
+        already embedded in ``connection_uri``) and anything non-string are
+        dropped to avoid duplicate-config errors from pymongo.
         """
-        return {"host": self._connection_uri()}
+        opts: dict[str, Any] = {"host": self._connection_uri()}
+        # Pass through additional pymongo kwargs from self._options. Keep
+        # the filter conservative — anything we can't classify confidently
+        # is dropped so we don't trip the driver's argument validation.
+        for key, value in (self._options or {}).items():
+            if not isinstance(key, str) or not key:
+                continue
+            if key == "host":  # already set from connection_uri
+                continue
+            if value is None:
+                continue
+            opts[key] = value
+        return opts
 
     def spark_options(self) -> dict[str, Any]:
         """Return options for ``spark.read.format('mongodb')``."""

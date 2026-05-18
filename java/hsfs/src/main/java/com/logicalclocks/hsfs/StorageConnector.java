@@ -815,8 +815,13 @@ public abstract class StorageConnector {
       if (!Strings.isNullOrEmpty(effectiveDb)) {
         opts.put("database", effectiveDb);
       }
-      String effectiveCollection = dataSource == null || Strings.isNullOrEmpty(dataSource.getQuery())
-          ? collection : dataSource.getQuery();
+      // The per-FG collection override comes from `DataSource.table` — the
+      // dedicated table field every other connector uses for its primary
+      // resource (see SnowflakeConnector#sparkOptions). `query` was a
+      // historical accident from the MongoDB-as-SQL prototype and is left
+      // out of the equation here.
+      String effectiveCollection = dataSource == null || Strings.isNullOrEmpty(dataSource.getTable())
+          ? collection : dataSource.getTable();
       if (!Strings.isNullOrEmpty(effectiveCollection)) {
         opts.put("collection", effectiveCollection);
       }
@@ -824,31 +829,53 @@ public abstract class StorageConnector {
     }
 
     private String buildConnectionUri() {
+      // authSource / authMechanism are valid URI parameters independent
+      // of whether userinfo is embedded — a TLS-X.509 deployment, for
+      // example, sets authMechanism=MONGODB-X509 with no username. Always
+      // append them when set; conditionally splice userinfo when a user
+      // is configured.
       String base = connectionString.trim();
-      if (Strings.isNullOrEmpty(user)) {
-        return base;
-      }
       int schemeEnd = base.indexOf("://");
       if (schemeEnd < 0) {
+        // Malformed URI — return as-is and let the driver's parser reject it.
         return base;
       }
       String prefix = base.substring(0, schemeEnd + 3);
       String rest = base.substring(schemeEnd + 3);
-      StringBuilder uri = new StringBuilder(prefix);
-      uri.append(java.net.URLEncoder.encode(user, java.nio.charset.StandardCharsets.UTF_8));
-      if (!Strings.isNullOrEmpty(password)) {
-        uri.append(':').append(java.net.URLEncoder.encode(password, java.nio.charset.StandardCharsets.UTF_8));
+      if (!Strings.isNullOrEmpty(user)) {
+        StringBuilder userinfo = new StringBuilder();
+        userinfo.append(java.net.URLEncoder.encode(user, java.nio.charset.StandardCharsets.UTF_8));
+        if (!Strings.isNullOrEmpty(password)) {
+          userinfo.append(':').append(
+              java.net.URLEncoder.encode(password, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        userinfo.append('@');
+        rest = userinfo + rest;
       }
-      uri.append('@').append(rest);
-      char join = uri.indexOf("?") >= 0 ? '&' : '?';
+      // MongoDB connection-string spec requires a path component (`/`)
+      // before the query string; insert one if the URI doesn't already
+      // have a host/path separator before its query parameters.
+      int existingQuery = rest.indexOf('?');
+      String hostPart = existingQuery < 0 ? rest : rest.substring(0, existingQuery);
+      String queryExisting = existingQuery < 0 ? "" : rest.substring(existingQuery + 1);
+      if (hostPart.indexOf('/') < 0) {
+        hostPart = hostPart + "/";
+      }
+      StringBuilder uri = new StringBuilder(prefix).append(hostPart);
+      java.util.List<String> params = new java.util.ArrayList<>();
+      if (!queryExisting.isEmpty()) {
+        params.add(queryExisting);
+      }
       if (!Strings.isNullOrEmpty(authSource)) {
-        uri.append(join).append("authSource=")
-            .append(java.net.URLEncoder.encode(authSource, java.nio.charset.StandardCharsets.UTF_8));
-        join = '&';
+        params.add("authSource="
+            + java.net.URLEncoder.encode(authSource, java.nio.charset.StandardCharsets.UTF_8));
       }
       if (!Strings.isNullOrEmpty(authMechanism)) {
-        uri.append(join).append("authMechanism=")
-            .append(java.net.URLEncoder.encode(authMechanism, java.nio.charset.StandardCharsets.UTF_8));
+        params.add("authMechanism="
+            + java.net.URLEncoder.encode(authMechanism, java.nio.charset.StandardCharsets.UTF_8));
+      }
+      if (!params.isEmpty()) {
+        uri.append('?').append(String.join("&", params));
       }
       return uri.toString();
     }
