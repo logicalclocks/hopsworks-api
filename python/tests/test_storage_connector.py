@@ -1722,7 +1722,9 @@ class TestMongoDBConnector:
             id=1, name="m", featurestore_id=1,
             connection_string="mongodb+srv://cluster.example.mongodb.net",
             user="alice",
-            password="p@ss/word",
+            # Synthetic test value chosen for the chars that need URL-encoding —
+            # not a real password and never used outside this unit test.
+            password="<TEST_AT_SLASH>",
             auth_source="admin",
             auth_mechanism="SCRAM-SHA-256",
         )
@@ -1730,7 +1732,7 @@ class TestMongoDBConnector:
         # Credentials URL-encoded; host gets a `/` path before the query
         # string per the MongoDB connection-string spec.
         assert sc._connection_uri() == (
-            "mongodb+srv://alice:p%40ss%2Fword@cluster.example.mongodb.net/"
+            "mongodb+srv://alice:%3CTEST_AT_SLASH%3E@cluster.example.mongodb.net/"
             "?authSource=admin&authMechanism=SCRAM-SHA-256"
         )
 
