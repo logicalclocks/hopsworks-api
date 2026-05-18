@@ -340,7 +340,7 @@ def fg_create_external(
     event_time: str | None,
     description: str,
 ) -> None:
-    """Register an external feature group backed by a storage connector.
+    r"""Register an external feature group backed by a storage connector.
 
     Exactly one source spec is required:
 
