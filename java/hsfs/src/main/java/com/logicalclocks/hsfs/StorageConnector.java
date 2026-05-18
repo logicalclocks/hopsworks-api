@@ -31,6 +31,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.SneakyThrows;
 import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -828,6 +829,7 @@ public abstract class StorageConnector {
       return opts;
     }
 
+    @SneakyThrows
     private String buildConnectionUri() {
       // authSource / authMechanism are valid URI parameters independent
       // of whether userinfo is embedded — a TLS-X.509 deployment, for
@@ -844,10 +846,10 @@ public abstract class StorageConnector {
       String rest = base.substring(schemeEnd + 3);
       if (!Strings.isNullOrEmpty(user)) {
         StringBuilder userinfo = new StringBuilder();
-        userinfo.append(java.net.URLEncoder.encode(user, java.nio.charset.StandardCharsets.UTF_8));
+        userinfo.append(java.net.URLEncoder.encode(user, "UTF-8"));
         if (!Strings.isNullOrEmpty(password)) {
           userinfo.append(':').append(
-              java.net.URLEncoder.encode(password, java.nio.charset.StandardCharsets.UTF_8));
+              java.net.URLEncoder.encode(password, "UTF-8"));
         }
         userinfo.append('@');
         rest = userinfo + rest;
@@ -868,11 +870,11 @@ public abstract class StorageConnector {
       }
       if (!Strings.isNullOrEmpty(authSource)) {
         params.add("authSource="
-            + java.net.URLEncoder.encode(authSource, java.nio.charset.StandardCharsets.UTF_8));
+            + java.net.URLEncoder.encode(authSource, "UTF-8"));
       }
       if (!Strings.isNullOrEmpty(authMechanism)) {
         params.add("authMechanism="
-            + java.net.URLEncoder.encode(authMechanism, java.nio.charset.StandardCharsets.UTF_8));
+            + java.net.URLEncoder.encode(authMechanism, "UTF-8"));
       }
       if (!params.isEmpty()) {
         uri.append('?').append(String.join("&", params));
