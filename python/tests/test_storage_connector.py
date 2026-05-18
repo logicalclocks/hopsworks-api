@@ -1700,7 +1700,9 @@ class TestMongoDBConnector:
         assert sc.options == {"maxPoolSize": "10"}
 
     def test_from_response_json_basic_info(self, backend_fixtures):
-        json = backend_fixtures["storage_connector"]["get_mongodb_basic_info"]["response"]
+        json = backend_fixtures["storage_connector"]["get_mongodb_basic_info"][
+            "response"
+        ]
 
         sc = storage_connector.StorageConnector.from_response_json(json)
 
@@ -1722,7 +1724,9 @@ class TestMongoDBConnector:
         # of userinfo (e.g. X.509 client-cert auth has no username).
         # Always append them when set.
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
             connection_string="mongodb://host:27017",
             auth_mechanism="MONGODB-X509",
         )
@@ -1736,7 +1740,9 @@ class TestMongoDBConnector:
         # was produced (no `/` between host and `?`), which is invalid per
         # the MongoDB URI spec and rejected by pymongo's parser.
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
             connection_string="mongodb://host:27017",
             user="alice",
             auth_source="admin",
@@ -1751,7 +1757,9 @@ class TestMongoDBConnector:
         # If the stored connection string already carries query params or
         # a path, we preserve them and append our own params.
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
             connection_string="mongodb://host:27017/dbX?retryWrites=true",
             user="alice",
             auth_source="admin",
@@ -1764,7 +1772,9 @@ class TestMongoDBConnector:
 
     def test_connection_uri_no_user_no_auth_returns_base(self):
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
             connection_string="mongodb://host:27017",
         )
         # No userinfo, no extra params — but we still insert the path
@@ -1775,14 +1785,18 @@ class TestMongoDBConnector:
         from hopsworks_common.client.exceptions import DataSourceException
 
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
         )
         with pytest.raises(DataSourceException, match="requires a connection_string"):
             sc._connection_uri()
 
     def test_spark_options(self):
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
             connection_string="mongodb+srv://cluster.example.mongodb.net",
             database="sample_mflix",
             collection="comments",
@@ -1806,7 +1820,9 @@ class TestMongoDBConnector:
         # forwarded so values like maxPoolSize / serverSelectionTimeoutMS
         # reach the driver.
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
             connection_string="mongodb://host:27017",
             user="alice",
             options={
@@ -1825,7 +1841,9 @@ class TestMongoDBConnector:
 
     def test_connector_options_drops_none_values(self):
         sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
+            id=1,
+            name="m",
+            featurestore_id=1,
             connection_string="mongodb://host:27017",
             options={"maxPoolSize": None, "tlsAllowInvalidCertificates": True},
         )

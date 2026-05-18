@@ -290,11 +290,13 @@ def fg_create(
     "--connector", "connector_name", required=True, help="Storage connector name."
 )
 @click.option(
-    "--query", "query",
+    "--query",
+    "query",
     help="SQL query backing this feature group (data-warehouse sources).",
 )
 @click.option(
-    "--path", "path",
+    "--path",
+    "path",
     help=(
         "Object-storage path for data-lake sources, e.g. an S3 key for a single "
         "parquet file (`sales/2024.parquet`) or a prefix for a parquet directory "
@@ -302,20 +304,24 @@ def fg_create(
     ),
 )
 @click.option(
-    "--data-format", "data_format",
-    type=click.Choice(["parquet", "delta", "hudi", "orc", "avro", "csv"],
-                      case_sensitive=False),
+    "--data-format",
+    "data_format",
+    type=click.Choice(
+        ["parquet", "delta", "hudi", "orc", "avro", "csv"], case_sensitive=False
+    ),
     help="Required for object-storage sources (e.g. `parquet` for an S3 source).",
 )
 @click.option(
-    "--database", "database",
+    "--database",
+    "database",
     help=(
         "Database to read from (overrides the connector default). For MongoDB this "
         "is the Mongo database name; for SQL/Snowflake/BigQuery the catalog."
     ),
 )
 @click.option(
-    "--table", "table",
+    "--table",
+    "table",
     help=(
         "Table or collection to read from (overrides the connector default). For "
         "MongoDB this is the collection name; for SQL the table name."
@@ -371,9 +377,7 @@ def fg_create_external(
             "(S3/ADLS/GCS), or --database + --table (MongoDB)."
         )
     if path and not data_format:
-        raise click.UsageError(
-            "--data-format is required when --path is set."
-        )
+        raise click.UsageError("--data-format is required when --path is set.")
 
     fs = session.get_feature_store(ctx)
     try:
