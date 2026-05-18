@@ -425,6 +425,13 @@ def cast_column_to_online_type(
 
 
 def convert_simple_pandas_dtype_to_offline_type(arrow_type: str) -> str:
+    # Decimal types are parameterised by (precision, scale), so they can't live
+    # in the static PYARROW_HOPSWORKS_DTYPE_MAPPING table — render the Hive
+    # `decimal(p,s)` string from the Arrow type's own precision/scale. Covers
+    # both decimal128 and decimal256 source widths; the offline type carries
+    # no width distinction so they share one branch.
+    if HAS_PYARROW and pa.types.is_decimal(arrow_type):
+        return f"decimal({arrow_type.precision},{arrow_type.scale})"
     try:
         return PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type]
     except KeyError as err:

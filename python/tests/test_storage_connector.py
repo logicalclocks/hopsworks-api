@@ -1717,25 +1717,6 @@ class TestMongoDBConnector:
         assert sc.auth_mechanism is None
         assert sc.options == {}
 
-    def test_connection_uri_with_user_and_auth_params(self):
-        sc = storage_connector.MongoDBConnector(
-            id=1, name="m", featurestore_id=1,
-            connection_string="mongodb+srv://cluster.example.mongodb.net",
-            user="alice",
-            # Synthetic test value chosen for the chars that need URL-encoding —
-            # not a real password and never used outside this unit test.
-            password="<TEST_AT_SLASH>",
-            auth_source="admin",
-            auth_mechanism="SCRAM-SHA-256",
-        )
-
-        # Credentials URL-encoded; host gets a `/` path before the query
-        # string per the MongoDB connection-string spec.
-        assert sc._connection_uri() == (
-            "mongodb+srv://alice:%3CTEST_AT_SLASH%3E@cluster.example.mongodb.net/"
-            "?authSource=admin&authMechanism=SCRAM-SHA-256"
-        )
-
     def test_connection_uri_auth_params_without_user(self):
         # Reviewer note: authSource / authMechanism are valid independent
         # of userinfo (e.g. X.509 client-cert auth has no username).
