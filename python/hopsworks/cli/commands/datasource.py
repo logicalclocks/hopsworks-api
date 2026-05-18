@@ -284,6 +284,88 @@ def connector_create_bigquery(
     _create_connector(ctx, body)
 
 
+@connector_create.command("mongodb")
+@click.argument("name")
+@click.option(
+    "--connection-string",
+    "connection_string",
+    required=True,
+    help="MongoDB URI (mongodb:// or mongodb+srv://) without embedded credentials.",
+)
+@click.option("--database", required=True, help="Database name.")
+@click.option("--collection", help="Default collection name.")
+@click.option("--user", help="Database user.")
+@click.option(
+    "--password", help="Database password (stored in the Hopsworks secret store)."
+)
+@click.option("--auth-source", "auth_source", help="MongoDB authSource (e.g. admin).")
+@click.option(
+    "--auth-mechanism",
+    "auth_mechanism",
+    help="MongoDB authMechanism (e.g. SCRAM-SHA-256).",
+)
+@click.option("--description", default="", help="Free-form description.")
+@click.pass_context
+def connector_create_mongodb(
+    ctx: click.Context,
+    name: str,
+    connection_string: str,
+    database: str,
+    collection: str | None,
+    user: str | None,
+    password: str | None,
+    auth_source: str | None,
+    auth_mechanism: str | None,
+    description: str,
+) -> None:
+    """Register a MongoDB connector.
+
+    The ``connection_string`` is a MongoDB URI without embedded credentials
+    (``mongodb://`` or ``mongodb+srv://``); ``user`` and ``password`` are
+    persisted into the Hopsworks secret store and spliced into the URI
+    server-side at read time.
+
+    Args:
+        ctx: Click context.
+        name: Connector name.
+        connection_string: MongoDB URI (`mongodb://host[:port]` or
+            `mongodb+srv://cluster.mongodb.net`) with no embedded
+            ``user:password@`` userinfo.
+        database: Default database the connector points at. The per-FG
+            ``DataSource.database`` overrides this at read time.
+        collection: Default collection (optional). Overridden per-FG by
+            ``DataSource.table``.
+        user: Database user. Persisted as a Hopsworks secret alongside
+            ``password`` and spliced into the URI at read time.
+        password: Database password. Persisted as a Hopsworks secret —
+            never logged or returned in connector responses.
+        auth_source: ``authSource`` URI parameter (typically ``admin``
+            for Atlas users created outside the target database).
+        auth_mechanism: ``authMechanism`` URI parameter (e.g.
+            ``SCRAM-SHA-256``, ``MONGODB-X509``). Leave unset to let the
+            server negotiate the default.
+        description: Free-form description shown in the data-source list.
+    """
+    body = {
+        "name": name,
+        "storageConnectorType": "MONGODB",
+        "connectionString": connection_string,
+        "database": database,
+        "description": description,
+    }
+    if collection:
+        body["collection"] = collection
+    if user:
+        body["user"] = user
+    if password:
+        body["password"] = password
+    if auth_source:
+        body["authSource"] = auth_source
+    if auth_mechanism:
+        body["authMechanism"] = auth_mechanism
+    _create_connector(ctx, body)
+
+
 @datasource_group.command("delete")
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
