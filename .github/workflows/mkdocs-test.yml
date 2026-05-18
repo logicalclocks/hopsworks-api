@@ -60,7 +60,7 @@ jobs:
 
       - name: Build javadoc documentation
         working-directory: java
-        run: mvn clean install javadoc:javadoc javadoc:aggregate -DskipTests && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
+        run: mvn clean install javadoc:javadoc javadoc:aggregate -DskipTests -Dspark.version=3.5.5 -Dhudi.version=1.0.2 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
 
       - name: Check for broken links
         working-directory: logicalclocks.github.io
