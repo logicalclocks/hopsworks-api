@@ -65,7 +65,9 @@
             "stable_window_seconds": 60,
             "panic_threshold_percentage": 200.0,
             "scale_to_zero_retention_seconds": 0
-          }
+          },
+          "predictor_env_vars": ["FOO=bar", "BAZ=qux"],
+          "transformer_env_vars": ["X=y"]
         }
       ]
     }

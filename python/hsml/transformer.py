@@ -42,6 +42,7 @@ class Transformer(DeployableComponent):
         script_file: str,
         resources: TransformerResources | dict | Default | None = None,  # base
         scaling_configuration: TransformerScalingConfig | dict | Default | None = None,
+        env_vars: dict[str, str] | None = None,
         **kwargs,
     ):
         resources = (
@@ -64,6 +65,8 @@ class Transformer(DeployableComponent):
         super().__init__(
             script_file, resources, scaling_configuration=self._scaling_configuration
         )
+
+        self._env_vars = env_vars
 
     @public
     def describe(self):
@@ -97,8 +100,12 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        sf, rc, sc = cls.extract_fields_from_json(json_decamelized)
-        return Transformer(sf, rc, scaling_configuration=sc) if sf is not None else None
+        sf, rc, sc, ev = cls.extract_fields_from_json(json_decamelized)
+        return (
+            Transformer(sf, rc, scaling_configuration=sc, env_vars=ev)
+            if sf is not None
+            else None
+        )
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
@@ -106,18 +113,34 @@ class Transformer(DeployableComponent):
             json_decamelized, ["transformer", "script_file"]
         )
         if sf is None:
-            return None, None, None
+            return None, None, None, None
         sc = TransformerScalingConfig.from_json(json_decamelized)
         rc = TransformerResources.from_json(json_decamelized)
-        return sf, rc, sc
+        env_vars = json_decamelized.pop("transformer_env_vars", None)
+        ev = dict(e.split("=", 1) for e in env_vars) if env_vars else None
+        return sf, rc, sc, ev
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        self.__init__(*self.extract_fields_from_json(json_decamelized))
+        sf, rc, sc, ev = self.extract_fields_from_json(json_decamelized)
+        self.__init__(sf, rc, scaling_configuration=sc, env_vars=ev)
         return self
 
     def to_dict(self):
-        return {"transformer": self._script_file, **self._resources.to_dict()}
+        d = {"transformer": self._script_file, **self._resources.to_dict()}
+        if self._env_vars:
+            d["transformerEnvVars"] = [f"{k}={v}" for k, v in self._env_vars.items()]
+        return d
+
+    @public
+    @property
+    def env_vars(self):
+        """Environment variables of the transformer."""
+        return self._env_vars
+
+    @env_vars.setter
+    def env_vars(self, env_vars: dict[str, str] | None):
+        self._env_vars = env_vars
 
     def __repr__(self):
         return f"Transformer({self._script_file!r})"
