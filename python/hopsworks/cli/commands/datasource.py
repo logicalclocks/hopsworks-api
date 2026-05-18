@@ -286,14 +286,24 @@ def connector_create_bigquery(
 
 @connector_create.command("mongodb")
 @click.argument("name")
-@click.option("--connection-string", "connection_string", required=True,
-              help="MongoDB URI (mongodb:// or mongodb+srv://) without embedded credentials.")
+@click.option(
+    "--connection-string",
+    "connection_string",
+    required=True,
+    help="MongoDB URI (mongodb:// or mongodb+srv://) without embedded credentials.",
+)
 @click.option("--database", required=True, help="Database name.")
 @click.option("--collection", help="Default collection name.")
 @click.option("--user", help="Database user.")
-@click.option("--password", help="Database password (stored in the Hopsworks secret store).")
+@click.option(
+    "--password", help="Database password (stored in the Hopsworks secret store)."
+)
 @click.option("--auth-source", "auth_source", help="MongoDB authSource (e.g. admin).")
-@click.option("--auth-mechanism", "auth_mechanism", help="MongoDB authMechanism (e.g. SCRAM-SHA-256).")
+@click.option(
+    "--auth-mechanism",
+    "auth_mechanism",
+    help="MongoDB authMechanism (e.g. SCRAM-SHA-256).",
+)
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def connector_create_mongodb(
