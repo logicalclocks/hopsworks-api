@@ -531,17 +531,14 @@ class DeltaEngine:
         location = self._get_delta_rs_location()
         storage_options = self._get_delta_rs_storage_options()
 
-        is_polars_df = False
         if HAS_POLARS:
             import polars as pl
 
             if isinstance(dataset, pl.DataFrame):
-                is_polars_df = True
                 _logger.debug("Converting DataFrame to Arrow Table for Delta write")
                 dataset = dataset.to_arrow()
 
-        if not is_polars_df:
-            dataset = self._prepare_df_for_delta(dataset)
+        dataset = self._prepare_df_for_delta(dataset)
 
         append_requested = operation == "insert" or (
             isinstance(write_options, dict)
@@ -652,6 +649,12 @@ class DeltaEngine:
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
+        """Normalize a pandas DataFrame or PyArrow Table for Delta Lake writes.
+
+        Casts timestamp precision, `float16` to `float32`, and `date64` to `date32`
+        — types Delta Lake either rejects outright or stores in a way that breaks
+        the kernel statistics parser.
+        """
         try:
             import pandas as pd
             import pyarrow as pa
@@ -659,35 +662,22 @@ class DeltaEngine:
             raise ImportError(
                 "pandas and pyarrow are required to prepare data for Delta operations."
             ) from e
-        """
-        Prepares a pandas DataFrame for Delta Lake operations by fixing timestamp columns.
 
-        Parameters:
-        -----------
-        df : pandas.DataFrame
-            DataFrame to prepare
-        timestamp_precision : str, default='us'
-            Precision for timestamps (ns, us, ms, s)
+        if isinstance(df, pd.DataFrame):
+            # `df` is already a shallow copy from convert_to_default_dataframe, so we do not
+            # need a full deep copy here.  Column assignments on a shallow copy update only the
+            # copy's column reference and never mutate the caller's original DataFrame.
+            for col in df.select_dtypes(include=["datetime64"]).columns:
+                # For timezone-aware timestamps, convert to UTC and remove timezone info
+                if hasattr(df[col].dtype, "tz") and df[col].dtype.tz is not None:
+                    df[col] = df[col].dt.tz_convert("UTC").dt.tz_localize(None)
 
-        Returns:
-        --------
-        pyarrow.Table
-            PyArrow table ready for Delta Lake
-        """
-        # Process timestamp columns
-        if not isinstance(df, pd.DataFrame):
+            _logger.debug("Converting DataFrame to basic PyArrow Table")
+            table = pa.Table.from_pandas(df, preserve_index=False)
+        elif isinstance(df, pa.Table):
+            table = df
+        else:
             return df
-        # `df` is already a shallow copy from convert_to_default_dataframe, so we do not
-        # need a full deep copy here.  Column assignments on a shallow copy update only the
-        # copy's column reference and never mutate the caller's original DataFrame.
-        for col in df.select_dtypes(include=["datetime64"]).columns:
-            # For timezone-aware timestamps, convert to UTC and remove timezone info
-            if hasattr(df[col].dtype, "tz") and df[col].dtype.tz is not None:
-                df[col] = df[col].dt.tz_convert("UTC").dt.tz_localize(None)
-
-        # Convert to basic PyArrow table first
-        _logger.debug("Converting DataFrame to basic PyArrow Table")
-        table = pa.Table.from_pandas(df, preserve_index=False)
 
         # Cast timestamp columns to the specified precision and float16 to float32
         _logger.debug("Casting timestamp and float16 columns if needed")

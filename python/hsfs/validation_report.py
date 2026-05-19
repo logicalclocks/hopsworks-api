@@ -26,9 +26,12 @@ if TYPE_CHECKING:
 
 import humps
 from hsfs import util
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.decorators import uses_great_expectations
-from hsfs.ge_validation_result import ValidationResult
+from hsfs.ge_validation_result import (
+    ValidationResult,
+    _normalize_expectation_config_to_legacy_shape,
+)
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -60,6 +63,14 @@ class ValidationReport:
         ] = "unknown",
         **kwargs,
     ) -> None:
+        # GE 1.x renamed evaluation_parameters to suite_parameters; fall back when
+        # constructing from a splatted to_json_dict() of a 1.x ExpectationSuiteValidationResult.
+        if evaluation_parameters is None and "suite_parameters" in kwargs:
+            evaluation_parameters = kwargs.pop("suite_parameters")
+        # GE 1.x suite-level id is a UUID string; Hopsworks ids are int. Drop UUIDs.
+        if id is not None and not isinstance(id, int):
+            id = None
+
         self._id = id
         self._success = success
         self._full_report_path = full_report_path
@@ -122,6 +133,18 @@ class ValidationReport:
         Returns:
             The validation report in `great_expectations` format.
         """
+        if GE_MAJOR == 1:
+            # GE 1.x renamed evaluation_parameters to suite_parameters and now
+            # requires suite_name. The Hopsworks ValidationReport has no suite name,
+            # so we pass an empty string - downstream consumers should not depend on it.
+            return great_expectations.core.ExpectationSuiteValidationResult(
+                success=self.success,
+                results=[result.to_ge_type() for result in self.results],
+                suite_name="",
+                suite_parameters=self.evaluation_parameters,
+                statistics=self.statistics,
+                meta=self.meta,
+            )
         return great_expectations.core.ExpectationSuiteValidationResult(
             success=self.success,
             statistics=self.statistics,
@@ -175,9 +198,16 @@ class ValidationReport:
             results[0],
             great_expectations.core.expectation_validation_result.ExpectationValidationResult,
         ):
-            self._results = [
-                ValidationResult(**result.to_json_dict()) for result in results
-            ]
+            # GE 1.x produces expectation_config dicts shaped {type, severity, ...};
+            # the wire format and the frontend expect the legacy {expectation_type, ...} shape.
+            normalized = []
+            for result in results:
+                d = result.to_json_dict()
+                d["expectation_config"] = _normalize_expectation_config_to_legacy_shape(
+                    d.get("expectation_config")
+                )
+                normalized.append(ValidationResult(**d))
+            self._results = normalized
 
     @public
     @property

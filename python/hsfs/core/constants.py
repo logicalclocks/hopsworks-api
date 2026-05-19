@@ -15,6 +15,7 @@
 #
 
 from hopsworks_common.core.constants import (
+    GE_MAJOR,
     HAS_AIOMYSQL,
     HAS_AVRO,
     HAS_CONFLUENT_KAFKA,
@@ -31,6 +32,7 @@ from hopsworks_common.core.constants import (
 
 
 __all__ = [
+    "GE_MAJOR",
     "HAS_AIOMYSQL",
     "HAS_PYARROW",
     "HAS_AVRO",

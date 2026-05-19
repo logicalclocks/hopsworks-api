@@ -805,7 +805,19 @@ class FeatureStore:
                 On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
-            online_config: Optionally, define configuration which is used to configure online table.
+            online_config:
+                Optionally, configure the underlying RonDB online table.
+                Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
+
+                Recognized fields:
+
+                - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
+                - `table_space`: Name of the RonDB tablespace for on-disk storage.
+                  Overridden by `online_disk=True`.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
+                  See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
+                  Set at feature group creation time only — cannot be changed after the table exists.
             offline_backfill_every_hr:
                 If specified, the materialization job will be scheduled to run periodically.
                 The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
@@ -1027,7 +1039,19 @@ class FeatureStore:
                 On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
-            online_config: Optionally, define configuration which is used to configure online table.
+            online_config:
+                Optionally, configure the underlying RonDB online table.
+                Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
+
+                Recognized fields:
+
+                - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
+                - `table_space`: Name of the RonDB tablespace for on-disk storage.
+                  Overridden by `online_disk=True`.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
+                  See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
+                  Set at feature group creation time only — cannot be changed after the table exists.
             offline_backfill_every_hr:
                 If specified, the materialization job will be scheduled to run periodically.
                 The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
@@ -1405,7 +1429,18 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             online_config:
-                Optionally, define configuration which is used to configure online table.
+                Optionally, configure the underlying RonDB online table.
+                Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
+
+                Recognized fields:
+
+                - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
+                - `table_space`: Name of the RonDB tablespace for on-disk storage.
+                  Overridden by `online_disk=True`.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
+                  See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
+                  Set at feature group creation time only — cannot be changed after the table exists.
             data_source:
                 The data source specifying the location of the data.
                 Overrides the storage_connector, path and query arguments when specified.

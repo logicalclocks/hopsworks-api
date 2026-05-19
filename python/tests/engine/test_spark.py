@@ -42,7 +42,7 @@ from hsfs.client import exceptions
 from hsfs.constructor import hudi_feature_group_alias, query
 from hsfs.core import data_source as ds
 from hsfs.core import online_ingestion, training_dataset_engine
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
@@ -4632,8 +4632,8 @@ class TestSpark:
         )
 
     @pytest.mark.skipif(
-        HAS_GREAT_EXPECTATIONS is False,
-        reason="Great Expectations is not installed",
+        HAS_GREAT_EXPECTATIONS is False or GE_MAJOR != 0,
+        reason="GE 0.x-only Spark validate path: BaseDataContext + RuntimeBatchRequest were removed in GE 1.x.",
     )
     def test_validate_with_great_expectations(self, mocker):
         # Arrange
@@ -4685,6 +4685,58 @@ class TestSpark:
             },
             "success": True,
         }
+
+    @pytest.mark.skipif(
+        HAS_GREAT_EXPECTATIONS is False or GE_MAJOR != 1,
+        reason="GE 1.x-only Spark validate path: uses gx.get_context + add_spark.",
+    )
+    def test_validate_with_great_expectations_v1(self):
+        import great_expectations
+        from great_expectations.expectations.expectation_configuration import (
+            ExpectationConfiguration,
+        )
+
+        # Arrange: a Spark DataFrame with one all-non-null column.
+        spark_engine = spark.Engine()
+        df = pd.DataFrame(
+            {"col_0": [1, 2, 3], "col_1": ["a", "b", "c"], "event_time": [1, 2, 3]}
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        ge_suite = great_expectations.core.ExpectationSuite(
+            name="es_name",
+            expectations=[
+                ExpectationConfiguration(
+                    type="expect_column_values_to_not_be_null",
+                    kwargs={"column": "col_0"},
+                    meta={},
+                ),
+            ],
+        )
+
+        # Act
+        result = spark_engine.validate_with_great_expectations(
+            dataframe=spark_df,
+            expectation_suite=ge_suite,
+            ge_validate_kwargs={},
+        )
+
+        # Assert: 1.x ESVR shape differs structurally from 0.x (no run_id /
+        # batch_markers / active_batch_definition); pin only the stable fields
+        # that the SDK and the wire format rely on.
+        assert isinstance(
+            result, great_expectations.core.ExpectationSuiteValidationResult
+        )
+        assert result.success is True
+        assert len(result.results) == 1
+        assert result.results[0].success is True
+        # The result is what gets converted to a Hopsworks ValidationReport
+        # downstream; its expectation_config carries the legacy-shape type field
+        # by way of _normalize_expectation_config_to_legacy_shape applied at the
+        # ValidationReport.results setter (validation_report.py).
+        assert (
+            result.results[0].expectation_config.to_json_dict()["type"]
+            == "expect_column_values_to_not_be_null"
+        )
 
     def test_write_options(self):
         # Arrange

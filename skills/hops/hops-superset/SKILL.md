@@ -6,6 +6,15 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 # Hopsworks Superset — Charts, Datasets, and Dashboards
 
+Feature groups (FGs) are referenced in superset as either:
+delta.<project_name>_featuregroup.<featuregroup_name>_<version>
+or
+hudi.<project_name>_featuregroup.<featuregroup_name>_<version>
+depending on whether they are a delta offline feature group or a hudi offline feature group.
+For example, the delta FG, transactions, in the jim project is referenced as:
+
+SELECT * FROM delta.jim_featurestore.transactions_1;
+
 Hopsworks exposes Apache Superset as a managed service. This skill covers the
 Python SDK wrapper for the Superset REST API (`project.get_superset_api()`),
 how to surface Hopsworks feature groups as Superset datasets via Trino, and

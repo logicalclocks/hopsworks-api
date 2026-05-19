@@ -15,7 +15,43 @@
 #
 import pytest
 from hsfs import ge_expectation
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
+
+
+def _ge_expectation_configuration():
+    """Return the ExpectationConfiguration class for the installed GE version.
+
+    GE 1.x moved it out of ``great_expectations.core``.
+    """
+    if GE_MAJOR == 1:
+        from great_expectations.expectations.expectation_configuration import (
+            ExpectationConfiguration,
+        )
+
+        return ExpectationConfiguration
+    import great_expectations
+
+    return great_expectations.core.ExpectationConfiguration
+
+
+def _make_ge_expectation_configuration(expectation_type, kwargs, meta):
+    """Construct a GE ExpectationConfiguration with version-correct kwargs."""
+    cls = _ge_expectation_configuration()
+    if GE_MAJOR == 1:
+        return cls(type=expectation_type, kwargs=kwargs, meta=meta)
+    return cls(expectation_type=expectation_type, kwargs=kwargs, meta=meta)
+
+
+def _expectation_type_attr(ge_object):
+    """Return the expectation type across GE versions and object types.
+
+    GE 1.x exposes ``type`` on ``ExpectationConfiguration`` and
+    ``expectation_type`` on ``Expectation`` subclasses; GE 0.x exposes
+    ``expectation_type`` everywhere.
+    """
+    return getattr(ge_object, "expectation_type", None) or getattr(
+        ge_object, "type", None
+    )
 
 
 class TestGeExpectation:
@@ -66,18 +102,12 @@ class TestGeExpectation:
         reason="great_expectations not installed",
     )
     def test_from_ge_object(self):
-        import great_expectations
-
         # Arrange
         expectationId = 32
         expectation_type = "expect_column_min_to_be_between"
         kwargs = {"kwargs_key": "kwargs_value"}
         meta = {"meta_key": "meta_value", "expectationId": expectationId}
-        ge_object = great_expectations.core.ExpectationConfiguration(
-            expectation_type=expectation_type,
-            kwargs=kwargs,
-            meta=meta,
-        )
+        ge_object = _make_ge_expectation_configuration(expectation_type, kwargs, meta)
 
         # Act
         expect = ge_expectation.GeExpectation.from_ge_type(ge_object)
@@ -87,3 +117,149 @@ class TestGeExpectation:
         assert expect.expectation_type == expectation_type
         assert expect.kwargs == kwargs
         assert expect.meta == meta
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS,
+        reason="great_expectations not installed",
+    )
+    def test_to_ge_type(self):
+        # Arrange
+        expect = ge_expectation.GeExpectation(
+            expectation_type="expect_column_to_exist",
+            kwargs={"column": "feature_a"},
+            meta={"meta_key": "meta_value", "expectationId": 7},
+            id=7,
+        )
+
+        # Act
+        ge_object = expect.to_ge_type()
+
+        # Assert
+        assert isinstance(ge_object, _ge_expectation_configuration())
+        assert _expectation_type_attr(ge_object) == "expect_column_to_exist"
+        assert ge_object.kwargs == {"column": "feature_a"}
+        assert ge_object.meta == {"meta_key": "meta_value", "expectationId": 7}
+
+    @pytest.mark.skipif(
+        not HAS_GREAT_EXPECTATIONS,
+        reason="great_expectations not installed",
+    )
+    def test_round_trip_ge_to_hopsworks_to_ge(self):
+        # Arrange
+        original = _make_ge_expectation_configuration(
+            "expect_column_min_to_be_between",
+            {"column": "x", "min_value": 0, "max_value": 1},
+            {"meta_key": "meta_value", "expectationId": 32},
+        )
+
+        # Act
+        hops = ge_expectation.GeExpectation.from_ge_type(original)
+        rebuilt = hops.to_ge_type()
+
+        # Assert
+        assert _expectation_type_attr(rebuilt) == _expectation_type_attr(original)
+        assert rebuilt.kwargs == original.kwargs
+        assert rebuilt.meta == original.meta
+
+    def test_round_trip_response_json_preserves_fields(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["ge_expectation"]["get"]["response"]
+
+        # Act
+        expect = ge_expectation.GeExpectation.from_response_json(json)
+        emitted = expect.to_json_dict()
+
+        # Assert
+        # to_json_dict emits camelCase that the backend will re-decamelize on read.
+        assert emitted == {
+            "id": 32,
+            "expectationType": "1",
+            "kwargs": {"kwargs_key": "kwargs_value"},
+            "meta": {"meta_key": "meta_value", "expectationId": 32},
+        }
+
+    def test_to_dict_snapshot(self):
+        import json as _json
+
+        # Arrange
+        expect = ge_expectation.GeExpectation(
+            expectation_type="expect_column_to_exist",
+            kwargs={"column": "feature_a"},
+            meta={"meta_key": "meta_value", "expectationId": 7},
+            id=7,
+        )
+
+        # Act
+        d = expect.to_dict()
+
+        # Assert
+        # to_dict serializes kwargs and meta as JSON strings for the wire format.
+        assert d == {
+            "id": 7,
+            "expectationType": "expect_column_to_exist",
+            "kwargs": _json.dumps({"column": "feature_a"}),
+            "meta": _json.dumps({"meta_key": "meta_value", "expectationId": 7}),
+        }
+
+    def test_to_dict_snapshot_without_id(self):
+        import json as _json
+
+        # Arrange
+        expect = ge_expectation.GeExpectation(
+            expectation_type="expect_column_to_exist",
+            kwargs={"column": "feature_a"},
+            meta={"meta_key": "meta_value"},
+        )
+
+        # Act
+        d = expect.to_dict()
+
+        # Assert
+        assert d == {
+            "id": None,
+            "expectationType": "expect_column_to_exist",
+            "kwargs": _json.dumps({"column": "feature_a"}),
+            "meta": _json.dumps({"meta_key": "meta_value"}),
+        }
+
+    def test_to_json_dict_snapshot(self):
+        # Arrange
+        expect = ge_expectation.GeExpectation(
+            expectation_type="expect_column_to_exist",
+            kwargs={"column": "feature_a"},
+            meta={"meta_key": "meta_value", "expectationId": 7},
+            id=7,
+        )
+
+        # Act
+        d = expect.to_json_dict()
+
+        # Assert
+        # to_json_dict keeps kwargs and meta as nested dicts (no JSON encoding).
+        assert d == {
+            "id": 7,
+            "expectationType": "expect_column_to_exist",
+            "kwargs": {"column": "feature_a"},
+            "meta": {"meta_key": "meta_value", "expectationId": 7},
+        }
+
+    def test_to_json_dict_decamelized_snapshot(self):
+        # Arrange
+        expect = ge_expectation.GeExpectation(
+            expectation_type="expect_column_to_exist",
+            kwargs={"column": "feature_a"},
+            meta={"expectationId": 7},
+            id=7,
+        )
+
+        # Act
+        d = expect.to_json_dict(decamelize=True)
+
+        # Assert
+        # decamelize=True converts camelCase keys to snake_case.
+        assert d == {
+            "id": 7,
+            "expectation_type": "expect_column_to_exist",
+            "kwargs": {"column": "feature_a"},
+            "meta": {"expectation_id": 7},
+        }

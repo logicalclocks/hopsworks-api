@@ -40,13 +40,8 @@ if TYPE_CHECKING:
 if HAS_PYARROW:
     import pyarrow as pa
 
-    # Decimal types are handled structurally in
-    # convert_simple_pandas_dtype_to_offline_type because their precision
-    # and scale vary per column and cannot live in a static type-keyed
-    # map.
-    _TINYINT_TYPES = [pa.int8()]
-    _SMALLINT_TYPES = [pa.uint8(), pa.int16()]
-    _INT_TYPES = [pa.uint16(), pa.int32()]
+    # Decimal types are currently not supported
+    _INT_TYPES = [pa.uint8(), pa.uint16(), pa.int8(), pa.int16(), pa.int32()]
     _BIG_INT_TYPES = [pa.uint32(), pa.int64()]
     _FLOAT_TYPES = [pa.float16(), pa.float32()]
     _DOUBLE_TYPES = [pa.float64()]
@@ -57,8 +52,6 @@ if HAS_PYARROW:
     _BINARY_TYPES = [pa.binary(), pa.large_binary()]
 
     PYARROW_HOPSWORKS_DTYPE_MAPPING = {
-        **dict.fromkeys(_TINYINT_TYPES, "tinyint"),
-        **dict.fromkeys(_SMALLINT_TYPES, "smallint"),
         **dict.fromkeys(_INT_TYPES, "int"),
         **dict.fromkeys(_BIG_INT_TYPES, "bigint"),
         **dict.fromkeys(_FLOAT_TYPES, "float"),
@@ -84,10 +77,7 @@ if HAS_PYARROW:
                         value_type=value_type, index_type=index_type, ordered=ordered
                     )
                     for value_type in _STRING_TYPES
-                    for index_type in _TINYINT_TYPES
-                    + _SMALLINT_TYPES
-                    + _INT_TYPES
-                    + _BIG_INT_TYPES
+                    for index_type in _INT_TYPES + _BIG_INT_TYPES
                     for ordered in [True, False]
                 ],
             ],
@@ -373,13 +363,18 @@ def cast_polars_column_to_offline_type(
     if offline_type == "date":
         return feature_column.cast(pl.Date)
     if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
-        return feature_column.map_elements(
-            lambda x: (
-                (ast.literal_eval(x) if isinstance(x, str) else x)
-                if (x is not None and x != "")
-                else None
-            )
-        )
+        # Mirrors the pandas branch: pass already-parsed list/dict values through,
+        # parse strings via literal_eval, and treat None / "" as null. Without the
+        # list/dict short-circuit, a column that already has pl.List/pl.Struct
+        # dtype confuses map_elements' return-dtype inference.
+        def _parse_or_passthrough(x):
+            if x is None:
+                return None
+            if isinstance(x, str):
+                return ast.literal_eval(x) if x else None
+            return x
+
+        return feature_column.map_elements(_parse_or_passthrough)
     if offline_type == "string":
         return feature_column.map_elements(lambda x: str(x) if x is not None else None)
     if offline_type.startswith("decimal"):
@@ -429,16 +424,20 @@ def cast_column_to_online_type(
     return feature_column  # handle gracefully, just return the column as-is
 
 
-def convert_simple_pandas_dtype_to_offline_type(arrow_type: pa.DataType) -> str:
-    # Pyarrow decimal types carry per-column precision and scale, so they
-    # cannot live in a static type-keyed map. Match them structurally and
-    # render the Hive-style "decimal(p,s)" string the rest of the stack
-    # already accepts (offline writes, online ingestion, spark engine type
-    # mapping all check `offline_type.startswith("decimal")`).
-    # Guard the isinstance check: callers occasionally pass non-DataType
-    # values (legacy callsites + tests that exercise the "unsupported"
-    # path), and pa.types.is_decimal raises on those.
-    if isinstance(arrow_type, pa.DataType) and pa.types.is_decimal(arrow_type):
+def convert_simple_pandas_dtype_to_offline_type(arrow_type: str) -> str:
+    # Decimal types are parameterised by (precision, scale), so they can't live
+    # in the static PYARROW_HOPSWORKS_DTYPE_MAPPING table — render the Hive
+    # `decimal(p,s)` string from the Arrow type's own precision/scale. Covers
+    # both decimal128 and decimal256 source widths; the offline type carries
+    # no width distinction so they share one branch. `pa.types.is_decimal`
+    # dereferences `.id` on its argument and will AttributeError on a bare
+    # string, so guard with isinstance first — callers may pass legacy
+    # plain-string dtypes that still need to fall through to the table.
+    if (
+        HAS_PYARROW
+        and isinstance(arrow_type, pa.DataType)
+        and pa.types.is_decimal(arrow_type)
+    ):
         return f"decimal({arrow_type.precision},{arrow_type.scale})"
     try:
         return PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type]

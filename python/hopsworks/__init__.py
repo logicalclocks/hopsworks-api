@@ -127,6 +127,53 @@ def __getattr__(name):  # type: ignore[no-untyped-def]
     return value
 
 
+# PEP 562 ``__getattr__`` only fires on attribute access, not when the import
+# machinery resolves a dotted module path. Without this finder,
+# ``from hopsworks.hsfs.builtin_transformations import X`` raises
+# ``ModuleNotFoundError: No module named 'hopsworks.hsfs'`` — the public
+# ``hopsworks.hsfs[.*]`` / ``hopsworks.hsml[.*]`` aliases have been supported
+# since #292 (Aug 2024) and downstream code (e.g. loadtest, customer notebooks)
+# depends on them. A meta-path finder restores the alias contract while keeping
+# the lazy goal: ``hsfs`` / ``hsml`` are only imported when something actually
+# references them, not on ``import hopsworks``.
+import importlib.util  # noqa: E402
+
+
+_ALIAS_TO_REAL = {"hopsworks.hsfs": "hsfs", "hopsworks.hsml": "hsml"}
+
+
+class _AliasLoader:
+    """No-op loader that hands back an already-executed module."""
+
+    def __init__(self, real_module):  # type: ignore[no-untyped-def]
+        self._real = real_module
+
+    def create_module(self, spec):  # type: ignore[no-untyped-def]
+        return self._real
+
+    def exec_module(self, module):  # type: ignore[no-untyped-def]
+        pass  # real module was already executed by importlib.import_module
+
+
+class _HsfsHsmlAliasFinder:
+    """Route ``hopsworks.hsfs[.*]`` and ``hopsworks.hsml[.*]`` to the real packages."""
+
+    def find_spec(self, fullname, path=None, target=None):  # type: ignore[no-untyped-def]
+        for alias, real in _ALIAS_TO_REAL.items():
+            if fullname == alias or fullname.startswith(alias + "."):
+                real_name = real + fullname[len(alias) :]
+                real_mod = importlib.import_module(real_name)
+                return importlib.util.spec_from_loader(fullname, _AliasLoader(real_mod))
+        return None
+
+
+# Append (not prepend) so the standard ``PathFinder`` and pytest's assertion
+# rewriter still run first for ordinary modules; our finder only fires for the
+# two alias namespaces, which no real on-disk subpackage shadows.
+if not any(isinstance(f, _HsfsHsmlAliasFinder) for f in sys.meta_path):
+    sys.meta_path.append(_HsfsHsmlAliasFinder())
+
+
 def _make_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
     """Factory: create a new Connection via the lazy-loaded Connection class."""
     return _load_connection_class().connection(*args, **kwargs)
