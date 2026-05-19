@@ -572,8 +572,11 @@ class TestFeatureViewEngine:
             "featureStoreName": "",
             "featureStoreId": feature_store_id,
         }
+        # Return a stub query the engine can walk: `_left_feature_group`
+        # is checked against SpineGroup; None passes that check trivially.
         mocker.patch(
-            "hsfs.constructor.query.Query.from_response_json", return_value=Query
+            "hsfs.constructor.query.Query.from_response_json",
+            return_value=MagicMock(_left_feature_group=None),
         )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
