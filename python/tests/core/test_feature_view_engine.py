@@ -563,9 +563,7 @@ class TestFeatureViewEngine:
         # POST against the .../query/batch path, and the JSON body matches
         # the backend FilterLogicDTO shape.
         feature_store_id = 99
-        mock_client = mocker.patch(
-            "hopsworks_common.client.get_instance"
-        ).return_value
+        mock_client = mocker.patch("hopsworks_common.client.get_instance").return_value
         mock_client._project_id = 50
         mock_client._send_request.return_value = {
             "type": "structQuery",
