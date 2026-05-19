@@ -391,6 +391,11 @@ class FeatureViewEngine:
         training_dataset_version=None,
         extra_filter=None,
     ):
+        from hsfs.constructor.filter import Filter, Logic
+
+        if isinstance(extra_filter, Filter):
+            extra_filter = Logic(Logic.SINGLE, left_f=extra_filter)
+
         try:
             query_obj = self._feature_view_api.get_batch_query(
                 feature_view_obj.name,

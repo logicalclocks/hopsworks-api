@@ -557,6 +557,74 @@ class TestFeatureViewEngine:
         assert call_kwargs[1]["extra_filter"]._left_f is extra_filter
         assert call_kwargs[1]["extra_filter"]._type == "SINGLE"
 
+    def test_get_batch_query_with_extra_filter_wire_payload(self, mocker):
+        # Verify the full path engine -> FeatureViewApi -> client: the
+        # raw Filter is wrapped into Logic(SINGLE), the request method is
+        # POST against the .../query/batch path, and the JSON body matches
+        # the backend FilterLogicDTO shape.
+        feature_store_id = 99
+        mock_client = mocker.patch(
+            "hopsworks_common.client.get_instance"
+        ).return_value
+        mock_client._project_id = 50
+        mock_client._send_request.return_value = {
+            "type": "structQuery",
+            "leftFeatureGroup": None,
+            "leftFeatures": [],
+            "featureStoreName": "",
+            "featureStoreId": feature_store_id,
+        }
+        mocker.patch(
+            "hsfs.constructor.query.Query.from_response_json", return_value=Query
+        )
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_query(
+            feature_view_obj=fv,
+            start_time=1000000000,
+            end_time=2000000000,
+            with_label=False,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_client._send_request.call_count == 1
+        args, kwargs = mock_client._send_request.call_args
+        # method + path
+        assert args[0] == "POST"
+        assert args[1][-2:] == ["query", "batch"]
+        # body: FilterLogicDTO wrapping the raw Filter as SINGLE/leftFilter
+        import json
+
+        body = json.loads(kwargs["data"])
+        assert body["type"] == "SINGLE"
+        assert body["leftFilter"]["feature"]["name"] == "test_feature"
+        assert body["leftFilter"]["condition"] == "EQUALS"
+        assert body["leftFilter"]["value"] == "test_value"
+        assert body.get("rightFilter") is None
+        assert body.get("leftLogic") is None
+        assert body.get("rightLogic") is None
+
     def test_get_batch_query_string(self, mocker):
         # Arrange
         feature_store_id = 99
