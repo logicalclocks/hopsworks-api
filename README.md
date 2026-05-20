@@ -195,7 +195,7 @@
 | python/hopsworks\_common/core/search\_api.py                                     |      133 |       82 |     38% |45-47, 53, 59, 65, 69, 72, 84-103, 110, 115, 119, 122, 134-138, 237, 299-308, 362-371, 425-434, 485-494, 510-525, 543-562, 576-624 |
 | python/hopsworks\_common/core/secret\_api.py                                     |       51 |       31 |     39% |48-53, 74-90, 110-116, 145-169, 177-183 |
 | python/hopsworks\_common/core/services\_api.py                                   |       10 |        3 |     70% |     30-35 |
-| python/hopsworks\_common/core/sink\_job\_configuration.py                        |      287 |       50 |     83% |67, 95-96, 99, 106-107, 114, 118, 122, 126, 150, 184-191, 193, 201, 247, 278, 287, 337-349, 358-366, 371, 432, 443, 451, 459, 467, 475, 483, 507, 517, 529, 540 |
+| python/hopsworks\_common/core/sink\_job\_configuration.py                        |      306 |       52 |     83% |67, 95-96, 99, 106-107, 114, 118, 122, 126, 150, 184-191, 193, 201, 247, 283, 292, 344-356, 365-373, 378, 447, 458, 466, 474, 482, 490, 498, 522, 531, 540, 550, 562, 573 |
 | python/hopsworks\_common/core/superset\_api.py                                   |      156 |       45 |     71% |110-111, 210, 240-252, 265, 275, 290, 303, 337-350, 363, 373, 388, 401, 433-447, 460, 470, 485, 500 |
 | python/hopsworks\_common/core/tag\_schemas\_api.py                               |       46 |       46 |      0% |    23-175 |
 | python/hopsworks\_common/core/tags\_api.py                                       |       39 |       20 |     49% |62-68, 86-91, 113-119, 128-149 |
@@ -456,7 +456,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **34104** | **12196** | **64%** |           |
+| **TOTAL**                                                                        | **34123** | **12198** | **64%** |           |
 
 
 ## Setup coverage badge
