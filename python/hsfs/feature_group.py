@@ -21,6 +21,7 @@ import logging
 import time
 import warnings
 from datetime import date, datetime, timedelta
+from urllib.parse import urlparse
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -3113,8 +3114,10 @@ class FeatureGroup(FeatureGroupBase):
         reliable signal for how delta-rs should talk to storage.
         """
         location = getattr(self, "location", None)
-        if isinstance(location, str) and "://" in location:
-            return location.startswith(("hopsfs://", "hdfs://"))
+        if isinstance(location, str):
+            scheme = urlparse(location).scheme
+            if scheme in {"hopsfs", "hdfs"}:
+                return True
 
         return self.storage_connector is None or (
             self.storage_connector is not None

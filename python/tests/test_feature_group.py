@@ -960,6 +960,17 @@ class TestFeatureGroup:
 
         assert fg._is_hopsfs_storage() is True
 
+    def test_is_hopsfs_storage_uses_single_slash_hopsfs_location(self):
+        fg = get_test_feature_group()
+        fg._location = "hopsfs:/apps/hive/warehouse/fs.db/fg_1"
+        fg.storage_connector = storage_connector.RedshiftConnector(
+            id=1,
+            name="redshift",
+            featurestore_id=1,
+        )
+
+        assert fg._is_hopsfs_storage() is True
+
     def test_init_time_travel_and_stream_uses_resolvers_python(
         self, mocker, monkeypatch
     ):
