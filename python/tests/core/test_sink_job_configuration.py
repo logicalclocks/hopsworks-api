@@ -26,6 +26,10 @@ class TestSinkJobConfiguration:
         assert config.to_dict() == {
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": None,
+            "environmentName": (
+                sink_job_configuration.SinkJobConfiguration.DEFAULT_ENVIRONMENT_NAME
+            ),
+            "transformScriptPath": None,
             "writeMode": sink_job_configuration.WriteMode.APPEND.value,
             "batchSize": 100000,
             "sqlSourceFetchChunkSize": 50000,
@@ -66,6 +70,8 @@ class TestSinkJobConfiguration:
 
         config = sink_job_configuration.SinkJobConfiguration(
             name="sink_job",
+            environment_name="custom-dlt-env",
+            transform_script_path="/Projects/demo/Resources/transform.py",
             batch_size=500,
             sql_source_fetch_chunk_size=600,
             source_read_workers=2,
@@ -80,6 +86,8 @@ class TestSinkJobConfiguration:
         assert config.to_dict() == {
             "type": sink_job_configuration.SinkJobConfiguration.DTO_TYPE,
             "name": "sink_job",
+            "environmentName": "custom-dlt-env",
+            "transformScriptPath": "/Projects/demo/Resources/transform.py",
             "writeMode": sink_job_configuration.WriteMode.APPEND.value,
             "batchSize": 500,
             "sqlSourceFetchChunkSize": 600,
@@ -120,6 +128,8 @@ class TestSinkJobConfiguration:
     def test_from_response_json(self):
         json_dict = {
             "name": "sink_job",
+            "environmentName": "custom-dlt-env",
+            "transformScriptPath": "/Projects/demo/Resources/transform.py",
             "writeMode": "merge",
             "batchSize": 123,
             "sqlSourceFetchChunkSize": 456,
@@ -150,6 +160,8 @@ class TestSinkJobConfiguration:
         )
 
         assert config.name == "sink_job"
+        assert config.environment_name == "custom-dlt-env"
+        assert config.transform_script_path == "/Projects/demo/Resources/transform.py"
         assert config.write_mode == sink_job_configuration.WriteMode.MERGE
         assert config.batch_size == 123
         assert config.sql_source_fetch_chunk_size == 456
@@ -184,6 +196,14 @@ class TestSinkJobConfiguration:
             "maxCatchupRuns": None,
         }
 
+    def test_from_response_json_uses_default_environment_name(self):
+        config = sink_job_configuration.SinkJobConfiguration.from_response_json({})
+
+        assert (
+            config.environment_name
+            == sink_job_configuration.SinkJobConfiguration.DEFAULT_ENVIRONMENT_NAME
+        )
+
     def test_column_mappings_are_sanitized_from_dicts(self):
         config = sink_job_configuration.SinkJobConfiguration(
             column_mappings=[{"source_column": "source_a", "feature_name": "Feature A"}]
@@ -208,6 +228,8 @@ class TestSinkJobConfiguration:
             storage_connector_id=3,
             endpoint_config={"relativeUrl": "/example"},
             name="new_name",
+            environment_name="custom-dlt-env",
+            transform_script_path="/Projects/demo/Resources/transform.py",
         )
 
         assert config.to_dict()["featuregroupId"] == 1
@@ -215,6 +237,11 @@ class TestSinkJobConfiguration:
         assert config.to_dict()["storageConnectorId"] == 3
         assert config.to_dict()["endpointConfig"] == {"relativeUrl": "/example"}
         assert config.to_dict()["name"] == "new_name"
+        assert config.to_dict()["environmentName"] == "custom-dlt-env"
+        assert (
+            config.to_dict()["transformScriptPath"]
+            == "/Projects/demo/Resources/transform.py"
+        )
 
     def test_write_mode_validation(self):
         config = sink_job_configuration.SinkJobConfiguration(write_mode="merge")

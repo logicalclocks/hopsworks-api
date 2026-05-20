@@ -250,10 +250,13 @@ class LoadingConfig:
 @public("hopsworks.core.SinkJobConfiguration")
 class SinkJobConfiguration:
     DTO_TYPE = "ingestionJobConfiguration"
+    DEFAULT_ENVIRONMENT_NAME = "dlthub-ingestion-pipeline"
 
     def __init__(
         self,
         name: str | None = None,
+        environment_name: str | None = DEFAULT_ENVIRONMENT_NAME,
+        transform_script_path: str | None = None,
         write_mode: WriteMode | str | None = WriteMode.APPEND,
         batch_size: int | None = 100000,
         sql_source_fetch_chunk_size: int | None = 50000,
@@ -267,6 +270,8 @@ class SinkJobConfiguration:
         schedule_config: JobSchedule | dict | None = None,
     ):
         self._name = name
+        self._environment_name = environment_name
+        self._transform_script_path = transform_script_path
         self.write_mode = write_mode
         self._batch_size = batch_size
         self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
@@ -299,6 +304,8 @@ class SinkJobConfiguration:
         return {
             "type": self.DTO_TYPE,
             "name": self._name,
+            "environmentName": self._environment_name,
+            "transformScriptPath": self._transform_script_path,
             "writeMode": self._write_mode.value,
             "batchSize": self._batch_size,
             "sqlSourceFetchChunkSize": self._sql_source_fetch_chunk_size,
@@ -383,6 +390,10 @@ class SinkJobConfiguration:
         job_schedule = json_decamelized.get("job_schedule", None)
         endpoint_config = json_dict.get("endpointConfig", None)
         return SinkJobConfiguration(
+            environment_name=json_decamelized.get(
+                "environment_name", cls.DEFAULT_ENVIRONMENT_NAME
+            ),
+            transform_script_path=json_decamelized.get("transform_script_path"),
             write_mode=json_decamelized.get("write_mode", WriteMode.APPEND.value),
             batch_size=json_decamelized.get("batch_size", 100000),
             sql_source_fetch_chunk_size=json_decamelized.get(
@@ -421,6 +432,10 @@ class SinkJobConfiguration:
         else:
             self._endpoint_config = endpoint_config
         self._name = kwargs.get("name", self._name)
+        self._environment_name = kwargs.get("environment_name", self._environment_name)
+        self._transform_script_path = kwargs.get(
+            "transform_script_path", self._transform_script_path
+        )
 
     @public
     @property
@@ -505,6 +520,24 @@ class SinkJobConfiguration:
     @name.setter
     def name(self, name: str | None) -> None:
         self._name = name
+
+    @public
+    @property
+    def environment_name(self) -> str | None:
+        return self._environment_name
+
+    @environment_name.setter
+    def environment_name(self, environment_name: str | None) -> None:
+        self._environment_name = environment_name
+
+    @public
+    @property
+    def transform_script_path(self) -> str | None:
+        return self._transform_script_path
+
+    @transform_script_path.setter
+    def transform_script_path(self, transform_script_path: str | None) -> None:
+        self._transform_script_path = transform_script_path
 
     @public
     @property
