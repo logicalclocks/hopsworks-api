@@ -4874,6 +4874,32 @@ class FeatureView:
         self._query = query_obj
 
     @public
+    def get_feature(self, name: str) -> Feature:
+        """Return a Feature for `name` (bare or join-prefixed) from this FV's query.
+
+        Delegates to `self.query.get_feature(...)`.
+        The returned Feature carries its feature_group, so it can be passed
+        directly into `extra_filter` on `get_batch_data` / `get_batch_query`:
+
+            fv.get_batch_data(extra_filter=(fv.get_feature("amount") > 100))
+
+        For joined feature views, accepts either the bare name (resolves to
+        the left FG if it owns the feature, else the first joined match) or
+        the join-prefixed name (e.g. `"customers_1_customer_id"`) for an
+        unambiguous lookup.
+
+        Parameters:
+            name: Feature name. Bare name, or prefixed with the join prefix
+                for a joined feature group.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: if `name`
+                is not in the feature view's query, or is ambiguous across
+                joined feature groups and no prefix was used.
+        """
+        return self._query.get_feature(name)
+
+    @public
     @property
     def transformation_functions(
         self,
