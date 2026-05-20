@@ -4892,6 +4892,10 @@ class FeatureView:
             name: Feature name. Bare name, or prefixed with the join prefix
                 for a joined feature group.
 
+        Returns:
+            The `Feature` from the feature view's query, with its feature
+            group attached so it can be used directly in `extra_filter`.
+
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: if `name`
                 is not in the feature view's query, or is ambiguous across
