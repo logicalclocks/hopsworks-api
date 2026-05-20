@@ -3105,7 +3105,17 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def _is_hopsfs_storage(self) -> bool:
-        """Return True if storage is HopsFS."""
+        """Return True if the offline storage location is HopsFS.
+
+        Sink-enabled feature groups can keep the source storage connector
+        (for example Redshift) attached while their offline data still lives
+        on the default HopsFS warehouse path. In that case the location is the
+        reliable signal for how delta-rs should talk to storage.
+        """
+        location = getattr(self, "location", None)
+        if isinstance(location, str) and "://" in location:
+            return location.startswith(("hopsfs://", "hdfs://"))
+
         return self.storage_connector is None or (
             self.storage_connector is not None
             and self.storage_connector.type == sc.StorageConnector.HOPSFS
