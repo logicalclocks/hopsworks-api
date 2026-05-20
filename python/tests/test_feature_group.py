@@ -949,8 +949,7 @@ class TestFeatureGroup:
     ):
         fg = get_test_feature_group()
         fg._location = (
-            "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/"
-            "fs.db/fg_1"
+            "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/fs.db/fg_1"
         )
         fg.storage_connector = storage_connector.RedshiftConnector(
             id=1,
@@ -960,7 +959,9 @@ class TestFeatureGroup:
 
         assert fg._is_hopsfs_storage() is True
 
-    def test_is_hopsfs_storage_uses_single_slash_hopsfs_location(self):
+    def test_is_hopsfs_storage_uses_single_slash_hopsfs_location(
+        self,
+    ):
         fg = get_test_feature_group()
         fg._location = "hopsfs:/apps/hive/warehouse/fs.db/fg_1"
         fg.storage_connector = storage_connector.RedshiftConnector(

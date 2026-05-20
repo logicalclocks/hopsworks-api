@@ -21,13 +21,13 @@ import logging
 import time
 import warnings
 from datetime import date, datetime, timedelta
-from urllib.parse import urlparse
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
     TypeVar,
 )
+from urllib.parse import urlparse
 
 import avro.schema
 import hsfs.expectation_suite
