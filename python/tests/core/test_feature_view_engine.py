@@ -554,8 +554,11 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
         call_kwargs = mock_fv_api.return_value.get_batch_query.call_args
-        assert call_kwargs[1]["extra_filter"]._left_f is extra_filter
-        assert call_kwargs[1]["extra_filter"]._type == "SINGLE"
+        forwarded = call_kwargs[1]["extra_filter"]
+        # Use the public Logic API instead of reaching into `_left_f` /
+        # `_type` so the assertion is stable across internal refactors.
+        assert forwarded.type == "SINGLE"
+        assert forwarded.get_left_filter_or_logic() is extra_filter
 
     def test_get_batch_query_with_extra_filter_wire_payload(self, mocker):
         # Verify the full path engine -> FeatureViewApi -> client: the

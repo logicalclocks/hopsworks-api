@@ -85,6 +85,28 @@ class FeatureViewEngine:
         )
         self._query_constructor_api = query_constructor_api.QueryConstructorApi()
 
+    @staticmethod
+    def _normalize_extra_filter(extra_filter):
+        """Validate and normalize an `extra_filter` value before sending it.
+
+        Accepts `None`, a `Filter`, or a `Logic`. A raw `Filter` is wrapped
+        in `Logic.Single` so the wire shape is always a `FilterLogicDTO`,
+        matching what the backend expects. Anything else raises `TypeError`
+        with a clear message rather than failing later at JSON serialization.
+        """
+        from hsfs.constructor.filter import Filter, Logic
+
+        if extra_filter is None:
+            return None
+        if isinstance(extra_filter, Filter):
+            return Logic.Single(left_f=extra_filter)
+        if isinstance(extra_filter, Logic):
+            return extra_filter
+        raise TypeError(
+            "extra_filter must be a Filter, Logic, or None; "
+            f"got {type(extra_filter).__name__}."
+        )
+
     def save(
         self, feature_view_obj: feature_view.FeatureView
     ) -> feature_view.FeatureView:
@@ -332,10 +354,7 @@ class FeatureViewEngine:
         spine=None,
         extra_filter=None,
     ):
-        from hsfs.constructor.filter import Filter, Logic
-
-        if isinstance(extra_filter, Filter):
-            extra_filter = Logic(Logic.SINGLE, left_f=extra_filter)
+        extra_filter = self._normalize_extra_filter(extra_filter)
 
         try:
             query = self._feature_view_api.get_batch_query(
@@ -391,10 +410,7 @@ class FeatureViewEngine:
         training_dataset_version=None,
         extra_filter=None,
     ):
-        from hsfs.constructor.filter import Filter, Logic
-
-        if isinstance(extra_filter, Filter):
-            extra_filter = Logic(Logic.SINGLE, left_f=extra_filter)
+        extra_filter = self._normalize_extra_filter(extra_filter)
 
         try:
             query_obj = self._feature_view_api.get_batch_query(

@@ -4889,8 +4889,11 @@ class FeatureView:
         unambiguous lookup.
 
         Parameters:
-            name: Feature name. Bare name, or prefixed with the join prefix
-                for a joined feature group.
+            name: Feature name.
+                Use a bare name when the feature is unambiguous.
+                Use the join-prefixed form (e.g. `"customers_1_customer_id"`)
+                when the feature view joins multiple feature groups that
+                share the column.
 
         Returns:
             The `Feature` from the feature view's query, with its feature
