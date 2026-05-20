@@ -944,9 +944,14 @@ class TestFeatureGroup:
         fg.storage_connector = sc
         assert fg._is_hopsfs_storage() is expected
 
-    def test_is_hopsfs_storage_uses_location_when_source_connector_is_external(self):
+    def test_is_hopsfs_storage_uses_location_when_source_connector_is_external(
+        self,
+    ):
         fg = get_test_feature_group()
-        fg._location = "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/fs.db/fg_1"
+        fg._location = (
+            "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/"
+            "fs.db/fg_1"
+        )
         fg.storage_connector = storage_connector.RedshiftConnector(
             id=1,
             name="redshift",
