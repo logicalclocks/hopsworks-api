@@ -31,6 +31,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.SneakyThrows;
 import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +61,8 @@ import java.util.stream.Collectors;
     @JsonSubTypes.Type(value = StorageConnector.GcsConnector.class, name = "GCS"),
     @JsonSubTypes.Type(value = StorageConnector.BigqueryConnector.class, name = "BIGQUERY"),
     @JsonSubTypes.Type(value = StorageConnector.SqlConnector.class, name = "SQL"),
-    @JsonSubTypes.Type(value = StorageConnector.SapHanaConnector.class, name = "SAP_HANA")
+    @JsonSubTypes.Type(value = StorageConnector.SapHanaConnector.class, name = "SAP_HANA"),
+    @JsonSubTypes.Type(value = StorageConnector.MongoDbConnector.class, name = "MONGODB")
 })
 public abstract class StorageConnector {
 
@@ -760,6 +762,136 @@ public abstract class StorageConnector {
       this.password = updatedConnector.getPassword();
       this.application = updatedConnector.getApplication();
       this.arguments = updatedConnector.getArguments();
+    }
+
+    @JsonIgnore
+    public String getPath(String subPath) {
+      return null;
+    }
+  }
+
+  public static class MongoDbConnector extends StorageConnector {
+
+    public static final String MONGODB_FORMAT = "mongodb";
+
+    @Getter @Setter
+    protected String connectionString;
+
+    @Getter @Setter
+    protected String database;
+
+    @Getter @Setter
+    protected String collection;
+
+    @Getter @Setter
+    protected String user;
+
+    @Getter @Setter
+    protected String password;
+
+    @Getter @Setter
+    protected String authSource;
+
+    @Getter @Setter
+    protected String authMechanism;
+
+    @Getter @Setter
+    protected List<Option> options;
+
+    @Override
+    public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
+      if (Strings.isNullOrEmpty(connectionString)) {
+        throw new FeatureStoreException("MongoDB connector requires a connectionString. The connector was likely "
+            + "loaded without credentials (basic info only); refetch it before reading.");
+      }
+      Map<String, String> opts = new HashMap<>();
+      if (options != null) {
+        for (Option o : options) {
+          opts.put(o.getName(), o.getValue());
+        }
+      }
+      opts.put("connection.uri", buildConnectionUri());
+      String effectiveDb = dataSource == null || Strings.isNullOrEmpty(dataSource.getDatabase())
+          ? database : dataSource.getDatabase();
+      if (!Strings.isNullOrEmpty(effectiveDb)) {
+        opts.put("database", effectiveDb);
+      }
+      // The per-FG collection override comes from `DataSource.table` — the
+      // dedicated table field every other connector uses for its primary
+      // resource (see SnowflakeConnector#sparkOptions). `query` was a
+      // historical accident from the MongoDB-as-SQL prototype and is left
+      // out of the equation here.
+      String effectiveCollection = dataSource == null || Strings.isNullOrEmpty(dataSource.getTable())
+          ? collection : dataSource.getTable();
+      if (!Strings.isNullOrEmpty(effectiveCollection)) {
+        opts.put("collection", effectiveCollection);
+      }
+      return opts;
+    }
+
+    @SneakyThrows
+    private String buildConnectionUri() {
+      // authSource / authMechanism are valid URI parameters independent
+      // of whether userinfo is embedded — a TLS-X.509 deployment, for
+      // example, sets authMechanism=MONGODB-X509 with no username. Always
+      // append them when set; conditionally splice userinfo when a user
+      // is configured.
+      String base = connectionString.trim();
+      int schemeEnd = base.indexOf("://");
+      if (schemeEnd < 0) {
+        // Malformed URI — return as-is and let the driver's parser reject it.
+        return base;
+      }
+      String prefix = base.substring(0, schemeEnd + 3);
+      String rest = base.substring(schemeEnd + 3);
+      if (!Strings.isNullOrEmpty(user)) {
+        StringBuilder userinfo = new StringBuilder();
+        userinfo.append(java.net.URLEncoder.encode(user, "UTF-8"));
+        if (!Strings.isNullOrEmpty(password)) {
+          userinfo.append(':').append(
+              java.net.URLEncoder.encode(password, "UTF-8"));
+        }
+        userinfo.append('@');
+        rest = userinfo + rest;
+      }
+      // MongoDB connection-string spec requires a path component (`/`)
+      // before the query string; insert one if the URI doesn't already
+      // have a host/path separator before its query parameters.
+      int existingQuery = rest.indexOf('?');
+      String hostPart = existingQuery < 0 ? rest : rest.substring(0, existingQuery);
+      String queryExisting = existingQuery < 0 ? "" : rest.substring(existingQuery + 1);
+      if (hostPart.indexOf('/') < 0) {
+        hostPart = hostPart + "/";
+      }
+      StringBuilder uri = new StringBuilder(prefix).append(hostPart);
+      java.util.List<String> params = new java.util.ArrayList<>();
+      if (!queryExisting.isEmpty()) {
+        params.add(queryExisting);
+      }
+      if (!Strings.isNullOrEmpty(authSource)) {
+        params.add("authSource="
+            + java.net.URLEncoder.encode(authSource, "UTF-8"));
+      }
+      if (!Strings.isNullOrEmpty(authMechanism)) {
+        params.add("authMechanism="
+            + java.net.URLEncoder.encode(authMechanism, "UTF-8"));
+      }
+      if (!params.isEmpty()) {
+        uri.append('?').append(String.join("&", params));
+      }
+      return uri.toString();
+    }
+
+    public void update() throws FeatureStoreException, IOException {
+      MongoDbConnector updated = (MongoDbConnector) refetch();
+      this.connectionString = updated.getConnectionString();
+      this.database = updated.getDatabase();
+      this.collection = updated.getCollection();
+      this.user = updated.getUser();
+      this.password = updated.getPassword();
+      this.authSource = updated.getAuthSource();
+      this.authMechanism = updated.getAuthMechanism();
+      this.options = updated.getOptions();
     }
 
     @JsonIgnore
