@@ -17,6 +17,7 @@ import warnings
 
 import pytest
 from hopsworks_common import version
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature, feature_group, feature_view, training_dataset_feature
 from hsfs.constructor import query
 from hsfs.feature_store import FeatureStore
@@ -284,6 +285,69 @@ class TestFeatureView:
 
         # Assert
         assert fv._label_column_names == {"label"}
+
+    def test_get_feature_delegates_to_query(self, mocker):
+        # FeatureView.get_feature is a thin wrapper over Query.get_feature.
+        # Verify the call routes through, the argument is forwarded
+        # verbatim, and the query's return value is returned unchanged.
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            labels=[],
+        )
+        sentinel = object()
+        mock_get_feature = mocker.patch.object(
+            fv._query, "get_feature", return_value=sentinel
+        )
+
+        result = fv.get_feature("fg1_feature")
+
+        mock_get_feature.assert_called_once_with("fg1_feature")
+        assert result is sentinel
+
+    def test_get_feature_propagates_not_found(self, mocker):
+        # FeatureView.get_feature must surface a Query-level
+        # FeatureStoreException unchanged — callers rely on the error
+        # type to distinguish a missing feature from a real lookup result.
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            labels=[],
+        )
+        mocker.patch.object(
+            fv._query,
+            "get_feature",
+            side_effect=FeatureStoreException("not found"),
+        )
+
+        with pytest.raises(FeatureStoreException, match="not found"):
+            fv.get_feature("missing")
+
+    def test_get_feature_propagates_ambiguity(self, mocker):
+        # Same propagation contract for the ambiguous-name path so the
+        # caller can prompt the user to pass a prefixed name.
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features().join(fg2.select_features()),
+            featurestore_id=99,
+            labels=[],
+        )
+        mocker.patch.object(
+            fv._query,
+            "get_feature",
+            side_effect=FeatureStoreException("ambiguous"),
+        )
+
+        with pytest.raises(FeatureStoreException, match="ambiguous"):
+            fv.get_feature("primary_key")
 
     def test_transformed_feature_name(self, mocker):
         # Arrange
