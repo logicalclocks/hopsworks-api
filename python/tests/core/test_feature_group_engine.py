@@ -1742,6 +1742,8 @@ class TestFeatureGroupEngine:
             sink_enabled=True,
             sink_job_conf={
                 "name": "custom_sink_job",
+                "environment_name": "custom-dlt-env",
+                "transform_script_path": "/Projects/demo/Resources/transform.py",
                 "column_mappings": [
                     {
                         "source_column": "Custom Source",
@@ -1768,6 +1770,11 @@ class TestFeatureGroupEngine:
         job_name, job_conf = mock_job_api.create.call_args[0]
         assert job_name == "custom_sink_job"
         assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
+        assert job_conf.to_dict()["environmentName"] == "custom-dlt-env"
+        assert (
+            job_conf.to_dict()["transformScriptPath"]
+            == "/Projects/demo/Resources/transform.py"
+        )
         assert job_conf.to_dict()["columnMappings"] == [
             {"sourceColumn": "Custom Source", "featureName": "first_name"},
             {"sourceColumn": "Age", "featureName": "age"},

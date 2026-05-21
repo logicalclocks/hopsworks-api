@@ -515,6 +515,120 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
 
+    def test_get_batch_query_with_extra_filter(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_query(
+            feature_view_obj=fv,
+            start_time=1000000000,
+            end_time=2000000000,
+            with_label=False,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_fv_api.return_value.get_batch_query.call_count == 1
+        call_kwargs = mock_fv_api.return_value.get_batch_query.call_args
+        forwarded = call_kwargs[1]["extra_filter"]
+        # Use the public Logic API instead of reaching into `_left_f` /
+        # `_type` so the assertion is stable across internal refactors.
+        assert forwarded.type == "SINGLE"
+        assert forwarded.get_left_filter_or_logic() is extra_filter
+
+    def test_get_batch_query_with_extra_filter_wire_payload(self, mocker):
+        # Verify the full path engine -> FeatureViewApi -> client: the
+        # raw Filter is wrapped into Logic(SINGLE), the request method is
+        # POST against the .../query/batch path, and the JSON body matches
+        # the backend FilterLogicDTO shape.
+        feature_store_id = 99
+        mock_client = mocker.patch("hopsworks_common.client.get_instance").return_value
+        mock_client._project_id = 50
+        mock_client._send_request.return_value = {
+            "type": "structQuery",
+            "leftFeatureGroup": None,
+            "leftFeatures": [],
+            "featureStoreName": "",
+            "featureStoreId": feature_store_id,
+        }
+        # Return a stub query the engine can walk: `_left_feature_group`
+        # is checked against SpineGroup; None passes that check trivially.
+        mocker.patch(
+            "hsfs.constructor.query.Query.from_response_json",
+            return_value=MagicMock(_left_feature_group=None),
+        )
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_query(
+            feature_view_obj=fv,
+            start_time=1000000000,
+            end_time=2000000000,
+            with_label=False,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_client._send_request.call_count == 1
+        args, kwargs = mock_client._send_request.call_args
+        # method + path
+        assert args[0] == "POST"
+        assert args[1][-2:] == ["query", "batch"]
+        # body: FilterLogicDTO wrapping the raw Filter as SINGLE/leftFilter
+        import json
+
+        body = json.loads(kwargs["data"])
+        assert body["type"] == "SINGLE"
+        assert body["leftFilter"]["feature"]["name"] == "test_feature"
+        assert body["leftFilter"]["condition"] == "EQUALS"
+        assert body["leftFilter"]["value"] == "test_value"
+        assert body.get("rightFilter") is None
+        assert body.get("leftLogic") is None
+        assert body.get("rightLogic") is None
+
     def test_get_batch_query_string(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -2456,6 +2570,49 @@ class TestFeatureViewEngine:
             == tf_value.hopsworks_udf.function_name
         )
         assert tf_engine_patch.apply_transformation_functions.call_count == 1
+
+    def test_get_batch_data_with_extra_filter(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
+        )
+        mock_get_batch_query = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_data(
+            feature_view_obj=None,
+            start_time=None,
+            end_time=None,
+            training_dataset_version=None,
+            transformation_functions=None,
+            read_options=None,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_get_batch_query.call_count == 1
+        call_kwargs = mock_get_batch_query.call_args
+        assert call_kwargs[1]["extra_filter"] is extra_filter
 
     def test_add_tag(self, mocker):
         # Arrange

@@ -76,6 +76,7 @@ class StorageConnector(ABC):
     ORACLE = "ORACLE"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
+    MONGODB = "MONGODB"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -112,6 +113,7 @@ class StorageConnector(ABC):
         | RestConnector
         | UnityCatalogConnector
         | SapHanaConnector
+        | MongoDBConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -141,6 +143,7 @@ class StorageConnector(ABC):
         | RestConnector
         | UnityCatalogConnector
         | SapHanaConnector
+        | MongoDBConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -1695,6 +1698,245 @@ class SapHanaConnector(StorageConnector):
     @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare the Spark session with the SAP HANA driver classpath when needed."""
+        return engine.get_instance().setup_storage_connector(self, path)
+
+
+@public
+class MongoDBConnector(StorageConnector):
+    """MongoDB storage connector backed by the official ``mongo-spark-connector`` and ``pymongo``.
+
+    Use this connector to register an external feature group whose data lives in a MongoDB collection.
+    The ``connection_string`` is a MongoDB URI without embedded credentials; the username and password
+    are kept in the Hopsworks secret store and spliced in at read time.
+    """
+
+    type = StorageConnector.MONGODB
+    MONGODB_FORMAT = "mongodb"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        connection_string: str | None = None,
+        database: str | None = None,
+        collection: str | None = None,
+        user: str | None = None,
+        password: str | None = None,
+        auth_source: str | None = None,
+        auth_mechanism: str | None = None,
+        options: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._connection_string = connection_string
+        self._database = database
+        self._collection = collection
+        self._user = user
+        self._password = password
+        self._auth_source = auth_source
+        self._auth_mechanism = auth_mechanism
+        self._options = (
+            {opt["name"]: opt["value"] for opt in options}
+            if isinstance(options, list)
+            else options
+            if isinstance(options, dict)
+            else {}
+        )
+
+    @public
+    @property
+    def connection_string(self) -> str | None:
+        """MongoDB connection URI (``mongodb://`` or ``mongodb+srv://``) without embedded credentials."""
+        return self._connection_string
+
+    @public
+    @property
+    def database(self) -> str | None:
+        """Default database name."""
+        return self._database
+
+    @public
+    @property
+    def collection(self) -> str | None:
+        """Default collection name used when none is provided at read time."""
+        return self._collection
+
+    @public
+    @property
+    def user(self) -> str | None:
+        """Database user."""
+        return self._user
+
+    @public
+    @property
+    def password(self) -> str | None:
+        """Database password resolved from the Hopsworks secret store."""
+        return self._password
+
+    @public
+    @property
+    def auth_source(self) -> str | None:
+        """MongoDB ``authSource`` URI parameter (typically ``admin``)."""
+        return self._auth_source
+
+    @public
+    @property
+    def auth_mechanism(self) -> str | None:
+        """MongoDB ``authMechanism`` URI parameter (e.g. ``SCRAM-SHA-256``)."""
+        return self._auth_mechanism
+
+    @public
+    @property
+    def options(self) -> dict[str, Any]:
+        """Extra options forwarded to the Spark / pymongo client."""
+        return self._options
+
+    def _connection_uri(self) -> str:
+        """Build a connection URI that embeds the secret credentials and the auth parameters.
+
+        ``authSource`` and ``authMechanism`` are always appended to the URI when set —
+        they are valid query parameters independent of whether userinfo is embedded
+        (e.g. a deployment authenticating via TLS client certs still needs
+        ``authMechanism=MONGODB-X509``). Userinfo is spliced in only when ``user``
+        is set; ``password`` remains optional.
+        """
+        if not self._connection_string:
+            raise DataSourceException(
+                "MongoDB connector requires a connection_string. The connector was likely "
+                "loaded without credentials (basic info only); refetch it before reading."
+            )
+        from urllib.parse import quote_plus
+
+        base = self._connection_string.strip()
+        scheme_end = base.find("://")
+        if scheme_end < 0:
+            # Malformed URI — surface as-is, the driver's parser will reject it.
+            return base
+        prefix = base[: scheme_end + 3]
+        rest = base[scheme_end + 3 :]
+        # Inject userinfo before the host portion only when a user is set.
+        if self._user:
+            userinfo = quote_plus(self._user)
+            if self._password:
+                userinfo = f"{userinfo}:{quote_plus(self._password)}"
+            rest = f"{userinfo}@{rest}"
+        # MongoDB connection-string spec requires a path component (`/`) before
+        # the query string. Add an empty path if the URI doesn't already have
+        # one before the existing query parameters (or before we add ours).
+        host_part, sep_existing, query_existing = rest.partition("?")
+        if "/" not in host_part:
+            host_part = f"{host_part}/"
+        url = f"{prefix}{host_part}"
+        params = []
+        if sep_existing:
+            params.append(query_existing)
+        if self._auth_source:
+            params.append(f"authSource={quote_plus(self._auth_source)}")
+        if self._auth_mechanism:
+            params.append(f"authMechanism={quote_plus(self._auth_mechanism)}")
+        if params:
+            url = url + "?" + "&".join(params)
+        return url
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return arguments suitable for an external ``pymongo`` client.
+
+        ```python
+        from pymongo import MongoClient
+
+        sc = fs.get_storage_connector("mongo_conn")
+        client = MongoClient(**sc.connector_options())
+        ```
+
+        Forwards any persisted ``self.options`` whose key looks like a
+        ``MongoClient`` constructor kwarg (lowercase letters, digits, and
+        underscores) so operator-set tuning knobs — ``maxPoolSize``,
+        ``serverSelectionTimeoutMS``, ``tlsAllowInvalidCertificates``, etc. —
+        reach the driver. Keys that look like URI parameters (camelCase,
+        already embedded in ``connection_uri``) and anything non-string are
+        dropped to avoid duplicate-config errors from pymongo.
+        """
+        opts: dict[str, Any] = {"host": self._connection_uri()}
+        # Pass through additional pymongo kwargs from self._options. Keep
+        # the filter conservative — anything we can't classify confidently
+        # is dropped so we don't trip the driver's argument validation.
+        for key, value in (self._options or {}).items():
+            if not isinstance(key, str) or not key:
+                continue
+            if key == "host":  # already set from connection_uri
+                continue
+            if value is None:
+                continue
+            opts[key] = value
+        return opts
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return options for ``spark.read.format('mongodb')``."""
+        opts: dict[str, Any] = {**(self._options or {})}
+        opts["connection.uri"] = self._connection_uri()
+        if self._database:
+            opts["database"] = self._database
+        if self._collection:
+            opts["collection"] = self._collection
+        return opts
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Read a collection from MongoDB into a dataframe.
+
+        Parameters:
+            query: Collection name to read; overrides the connector's default collection.
+                For advanced cases, pass a JSON-encoded aggregation pipeline; the engine
+                forwards it via the ``aggregation.pipeline`` option.
+            data_format: Not used for MongoDB.
+            options: Extra key/value options merged into the Spark reader configuration.
+            path: Not used for MongoDB.
+            dataframe_type: Type of the returned dataframe.
+
+        Returns:
+            `DataFrame`.
+        """
+        if not engine.get_instance().is_connector_type_supported(self.type):
+            raise NotImplementedError(
+                "MongoDB connector not yet supported for engine: " + engine.get_type()
+            )
+        self.refetch()
+        merged = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if query:
+            stripped = query.strip()
+            if stripped.startswith("["):
+                merged["aggregation.pipeline"] = stripped
+            else:
+                merged["collection"] = stripped
+        return engine.get_instance().read(
+            self, self.MONGODB_FORMAT, merged, None, dataframe_type
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Ensure the Spark session is wired with the ``mongo-spark-connector`` classpath."""
         return engine.get_instance().setup_storage_connector(self, path)
 
 

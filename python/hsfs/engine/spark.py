@@ -1719,7 +1719,56 @@ class Engine:
             return self._setup_adls_hadoop_conf(storage_connector, path)
         if storage_connector.type == StorageConnector.GCS:
             return self._setup_gcp_hadoop_conf(storage_connector, path)
+        if storage_connector.type == StorageConnector.MONGODB:
+            return self._setup_mongodb_spark_conf(storage_connector, path)
         return path
+
+    def _setup_mongodb_spark_conf(self, storage_connector, path):
+        """Configure the SparkConf for `spark.read.format("mongodb").load()`.
+
+        Sets `spark.mongodb.read.connection.uri` (and the matching `.write.`
+        prefix) plus optional database/collection defaults. The
+        `mongo-spark-connector` jar must already be on the cluster — it's
+        bundled in the Hopsworks Spark image, so production-equivalent
+        clusters resolve `spark.read.format("mongodb")` without the user
+        passing `--packages`. Returns `path` unchanged: MongoDB reads
+        identify a collection through Spark options, not a path.
+        """
+        uri = storage_connector._connection_uri()
+        self._set_spark_conf("spark.mongodb.read.connection.uri", uri)
+        # Write URI mirrors the read URI today — if/when we expose
+        # MongoDB as a write target we can split them out.
+        self._set_spark_conf("spark.mongodb.write.connection.uri", uri)
+        if getattr(storage_connector, "database", None):
+            self._set_spark_conf(
+                "spark.mongodb.read.database", storage_connector.database
+            )
+            self._set_spark_conf(
+                "spark.mongodb.write.database", storage_connector.database
+            )
+        if getattr(storage_connector, "collection", None):
+            self._set_spark_conf(
+                "spark.mongodb.read.collection", storage_connector.collection
+            )
+            self._set_spark_conf(
+                "spark.mongodb.write.collection", storage_connector.collection
+            )
+        return path
+
+    def _set_spark_conf(self, key, value):
+        """Set a SparkConf entry on the active session (no-op if not running)."""
+        if value is None:
+            return
+        try:
+            self._spark_session.conf.set(key, str(value))
+        except Exception:  # noqa: BLE001
+            # Older Spark may reject runtime updates of `spark.mongodb.*`;
+            # the user can pass these through `--conf` instead.
+            _logger.debug(
+                "Could not set Spark conf %s at runtime; "
+                "set it via --conf at session creation if reads fail",
+                key,
+            )
 
     def _setup_s3_hadoop_conf(self, storage_connector, path):
         FS_S3_GLOBAL_CONF = "fs.s3a.global-conf"

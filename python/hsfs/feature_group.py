@@ -27,6 +27,7 @@ from typing import (
     Literal,
     TypeVar,
 )
+from urllib.parse import urlparse
 
 import avro.schema
 import hsfs.expectation_suite
@@ -3105,7 +3106,20 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def _is_hopsfs_storage(self) -> bool:
-        """Return True if storage is HopsFS."""
+        """Return True if the offline storage location is HopsFS.
+
+        Sink-enabled feature groups can keep the source storage connector
+        (for example Redshift) attached while their offline data still lives
+        on the default HopsFS warehouse path.
+        In that case the location is the reliable signal for how delta-rs
+        should talk to storage.
+        """
+        location = getattr(self, "location", None)
+        if isinstance(location, str):
+            scheme = urlparse(location).scheme
+            if scheme in {"hopsfs", "hdfs"}:
+                return True
+
         return self.storage_connector is None or (
             self.storage_connector is not None
             and self.storage_connector.type == sc.StorageConnector.HOPSFS
@@ -3138,6 +3152,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.SNOWFLAKE,
                 sc.StorageConnector.REDSHIFT,
                 sc.StorageConnector.BIGQUERY,
+                sc.StorageConnector.MONGODB,
             ]
         ) or supported_sql_connector
 
@@ -3160,7 +3175,7 @@ class FeatureGroup(FeatureGroupBase):
             )
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
-                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY, "
+                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY, MONGODB, "
                 "and SQL connectors with database_type MYSQL, POSTGRESQL, or ORACLE."
             )
 
