@@ -118,6 +118,57 @@ if HAS_GREAT_EXPECTATIONS:
 _logger = logging.getLogger(__name__)
 
 
+VALID_PARTITION_GRAINS = ("hour", "day", "week", "month", "year")
+
+
+def _validate_partitioned_by(
+    partitioned_by: list[str] | None,
+    partition_key: list[str] | None,
+    event_time: str | None,
+) -> None:
+    """Fast-fail client-side validation for `partitioned_by`.
+
+    Mirrors a subset of the authoritative backend validation so users see
+    common mistakes (typo grain name, missing event_time, conflict with
+    partition_key) before the REST call. The backend remains the source
+    of truth — additional checks (Hudi rejection, non-hierarchical
+    warnings) run server-side and are reported through standard
+    `FeatureStoreException` responses.
+    """
+    if partitioned_by is None:
+        return
+    if not isinstance(partitioned_by, list) or len(partitioned_by) == 0:
+        raise FeatureStoreException(
+            "partitioned_by must be a non-empty list of grain names. "
+            f"Valid grains: {list(VALID_PARTITION_GRAINS)}."
+        )
+    invalid = [g for g in partitioned_by if g not in VALID_PARTITION_GRAINS]
+    if invalid:
+        raise FeatureStoreException(
+            f"partitioned_by contains invalid grains: {invalid}. "
+            f"Valid grains: {list(VALID_PARTITION_GRAINS)}."
+        )
+    if len(set(partitioned_by)) != len(partitioned_by):
+        raise FeatureStoreException(
+            f"partitioned_by contains duplicate grains: {partitioned_by}."
+        )
+    if partition_key:
+        raise FeatureStoreException(
+            "Set either partition_key or partitioned_by, not both. "
+            "partition_key is the explicit form; partitioned_by lets the "
+            "storage engine derive partition columns from event_time."
+        )
+    if not event_time:
+        raise FeatureStoreException(
+            "partitioned_by requires event_time to be set on the feature group."
+        )
+    if event_time in partitioned_by:
+        raise FeatureStoreException(
+            f"event_time column name '{event_time}' collides with a "
+            "partitioned_by grain. Rename event_time."
+        )
+
+
 @public
 @typechecked
 class FeatureGroupBase:
@@ -2943,6 +2994,8 @@ class FeatureGroup(FeatureGroupBase):
         sink_job: job.Job | dict[str, Any] | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: list[tag.Tag] | None = None,
+        partitioned_by: list[str] | None = None,
+        online_partition_columns: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2992,6 +3045,17 @@ class FeatureGroup(FeatureGroupBase):
         self._parents = parents
         self._deltastreamer_jobconf = delta_streamer_job_conf
         self._tags: list[tag.Tag] | None = tags
+        # Validate before any storage interaction. On the existing-FG branch
+        # the partition_key is empty (it gets populated below from
+        # backend-provided features), so the partition_key mutual exclusion
+        # check effectively becomes a no-op when fetching, which is the
+        # right behavior.
+        if not id:
+            _validate_partitioned_by(partitioned_by, partition_key, event_time)
+        self._partitioned_by: list[str] | None = (
+            list(partitioned_by) if partitioned_by else None
+        )
+        self._online_partition_columns: bool = bool(online_partition_columns)
 
         self._materialization_job: Job = None
 
@@ -4648,7 +4712,10 @@ class FeatureGroup(FeatureGroupBase):
             "ttl": self.ttl,
             "ttlEnabled": self._ttl_enabled,
             "sinkEnabled": self._sink_enabled,
+            "onlinePartitionColumns": self._online_partition_columns,
         }
+        if self._partitioned_by:
+            fg_meta_dict["partitionedBy"] = list(self._partitioned_by)
         if self.data_source:
             fg_meta_dict["dataSource"] = self.data_source.to_dict()
         if self._online_config:
@@ -4758,6 +4825,30 @@ class FeatureGroup(FeatureGroupBase):
     def partition_key(self) -> list[str]:
         """List of features building the partition key."""
         return self._partition_key
+
+    @public
+    @property
+    def partitioned_by(self) -> list[str] | None:
+        """Time-grain decomposition of `event_time` for partitioning, or None.
+
+        When set, the storage engine derives one integer column per grain
+        from `event_time` and uses them as the feature group's partition
+        columns.
+        Returns a fresh copy of the ordered grain list (subset of
+        `("hour", "day", "week", "month", "year")`); `None` when the
+        feature group was not created with `partitioned_by`.
+        """
+        return list(self._partitioned_by) if self._partitioned_by else None
+
+    @public
+    @property
+    def online_partition_columns(self) -> bool:
+        """Whether `partitioned_by` columns are also written to the online store.
+
+        Defaults to `False`: the derived columns live only in the offline
+        storage and the online ingestion path filters them out.
+        """
+        return self._online_partition_columns
 
     @public
     @property

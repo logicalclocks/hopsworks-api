@@ -708,6 +708,8 @@ class FeatureStore:
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        partitioned_by: list[str] | None = None,
+        online_partition_columns: bool = False,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -905,6 +907,8 @@ class FeatureStore:
             sink_enabled=sink_enabled,
             sink_job_conf=sink_job_conf,
             tags=normalized_tags,
+            partitioned_by=partitioned_by,
+            online_partition_columns=online_partition_columns,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -948,6 +952,8 @@ class FeatureStore:
         online_disk: bool | None = None,
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
+        partitioned_by: list[str] | None = None,
+        online_partition_columns: bool = False,
     ) -> (
         feature_group.FeatureGroup
         | feature_group.ExternalFeatureGroup
@@ -1132,6 +1138,8 @@ class FeatureStore:
                 online_disk=online_disk,
                 sink_enabled=sink_enabled,
                 sink_job_conf=sink_job_conf,
+                partitioned_by=partitioned_by,
+                online_partition_columns=online_partition_columns,
             )
         feature_group_object.feature_store = self
         return feature_group_object
