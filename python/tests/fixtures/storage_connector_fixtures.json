@@ -144,7 +144,8 @@
             "name": "test_unity_catalog",
             "storageConnectorType": "UNITY_CATALOG",
             "workspace_url": "https://test.cloud.databricks.com",
-            "access_token": "dapi-test-token",
+            "authMethod": "PAT",
+            "hasAccessToken": true,
             "default_catalog": "test_catalog",
             "aws_region": "us-west-2",
             "arguments": [{"name": "arg1", "value": "val1"}]
@@ -170,6 +171,54 @@
             "id": 1,
             "name": "test_unity_catalog",
             "storageConnectorType": "UNITY_CATALOG"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_unity_catalog_oauth_workspace": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog_oauth",
+            "storageConnectorType": "UNITY_CATALOG",
+            "workspace_url": "https://test.cloud.databricks.com",
+            "authMethod": "OAUTH_M2M",
+            "oauthEndpoint": "WORKSPACE",
+            "clientId": "test-sp-client-id",
+            "hasClientSecret": true,
+            "default_catalog": "test_catalog"
+        },
+        "method": "GET",
+        "path_params": [],
+        "query_params": null,
+        "headers": null
+    },
+    "get_unity_catalog_oauth_account": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "test_unity_catalog_account",
+            "storageConnectorType": "UNITY_CATALOG",
+            "workspace_url": "https://test.cloud.databricks.com",
+            "authMethod": "OAUTH_M2M",
+            "oauthEndpoint": "ACCOUNT",
+            "clientId": "test-sp-client-id",
+            "hasClientSecret": true,
+            "accountId": "12345678-1234-1234-1234-1234567890ab",
+            "accountHost": "accounts.cloud.databricks.com"
         },
         "method": "GET",
         "path_params": [

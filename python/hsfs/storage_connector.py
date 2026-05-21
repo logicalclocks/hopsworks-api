@@ -3365,6 +3365,14 @@ class UnityCatalogConnector(StorageConnector):
         default_catalog: str | None = None,
         aws_region: str | None = None,
         arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        auth_method: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        oauth_endpoint: str | None = None,
+        account_id: str | None = None,
+        account_host: str | None = None,
+        has_access_token: bool | None = None,
+        has_client_secret: bool | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -3372,6 +3380,30 @@ class UnityCatalogConnector(StorageConnector):
         self._access_token = access_token
         self._default_catalog = default_catalog
         self._aws_region = aws_region
+        # auth_method defaults to 'PAT' for back-compat with connectors created
+        # before OAuth support landed; oauth_endpoint defaults to 'WORKSPACE'
+        # when caller asks for OAUTH_M2M without specifying one.
+        if auth_method is None:
+            self._auth_method = "PAT"
+        else:
+            self._auth_method = auth_method
+        self._client_id = client_id
+        self._client_secret = client_secret
+        if self._auth_method == "OAUTH_M2M" and oauth_endpoint is None:
+            self._oauth_endpoint = "WORKSPACE"
+        else:
+            self._oauth_endpoint = oauth_endpoint
+        self._account_id = account_id
+        self._account_host = account_host
+        # has_access_token / has_client_secret are server-emitted booleans that
+        # let callers tell whether a secret is on file without exposing it.
+        # They are never sent back on write (the backend ignores them).
+        self._has_access_token = (
+            bool(has_access_token) if has_access_token is not None else (access_token is not None)
+        )
+        self._has_client_secret = (
+            bool(has_client_secret) if has_client_secret is not None else (client_secret is not None)
+        )
         if isinstance(arguments, list):
             # Match the other connectors in this file: tolerate name-only entries
             # and skip entries without a name. Backend serialises these as a list
@@ -3417,6 +3449,74 @@ class UnityCatalogConnector(StorageConnector):
     def arguments(self) -> dict[str, Any]:
         """Additional Unity Catalog connection arguments passed through to the Arrow Flight server."""
         return self._arguments
+
+    @public
+    @property
+    def auth_method(self) -> str:
+        """Authentication method for the Databricks workspace, either "PAT" or "OAUTH_M2M".
+
+        Defaults to "PAT" for connectors created before OAuth support landed.
+        """
+        return self._auth_method
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """Databricks service principal client ID, only set when [`auth_method`][hsfs.storage_connector.UnityCatalogConnector.auth_method] is "OAUTH_M2M"."""
+        return self._client_id
+
+    @public
+    @property
+    def client_secret(self) -> str | None:
+        """Databricks service principal client secret.
+
+        Write-only on the backend: this property is only populated when the
+        caller has just constructed the connector locally with a secret in hand.
+        Server responses never carry it; use [`has_client_secret`][hsfs.storage_connector.UnityCatalogConnector.has_client_secret] to test
+        whether a secret is on file.
+        """
+        return self._client_secret
+
+    @public
+    @property
+    def oauth_endpoint(self) -> str | None:
+        """OAuth token endpoint flavour, either "WORKSPACE" or "ACCOUNT".
+
+        Only set when [`auth_method`][hsfs.storage_connector.UnityCatalogConnector.auth_method] is "OAUTH_M2M".
+        """
+        return self._oauth_endpoint
+
+    @public
+    @property
+    def account_id(self) -> str | None:
+        """Databricks account ID, only set when [`oauth_endpoint`][hsfs.storage_connector.UnityCatalogConnector.oauth_endpoint] is "ACCOUNT"."""
+        return self._account_id
+
+    @public
+    @property
+    def account_host(self) -> str | None:
+        """Databricks account-console host, only set when [`oauth_endpoint`][hsfs.storage_connector.UnityCatalogConnector.oauth_endpoint] is "ACCOUNT"."""
+        return self._account_host
+
+    @public
+    @property
+    def has_access_token(self) -> bool:
+        """True iff a personal access token is on file for this connector.
+
+        The server never returns the access token itself on read; this boolean
+        lets callers tell whether one exists without exposing the secret.
+        """
+        return self._has_access_token
+
+    @public
+    @property
+    def has_client_secret(self) -> bool:
+        """True iff a client secret is on file for this connector.
+
+        The server never returns the client secret itself on read; this boolean
+        lets callers tell whether one exists without exposing the secret.
+        """
+        return self._has_client_secret
 
     @public
     def connector_options(self) -> dict[str, Any]:
