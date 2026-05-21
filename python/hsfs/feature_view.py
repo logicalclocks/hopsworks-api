@@ -554,6 +554,7 @@ class FeatureView:
         self,
         start_time: str | int | datetime | date | None = None,
         end_time: str | int | datetime | date | None = None,
+        extra_filter: filter.Filter | filter.Logic | None = None,
     ) -> str:
         """Get a query string of the batch query.
 
@@ -588,6 +589,9 @@ class FeatureView:
                 End event time for the batch query, exclusive.
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
                 Int, i.e., Unix Epoch should be in seconds.
+            extra_filter:
+                Additional filters to be applied to the batch query on top of any feature view or training dataset filters.
+                Filters are pushed down to the data layer and combined with existing filters using AND logic.
 
         Returns:
             The batch query.
@@ -601,6 +605,7 @@ class FeatureView:
                 if self._batch_scoring_server
                 else None
             ),
+            extra_filter=extra_filter,
         )
 
     @public
@@ -1178,6 +1183,7 @@ class FeatureView:
         transformed: bool | None = True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        extra_filter: filter.Filter | filter.Logic | None = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes | HopsworksLoggingMetadataType:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1276,6 +1282,9 @@ class FeatureView:
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object.
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The batch data object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
+            extra_filter:
+                Additional filters to be applied to the batch data on top of any feature view or training dataset filters.
+                Filters are pushed down to the data layer and combined with existing filters using AND logic.
 
         Returns:
             DataFrame: The spark dataframe containing the feature data.
@@ -1303,6 +1312,7 @@ class FeatureView:
             transformed=transformed,
             transformation_context=transformation_context,
             logging_data=logging_data,
+            extra_filter=extra_filter,
         )
 
     @public
@@ -4862,6 +4872,39 @@ class FeatureView:
     @query.setter
     def query(self, query_obj: query.Query) -> None:
         self._query = query_obj
+
+    @public
+    def get_feature(self, name: str) -> Feature:
+        """Return a Feature for `name` (bare or join-prefixed) from this FV's query.
+
+        Delegates to `self.query.get_feature(...)`.
+        The returned Feature carries its feature_group, so it can be passed
+        directly into `extra_filter` on `get_batch_data` / `get_batch_query`:
+
+            fv.get_batch_data(extra_filter=(fv.get_feature("amount") > 100))
+
+        For joined feature views, accepts either the bare name (resolves to
+        the left FG if it owns the feature, else the first joined match) or
+        the join-prefixed name (e.g. `"customers_1_customer_id"`) for an
+        unambiguous lookup.
+
+        Parameters:
+            name: Feature name.
+                Use a bare name when the feature is unambiguous.
+                Use the join-prefixed form (e.g. `"customers_1_customer_id"`)
+                when the feature view joins multiple feature groups that
+                share the column.
+
+        Returns:
+            The `Feature` from the feature view's query, with its feature
+            group attached so it can be used directly in `extra_filter`.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: if `name`
+                is not in the feature view's query, or is ambiguous across
+                joined feature groups and no prefix was used.
+        """
+        return self._query.get_feature(name)
 
     @public
     @property

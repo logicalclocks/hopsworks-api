@@ -85,6 +85,28 @@ class FeatureViewEngine:
         )
         self._query_constructor_api = query_constructor_api.QueryConstructorApi()
 
+    @staticmethod
+    def _normalize_extra_filter(extra_filter):
+        """Validate and normalize an `extra_filter` value before sending it.
+
+        Accepts `None`, a `Filter`, or a `Logic`. A raw `Filter` is wrapped
+        in `Logic.Single` so the wire shape is always a `FilterLogicDTO`,
+        matching what the backend expects. Anything else raises `TypeError`
+        with a clear message rather than failing later at JSON serialization.
+        """
+        from hsfs.constructor.filter import Filter, Logic
+
+        if extra_filter is None:
+            return None
+        if isinstance(extra_filter, Filter):
+            return Logic.Single(left_f=extra_filter)
+        if isinstance(extra_filter, Logic):
+            return extra_filter
+        raise TypeError(
+            "extra_filter must be a Filter, Logic, or None; "
+            f"got {type(extra_filter).__name__}."
+        )
+
     def save(
         self, feature_view_obj: feature_view.FeatureView
     ) -> feature_view.FeatureView:
@@ -330,7 +352,10 @@ class FeatureViewEngine:
         training_helper_columns=False,
         training_dataset_version=None,
         spine=None,
+        extra_filter=None,
     ):
+        extra_filter = self._normalize_extra_filter(extra_filter)
+
         try:
             query = self._feature_view_api.get_batch_query(
                 feature_view_obj.name,
@@ -344,6 +369,7 @@ class FeatureViewEngine:
                 event_time=event_time,
                 inference_helper_columns=inference_helper_columns,
                 training_helper_columns=training_helper_columns,
+                extra_filter=extra_filter,
             )
             # verify whatever is passed 1. spine group with dataframe contained, or 2. dataframe
             # the schema has to be consistent
@@ -377,8 +403,15 @@ class FeatureViewEngine:
             raise e
 
     def get_batch_query_string(
-        self, feature_view_obj, start_time, end_time, training_dataset_version=None
+        self,
+        feature_view_obj,
+        start_time,
+        end_time,
+        training_dataset_version=None,
+        extra_filter=None,
     ):
+        extra_filter = self._normalize_extra_filter(extra_filter)
+
         try:
             query_obj = self._feature_view_api.get_batch_query(
                 feature_view_obj.name,
@@ -387,6 +420,7 @@ class FeatureViewEngine:
                 util.convert_event_time_to_timestamp(end_time),
                 training_dataset_version=training_dataset_version,
                 is_python_engine=engine.get_type() == "python",
+                extra_filter=extra_filter,
             )
         except exceptions.RestAPIError as e:
             if e.response.json().get("errorCode", "") == 270172:
@@ -962,6 +996,7 @@ class FeatureViewEngine:
         transformed=True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        extra_filter=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -986,6 +1021,7 @@ class FeatureViewEngine:
             training_helper_columns=False,
             training_dataset_version=training_dataset_version,
             spine=spine,
+            extra_filter=extra_filter,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if (transformation_functions and transformed) or logging_data:
             try:
