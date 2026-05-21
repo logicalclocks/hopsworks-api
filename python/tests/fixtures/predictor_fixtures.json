@@ -599,7 +599,7 @@
       "api_protocol": "REST",
       "config_file": "config.yaml",
       "vllmVariant": "VLLM_OMNI",
-      "vllmImageTag": "v0.14.0",
+      "vllmImageTag": "v0.20.0",
       "requested_instances": 0,
       "predictor_resources": {
         "requested_instances": 0,
