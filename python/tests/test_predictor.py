@@ -1211,11 +1211,11 @@ class TestPredictor:
 
         # Assert
         assert p.vllm_variant == "VLLM_OMNI"
-        assert p.vllm_image_tag == "v0.14.0"
+        assert p.vllm_image_tag == "v0.20.0"
         assert p2.vllm_variant == p.vllm_variant
         assert p2.vllm_image_tag == p.vllm_image_tag
         assert serialized["vllmVariant"] == "VLLM_OMNI"
-        assert serialized["vllmImageTag"] == "v0.14.0"
+        assert serialized["vllmImageTag"] == "v0.20.0"
 
     def test_llm_predictor_default_variant(self, mocker):
         # Arrange
@@ -1238,12 +1238,12 @@ class TestPredictor:
         p = LLMPredictor(
             name="my_llm",
             vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI,
-            vllm_image_tag="v0.14.0",
+            vllm_image_tag="v0.20.0",
         )
 
         # Assert
         assert p.vllm_variant == PREDICTOR.VLLM_VARIANT_OMNI
-        assert p.vllm_image_tag == "v0.14.0"
+        assert p.vllm_image_tag == "v0.20.0"
 
     def test_llm_predictor_invalid_variant_raises(self, mocker):
         # Arrange
@@ -1321,14 +1321,14 @@ class TestPredictor:
         p = predictor.Predictor.for_model(
             mock_model,
             vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI,
-            vllm_image_tag="v0.14.0",
+            vllm_image_tag="v0.20.0",
         )
 
         # Assert
         assert captured_kwargs["vllm_variant"] == PREDICTOR.VLLM_VARIANT_OMNI
-        assert captured_kwargs["vllm_image_tag"] == "v0.14.0"
+        assert captured_kwargs["vllm_image_tag"] == "v0.20.0"
         assert p.vllm_variant == PREDICTOR.VLLM_VARIANT_OMNI
-        assert p.vllm_image_tag == "v0.14.0"
+        assert p.vllm_image_tag == "v0.20.0"
 
     def test_update_from_response_json_preserves_vllm_fields(
         self, mocker, backend_fixtures
@@ -1346,7 +1346,7 @@ class TestPredictor:
 
         # Assert both fields survive the refresh
         assert p.vllm_variant == "VLLM_OMNI"
-        assert p.vllm_image_tag == "v0.14.0"
+        assert p.vllm_image_tag == "v0.20.0"
 
     # auxiliary methods
 
