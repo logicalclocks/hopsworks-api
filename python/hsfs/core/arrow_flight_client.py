@@ -182,6 +182,7 @@ class ArrowFlightClient:
         StorageConnector.GCS,
         StorageConnector.UNITY_CATALOG,
         StorageConnector.SAP_HANA,
+        StorageConnector.MONGODB,
         StorageConnector.S3,
     ]
     # Oracle rides on StorageConnector.SQL above — it's distinguished on the
