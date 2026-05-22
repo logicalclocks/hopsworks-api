@@ -3067,8 +3067,16 @@ class FeatureGroup(FeatureGroupBase):
             self.foreign_key: list[str] = [
                 feat.name for feat in self._features if feat.foreign is True
             ]
+            # Grain columns synthesised by partitioned_by carry partition=True
+            # on the backend FG schema. Exclude them from `partition_key` so
+            # client write paths (delta-rs partition_by, duplicate-record key
+            # check, Hudi SIMPLE partition fields) don't expect them in the
+            # source dataframe — the storage engine generates them.
+            _grain_set = set(self._partitioned_by or [])
             self._partition_key: list[str] = [
-                feat.name for feat in self._features if feat.partition is True
+                feat.name
+                for feat in self._features
+                if feat.partition is True and feat.name not in _grain_set
             ]
             if (
                 time_travel_format is not None
@@ -4911,6 +4919,31 @@ class FeatureGroup(FeatureGroupBase):
                         continue
                     raise e
         raise FeatureStoreException("No materialization job was found")
+
+    @public
+    @property
+    def create_delta_table_job(self) -> Job | None:
+        """Job that creates the Delta table with GENERATED ALWAYS AS columns for partitioned_by feature groups.
+
+        Returns `None` for feature groups that don't use `partitioned_by` or aren't Delta.
+        Looks up the backend-scheduled `<fg>_<version>_offline_fg_create_delta_table` job.
+        This is not cached on `_materialization_job` because the materialization job
+        (created later, on first insert) supersedes it for the rest of the FG's lifetime.
+        """
+        if not self._partitioned_by or self._time_travel_format != "DELTA":
+            return None
+        job_name = f"{util.feature_group_name(self)}_offline_fg_create_delta_table"
+        for _ in range(3):
+            try:
+                return job_api.JobApi().get(job_name)
+            except RestAPIError as e:
+                if e.response.status_code == 404:
+                    if e.response.json().get("errorCode", "") == 130009:
+                        return None
+                    time.sleep(1)
+                    continue
+                raise e
+        return None
 
     @public
     @property

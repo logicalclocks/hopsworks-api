@@ -14,6 +14,7 @@
 #
 from __future__ import annotations
 
+import time
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -280,7 +281,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # ge validation on python and non stream feature groups on spark
         ge_report = feature_group._great_expectation_engine.validate(
@@ -595,7 +598,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         if not feature_group.stream:
             warnings.warn(
@@ -631,7 +636,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._features = dataframe_features
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
@@ -705,7 +712,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             source_features=pre_save_features,
         )
 
-        if feature_schema_available:
+        # Partitioned_by Delta FGs have their empty table created by the backend
+        # Spark job (CREATE TABLE ... USING DELTA ... GENERATED ALWAYS AS). The
+        # client-side save_empty_table path would create a conflicting table
+        # without the generation expressions. Wait for the backend job instead
+        # so the first insert sees a ready table.
+        is_partitioned_by_delta = (
+            getattr(feature_group, "partitioned_by", None)
+            and feature_group.time_travel_format == "DELTA"
+        )
+        if is_partitioned_by_delta:
+            self._wait_for_create_delta_table_job(feature_group)
+        elif feature_schema_available:
             # create empty table to write feature schema to table path
             self.save_empty_table(feature_group, write_options=write_options)
 
@@ -716,6 +734,45 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group_id=feature_group.id,
             )
         )
+
+    @staticmethod
+    def _columns_for_user_schema(feature_group):
+        """Return the feature-group columns the user is expected to supply in their dataframe.
+
+        Excludes columns that the storage engine generates (`partitioned_by` grain
+        columns on Delta GENERATED tables / Hudi CustomKeyGenerator tables). The
+        backend appends one synthetic grain feature per grain to the FG schema so
+        they're queryable; on the write path the user dataframe must not carry them.
+        """
+        grain_set = set(getattr(feature_group, "partitioned_by", None) or [])
+        if not grain_set:
+            return feature_group.columns
+        return [c for c in feature_group.columns if c.name not in grain_set]
+
+    @staticmethod
+    def _wait_for_create_delta_table_job(feature_group):
+        """Block until the backend's create_delta_table_fg job for `feature_group` finishes.
+
+        The first insert on a partitioned_by Delta FG races against table creation
+        unless the client waits here. The job is one-shot, started on FG create.
+        """
+        create_job = feature_group.create_delta_table_job
+        if create_job is None:
+            # The backend may not have scheduled the job yet — give it a couple of seconds.
+            for _ in range(5):
+                time.sleep(1)
+                create_job = feature_group.create_delta_table_job
+                if create_job is not None:
+                    break
+        if create_job is None:
+            warnings.warn(
+                "Could not locate the create_delta_table job for partitioned_by feature "
+                f"group '{feature_group.name}' (v{feature_group.version}). The first "
+                "insert may race against table creation.",
+                stacklevel=2,
+            )
+            return
+        create_job._wait_for_job(await_termination=True)
 
     def update_ttl(
         self,
