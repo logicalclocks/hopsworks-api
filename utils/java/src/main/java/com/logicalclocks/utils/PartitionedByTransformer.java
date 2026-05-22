@@ -17,7 +17,6 @@
 package com.logicalclocks.utils;
 
 import org.apache.hudi.common.config.TypedProperties;
-import org.apache.hudi.common.util.Option;
 import org.apache.hudi.utilities.transform.Transformer;
 
 import org.apache.spark.api.java.JavaSparkContext;
@@ -66,6 +65,7 @@ public class PartitionedByTransformer implements Transformer {
   // emitted by hsfs_utils.create_delta_table_fg so the two formats produce
   // identical grain values for the same event_time input.
   private static final Map<String, String> GRAIN_FNS = new HashMap<>();
+
   static {
     GRAIN_FNS.put("year", "YEAR");
     GRAIN_FNS.put("month", "MONTH");
@@ -75,13 +75,13 @@ public class PartitionedByTransformer implements Transformer {
   }
 
   @Override
-  public Option<Dataset<Row>> apply(JavaSparkContext jsc, SparkSession spark,
-                                    Dataset<Row> rowDataset, TypedProperties properties) {
+  public Dataset<Row> apply(JavaSparkContext jsc, SparkSession spark,
+                            Dataset<Row> rowDataset, TypedProperties properties) {
     String eventTime = properties.getString(CONF_EVENT_TIME, null);
     String grainsCsv = properties.getString(CONF_GRAINS, null);
     if (eventTime == null || grainsCsv == null || grainsCsv.isEmpty()) {
       // partitioned_by not configured on this FG — pass through unchanged.
-      return Option.of(rowDataset);
+      return rowDataset;
     }
     String[] grains = grainsCsv.split(",");
 
@@ -102,7 +102,7 @@ public class PartitionedByTransformer implements Transformer {
           .withColumn(trimmed, functions.expr(sqlExpr).cast("int"))
           .drop("__pbt_ts_expr");
     }
-    return Option.of(out);
+    return out;
   }
 
   // Build a Spark Column that yields a TIMESTAMP from event_time. Mirrors the
