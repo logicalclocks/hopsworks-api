@@ -542,6 +542,86 @@
       }
     }
   },
+  "get_deployment_vllm_kserve_vllm_variant": {
+    "response": {
+      "id": 10,
+      "name": "my_llm",
+      "description": "vllm deployment",
+      "version": 1,
+      "created": "",
+      "creator": "",
+      "model_path": "llm_model_path",
+      "model_name": "my_llm",
+      "model_version": 1,
+      "model_framework": "LLM",
+      "model_server": "VLLM",
+      "serving_tool": "KSERVE",
+      "api_protocol": "REST",
+      "config_file": "config.yaml",
+      "vllmVariant": "VLLM",
+      "vllmImageTag": null,
+      "requested_instances": 0,
+      "predictor_resources": {
+        "requested_instances": 0,
+        "requests": { "cores": 1.0, "memory": 4096, "gpus": 1 },
+        "limits": { "cores": 2.0, "memory": 8192, "gpus": 1 }
+      },
+      "environment_dto": {
+        "name": "llm-inference-pipeline"
+      },
+      "project_namespace": "test",
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 10,
+        "min_instances": 0,
+        "max_instances": 2,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
+      }
+    }
+  },
+  "get_deployment_vllm_kserve_omni_variant": {
+    "response": {
+      "id": 11,
+      "name": "my_llm_omni",
+      "description": "vllm omni deployment",
+      "version": 1,
+      "created": "",
+      "creator": "",
+      "model_path": "llm_model_path",
+      "model_name": "my_llm_omni",
+      "model_version": 1,
+      "model_framework": "LLM",
+      "model_server": "VLLM",
+      "serving_tool": "KSERVE",
+      "api_protocol": "REST",
+      "config_file": "config.yaml",
+      "vllmVariant": "VLLM_OMNI",
+      "vllmImageTag": "v0.14.0",
+      "requested_instances": 0,
+      "predictor_resources": {
+        "requested_instances": 0,
+        "requests": { "cores": 1.0, "memory": 4096, "gpus": 1 },
+        "limits": { "cores": 2.0, "memory": 8192, "gpus": 1 }
+      },
+      "environment_dto": {
+        "name": "llm-inference-pipeline"
+      },
+      "project_namespace": "test",
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 10,
+        "min_instances": 0,
+        "max_instances": 2,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
+      }
+    }
+  },
   "get_deployment_predictor_state": {
     "response": {
       "available_instances": 1,
