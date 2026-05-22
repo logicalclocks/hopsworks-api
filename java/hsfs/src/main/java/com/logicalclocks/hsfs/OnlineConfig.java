@@ -17,7 +17,6 @@
 
 package com.logicalclocks.hsfs;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -25,7 +24,6 @@ import lombok.Setter;
 import java.util.List;
 
 @NoArgsConstructor
-@AllArgsConstructor
 public class OnlineConfig {
 
   @Getter
@@ -35,4 +33,19 @@ public class OnlineConfig {
   @Getter
   @Setter
   private String tableSpace;
+
+  @Getter
+  @Setter
+  private PrimaryKeyIndexType primaryKeyIndexType;
+
+  public OnlineConfig(List<String> onlineComments, String tableSpace) {
+    this.onlineComments = onlineComments;
+    this.tableSpace = tableSpace;
+  }
+
+  public OnlineConfig(List<String> onlineComments, String tableSpace, PrimaryKeyIndexType primaryKeyIndexType) {
+    this.onlineComments = onlineComments;
+    this.tableSpace = tableSpace;
+    this.primaryKeyIndexType = primaryKeyIndexType;
+  }
 }
