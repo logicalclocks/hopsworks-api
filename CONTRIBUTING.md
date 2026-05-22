@@ -307,6 +307,11 @@ Add the following to your `settings.xml`:
       <username>YOUR_NEXUS_USERNAME</username>
       <password>YOUR_NEXUS_PASSWORD</password>
     </server>
+    <server>
+      <id>HiveEE</id>
+      <username>YOUR_NEXUS_USERNAME</username>
+      <password>YOUR_NEXUS_PASSWORD</password>
+    </server>
   </servers>
 </settings>
 ```
