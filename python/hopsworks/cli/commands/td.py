@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import output
 
 
 @click.group("td")
@@ -31,14 +31,7 @@ def td_list(ctx: click.Context, feature_view: str, version: int | None) -> None:
         feature_view: Feature view name.
         version: Feature view version.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(feature_view, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(
-            f"Feature view '{feature_view}' not found: {exc}"
-        ) from exc
-
+    fv = _get_fv(ctx, feature_view, version)
     try:
         tds = fv.get_training_datasets()
     except Exception as exc:  # noqa: BLE001
@@ -238,11 +231,23 @@ def td_delete(
 
 
 def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        return fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    """Resolve a feature view by name across every visible feature store.
+
+    Delegates to :func:`hopsworks.cli.commands.fv._get_fv` so the same
+    cross-store lookup logic is used wherever a feature view is fetched
+    by name.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Specific version, or ``None`` for the SDK default.
+
+    Returns:
+        The matching feature view.
+    """
+    from hopsworks.cli.commands import fv as fv_cmd
+
+    return fv_cmd._get_fv(ctx, name, version)
 
 
 def _parse_splits(spec: str | None) -> dict[str, float]:

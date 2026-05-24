@@ -70,7 +70,7 @@ def _disable_feature_query_service_client():
     global _arrow_flight_instance
     _logger.debug("Disabling Hopsworks Query Service Client.")
     if _arrow_flight_instance is None:
-        _arrow_flight_instance.ArrowFlightClient(disabled_for_session=True)
+        _arrow_flight_instance = ArrowFlightClient(disabled_for_session=True)
     else:
         _arrow_flight_instance._disable_for_session(on_purpose=True)
 

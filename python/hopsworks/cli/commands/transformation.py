@@ -1,9 +1,9 @@
 """``hops transformation`` — list and register transformation functions.
 
 ``list`` enumerates built-in and user-defined transformations. ``create``
-registers a new UDF from either an inline Python expression or a file that
-defines exactly one ``@udf``-decorated function; we validate via ``ast`` so a
-syntax-error in the file is reported before any network call.
+registers every ``@udf``-decorated function declared in either an inline
+Python expression or a file; we validate via ``ast`` so a syntax error in
+the source is reported before any network call.
 """
 
 from __future__ import annotations
@@ -55,27 +55,40 @@ def transformation_list(ctx: click.Context) -> None:
     "--file",
     "file_path",
     type=click.Path(exists=True),
-    help="Python file containing one @udf-decorated function.",
+    help="Python file containing one or more @udf-decorated functions.",
 )
 @click.option(
     "--code",
     help='Inline @udf source, e.g. "@udf(float)\\ndef x(c): return c * 2".',
 )
+@click.option(
+    "--version",
+    "version",
+    type=int,
+    default=1,
+    show_default=True,
+    help=(
+        "Initial version. The backend rejects null versions with a 500, "
+        "so we default to 1 instead of letting it raise."
+    ),
+)
 @click.pass_context
 def transformation_create(
-    ctx: click.Context, file_path: str | None, code: str | None
+    ctx: click.Context, file_path: str | None, code: str | None, version: int
 ) -> None:
-    """Register a new user-defined transformation.
+    """Register every ``@udf``-decorated function from the source.
 
     Either ``--file`` or ``--code`` is required. The source is validated via
     ``ast.parse`` before import so syntax errors surface with a clear message.
-    The decorated function is imported in-process and passed to
-    ``fs.create_transformation_function()``.
+    Each ``@udf``-decorated function is imported in-process and passed to
+    ``fs.create_transformation_function()`` individually so a single
+    pipeline file can declare all its transformations together.
 
     Args:
         ctx: Click context.
         file_path: Python source path.
         code: Inline Python source.
+        version: Initial version for the registered transformation functions.
     """
     if not file_path and not code:
         raise click.UsageError("Provide either --file or --code.")
@@ -88,33 +101,39 @@ def transformation_create(
     except SyntaxError as exc:
         raise click.ClickException(f"Invalid Python source: {exc}") from exc
 
-    fn_name = _single_udf_name(tree)
-    udf = _load_udf(source, fn_name, origin=file_path or "<inline>")
+    fn_names = _udf_names(tree)
+    if not fn_names:
+        raise click.ClickException("No @udf-decorated function found in source.")
 
     fs = session.get_feature_store(ctx)
-    try:
-        tf = fs.create_transformation_function(transformation_function=udf)
-        tf.save()
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not create transformation: {exc}") from exc
-    output.success(
-        "✓ Created transformation %s v%s",
-        fn_name,
-        getattr(tf, "version", "?"),
-    )
+    registered: list[dict[str, Any]] = []
+    for fn_name in fn_names:
+        udf = _load_udf(source, fn_name, origin=file_path or "<inline>")
+        try:
+            tf = fs.create_transformation_function(
+                transformation_function=udf, version=version
+            )
+            tf.save()
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not create transformation '{fn_name}': {exc}"
+            ) from exc
+        version = getattr(tf, "version", "?")
+        registered.append({"name": fn_name, "version": version})
+        output.success("✓ Created transformation %s v%s", fn_name, version)
+
+    if output.JSON_MODE:
+        output.print_json(registered)
 
 
-def _single_udf_name(tree: ast.Module) -> str:
-    """Return the name of the single ``@udf``-decorated function in ``tree``.
+def _udf_names(tree: ast.Module) -> list[str]:
+    """Return every ``@udf``-decorated function name in source order.
 
     Args:
         tree: Parsed AST of the source.
 
     Returns:
-        The decorated function's name.
-
-    Raises:
-        click.ClickException: When there are zero or more than one candidates.
+        Function names in the order they appear in the source.
     """
     names: list[str] = []
     for node in tree.body:
@@ -126,15 +145,7 @@ def _single_udf_name(tree: ast.Module) -> str:
             if name == "udf":
                 names.append(node.name)
                 break
-    if not names:
-        raise click.ClickException(
-            "No @udf-decorated function found. Expected exactly one."
-        )
-    if len(names) > 1:
-        raise click.ClickException(
-            f"Multiple @udf functions found ({', '.join(names)}); expected exactly one."
-        )
-    return names[0]
+    return names
 
 
 def _load_udf(source: str, fn_name: str, origin: str) -> Any:

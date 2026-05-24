@@ -21,27 +21,45 @@ def fv_group() -> None:
 
 
 @fv_group.command("list")
+@click.option(
+    "--current-only",
+    is_flag=True,
+    help="Only the active project's feature store; skip shared stores.",
+)
 @click.pass_context
-def fv_list(ctx: click.Context) -> None:
-    """List every feature view in the active project's feature store.
+def fv_list(ctx: click.Context, current_only: bool) -> None:
+    """List every feature view the caller can see.
+
+    Walks the active project's own feature store and any feature stores
+    shared with the project so shared views are visible in one view.
+    Pass ``--current-only`` to restrict the listing to the active project.
 
     Args:
         ctx: Click context.
+        current_only: When True, skip shared feature stores.
     """
-    fs = session.get_feature_store(ctx)
-    items = _list_feature_views(fs)
+    stores = (
+        [session.get_feature_store(ctx)]
+        if current_only
+        else session.get_feature_stores(ctx)
+    )
     rows = []
-    for item in items:
-        rows.append(
-            [
-                item.get("id", "?"),
-                item.get("name", "?"),
-                item.get("version", "?"),
-                ", ".join(item.get("labels", []) or []) or "-",
-                output.first_line(item.get("description"), empty=""),
-            ]
-        )
-    output.print_table(["ID", "NAME", "VERSION", "LABELS", "DESCRIPTION"], rows)
+    for fs in stores:
+        project_name = getattr(fs, "project_name", "?")
+        for item in _list_feature_views(fs):
+            rows.append(
+                [
+                    project_name,
+                    item.get("id", "?"),
+                    item.get("name", "?"),
+                    item.get("version", "?"),
+                    ", ".join(item.get("labels", []) or []) or "-",
+                    output.first_line(item.get("description"), empty=""),
+                ]
+            )
+    output.print_table(
+        ["PROJECT", "ID", "NAME", "VERSION", "LABELS", "DESCRIPTION"], rows
+    )
 
 
 @fv_group.command("info")
@@ -56,11 +74,7 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
         name: Feature view name.
         version: Specific version to inspect.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     if output.JSON_MODE:
         output.print_json(_fv_to_dict(fv))
@@ -88,6 +102,44 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
             for f in features
         ]
         output.print_table(["NAME", "TYPE", "LABEL"], rows)
+
+
+def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
+    """Resolve a feature view by name across every visible feature store.
+
+    The SDK's ``fs.get_feature_view`` is scoped to one feature store, so a
+    project-scoped lookup misses feature views in stores shared from other
+    projects.
+    Walking every visible store returns the first match and surfaces a clear
+    error when nothing is found.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Specific version, or ``None`` to let the SDK pick the default.
+
+    Returns:
+        The matching feature view from the first store that owns it.
+
+    Raises:
+        click.ClickException: When no visible feature store has a feature
+            view with the given name (and version, when supplied).
+    """
+    last_exc: Exception | None = None
+    for fs in session.get_feature_stores(ctx):
+        try:
+            fv = fs.get_feature_view(name, version=version)
+        except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+            last_exc = exc
+            continue
+        if fv is not None:
+            return fv
+    where = f"v{version}" if version is not None else "(default version)"
+    detail = f": {last_exc}" if last_exc is not None else ""
+    raise click.ClickException(
+        f"Feature view '{name}' {where} not found in any visible feature "
+        f"store. Run `hops fv list` to see what is available{detail}."
+    )
 
 
 def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
@@ -157,7 +209,11 @@ def _fv_to_dict(fv: Any) -> dict[str, Any]:
     "--transform",
     "transforms",
     multiple=True,
-    help='Attach a transformation function, repeatable: "function_name:column".',
+    help=(
+        'Attach a transformation function, repeatable: "function_name:column" '
+        'picks the SDK default (v1); "function_name[version]:column" pins a '
+        "specific version."
+    ),
 )
 @click.option("--labels", help="Comma-separated label columns.")
 @click.option("--version", type=int, help="Feature view version.")
@@ -187,23 +243,16 @@ def fv_create(
     """
     fs = session.get_feature_store(ctx)
     base_name, base_ver = _split_name_version(base_fg)
-    try:
-        base = fs.get_feature_group(base_name, version=base_ver)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+    from hopsworks.cli.commands import fg as fg_cmd
 
+    base = fg_cmd._get_fg(ctx, base_name, base_ver)
     query = base.select_all()
     for raw in joins:
         try:
             spec = joinspec.parse(raw)
         except joinspec.JoinSpecError as exc:
             raise click.BadParameter(str(exc), param_hint="--join") from exc
-        try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(
-                f"Joined FG '{spec.fg_name}' not found: {exc}"
-            ) from exc
+        other = fg_cmd._get_fg(ctx, spec.fg_name, spec.version)
         query = query.join(
             other.select_all(),
             on=[spec.on] if not spec.right_on else None,
@@ -253,12 +302,7 @@ def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> No
         version: Feature view version.
         entry: Comma-separated ``key=value`` pairs for the primary keys.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
-
+    fv = _get_fv(ctx, name, version)
     entry_dict = _parse_entry(entry)
     try:
         vector = fv.get_feature_vector(entry=entry_dict, return_type="list")
@@ -306,12 +350,7 @@ def fv_read(
         start_time: ISO timestamp lower bound.
         end_time: ISO timestamp upper bound.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
-
+    fv = _get_fv(ctx, name, version)
     try:
         df = fv.get_batch_data(
             start_time=start_time,
@@ -357,11 +396,7 @@ def fv_delete(
         yes: Skip confirmation when True.
         force: Pass ``force=True`` to the SDK.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     if not yes and not output.JSON_MODE:
         click.confirm(
@@ -413,18 +448,47 @@ def _parse_entry(entry: str) -> dict[str, Any]:
 
 
 def _resolve_transforms(fs: Any, transforms: tuple[str, ...]) -> list[Any]:
+    """Resolve ``--transform`` specs to attached transformation functions.
+
+    Accepts two shapes:
+
+    - ``fn:col`` picks the SDK default (currently version 1, per
+      ``get_transformation_function``'s documented behaviour).
+    - ``fn[v]:col`` pins to a specific version, which matters when the
+      function has been re-registered (e.g. after a fix) and the default
+      v1 is broken.
+
+    Args:
+        fs: Resolved feature store.
+        transforms: Repeatable ``--transform`` values as Click receives them.
+
+    Returns:
+        Transformation function instances ready to pass to
+        ``fs.create_feature_view(transformation_functions=...)``.
+    """
     if not transforms:
         return []
     resolved: list[Any] = []
     for spec in transforms:
         if ":" not in spec:
             raise click.BadParameter(
-                f"Transform '{spec}' must be 'function:column'.",
+                f"Transform '{spec}' must be 'function:column' or 'function[version]:column'.",
                 param_hint="--transform",
             )
         fn_name, _, col = spec.partition(":")
+        fn_name = fn_name.strip()
+        version: int | None = None
+        if "[" in fn_name and fn_name.endswith("]"):
+            fn_name, _, version_str = fn_name[:-1].partition("[")
+            try:
+                version = int(version_str)
+            except ValueError as exc:
+                raise click.BadParameter(
+                    f"Transform version '{version_str}' must be an integer.",
+                    param_hint="--transform",
+                ) from exc
         try:
-            fn = fs.get_transformation_function(name=fn_name.strip())
+            fn = fs.get_transformation_function(name=fn_name, version=version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Transformation '{fn_name}' not found: {exc}"

@@ -198,6 +198,168 @@ def job_create(
 _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 
+@job_group.command("deploy")
+@click.argument("local_file", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--name", "job_name", required=True, help="Job name (also the default subdir)."
+)
+@click.option(
+    "--type",
+    "job_type",
+    type=click.Choice(
+        ["PYTHON", "PYSPARK", "SPARK", "DOCKER", "FLINK"], case_sensitive=False
+    ),
+    help="Job type. Defaults to PYTHON for .py and SPARK for .jar.",
+)
+@click.option(
+    "--env",
+    "environment_name",
+    help="Python environment name for PYTHON / PYSPARK jobs.",
+)
+@click.option("--args", "app_args", help="Default arguments passed to every execution.")
+@click.option(
+    "--remote-dir",
+    "remote_dir",
+    help="HopsFS directory the script lands in. Default: /Resources/jobs/<name>/",
+)
+@click.option(
+    "--cron", "cron", help="Quartz cron expression. When set, attaches a schedule."
+)
+@click.option(
+    "--start-time",
+    type=click.DateTime(formats=_DT_FORMATS),
+    help="ISO timestamp for the first scheduled trigger.",
+)
+@click.option(
+    "--end-time",
+    type=click.DateTime(formats=_DT_FORMATS),
+    help="ISO timestamp for the last scheduled trigger.",
+)
+@click.option(
+    "--catchup/--no-catchup",
+    "catchup",
+    default=False,
+    show_default=True,
+    help="Replay missed scheduled fires on recovery.",
+)
+@click.option(
+    "--max-active-runs",
+    "max_active_runs",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Upper bound on concurrent executions of this job.",
+)
+@click.option("--run", "run_now", is_flag=True, help="Start an execution after deploy.")
+@click.option(
+    "--wait",
+    is_flag=True,
+    help="With --run: block until the execution terminates.",
+)
+@click.option(
+    "--overwrite/--no-overwrite",
+    "overwrite",
+    default=True,
+    show_default=True,
+    help="Overwrite the script in HopsFS if it already exists.",
+)
+@click.pass_context
+def job_deploy(
+    ctx: click.Context,
+    local_file: str,
+    job_name: str,
+    job_type: str | None,
+    environment_name: str | None,
+    app_args: str | None,
+    remote_dir: str | None,
+    cron: str | None,
+    start_time: datetime | None,
+    end_time: datetime | None,
+    catchup: bool,
+    max_active_runs: int,
+    run_now: bool,
+    wait: bool,
+    overwrite: bool,
+) -> None:
+    """Upload a local script and register (or update) it as a Hopsworks job.
+
+    Thin wrapper around the SDK's :meth:`JobApi.deploy` (upload plus
+    create-or-update), with ``--cron`` chaining :meth:`Job.schedule` and
+    ``--run`` chaining :meth:`Job.run` on top. Every step is idempotent so
+    re-deploying the same name updates in place.
+
+    Args:
+        ctx: Click context.
+        local_file: Path to the local script (``.py``, ``.jar``, ...).
+        job_name: Job name. Re-deploying with the same name updates in place.
+        job_type: Job type override; inferred from the extension when omitted.
+        environment_name: Python environment for PYTHON / PYSPARK jobs.
+        app_args: Default arguments stored on the job definition.
+        remote_dir: HopsFS directory the script lands in.
+        cron: Quartz cron expression. When set, attaches a schedule.
+        start_time: First trigger timestamp for the schedule.
+        end_time: Last trigger timestamp for the schedule.
+        catchup: Replay missed schedule fires on recovery.
+        max_active_runs: Upper bound on concurrent executions.
+        run_now: Submit an execution after the deploy step.
+        wait: With ``--run``, block until the execution terminates.
+        overwrite: Overwrite the script in HopsFS if it already exists.
+    """
+    if wait and not run_now:
+        raise click.UsageError("--wait requires --run.")
+
+    project = session.get_project(ctx)
+    api = project.get_job_api()
+
+    try:
+        job_obj = api.deploy(
+            local_path=local_file,
+            name=job_name,
+            type=job_type,
+            environment_name=environment_name,
+            args=app_args,
+            remote_dir=remote_dir,
+            overwrite=overwrite,
+        )
+    except FileNotFoundError as exc:
+        raise click.ClickException(f"Local file not found: {exc}") from exc
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Deploy failed: {exc}") from exc
+
+    output.success("✓ Job %s deployed", getattr(job_obj, "name", job_name))
+
+    if cron:
+        try:
+            schedule = job_obj.schedule(
+                cron_expression=cron,
+                start_time=start_time,
+                end_time=end_time,
+                catchup=catchup,
+                max_active_runs=max_active_runs,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Schedule failed: {exc}") from exc
+        output.success("✓ Scheduled %s (%s)", job_name, cron)
+        if output.JSON_MODE:
+            output.print_json(_schedule_to_dict(schedule))
+
+    if run_now:
+        try:
+            execution = job_obj.run(args=app_args, await_termination=wait)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Run failed: {exc}") from exc
+        output.success(
+            "✓ Started %s (execution #%s, state=%s)",
+            job_name,
+            getattr(execution, "id", "?"),
+            getattr(execution, "state", "?"),
+        )
+        if output.JSON_MODE:
+            output.print_json(_execution_to_dict(execution))
+
+
 @job_group.command("run")
 @click.argument("name")
 @click.option("--args", "app_args", help="Argument string passed to this execution.")

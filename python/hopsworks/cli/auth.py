@@ -10,6 +10,7 @@ commands and ``hops login``.
 from __future__ import annotations
 
 import logging
+import os
 import urllib.parse
 from typing import TYPE_CHECKING, Any
 
@@ -88,6 +89,14 @@ def login(
         The authenticated SDK ``Project`` object.
     """
     import hopsworks  # noqa: PLC0415 - intentionally lazy
+
+    # The CLI is a single-process interactive tool; spark-engine init pulls in a
+    # SparkSession that needs a cluster master and crashes when pyspark is
+    # importable but no Spark is configured (the typical Hopsworks Python pod).
+    # Default to the python engine; an explicit arg or ``HOPSWORKS_ENGINE`` env
+    # var still wins.
+    if engine is None and not os.environ.get("HOPSWORKS_ENGINE"):
+        engine = "python"
 
     if internal:
         # Let the SDK do its own ``REST_ENDPOINT`` + ``$SECRETS_DIR/token.jwt``

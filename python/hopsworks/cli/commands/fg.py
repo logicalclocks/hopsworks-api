@@ -25,27 +25,43 @@ def fg_group() -> None:
 
 
 @fg_group.command("list")
+@click.option(
+    "--current-only",
+    is_flag=True,
+    help="Only the active project's feature store; skip shared stores.",
+)
 @click.pass_context
-def fg_list(ctx: click.Context) -> None:
-    """List all feature groups in the active project's feature store.
+def fg_list(ctx: click.Context, current_only: bool) -> None:
+    """List every feature group the caller can see.
+
+    Walks the active project's own feature store and any feature stores
+    shared with the project so shared groups are visible in one view.
+    Pass ``--current-only`` to restrict the listing to the active project.
 
     Args:
         ctx: Click context.
+        current_only: When True, skip shared feature stores.
     """
-    fs = session.get_feature_store(ctx)
-    fgs = fs.get_feature_groups()
+    stores = (
+        [session.get_feature_store(ctx)]
+        if current_only
+        else session.get_feature_stores(ctx)
+    )
     rows = []
-    for fg in fgs:
-        rows.append(
-            [
-                getattr(fg, "id", "?"),
-                getattr(fg, "name", "?"),
-                getattr(fg, "version", "?"),
-                _fg_type_label(fg),
-                "yes" if getattr(fg, "online_enabled", False) else "no",
-            ]
-        )
-    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE"], rows)
+    for fs in stores:
+        project_name = getattr(fs, "project_name", "?")
+        for fg in fs.get_feature_groups():
+            rows.append(
+                [
+                    project_name,
+                    getattr(fg, "id", "?"),
+                    getattr(fg, "name", "?"),
+                    getattr(fg, "version", "?"),
+                    _fg_type_label(fg),
+                    "yes" if getattr(fg, "online_enabled", False) else "no",
+                ]
+            )
+    output.print_table(["PROJECT", "ID", "NAME", "VERSION", "TYPE", "ONLINE"], rows)
 
 
 @fg_group.command("info")
@@ -140,11 +156,41 @@ def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
 
 
 def _get_fg(ctx: click.Context, name: str, version: int | None) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        return fs.get_feature_group(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature group '{name}' not found: {exc}") from exc
+    """Resolve a feature group by name across every visible feature store.
+
+    The SDK's ``fs.get_feature_group`` returns ``None`` when the feature group
+    is missing from the feature store it was called on, so a project-scoped
+    lookup would silently miss feature groups shared from other projects.
+    Walking every store the project can see avoids that footgun and surfaces
+    a clear error when nothing matches.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Specific version, or ``None`` to let the SDK pick the default.
+
+    Returns:
+        The matching feature group from the first store that owns it.
+
+    Raises:
+        click.ClickException: When no visible feature store has a feature
+            group with the given name (and version, when supplied).
+    """
+    last_exc: Exception | None = None
+    for fs in session.get_feature_stores(ctx):
+        try:
+            fg = fs.get_feature_group(name, version=version)
+        except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+            last_exc = exc
+            continue
+        if fg is not None:
+            return fg
+    where = f"v{version}" if version is not None else "(default version)"
+    detail = f": {last_exc}" if last_exc is not None else ""
+    raise click.ClickException(
+        f"Feature group '{name}' {where} not found in any visible feature "
+        f"store. Run `hops fg list` to see what is available{detail}."
+    )
 
 
 def _fg_type_label(fg: Any) -> str:
@@ -473,6 +519,7 @@ def fg_insert(
     elif file_path:
         path = Path(file_path)
         df = pd.read_csv(path) if path.suffix.lower() == ".csv" else pd.read_json(path)
+        _coerce_temporal_columns(df, fg)
     else:
         data = sys.stdin.read()
         if not data.strip():
@@ -480,6 +527,7 @@ def fg_insert(
                 "No data provided. Pass --file, --generate N, or pipe JSON on stdin."
             )
         df = pd.DataFrame(json.loads(data))
+        _coerce_temporal_columns(df, fg)
 
     write_options = {"start_offline_materialization": False} if online else None
 
@@ -536,21 +584,12 @@ def fg_derive(
         description: Free-form description.
     """
     fs = session.get_feature_store(ctx)
-    try:
-        base = fs.get_feature_group(base_fg)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
-
+    base = _get_fg(ctx, base_fg, None)
     query = base.select_all()
     parents = [base]
     for raw in joins:
         spec = _parse_join(raw)
-        try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(
-                f"Joined FG '{spec.fg_name}' not found: {exc}"
-            ) from exc
+        other = _get_fg(ctx, spec.fg_name, spec.version)
         parents.append(other)
         query = query.join(
             other.select_all(),
@@ -643,7 +682,52 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
         to_dict = getattr(stats, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else {"stats": str(stats)})
         return
-    output.info("%s", stats)
+    fds = getattr(stats, "feature_descriptive_statistics", None) or []
+    if not fds:
+        output.info("No descriptive statistics available for %s.", name)
+        return
+    rows = []
+    for f in fds:
+        rows.append(
+            [
+                getattr(f, "feature_name", "?"),
+                getattr(f, "feature_type", "-"),
+                getattr(f, "count", "-"),
+                _fmt_num(getattr(f, "min", None)),
+                _fmt_num(getattr(f, "max", None)),
+                _fmt_num(getattr(f, "mean", None)),
+                _fmt_num(getattr(f, "stddev", None)),
+                _fmt_num(getattr(f, "completeness", None)),
+            ]
+        )
+    output.print_table(
+        ["FEATURE", "TYPE", "COUNT", "MIN", "MAX", "MEAN", "STDDEV", "COMPLETENESS"],
+        rows,
+    )
+
+
+def _fmt_num(value: Any) -> str:
+    """Render a numeric metric for the stats table, dropping needless precision.
+
+    The Hopsworks statistics payload mixes ``None`` (no value), integers, and
+    doubles with up-to-15-digit precision. Show four significant digits so the
+    table stays scannable while large magnitudes survive intact.
+    """
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int,)):
+        return str(value)
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if f == 0:
+        return "0"
+    if abs(f) >= 1000:
+        return f"{f:,.0f}"
+    return f"{f:.4g}"
 
 
 @fg_group.command("search")
@@ -866,6 +950,29 @@ def _generate_dataframe(fg: Any, n: int) -> Any:
         dtype = str(getattr(feat, "type", "") or "").lower()
         data[name] = [_synth_value(dtype, i) for i in range(n)]
     return pd.DataFrame(data)
+
+
+def _coerce_temporal_columns(df: Any, fg: Any) -> None:
+    """Cast string columns to datetime when the FG schema expects timestamp/date.
+
+    JSON and CSV carry timestamps as ISO strings, but ``fg.insert()`` matches by
+    pandas dtype and rejects ``object`` columns where it expects ``datetime64``.
+    Inspect the FG's features and coerce in place so the user does not have to.
+
+    Args:
+        df: The DataFrame to coerce in place.
+        fg: The feature group whose schema dictates which columns to cast.
+    """
+    import pandas as pd  # noqa: PLC0415
+
+    schema = getattr(fg, "columns", None) or getattr(fg, "features", None) or []
+    for feat in schema:
+        dtype = (getattr(feat, "type", "") or "").lower()
+        col = getattr(feat, "name", None)
+        if not col or col not in df.columns:
+            continue
+        if "timestamp" in dtype or "date" in dtype:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
 
 
 def _synth_value(dtype: str, i: int) -> Any:
