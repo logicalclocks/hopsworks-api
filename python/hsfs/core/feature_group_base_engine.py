@@ -41,6 +41,17 @@ class FeatureGroupBaseEngine:
     def delete(self, feature_group):
         self._feature_group_api.delete(feature_group)
 
+    def get_row_count(self, feature_group: FeatureGroup) -> int:
+        """Get the row count of a feature group.
+
+        Parameters:
+            feature_group: The feature group to get the row count of.
+
+        Returns:
+            The row count of the feature group.
+        """
+        return self._feature_group_api.get_row_count(feature_group)
+
     def add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
         """Attach a name/value tag to a feature group.
 

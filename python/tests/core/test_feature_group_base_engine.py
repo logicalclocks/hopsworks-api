@@ -99,6 +99,22 @@ class TestFeatureGroupBaseEngine:
         # Assert
         assert mock_tags_api.return_value.get.call_count == 1
 
+    def test_get_row_count(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        fg_base_engine.get_row_count(feature_group=None)
+
+        # Assert
+        assert mock_fg_api.return_value.get_row_count.call_count == 1
+
     def test_update_statistics_config(self, mocker):
         # Arrange
         feature_store_id = 99
