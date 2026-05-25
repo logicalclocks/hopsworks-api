@@ -99,7 +99,7 @@ public class FeatureGroupEngine<T> extends FeatureGroupEngineBase {
     try {
       return getStreamFeatureGroup(featureStore, name, version);
     } catch (IOException | FeatureStoreException e) {
-      if (e.getMessage().contains("\"errorCode\":270009")) {
+      if (e.getMessage().contains("Error: 404") && e.getMessage().contains("\"errorCode\":270009")) {
         return StreamFeatureGroup.builder()
             .featureStore(featureStore)
             .name(name)
