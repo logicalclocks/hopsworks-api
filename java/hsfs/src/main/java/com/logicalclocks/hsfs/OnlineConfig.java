@@ -17,6 +17,8 @@
 
 package com.logicalclocks.hsfs;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -24,6 +26,7 @@ import lombok.Setter;
 import java.util.List;
 
 @NoArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class OnlineConfig {
 
   @Getter
@@ -37,6 +40,10 @@ public class OnlineConfig {
   @Getter
   @Setter
   private PrimaryKeyIndexType primaryKeyIndexType;
+
+  @Getter
+  @Setter
+  private List<List<String>> secondaryIndexes;
 
   public OnlineConfig(List<String> onlineComments, String tableSpace) {
     this.onlineComments = onlineComments;

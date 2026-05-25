@@ -35,6 +35,7 @@ class OnlineConfig:
         online_comments: list[str] = None,
         table_space: str = None,
         primary_key_index_type: str = None,
+        secondary_indexes: list[list[str]] = None,
         **kwargs,
     ):
         self._online_comments = online_comments
@@ -42,6 +43,7 @@ class OnlineConfig:
         self._primary_key_index_type = self._normalize_primary_key_index_type(
             primary_key_index_type
         )
+        self._secondary_indexes = self._validate_secondary_indexes(secondary_indexes)
 
     @staticmethod
     def _normalize_primary_key_index_type(value: str | None) -> str | None:
@@ -60,6 +62,29 @@ class OnlineConfig:
             )
         return normalized
 
+    @staticmethod
+    def _validate_secondary_indexes(
+        value: list[list[str]] | None,
+    ) -> list[list[str]] | None:
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise TypeError(
+                f"secondary_indexes must be a list of column-name lists or None, "
+                f"got {type(value).__name__}."
+            )
+        for i, idx in enumerate(value):
+            if not isinstance(idx, list) or len(idx) == 0:
+                raise ValueError(
+                    f"secondary_indexes[{i}] must be a non-empty list of column names."
+                )
+            for col in idx:
+                if not isinstance(col, str) or not col:
+                    raise ValueError(
+                        f"secondary_indexes[{i}] contains an invalid column name: {col!r}."
+                    )
+        return value
+
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineConfig:
         if json_dict is None:
@@ -73,6 +98,7 @@ class OnlineConfig:
             "onlineComments": self._online_comments,
             "tableSpace": self._table_space,
             "primaryKeyIndexType": self._primary_key_index_type,
+            "secondaryIndexes": self._secondary_indexes,
         }
 
     @public
@@ -126,3 +152,30 @@ class OnlineConfig:
         self._primary_key_index_type = self._normalize_primary_key_index_type(
             primary_key_index_type
         )
+
+    @public
+    @property
+    def secondary_indexes(self) -> list[list[str]] | None:
+        """Secondary indexes for the online feature store table.
+
+        Each element is a list of feature names that form one index. The backend
+        names each index automatically as ``idx_<col1>_<col2>_...``.
+
+        Example::
+
+            OnlineConfig(secondary_indexes=[["user_id"], ["country", "city"]])
+
+        generates::
+
+            KEY `idx_user_id`(`user_id`),
+            KEY `idx_country_city`(`country`,`city`)
+
+        Warning: Create-only
+            Set at feature group creation time only. Indexes cannot be added or
+            removed after the table has been created without recreating it.
+        """
+        return self._secondary_indexes
+
+    @secondary_indexes.setter
+    def secondary_indexes(self, value: list[list[str]] | None) -> None:
+        self._secondary_indexes = self._validate_secondary_indexes(value)
