@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 
@@ -32,6 +33,8 @@ class EnvVar:
         self,
         name=None,
         value=None,
+        secret_name=None,
+        secret_backed=None,
         added_on=None,
         updated_on=None,
         type=None,
@@ -43,6 +46,8 @@ class EnvVar:
     ):
         self._name = name
         self._value = value
+        self._secret_name = secret_name
+        self._secret_backed = secret_backed
         self._added_on = added_on
         self._updated_on = updated_on
         self._env_var_api = env_var_api.EnvVarsApi()
@@ -65,6 +70,18 @@ class EnvVar:
     def value(self):
         """Value of the environment variable."""
         return self._value
+
+    @public
+    @property
+    def secret_name(self):
+        """Name of the secret backing this environment variable, if any."""
+        return self._secret_name
+
+    @public
+    @property
+    def secret_backed(self):
+        """Whether the environment variable is backed by a secret."""
+        return self._secret_backed
 
     @public
     @property
@@ -95,12 +112,18 @@ class EnvVar:
         want them landing in logs / notebook outputs / error reports.
         Use ``env_var.value`` directly if you need the plaintext.
         """
-        return {
+        data = {
             "name": self._name,
             "value": "***" if self._value is not None else None,
             "added_on": self._added_on,
             "updated_on": self._updated_on,
         }
+        if self._secret_name is not None:
+            data["secret_name"] = self._secret_name
+            data["secret_backed"] = (
+                self._secret_backed if self._secret_backed is not None else True
+            )
+        return data
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

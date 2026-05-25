@@ -31,6 +31,13 @@ def _single_response(name: str, value: str) -> dict:
     return _list_response([{"name": name, "value": value}])
 
 
+def _secret_response(name: str, secret_name: str, value: str | None = None) -> dict:
+    item = {"name": name, "secretName": secret_name, "secretBacked": True}
+    if value is not None:
+        item["value"] = value
+    return _list_response([item])
+
+
 def _make_rest_api_error(error_code: int, status_code: int = 404) -> RestAPIError:
     mock_response = MagicMock()
     mock_response.status_code = status_code
@@ -88,6 +95,16 @@ class TestEnvVarsApi:
         assert result.name == "OPENAI_API_KEY"
         assert result.value == "sk-1"
 
+    def test_get_env_var_returns_secret_backed_metadata(self, mocker):
+        api = EnvVarsApi()
+        _patch_client(mocker, _secret_response("OPENAI_API_KEY", "my_secret"))
+        result = api.get_env_var("OPENAI_API_KEY")
+        assert isinstance(result, EnvVar)
+        assert result.name == "OPENAI_API_KEY"
+        assert result.value is None
+        assert result.secret_name == "my_secret"
+        assert result.secret_backed is True
+
     def test_get_env_var_not_found_returns_none(self, mocker):
         api = EnvVarsApi()
         _patch_client(mocker, _make_rest_api_error(EnvVar.NOT_FOUND_ERROR_CODE))
@@ -115,6 +132,17 @@ class TestEnvVarsApi:
         sent = json.loads(c._send_request.call_args.kwargs["data"])
         assert sent == {"name": "OPENAI_API_KEY", "value": "sk-1"}
 
+    def test_create_env_var_from_secret_posts_secret_name(self, mocker):
+        api = EnvVarsApi()
+        c = _patch_client(mocker, _secret_response("OPENAI_API_KEY", "my_secret"))
+        result = api.create_env_var("OPENAI_API_KEY", secret_name="my_secret")
+        assert result.name == "OPENAI_API_KEY"
+        method, path = c._send_request.call_args.args[:2]
+        assert method == "POST"
+        assert path == ["users", "envvars"]
+        sent = json.loads(c._send_request.call_args.kwargs["data"])
+        assert sent == {"name": "OPENAI_API_KEY", "secretName": "my_secret"}
+
     def test_update_env_var_puts(self, mocker):
         api = EnvVarsApi()
         c = _patch_client(mocker, _single_response("OPENAI_API_KEY", "sk-2"))
@@ -123,6 +151,17 @@ class TestEnvVarsApi:
         method, path = c._send_request.call_args.args[:2]
         assert method == "PUT"
         assert path == ["users", "envvars", "OPENAI_API_KEY"]
+
+    def test_update_env_var_from_secret_puts_secret_name(self, mocker):
+        api = EnvVarsApi()
+        c = _patch_client(mocker, _secret_response("OPENAI_API_KEY", "my_secret"))
+        result = api.update_env_var("OPENAI_API_KEY", secret_name="my_secret")
+        assert result.secret_name == "my_secret"
+        method, path = c._send_request.call_args.args[:2]
+        assert method == "PUT"
+        assert path == ["users", "envvars", "OPENAI_API_KEY"]
+        sent = json.loads(c._send_request.call_args.kwargs["data"])
+        assert sent == {"name": "OPENAI_API_KEY", "secretName": "my_secret"}
 
     def test_set_env_var_creates_when_absent(self, mocker):
         api = EnvVarsApi()
@@ -153,6 +192,41 @@ class TestEnvVarsApi:
         result = api.set_env_var("EXISTING", "new")
         assert result.value == "new"
         assert client._send_request.call_args_list[1].args[0] == "PUT"
+
+    def test_set_env_var_from_secret_creates_when_absent(self, mocker):
+        api = EnvVarsApi()
+        client = MagicMock()
+        client._send_request.side_effect = [
+            _make_rest_api_error(EnvVar.NOT_FOUND_ERROR_CODE),  # get_env_var
+            _secret_response("NEW_VAR", "my_secret"),  # POST
+        ]
+        mocker.patch(
+            "hopsworks_common.core.env_var_api.client.get_instance",
+            return_value=client,
+        )
+        result = api.set_env_var("NEW_VAR", secret_name="my_secret")
+        assert result.name == "NEW_VAR"
+        assert result.secret_name == "my_secret"
+        assert client._send_request.call_args_list[1].args[0] == "POST"
+        sent = json.loads(client._send_request.call_args_list[1].kwargs["data"])
+        assert sent == {"name": "NEW_VAR", "secretName": "my_secret"}
+
+    def test_set_env_var_from_secret_updates_when_present(self, mocker):
+        api = EnvVarsApi()
+        client = MagicMock()
+        client._send_request.side_effect = [
+            _secret_response("EXISTING", "old_secret"),  # get_env_var returns hit
+            _secret_response("EXISTING", "new_secret"),  # PUT
+        ]
+        mocker.patch(
+            "hopsworks_common.core.env_var_api.client.get_instance",
+            return_value=client,
+        )
+        result = api.set_env_var("EXISTING", secret_name="new_secret")
+        assert result.secret_name == "new_secret"
+        assert client._send_request.call_args_list[1].args[0] == "PUT"
+        sent = json.loads(client._send_request.call_args_list[1].kwargs["data"])
+        assert sent == {"name": "EXISTING", "secretName": "new_secret"}
 
     def test_delete_env_var_calls_delete(self, mocker):
         api = EnvVarsApi()
@@ -202,6 +276,37 @@ class TestEnvVar:
         assert len(result) == 1
         assert result[0].name == "X"
         assert result[0].value == "y"
+
+    def test_from_response_json_secret_backed(self):
+        result = EnvVar.from_response_json(
+            {
+                "items": [
+                    {
+                        "name": "OPENAI_API_KEY",
+                        "secretName": "my_secret",
+                        "secretBacked": True,
+                        "addedOn": None,
+                        "updatedOn": None,
+                    }
+                ]
+            }
+        )
+        assert len(result) == 1
+        assert result[0].name == "OPENAI_API_KEY"
+        assert result[0].value is None
+        assert result[0].secret_name == "my_secret"
+        assert result[0].secret_backed is True
+
+    def test_to_dict_secret_backed_includes_metadata(self):
+        env_var = EnvVar(name="X", value="y", secret_name="my_secret", secret_backed=True)
+        assert env_var.to_dict() == {
+            "name": "X",
+            "value": "***",
+            "added_on": None,
+            "updated_on": None,
+            "secret_name": "my_secret",
+            "secret_backed": True,
+        }
 
     def test_repr(self):
         env_var = EnvVar(name="X", value="y")
