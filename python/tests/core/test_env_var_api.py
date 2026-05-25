@@ -298,7 +298,9 @@ class TestEnvVar:
         assert result[0].secret_backed is True
 
     def test_to_dict_secret_backed_includes_metadata(self):
-        env_var = EnvVar(name="X", value="y", secret_name="my_secret", secret_backed=True)
+        env_var = EnvVar(
+            name="X", value="y", secret_name="my_secret", secret_backed=True
+        )
         assert env_var.to_dict() == {
             "name": "X",
             "value": "***",
