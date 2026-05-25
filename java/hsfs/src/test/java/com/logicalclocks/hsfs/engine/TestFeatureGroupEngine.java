@@ -49,10 +49,10 @@ class TestFeatureGroupEngine {
   }
 
   @Test
-  void testGetOrCreateReturnsFgWhenBackendReturns400NotFound() throws Exception {
-    // Backend returns 400 with errorCode 270009 (feature group not found)
+  void testGetOrCreateReturnsFgWhenBackendReturns404NotFound() throws Exception {
+    // Backend returns 404 with errorCode 270009 (feature group not found)
     Mockito.when(mockApi.getInternal(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any()))
-        .thenThrow(new IOException("Error: 400{\"errorCode\":270009,\"errorMsg\":\"Featuregroup wasn't found.\"}"));
+        .thenThrow(new IOException("Error: 404{\"errorCode\":270009,\"errorMsg\":\"Featuregroup wasn't found.\"}"));
 
     StreamFeatureGroup result = engine.getOrCreateFeatureGroup(
         mockFeatureStore, "test_fg", 1, "desc", true,
