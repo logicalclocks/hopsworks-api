@@ -426,6 +426,16 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.default_catalog
+            elif self.type == StorageConnector.MONGODB:
+                if not self.database:
+                    raise ValueError(
+                        "Database name is required for MongoDB connectors. "
+                        "Set a default database on the connector or pass an "
+                        "explicit `database` to get_tables()."
+                    )
+                database = self.database
+            elif self.type in [StorageConnector.S3, StorageConnector.GCS]:
+                pass
             else:
                 raise ValueError(
                     "Database name is required for this connector type. "
