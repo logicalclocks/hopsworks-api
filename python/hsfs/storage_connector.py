@@ -3679,10 +3679,7 @@ def _resolve_uc_spark_options(
         "Content-Type": "application/json",
     }
 
-    table_url = (
-        f"{workspace}/api/2.1/unity-catalog/tables/"
-        f"{catalog}.{schema}.{table}"
-    )
+    table_url = f"{workspace}/api/2.1/unity-catalog/tables/{catalog}.{schema}.{table}"
     table_resp = requests.get(table_url, headers=headers, timeout=30)
     _raise_for_uc_status(table_resp, "table lookup")
     table_payload = table_resp.json()
@@ -3698,9 +3695,7 @@ def _resolve_uc_spark_options(
             f"{data_source_format or 'unknown'}."
         )
 
-    creds_url = (
-        f"{workspace}/api/2.0/unity-catalog/temporary-table-credentials"
-    )
+    creds_url = f"{workspace}/api/2.0/unity-catalog/temporary-table-credentials"
     creds_resp = requests.post(
         creds_url,
         headers=headers,
@@ -3762,8 +3757,7 @@ def _raise_for_uc_status(resp: Any, what: str) -> None:
 
     body = (resp.text or "")[:500]
     raise FeatureStoreException(
-        f"Databricks Unity Catalog {what} failed with HTTP {resp.status_code}: "
-        f"{body}"
+        f"Databricks Unity Catalog {what} failed with HTTP {resp.status_code}: {body}"
     )
 
 
