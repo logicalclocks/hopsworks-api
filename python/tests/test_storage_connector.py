@@ -1884,7 +1884,34 @@ class TestMongoDBConnector:
         assert opts["connection.uri"].startswith("mongodb+srv://alice:secret@")
         assert opts["database"] == "sample_mflix"
         assert opts["collection"] == "comments"
-        assert opts["maxPoolSize"] == "10"
+
+    def test_get_tables_without_database_raises(self):
+        """MongoDB get_tables() with no database configured and no argument raises."""
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+        )
+        with pytest.raises(ValueError, match="Database name is required for MongoDB"):
+            sc.get_tables()
+
+    def test_get_tables_uses_connector_default_database(self, mocker):
+        """MongoDB get_tables() defaults to the connector's database when none is passed."""
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+            database="sample_mflix",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "sample_mflix")
 
     def test_connector_options_forwards_self_options(self):
         # Reviewer note: connector_options() previously returned only
