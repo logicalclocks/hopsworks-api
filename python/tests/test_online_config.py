@@ -132,7 +132,9 @@ class TestOnlineConfig:
             OnlineConfig(secondary_indexes="user_id")
 
     def test_secondary_indexes_empty_inner_list_rejected(self):
-        with pytest.raises(ValueError, match=r"secondary_indexes\[0\] must be a non-empty list"):
+        with pytest.raises(
+            ValueError, match=r"secondary_indexes\[0\] must be a non-empty list"
+        ):
             OnlineConfig(secondary_indexes=[[]])
 
     def test_secondary_indexes_empty_column_name_rejected(self):
