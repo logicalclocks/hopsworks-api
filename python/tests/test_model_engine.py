@@ -18,6 +18,7 @@ import errno
 import os
 
 import pytest
+from hsml import model as model_mod
 from hsml.engine import model_engine
 
 
@@ -208,3 +209,205 @@ class TestModelEngineDownload:
         assert os.path.isdir(local_path)
         download_spy.assert_called_once_with(m, local_path)
         assert not os.path.exists(os.path.join(local_path, ".download_complete"))
+
+    def test_explicit_local_path_keeps_existing_files(self, mocker, tmp_path):
+        # Arrange - an explicit path may hold unrelated files; they must survive
+        local_path = str(tmp_path / "explicit")
+        os.makedirs(local_path)
+        with open(os.path.join(local_path, "keep.txt"), "w") as f:
+            f.write("keep")
+        eng = model_engine.ModelEngine()
+        m = _make_model(mocker)
+        mocker.patch.object(model_engine.ModelEngine, "_download_model_files")
+
+        # Act
+        eng.download(m, local_path=local_path)
+
+        # Assert - the user's pre-existing file is not wiped
+        assert os.path.exists(os.path.join(local_path, "keep.txt"))
+
+    def test_cleans_stale_incomplete_cache_before_download(self, mocker, tmp_path):
+        # Arrange - a cache dir with stale files but no completion marker
+        base = str(tmp_path / "tmp")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        eng = model_engine.ModelEngine()
+        m = _make_model(mocker)
+        cache_path = os.path.join(base, "proj", "mymodel", "1")
+        os.makedirs(cache_path)
+        with open(os.path.join(cache_path, "stale.txt"), "w") as f:
+            f.write("old")
+
+        def fake_download(model_instance, local_path):
+            with open(os.path.join(local_path, "model.pkl"), "w") as f:
+                f.write("x")
+
+        mocker.patch.object(
+            model_engine.ModelEngine,
+            "_download_model_files",
+            side_effect=fake_download,
+        )
+
+        # Act
+        result = eng.download(m)
+
+        # Assert - stale file removed, fresh download present and marked complete
+        assert result == cache_path
+        assert not os.path.exists(os.path.join(cache_path, "stale.txt"))
+        assert os.path.exists(os.path.join(cache_path, "model.pkl"))
+        assert os.path.exists(os.path.join(cache_path, ".download_complete"))
+
+    def test_cache_not_owned_is_neither_reused_nor_overwritten(self, mocker, tmp_path):
+        # Arrange - a complete-looking cache dir that belongs to another user
+        base = str(tmp_path / "tmp")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        eng = model_engine.ModelEngine()
+        m = _make_model(mocker)
+        cache_path = os.path.join(base, "proj", "mymodel", "1")
+        os.makedirs(cache_path)
+        with open(os.path.join(cache_path, ".download_complete"), "w") as f:
+            f.write("done")
+        with open(os.path.join(cache_path, "model.pkl"), "w") as f:
+            f.write("planted")
+        mocker.patch.object(
+            model_engine.ModelEngine,
+            "_is_path_owned_by_current_user",
+            return_value=False,
+        )
+        download_spy = mocker.patch.object(
+            model_engine.ModelEngine, "_download_model_files"
+        )
+
+        # Act / Assert - not reused as valid, and not overwritten (we don't own it)
+        with pytest.raises(PermissionError):
+            eng.download(m)
+        download_spy.assert_not_called()
+        assert os.path.exists(os.path.join(cache_path, "model.pkl"))
+
+    def test_cache_dir_created_with_owner_only_permissions(self, mocker, tmp_path):
+        # Arrange
+        base = str(tmp_path / "tmp")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        eng = model_engine.ModelEngine()
+        m = _make_model(mocker)
+        mocker.patch.object(model_engine.ModelEngine, "_download_model_files")
+
+        # Act
+        result = eng.download(m)
+
+        # Assert - owner-only permissions (POSIX only)
+        if hasattr(os, "getuid"):
+            assert oct(os.stat(result).st_mode & 0o777) == oct(0o700)
+
+
+def _seed_cache(base, layout):
+    """Create {base}/{project}/{model}/{version} dirs from a nested layout."""
+    for project, models in layout.items():
+        for model_name, versions in models.items():
+            for version in versions:
+                os.makedirs(os.path.join(base, project, model_name, str(version)))
+
+
+class TestModelClearCache:
+    def test_clear_all(self, mocker, tmp_path):
+        base = str(tmp_path / "cache")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}, "p2": {"m3": [1]}})
+
+        removed = model_mod.Model.clear_cache()
+
+        assert removed == 4
+        assert not os.path.exists(base)
+
+    def test_clear_project_scope(self, mocker, tmp_path):
+        base = str(tmp_path / "cache")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}, "p2": {"m3": [1]}})
+
+        removed = model_mod.Model.clear_cache(project_name="p1")
+
+        assert removed == 3
+        assert not os.path.exists(os.path.join(base, "p1"))
+        assert os.path.exists(os.path.join(base, "p2"))
+
+    def test_clear_model_scope(self, mocker, tmp_path):
+        base = str(tmp_path / "cache")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}})
+
+        removed = model_mod.Model.clear_cache(project_name="p1", model_name="m1")
+
+        assert removed == 2
+        assert not os.path.exists(os.path.join(base, "p1", "m1"))
+        assert os.path.exists(os.path.join(base, "p1", "m2"))
+
+    def test_clear_version_scope(self, mocker, tmp_path):
+        base = str(tmp_path / "cache")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        _seed_cache(base, {"p1": {"m1": [1, 2]}})
+
+        removed = model_mod.Model.clear_cache(
+            project_name="p1", model_name="m1", version=1
+        )
+
+        assert removed == 1
+        assert not os.path.exists(os.path.join(base, "p1", "m1", "1"))
+        assert os.path.exists(os.path.join(base, "p1", "m1", "2"))
+
+    def test_clear_nonexistent_returns_zero(self, mocker, tmp_path):
+        base = str(tmp_path / "cache")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        _seed_cache(base, {"p1": {"m1": [1]}})
+
+        assert model_mod.Model.clear_cache(project_name="missing") == 0
+
+    def test_clear_sums_across_multiple_bases(self, mocker, tmp_path):
+        base1 = str(tmp_path / "tmp")
+        base2 = str(tmp_path / "home")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs",
+            return_value=[base1, base2],
+        )
+        _seed_cache(base1, {"p1": {"m1": [1]}})
+        _seed_cache(base2, {"p1": {"m1": [1, 2]}})
+
+        removed = model_mod.Model.clear_cache(project_name="p1", model_name="m1")
+
+        assert removed == 3
+
+    def test_model_name_without_project_raises(self):
+        with pytest.raises(ValueError, match="model_name requires project_name"):
+            model_mod.Model.clear_cache(model_name="m1")
+
+    def test_version_without_model_raises(self):
+        with pytest.raises(ValueError, match="version requires"):
+            model_mod.Model.clear_cache(project_name="p1", version=1)
+
+    def test_invalid_combination_does_not_delete(self, mocker, tmp_path):
+        base = str(tmp_path / "cache")
+        base_dirs_spy = mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        _seed_cache(base, {"p1": {"m1": [1]}})
+
+        with pytest.raises(ValueError):
+            model_mod.Model.clear_cache(model_name="m1")
+
+        # Validation happens before any filesystem access, nothing is removed.
+        base_dirs_spy.assert_not_called()
+        assert os.path.exists(os.path.join(base, "p1", "m1", "1"))

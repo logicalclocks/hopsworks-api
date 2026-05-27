@@ -568,7 +568,9 @@ class ModelEngine:
         for index, cache_path in enumerate(candidates):
             has_fallback = index < len(candidates) - 1
             try:
-                self._prepare_download_dir(cache_path)
+                self._prepare_download_dir(
+                    cache_path, clean_existing=True, restrict_perms=True
+                )
                 self._download_model_files(model_instance, cache_path)
                 self._create_completion_marker(cache_path)
                 return cache_path
@@ -610,19 +612,63 @@ class ModelEngine:
             for base in model_cache_base_dirs()
         ]
 
-    def _prepare_download_dir(self, path):
+    def _prepare_download_dir(self, path, clean_existing=False, restrict_perms=False):
         """Create the download directory and confirm it is writable.
+
+        Args:
+            path: Directory to download into.
+            clean_existing: If True, remove any pre-existing directory first so
+                stale or partial contents cannot masquerade as a complete
+                download. Only safe for cache dirs we own, not user-supplied
+                paths that may hold unrelated files.
+            restrict_perms: If True, create the directory with owner-only (0o700)
+                permissions so other local users cannot read or tamper with it.
 
         Raises:
             OSError: If the directory cannot be created or written to. The
                 errno (e.g. ENOSPC, EACCES) lets the caller decide whether to
                 fall back to another location.
         """
-        os.makedirs(path, exist_ok=True)
+        if clean_existing and os.path.exists(path):
+            # Refuse to touch a pre-existing cache dir owned by another user;
+            # fall back to a location we control instead.
+            if not self._is_path_owned_by_current_user(path):
+                raise PermissionError(
+                    errno.EACCES,
+                    "Refusing to reuse cache directory owned by another user",
+                    path,
+                )
+            shutil.rmtree(path)
+
+        mode = 0o700 if restrict_perms else 0o777
+        os.makedirs(path, mode=mode, exist_ok=True)
+        if restrict_perms:
+            # makedirs honours umask, so tighten the leaf explicitly.
+            try:
+                os.chmod(path, 0o700)
+            except OSError as chmod_err:
+                _logger.debug(
+                    "Could not restrict permissions on %s: %s", path, chmod_err
+                )
+
         if not os.access(path, os.W_OK):
             raise PermissionError(
                 errno.EACCES, "Download directory is not writable", path
             )
+
+    def _is_path_owned_by_current_user(self, path):
+        """Whether `path` is owned by the current OS user.
+
+        On platforms without POSIX ownership (e.g. Windows) this returns True,
+        since there is no uid to compare against.
+        """
+        getuid = getattr(os, "getuid", None)
+        if getuid is None:
+            return True
+        try:
+            return os.stat(path).st_uid == getuid()
+        except OSError:
+            return False
 
     def _explain_dir_error(self, path, error, has_fallback):
         """Print an actionable message for a failed download into `path`.
@@ -684,6 +730,10 @@ class ModelEngine:
         """Remove a partially downloaded cache dir, ignoring cleanup failures."""
         if not os.path.exists(path):
             return
+        # Never delete a directory owned by another user (e.g. a planted cache
+        # path on a shared host); only clean up what we created.
+        if not self._is_path_owned_by_current_user(path):
+            return
         try:
             shutil.rmtree(path)
         except OSError as cleanup_err:
@@ -702,6 +752,16 @@ class ModelEngine:
         """
         # Check if directory exists
         if not os.path.exists(cache_path):
+            return False
+
+        # On a shared host the cache path under /tmp is predictable, so another
+        # local user could pre-create it with planted model files. Only trust a
+        # cache directory owned by the current user.
+        if not self._is_path_owned_by_current_user(cache_path):
+            _logger.warning(
+                "Ignoring cache directory '%s': not owned by the current user.",
+                cache_path,
+            )
             return False
 
         # Check if directory is not empty

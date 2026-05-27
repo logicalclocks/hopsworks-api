@@ -211,13 +211,22 @@ class Model:
         """
         self._model_engine.delete(model_instance=self)
 
+    @public
     @staticmethod
-    def clear_cache(project_name=None, model_name=None, version=None):
+    def clear_cache(
+        project_name: str | None = None,
+        model_name: str | None = None,
+        version: int | None = None,
+    ) -> int:
         """Clear cached downloaded models.
 
         Utility method to clear the model cache from every fallback location
         (temp dir, the Hopsworks home `.cache`, and the working directory).
         Use this to free disk space when cached models are no longer needed.
+
+        The filters narrow from broad to specific:
+        `model_name` requires `project_name`, and `version` requires both
+        `project_name` and `model_name`.
 
         Parameters:
             project_name: If specified, only clear cache for this project.
@@ -228,7 +237,11 @@ class Model:
                 cache for this specific model version. If None, clears all versions.
 
         Returns:
-            int: Number of model versions removed from cache.
+            Number of model versions removed from cache.
+
+        Raises:
+            ValueError: If `model_name` is given without `project_name`, or
+                `version` is given without both `project_name` and `model_name`.
 
         Example:
             ```python
@@ -245,6 +258,17 @@ class Model:
             Model.clear_cache(project_name="my_project", model_name="my_model", version=1)
             ```
         """
+        if model_name is not None and project_name is None:
+            raise ValueError(
+                "model_name requires project_name; refusing to clear cache to "
+                "avoid deleting every cached project's models."
+            )
+        if version is not None and (project_name is None or model_name is None):
+            raise ValueError(
+                "version requires both project_name and model_name; refusing to "
+                "clear cache to avoid deleting unintended models."
+            )
+
         return sum(
             Model._clear_cache_base(cache_base, project_name, model_name, version)
             for cache_base in model_engine.model_cache_base_dirs()
