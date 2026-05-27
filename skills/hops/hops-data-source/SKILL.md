@@ -16,7 +16,7 @@ See hopsworks-api source code for details.
 
 ## Creating External Feature Groups
 
-External feature groups reference data stored outside Hopsworks. They support all connectors **except** Kafka and OpenSearch.
+External feature groups reference data stored outside Hopsworks. They support all connectors **except** Kafka, OpenSearch, CRM, and REST data sources.
 
 
 
