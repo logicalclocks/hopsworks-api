@@ -81,6 +81,38 @@ class StorageConnectorApi:
             )
         )
 
+    def get_uc_bearer(
+        self,
+        feature_store_id: int,
+        name: str,
+    ) -> dict[str, Any]:
+        """Vend a Databricks Unity Catalog bearer for the SDK Spark read path.
+
+        EE provides only the bearer; the SDK takes it from here and calls
+        Databricks directly for vended S3 temp-credentials, then drives the
+        Delta read.
+        Response carries the bearer in clear and the EE side sets
+        Cache-Control: no-store.
+
+        Parameters:
+            feature_store_id: Numeric id of the feature store containing the connector.
+            name: Name of the Unity Catalog storage connector.
+
+        Returns:
+            Dict with keys ``access_token`` and ``expires_in_seconds``.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_store_id,
+            "storageconnectors",
+            name,
+            "uc_bearer",
+        ]
+        return _client._send_request("GET", path_params)
+
     def get_online_connector(
         self, feature_store_id: int
     ) -> storage_connector.OnlineStorageConnector:

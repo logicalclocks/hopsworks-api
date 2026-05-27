@@ -61,6 +61,7 @@ class DataSource:
         group: str | None = None,
         table: str | None = None,
         path: str | None = None,
+        format: str | None = None,
         storage_connector: sc.StorageConnector | dict[str, Any] | None = None,
         metrics: list[str] | None = None,
         dimensions: list[str] | None = None,
@@ -75,6 +76,7 @@ class DataSource:
             group: Group or schema name for the data source.
             table: Table name for the data source.
             path: File system path for the data source.
+            format: Format of the data source (e.g., "hudi", "delta", "csv", "parquet", "orc", "avro").
             storage_connector: Storage connector object holds configuration for accessing the data source.
             metrics: List of metric column names for the data source.
             dimensions: List of dimension column names for the data source.
@@ -86,6 +88,7 @@ class DataSource:
         self._group = group
         self._table = table
         self._path = path
+        self._format = format
         if storage_connector is not None and isinstance(storage_connector, dict):
             self._storage_connector = sc.StorageConnector.from_response_json(
                 storage_connector
@@ -143,6 +146,7 @@ class DataSource:
             "group": self._group,
             "table": self._table,
             "path": self._path,
+            "format": self._format,
             "metrics": self._metrics,
             "dimensions": self._dimensions,
             "restEndpoint": (
@@ -210,6 +214,16 @@ class DataSource:
     @path.setter
     def path(self, path: str) -> None:
         self._path = path
+
+    @public
+    @property
+    def format(self) -> str | None:
+        """Get or set the format of the data source."""
+        return self._format
+
+    @format.setter
+    def format(self, format: str) -> None:
+        self._format = format
 
     @public
     @property
