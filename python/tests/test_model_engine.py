@@ -22,50 +22,61 @@ from hsml import model as model_mod
 from hsml.engine import model_engine
 
 
-def _make_model(mocker, project_name="proj", name="mymodel", version=1):
+def _make_model(mocker, project_name="proj", name="mymodel", version=1, model_id=10):
     m = mocker.MagicMock()
     m.project_name = project_name
     m.name = name
     m.version = version
+    m.id = model_id
     return m
+
+
+def _leaf(base, model_id=10):
+    """Cache leaf path for the default model: {base}/proj/mymodel/1/{id}."""
+    return os.path.join(base, "proj", "mymodel", "1", str(model_id))
 
 
 class TestModelCacheBaseDirs:
     def test_order_and_default_locations(self, mocker):
-        # Arrange
+        # Arrange - use os.path so expectations hold on POSIX and Windows alike
+        default = os.path.abspath(os.path.join("anytmp", "hopsworks", "models"))
+        home = os.path.abspath("anyhome")
+        work = os.path.abspath("anywork")
         mocker.patch(
             "hsml.engine.model_engine.constants.MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT",
-            "/tmp/hopsworks/models",
+            default,
         )
-        mocker.patch("os.path.expanduser", return_value="/home/user")
-        mocker.patch("os.getcwd", return_value="/work")
+        mocker.patch("os.path.expanduser", return_value=home)
+        mocker.patch("os.getcwd", return_value=work)
 
         # Act
         bases = model_engine.model_cache_base_dirs()
 
         # Assert
         assert bases == [
-            "/tmp/hopsworks/models",
-            "/home/user/.hopsworks/.cache/models",
-            "/work/.hopsworks_cache/models",
+            os.path.abspath(default),
+            os.path.abspath(os.path.join(home, ".hopsworks", "cache", "models")),
+            os.path.abspath(os.path.join(work, ".hopsworks_cache", "models")),
         ]
 
     def test_deduplicates_overlapping_locations(self, mocker):
-        # Arrange - working dir resolves to the same place as the temp default
+        # Arrange - the temp default points at the same place as the CWD base,
+        # so they should collapse to a single entry.
+        work = os.path.abspath("anywork")
+        dup = os.path.join(work, ".hopsworks_cache", "models")
         mocker.patch(
             "hsml.engine.model_engine.constants.MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT",
-            "/tmp/hopsworks/models",
+            dup,
         )
-        mocker.patch("os.path.expanduser", return_value="/home/user")
-        mocker.patch(
-            "os.getcwd", return_value="/tmp/hopsworks/models/.hopsworks_cache/models/.."
-        )
+        mocker.patch("os.path.expanduser", return_value=os.path.abspath("anyhome"))
+        mocker.patch("os.getcwd", return_value=work)
 
         # Act
         bases = model_engine.model_cache_base_dirs()
 
-        # Assert - the duplicate temp path appears only once
-        assert bases.count("/tmp/hopsworks/models") == 1
+        # Assert - the duplicate path appears only once; home base remains
+        assert len(bases) == 2
+        assert bases.count(os.path.abspath(dup)) == 1
 
 
 class TestModelEngineDownload:
@@ -77,7 +88,7 @@ class TestModelEngineDownload:
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
-        cache_path = os.path.join(base, "proj", "mymodel", "1")
+        cache_path = _leaf(base)
         os.makedirs(cache_path)
         with open(os.path.join(cache_path, "model.pkl"), "w") as f:
             f.write("x")
@@ -121,9 +132,9 @@ class TestModelEngineDownload:
         result = eng.download(m)
 
         # Assert - second location used, first cleaned up, marker written
-        assert result == os.path.join(base2, "proj", "mymodel", "1")
+        assert result == _leaf(base2)
         assert os.path.exists(os.path.join(result, ".download_complete"))
-        assert not os.path.exists(os.path.join(base1, "proj", "mymodel", "1"))
+        assert not os.path.exists(_leaf(base1))
 
     def test_falls_back_on_permission_error(self, mocker, tmp_path):
         # Arrange
@@ -152,7 +163,7 @@ class TestModelEngineDownload:
         result = eng.download(m)
 
         # Assert
-        assert result == os.path.join(base2, "proj", "mymodel", "1")
+        assert result == _leaf(base2)
 
     def test_raises_when_all_locations_fail(self, mocker, tmp_path):
         # Arrange
@@ -234,7 +245,7 @@ class TestModelEngineDownload:
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
-        cache_path = os.path.join(base, "proj", "mymodel", "1")
+        cache_path = _leaf(base)
         os.makedirs(cache_path)
         with open(os.path.join(cache_path, "stale.txt"), "w") as f:
             f.write("old")
@@ -266,7 +277,7 @@ class TestModelEngineDownload:
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
-        cache_path = os.path.join(base, "proj", "mymodel", "1")
+        cache_path = _leaf(base)
         os.makedirs(cache_path)
         with open(os.path.join(cache_path, ".download_complete"), "w") as f:
             f.write("done")
@@ -303,6 +314,43 @@ class TestModelEngineDownload:
         # Assert - owner-only permissions (POSIX only)
         if hasattr(os, "getuid"):
             assert oct(os.stat(result).st_mode & 0o777) == oct(0o700)
+
+    def test_recreated_model_version_invalidates_cache(self, mocker, tmp_path):
+        # Arrange - a complete cache for an older id of the same name+version
+        base = str(tmp_path / "tmp")
+        mocker.patch(
+            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+        )
+        eng = model_engine.ModelEngine()
+        old_cache = _leaf(base, model_id=10)
+        os.makedirs(old_cache)
+        with open(os.path.join(old_cache, "model.pkl"), "w") as f:
+            f.write("old")
+        with open(os.path.join(old_cache, ".download_complete"), "w") as f:
+            f.write("done")
+
+        def fake_download(model_instance, local_path):
+            with open(os.path.join(local_path, "model.pkl"), "w") as f:
+                f.write("new")
+
+        download_spy = mocker.patch.object(
+            model_engine.ModelEngine,
+            "_download_model_files",
+            side_effect=fake_download,
+        )
+
+        # The model version was recreated: same name/version, new backend id.
+        recreated = _make_model(mocker, model_id=11)
+
+        # Act
+        result = eng.download(recreated)
+
+        # Assert - fresh dir for the new id, re-downloaded, stale id pruned
+        assert result == _leaf(base, model_id=11)
+        download_spy.assert_called_once()
+        assert not os.path.exists(old_cache)
+        with open(os.path.join(result, "model.pkl")) as f:
+            assert f.read() == "new"
 
 
 def _seed_cache(base, layout):

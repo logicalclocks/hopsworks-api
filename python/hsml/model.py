@@ -182,8 +182,16 @@ class Model:
         """Download the model files.
 
         If local_path is not provided, the model is downloaded to a cache directory
-        in /tmp/hopsworks/models/{project_name}/{model_name}/{version}/ and reused
-        across subsequent downloads. Cached models persist beyond program exit.
+        under `/tmp/hopsworks/models/{project_name}/{model_name}/{version}/{id}/` and
+        reused across subsequent downloads, including across processes.
+        Cached models persist beyond program exit.
+        The cache path includes the backend model `id`, so a model version that is
+        deleted and recreated is re-downloaded automatically without manual cache
+        invalidation.
+        If the temp location is unusable (disk full, read-only, or no permission),
+        the download falls back to `~/.hopsworks/cache/models` and then the current
+        working directory.
+        Use [`Model.clear_cache`][hsml.model.Model.clear_cache] to reclaim disk space.
 
         Parameters:
             local_path: path where to download the model files in the local filesystem.

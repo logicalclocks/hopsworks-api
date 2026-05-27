@@ -46,7 +46,7 @@ def model_cache_base_dirs():
     when one is unusable (e.g. disk full or no write permission):
 
     1. The system temp area (``/tmp/hopsworks/models`` by default).
-    2. A ``.cache`` directory under the Hopsworks home directory (``~/.hopsworks``).
+    2. A ``cache`` directory under the Hopsworks home directory (``~/.hopsworks``).
     3. A ``.hopsworks_cache`` directory under the current working directory.
 
     Returns:
@@ -55,7 +55,7 @@ def model_cache_base_dirs():
     home = os.path.expanduser("~")
     bases = [
         constants.MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT,
-        os.path.join(home, ".hopsworks", ".cache", "models"),
+        os.path.join(home, ".hopsworks", "cache", "models"),
         os.path.join(os.getcwd(), ".hopsworks_cache", "models"),
     ]
 
@@ -556,10 +556,16 @@ class ModelEngine:
 
         candidates = self._model_cache_paths(model_instance)
 
-        # Reuse an already-complete download from any cache location.
+        # Reuse an already-complete download from any cache location. The cache
+        # path is keyed by the backend model id, so a recreated model version
+        # never matches a stale directory and is re-downloaded automatically.
         for cache_path in candidates:
             if self._is_cached_model_valid(cache_path):
-                print(f"Model found in cache: {cache_path}")
+                print(
+                    f"Using cached model files at '{cache_path}'. "
+                    f"Pass local_path or call Model.clear_cache(...) to force a "
+                    f"fresh download."
+                )
                 return cache_path
 
         # Otherwise download into the first cache location that works, falling
@@ -573,6 +579,9 @@ class ModelEngine:
                 )
                 self._download_model_files(model_instance, cache_path)
                 self._create_completion_marker(cache_path)
+                # Drop cached copies of older ids for this same version to keep
+                # the cache from growing every time the version is recreated.
+                self._prune_other_model_ids(cache_path)
                 return cache_path
             except OSError as err:
                 last_error = err
@@ -592,11 +601,16 @@ class ModelEngine:
     def _model_cache_paths(self, model_instance):
         """Per-model cache paths, one for each base in `model_cache_base_dirs`.
 
+        The backend model `id` is the leaf segment so that a model version which
+        is deleted and recreated (same name and version, new `id`) resolves to a
+        different directory and is re-downloaded automatically, without the user
+        having to invalidate the cache.
+
         Args:
-            model_instance: Model instance with project_name, name, and version.
+            model_instance: Model instance with project_name, name, version, and id.
 
         Returns:
-            List of ``{base}/{project}/{model}/{version}`` paths in fallback order.
+            List of ``{base}/{project}/{model}/{version}/{id}`` paths in fallback order.
         """
         project_name = model_instance.project_name
         if project_name is None:
@@ -604,11 +618,16 @@ class ModelEngine:
                 "Cannot cache model without project_name. "
                 "Please provide local_path explicitly."
             )
+        if model_instance.id is None:
+            raise ValueError(
+                "Cannot cache model without id. Please provide local_path explicitly."
+            )
         model_name = model_instance.name
         version = str(model_instance.version)
+        model_id = str(model_instance.id)
 
         return [
-            os.path.join(base, project_name, model_name, version)
+            os.path.join(base, project_name, model_name, version, model_id)
             for base in model_cache_base_dirs()
         ]
 
@@ -740,6 +759,36 @@ class ModelEngine:
             _logger.debug(
                 "Could not clean up partial download %s: %s", path, cleanup_err
             )
+
+    def _prune_other_model_ids(self, cache_path):
+        """Remove cached dirs for other ids of the same model version.
+
+        `cache_path` is ``.../{version}/{id}``; this deletes sibling ``{id}``
+        directories left over from earlier (recreated) versions of the same
+        model version, keeping only the freshly downloaded one. Cleanup is
+        best-effort and only touches directories owned by the current user.
+        """
+        version_dir = os.path.dirname(cache_path)
+        keep = os.path.basename(cache_path)
+        try:
+            siblings = os.listdir(version_dir)
+        except OSError:
+            return
+        for entry in siblings:
+            if entry == keep:
+                continue
+            sibling_path = os.path.join(version_dir, entry)
+            if os.path.isdir(sibling_path) and self._is_path_owned_by_current_user(
+                sibling_path
+            ):
+                try:
+                    shutil.rmtree(sibling_path)
+                except OSError as prune_err:
+                    _logger.debug(
+                        "Could not prune stale cache dir %s: %s",
+                        sibling_path,
+                        prune_err,
+                    )
 
     def _is_cached_model_valid(self, cache_path):
         """Check if a cached model is valid and complete.
