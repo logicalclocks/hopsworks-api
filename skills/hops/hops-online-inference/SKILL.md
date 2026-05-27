@@ -1,15 +1,9 @@
 ---
 name: hopsworks-online-inference
-description: Use when writing code for model deployment, online inference, predictor
-  scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to
-  deploy models, write predictor.py files, retrieve precomputed features for serving,
-  create on-demand transformation functions, or configure model serving.
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash
+description: Use when writing code for model deployment, online inference, predictor scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to deploy models, write predictor.py files, retrieve precomputed features for serving, create on-demand transformation functions, or configure model serving.
 ---
 
 # Hopsworks Online Inference — Python SDK Best Practices
-
-Reference: `/tmp/hopsworks-api/python/hsml/` and `/tmp/hopsworks-api/python/hsfs/`
 
 ## Model Deployment Overview
 
