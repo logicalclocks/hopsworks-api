@@ -120,6 +120,9 @@ class TestFeatureGroupBaseEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
 
         fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
             feature_store_id=feature_store_id

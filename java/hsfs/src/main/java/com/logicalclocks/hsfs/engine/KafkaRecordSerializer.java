@@ -39,11 +39,16 @@ public class KafkaRecordSerializer {
   private final List<String> primaryKeys;
   private final Map<String, byte[]> headerMap;
 
-  KafkaRecordSerializer(StreamFeatureGroup streamFeatureGroup,  Long numEntries)
+  KafkaRecordSerializer(StreamFeatureGroup streamFeatureGroup, Long numEntries)
+          throws FeatureStoreException, IOException {
+    this(streamFeatureGroup, numEntries, null);
+  }
+
+  KafkaRecordSerializer(StreamFeatureGroup streamFeatureGroup, Long numEntries, Map<String, String> options)
           throws FeatureStoreException, IOException {
     this.topic = streamFeatureGroup.getOnlineTopicName();
     this.primaryKeys = streamFeatureGroup.getPrimaryKeys();
-    this.headerMap = FeatureGroupUtils.getHeaders(streamFeatureGroup, numEntries);
+    this.headerMap = FeatureGroupUtils.getHeaders(streamFeatureGroup, numEntries, options);
   }
 
   public ProducerRecord<byte[], byte[]> serialize(GenericRecord genericRecord) {

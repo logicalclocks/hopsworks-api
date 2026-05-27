@@ -19,6 +19,7 @@ import json
 from typing import TYPE_CHECKING
 
 import humps
+from hopsworks_apigen import public
 from hsfs import util
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
 
+@public
 class FeatureMonitoringResult:
     # TODO: Add docstring
     NOT_FOUND_ERROR_CODE = 270233
@@ -131,76 +133,91 @@ class FeatureMonitoringResult:
     def __repr__(self) -> str:
         return json.dumps(humps.decamelize(self.to_dict()), indent=2)
 
+    @public
     @property
     def id(self) -> int | None:
         """Id of the feature monitoring result."""
         return self._id
 
+    @public
     @property
     def config_id(self) -> int:
         """Id of the feature monitoring configuration containing this result."""
         return self._config_id
 
+    @public
     @property
     def feature_store_id(self) -> int:
         """Id of the Feature Store."""
         return self._feature_store_id
 
+    @public
     @property
     def detection_statistics_id(self) -> int | None:
         """Id of the feature descriptive statistics computed on the detection window."""
         return self._detection_statistics_id
 
+    @public
     @property
     def reference_statistics_id(self) -> int | None:
         """Id of the feature descriptive statistics computed on the reference window."""
         return self._reference_statistics_id
 
+    @public
     @property
     def detection_statistics(self) -> FeatureDescriptiveStatistics | None:
         """Feature descriptive statistics computed on the detection window."""
         return self._detection_statistics
 
+    @public
     @property
     def reference_statistics(self) -> FeatureDescriptiveStatistics | None:
         """Feature descriptive statistics computed on the reference window."""
         return self._reference_statistics
 
+    @public
     @property
     def execution_id(self) -> int | None:
         """Execution id of the feature monitoring job."""
         return self._execution_id
 
+    @public
     @property
     def monitoring_time(self) -> int:
         """Time at which this feature monitoring result was created."""
         return self._monitoring_time
 
+    @public
     @property
     def difference(self) -> float | None:
         """Difference between detection and reference values. It can be relative or absolute difference, depending on the statistics comparison configuration provided in `relative` parameter passed to `compare_on()` when enabling feature monitoring."""
         return self._difference
 
+    @public
     @property
     def shift_detected(self) -> bool:
         """Whether or not shift was detected in the detection window based on the computed statistics and the threshold provided in `compare_on()` when enabling feature monitoring."""
         return self._shift_detected
 
+    @public
     @property
     def feature_name(self) -> str:
         """Name of the feature being monitored."""
         return self._feature_name
 
+    @public
     @property
     def empty_detection_window(self) -> bool:
         """Whether or not the detection window was empty in this feature monitoring run."""
         return self._empty_detection_window
 
+    @public
     @property
     def empty_reference_window(self) -> bool:
         """Whether or not the reference window was empty in this feature monitoring run."""
         return self._empty_reference_window
 
+    @public
     @property
     def specific_value(self) -> float | None:
         """Specific value used as reference in the statistics comparison."""

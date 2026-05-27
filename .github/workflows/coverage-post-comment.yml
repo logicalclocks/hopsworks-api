@@ -1,0 +1,23 @@
+name: coverage-post-comment
+
+on:
+  workflow_run:
+    workflows: ["coverage"]
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+
+jobs:
+  post-comment:
+    name: Post Coverage PR Comment
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - name: Post coverage comment
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_RUN_ID: ${{ github.event.workflow_run.id }}

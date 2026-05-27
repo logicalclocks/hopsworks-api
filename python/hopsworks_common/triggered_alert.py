@@ -17,6 +17,7 @@
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
@@ -52,6 +53,7 @@ class AlertStatus:
         )
 
 
+@public("hopsworks.triggered_alert.TriggeredAlert")
 class TriggeredAlert:
     def __init__(
         self,

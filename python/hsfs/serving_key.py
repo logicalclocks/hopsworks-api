@@ -19,10 +19,12 @@ import json
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 from hsfs import feature_group as fg_mod
 from hsfs import util
 
 
+@public
 class ServingKey:
     def __init__(
         self,
@@ -86,6 +88,7 @@ class ServingKey:
     def __repr__(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def required_serving_key(self) -> str:
         if self._required:
@@ -94,26 +97,32 @@ class ServingKey:
             return self._prefix + self._feature_name
         return self._join_on
 
+    @public
     @property
     def feature_name(self) -> str:
         return self._feature_name
 
+    @public
     @property
     def join_index(self) -> int:
         return self._join_index
 
+    @public
     @property
     def feature_group(self) -> fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup:
         return self._feature_group
 
+    @public
     @property
     def required(self) -> bool:
         return self._required
 
+    @public
     @property
     def prefix(self) -> str:
         return self._prefix
 
+    @public
     @property
     def join_on(self) -> list[str] | str:
         return self._join_on

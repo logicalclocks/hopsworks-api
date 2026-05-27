@@ -20,20 +20,24 @@ import logging
 import os
 import posixpath
 import re
+import time
 import warnings
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
-from hopsworks_common import client
+from hopsworks_apigen import public
+from hopsworks_common import client, util
+from hopsworks_common.client.exceptions import DataSourceException
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
+from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
-from hsfs.core import data_source_data as dsd
 
 
 if TYPE_CHECKING:
@@ -44,13 +48,17 @@ if TYPE_CHECKING:
     if HAS_POLARS:
         import polars as pl
     import pandas as pd
+    from hsfs.core.data_source_data import DataSourceData
     from hsfs.core.explicit_provenance import Links
+    from hsfs.core.inferred_metadata import InferredMetadata
     from hsfs.feature_group import FeatureGroup
+    from hsfs.training_dataset import TrainingDataset
 
 
 _logger = logging.getLogger(__name__)
 
 
+@public(order=1)
 class StorageConnector(ABC):
     HOPSFS = "HOPSFS"
     S3 = "S3"
@@ -61,8 +69,15 @@ class StorageConnector(ABC):
     KAFKA = "KAFKA"
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
-    RDS = "RDS"
+    SQL = "SQL"
     OPENSEARCH = "OPENSEARCH"
+    CRM = "CRM"
+    REST = "REST"
+    ORACLE = "ORACLE"
+    UNITY_CATALOG = "UNITY_CATALOG"
+    SAP_HANA = "SAP_HANA"
+    MONGODB = "MONGODB"
+
     NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
@@ -92,16 +107,25 @@ class StorageConnector(ABC):
         | AdlsConnector
         | SnowflakeConnector
         | BigQueryConnector
-        | RdsConnector
+        | SqlConnector
         | OpenSearchConnector
+        | CRMAndAnalyticsConnector
+        | RestConnector
+        | UnityCatalogConnector
+        | SapHanaConnector
+        | MongoDBConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
+        sc_type = json_decamelized.get("storage_connector_type")
         for subcls in cls.__subclasses__():
-            if subcls.type == json_decamelized["storage_connector_type"]:
+            if subcls.type == sc_type:
                 _ = json_decamelized.pop("storage_connector_type")
                 return subcls(**json_decamelized)
-        raise ValueError
+        raise ValueError(
+            f"Unknown storage_connector_type {sc_type!r}; expected one of "
+            f"{sorted({s.type for s in cls.__subclasses__()})}."
+        )
 
     def update_from_response_json(
         self, json_dict: dict[str, Any]
@@ -113,8 +137,13 @@ class StorageConnector(ABC):
         | AdlsConnector
         | SnowflakeConnector
         | BigQueryConnector
-        | RdsConnector
+        | SqlConnector
         | OpenSearchConnector
+        | CRMAndAnalyticsConnector
+        | RestConnector
+        | UnityCatalogConnector
+        | SapHanaConnector
+        | MongoDBConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -133,38 +162,51 @@ class StorageConnector(ABC):
             "storageConnectorType": self.type,
         }
 
+    @public
     @property
     def type(self) -> str | None:
         """Type of the connector as string, e.g. "HOPFS, S3, ADLS, REDSHIFT, JDBC or SNOWFLAKE."""
         return self._type
 
+    @public
     @property
     def id(self) -> int | None:
         """Id of the storage connector uniquely identifying it in the Feature store."""
         return self._id
 
+    @public
     @property
     def name(self) -> str:
         """Name of the storage connector."""
         return self._name
 
+    @public
     @property
     def description(self) -> str | None:
         """User provided description of the storage connector."""
         return self._description
 
+    @public
     @abstractmethod
-    def spark_options(self) -> None:
-        pass
+    def spark_options(self) -> dict[str, Any]:
+        """Return prepared options to be passed to Spark, based on the additional arguments.
+
+        Returns:
+            A dictionary containing the configuration options for Spark.
+        """
 
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
-        # Arguments
-            path: Path to prepare for reading from cloud storage. Defaults to `None`.
+        Parameters:
+            path: Path to prepare for reading from cloud storage.
+
+        Returns:
+            The path to be used for reading from Spark, which may be different from the input path if the connector has a base path configured.
         """
         return path
 
+    @public
     def read(
         self,
         query: str | None = None,
@@ -216,9 +258,13 @@ class StorageConnector(ABC):
         """Return prepared options to be passed to an external connector library.
 
         Not implemented for this connector type.
+
+        Returns:
+            An empty dictionary.
         """
         return {}
 
+    @public
     def get_feature_groups_provenance(self) -> Links | None:
         """Get the generated feature groups using this storage connector, based on explicit provenance.
 
@@ -238,6 +284,7 @@ class StorageConnector(ABC):
             return links
         return None
 
+    @public
     def get_feature_groups(self) -> list[FeatureGroup]:
         """Get the feature groups using this storage connector, based on explicit rovenance.
 
@@ -260,10 +307,55 @@ class StorageConnector(ABC):
             return feature_groups_provenance.accessible
         return []
 
+    @public
+    def get_training_datasets_provenance(self) -> Links | None:
+        """Get the generated training datasets using this storage connector, based on explicit provenance.
+
+        These training datasets can be accessible or inaccessible. Explicit
+        provenance does not track deleted generated training dataset links, so deleted
+        will always be empty.
+        For inaccessible training datasets, only a minimal information is returned.
+
+        Returns:
+            The training datasets generated using this storage connector or `None` if none were created.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        links = self._storage_connector_api.get_training_datasets_provenance(self)
+        if not links.is_empty():
+            return links
+        return None
+
+    @public
+    def get_training_datasets(self) -> list[TrainingDataset]:
+        """Get the training datasets using this storage connector, based on explicit provenance.
+
+        Only the accessible training datasets are returned.
+        For more items use the base method, [`get_training_datasets_provenance`][hsfs.core.data_source.DataSource.get_training_datasets_provenance].
+
+        Returns:
+            List of training datasets.
+        """
+        training_datasets_provenance = self.get_training_datasets_provenance()
+
+        if training_datasets_provenance and (
+            training_datasets_provenance.inaccessible
+            or training_datasets_provenance.deleted
+        ):
+            _logger.info(
+                "There are deleted or inaccessible training datasets. For more details access `get_training_datasets_provenance`"
+            )
+
+        if training_datasets_provenance and training_datasets_provenance.accessible:
+            return training_datasets_provenance.accessible
+        return []
+
+    @public
     def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -274,14 +366,17 @@ class StorageConnector(ABC):
             ```
 
         Returns:
-            list[str]: A list of database names available in the storage connector.
+            A list of database names available in the storage connector.
         """
-        return self._data_source_api.get_databases(self._featurestore_id, self._name)
+        if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
+            raise ValueError("This connector type does not support fetching databases.")
+        return self._data_source_api.get_databases(self)
 
-    def get_tables(self, database: str = None) -> list[ds.DataSource]:
+    @public
+    def get_tables(self, database: str | None = None) -> list[ds.DataSource]:
         """Retrieve the list of tables from the specified database.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -291,35 +386,75 @@ class StorageConnector(ABC):
             tables = sc.get_tables("database_name")
             ```
 
-        Args:
-            database (str, optional): The name of the database to list tables from.
+        Parameters:
+            database:
+                The name of the database to list tables from.
                 If not provided, the default database is used.
 
         Returns:
-            list[DataSource]: A list of DataSource objects representing the tables.
+            A list of DataSource objects representing the tables.
         """
-        if not database:
+        if self.type == StorageConnector.REST:
+            raise ValueError("This connector type does not support fetching tables.")
+        if not database and self.type != StorageConnector.CRM:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
             elif self.type == StorageConnector.SNOWFLAKE:
                 database = self.database
             elif self.type == StorageConnector.BIGQUERY:
                 database = self.query_project
-            elif self.type == StorageConnector.RDS:
+            elif self.type == StorageConnector.SQL:
+                if self.database_type == StorageConnector.ORACLE:
+                    # For Oracle the `database` field holds the service name
+                    # (or TNS alias when using a wallet), not a schema, while
+                    # the backend filters tables by OWNER (schema).
+                    # Default to the connecting user's own schema.
+                    if not self.user:
+                        raise ValueError(
+                            "A schema/owner is required for Oracle connectors "
+                            "without a configured user. Pass it as the "
+                            "`database` argument to get_tables()."
+                        )
+                    database = self.user.upper()
+                else:
+                    database = self.database
+            elif self.type == StorageConnector.UNITY_CATALOG:
+                if not self.default_catalog:
+                    raise ValueError(
+                        "Database name is required for Unity Catalog connectors. "
+                        "Set a default catalog on the connector or pass an "
+                        "explicit `database` to get_tables()."
+                    )
+                database = self.default_catalog
+            elif self.type == StorageConnector.MONGODB:
+                if not self.database:
+                    raise ValueError(
+                        "Database name is required for MongoDB connectors. "
+                        "Set a default database on the connector or pass an "
+                        "explicit `database` to get_tables()."
+                    )
                 database = self.database
+            elif self.type in [StorageConnector.S3, StorageConnector.GCS]:
+                pass
             else:
                 raise ValueError(
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
-        return self._data_source_api.get_tables(
-            self._featurestore_id, self._name, database
-        )
+        if self.type == StorageConnector.CRM:
+            data: DataSourceData = self._data_source_api.get_crm_resources(self)
+            return [
+                ds.DataSource(table=resource, storage_connector=self)
+                for resource in (data.supported_resources or [])
+            ]
 
-    def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
+        return self._data_source_api.get_tables(self, database)
+
+    @public
+    def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
         """Retrieve the data from the data source.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -330,21 +465,28 @@ class StorageConnector(ABC):
 
             data = sc.get_data(tables[0])
             ```
-
-        Args:
+        Parameters:
             data_source (DataSource): The data source to retrieve data from.
+            use_cached (bool): Whether to use cached data if available. Only supported for CRM and REST connectors. Defaults to `True`.
 
         Returns:
-            DataSourceData: An object containing the data retrieved from the data source.
+            An object containing the data retrieved from the data source.
         """
-        return self._data_source_api.get_data(
-            self._featurestore_id, self._name, data_source
-        )
+        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
+            if not data_source.table:
+                raise ValueError(
+                    f"{self.type} data sources require a table name in data_source.table."
+                )
+            if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
+                data_source.rest_endpoint = RestEndpointConfig()
+            return self._get_no_sql_data(data_source, use_cached)
+        return self._data_source_api.get_data(data_source)
 
+    @public
     def get_metadata(self, data_source: ds.DataSource) -> dict:
         """Retrieve metadata information about the data source.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -356,17 +498,73 @@ class StorageConnector(ABC):
             metadata = sc.get_metadata(tables[0])
             ```
 
-        Args:
-            data_source (DataSource): The data source to retrieve metadata from.
+        Parameters:
+            data_source: The data source to retrieve metadata from.
 
         Returns:
-            dict: A dictionary containing metadata about the data source.
+            A dictionary containing metadata about the data source.
         """
-        return self._data_source_api.get_metadata(
-            self._featurestore_id, self._name, data_source
+        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
+            raise ValueError("This connector type does not support fetching metadata.")
+        return self._data_source_api.get_metadata(data_source)
+
+    @public
+    def infer_metadata(
+        self,
+        data_source: ds.DataSource,
+        preview_data: DataSourceData | None = None,
+    ) -> InferredMetadata:
+        """Use platform intelligence to infer feature metadata for a data source table.
+
+        Calls the same backend used by the "Infer metadata" button in the UI when
+        creating an external feature group: an LLM proposes per-column renames,
+        Hopsworks types, descriptions, and a suggested primary key and event time.
+
+        Example:
+            ```python
+            fs = ...
+
+            sc = fs.get_storage_connector("conn_name")
+
+            tables = sc.get_tables("database_name")
+
+            inferred = sc.infer_metadata(tables[0])
+            ```
+
+        Parameters:
+            data_source: The data source (typically a table returned by `get_tables`) to infer metadata for.
+            preview_data: Pre-fetched preview data to skip a server round-trip; if `None`, a preview is fetched via `get_data`.
+
+        Returns:
+            An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+
+        Raises:
+            hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.
+        """
+        if preview_data is None:
+            preview_data = self.get_data(data_source)
+        return self._data_source_api.infer_metadata(self, preview_data)
+
+    def _get_no_sql_data(
+        self, data_source: ds.DataSource, use_cached=True
+    ) -> DataSourceData:
+        data: DataSourceData = self._data_source_api.get_no_sql_data(
+            self, data_source, use_cached
         )
 
+        while data.schema_fetch_in_progress:
+            time.sleep(3)
+            data = self._data_source_api.get_no_sql_data(self, data_source)
+            _logger.info("Schema fetch in progress...")
 
+        if data.schema_fetch_failed:
+            raise DataSourceException(f"Schema fetch failed:\n{data.schema_fetch_logs}")
+        _logger.info("Schema fetch succeeded.")
+
+        return data
+
+
+@public
 class HopsFSConnector(StorageConnector):
     type = StorageConnector.HOPSFS
 
@@ -388,13 +586,59 @@ class HopsFSConnector(StorageConnector):
         self._dataset_name = dataset_name
 
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
 
     def _get_path(self, sub_path: str) -> str:
-        return os.path.join(self._hopsfs_path, sub_path)
+        if sub_path:
+            if self._hopsfs_path:
+                return os.path.join(self._hopsfs_path, sub_path)
+            return sub_path
+        return self._hopsfs_path
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Reads a path into a dataframe using the HopsFS storage connector.
+
+        Parameters:
+            query:
+                Not used for HopsFS. Kept for interface consistency.
+            data_format: The file format to be read, e.g., `csv`, `parquet`.
+            options: Any additional key/value options to be passed to the connector.
+            path:
+                Path to be read within HopsFS. If the connector has a base path configured,
+                relative paths will be resolved against it. Absolute `hopsfs://` paths are used as-is.
+            dataframe_type:
+                The type of the returned dataframe.
+                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        Returns:
+            The read dataframe.
+        """
+        if path is None:
+            path = ""
+        if not path.startswith("hopsfs://"):
+            path = self._get_path(path)
+        return engine.get_instance().read(
+            self, data_format, options or {}, path, dataframe_type
+        )
 
 
+@public
 class S3Connector(StorageConnector):
     type = StorageConnector.S3
 
@@ -433,46 +677,55 @@ class S3Connector(StorageConnector):
             {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
         )
 
+    @public
     @property
     def access_key(self) -> str | None:
         """Access key."""
         return self._access_key
 
+    @public
     @property
     def secret_key(self) -> str | None:
         """Secret key."""
         return self._secret_key
 
+    @public
     @property
     def server_encryption_algorithm(self) -> str | None:
         """Encryption algorithm if server-side S3 bucket encryption is enabled."""
         return self._server_encryption_algorithm
 
+    @public
     @property
     def server_encryption_key(self) -> str | None:
         """Encryption key if server-side S3 bucket encryption is enabled."""
         return self._server_encryption_key
 
+    @public
     @property
     def bucket(self) -> str | None:
         """Return the bucket for S3 connectors."""
         return self._bucket
 
+    @public
     @property
     def region(self) -> str | None:
         """Return the region for S3 connectors."""
         return self._region
 
+    @public
     @property
     def session_token(self) -> str | None:
         """Session token."""
         return self._session_token
 
+    @public
     @property
     def iam_role(self) -> str | None:
         """IAM role."""
         return self._iam_role
 
+    @public
     @property
     def path(self) -> str | None:
         """If the connector refers to a path (e.g. S3) - return the path of the connector."""
@@ -480,6 +733,7 @@ class S3Connector(StorageConnector):
             "s3://" + self._bucket, *os.path.split(self._path if self._path else "")
         )
 
+    @public
     @property
     def arguments(self) -> dict[str, Any] | None:
         """Additional spark options for the S3 connector, passed as a dictionary.
@@ -490,9 +744,9 @@ class S3Connector(StorageConnector):
         return self._arguments
 
     def spark_options(self) -> dict[str, str]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._arguments
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -511,6 +765,7 @@ class S3Connector(StorageConnector):
         self.refetch()
         return engine.get_instance().setup_storage_connector(self, path)
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external S3 connector library."""
         self.refetch()
@@ -540,12 +795,13 @@ class S3Connector(StorageConnector):
             )
         return options
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
-        path: str = "",
+        path: str | None = None,
         dataframe_type: Literal[
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
@@ -572,6 +828,8 @@ class S3Connector(StorageConnector):
         Returns:
             `DataFrame`.
         """
+        if path is None:
+            path = ""
         self.refetch()
         options = (
             {**self.spark_options(), **options}
@@ -592,6 +850,7 @@ class S3Connector(StorageConnector):
         return posixpath.join(self.path, *os.path.split(sub_path))
 
 
+@public
 class RedshiftConnector(StorageConnector):
     type = StorageConnector.REDSHIFT
     JDBC_FORMAT = "jdbc"
@@ -639,66 +898,79 @@ class RedshiftConnector(StorageConnector):
         )
         self._expiration = expiration
 
+    @public
     @property
     def cluster_identifier(self) -> str | None:
         """Cluster identifier for redshift cluster."""
         return self._cluster_identifier
 
+    @public
     @property
     def database_driver(self) -> str | None:
         """Database endpoint for redshift cluster."""
         return self._database_driver
 
+    @public
     @property
     def database_endpoint(self) -> str | None:
         """Database endpoint for redshift cluster."""
         return self._database_endpoint
 
+    @public
     @property
     def database_name(self) -> str | None:
         """Database name for redshift cluster."""
         return self._database_name
 
+    @public
     @property
     def database_port(self) -> int | str | None:
         """Database port for redshift cluster."""
         return self._database_port
 
+    @public
     @property
     def table_name(self) -> str | None:
         """Table name for redshift cluster."""
         return self._table_name
 
+    @public
     @property
     def database_user_name(self) -> str | None:
         """Database username for redshift cluster."""
         return self._database_user_name
 
+    @public
     @property
     def auto_create(self) -> bool | None:
         """Database username for redshift cluster."""
         return self._auto_create
 
+    @public
     @property
     def database_group(self) -> str | None:
         """Database username for redshift cluster."""
         return self._database_group
 
+    @public
     @property
     def database_password(self) -> str | None:
         """Database password for redshift cluster."""
         return self._database_password
 
+    @public
     @property
     def iam_role(self) -> Any | None:
         """IAM role."""
         return self._iam_role
 
+    @public
     @property
     def expiration(self) -> int | str | None:
         """Cluster temporary credential expiration time."""
         return self._expiration
 
+    @public
     @property
     def arguments(self) -> str | None:
         """Additional JDBC, REDSHIFT, or Snowflake arguments."""
@@ -708,6 +980,7 @@ class RedshiftConnector(StorageConnector):
             )
         return self._arguments
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external Redshift connector library."""
         props = {
@@ -725,7 +998,6 @@ class RedshiftConnector(StorageConnector):
         return props
 
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
         connstr = (
             "jdbc:redshift://"
             + self._cluster_identifier
@@ -749,13 +1021,16 @@ class RedshiftConnector(StorageConnector):
 
         return props
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         path: str | None = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -768,7 +1043,7 @@ class RedshiftConnector(StorageConnector):
         Parameters:
             query: By default, the storage connector will read the table configured together
                 with the connector, if any. It's possible to overwrite this by passing a SQL
-                query here. Defaults to `None`.
+                query here.
             data_format: Not relevant for JDBC based connectors such as Redshift.
             options: Any additional key/value options to be passed to the JDBC connector.
             path: Not relevant for JDBC based connectors such as Redshift.
@@ -795,11 +1070,13 @@ class RedshiftConnector(StorageConnector):
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
+    @public
     def refetch(self) -> None:
         """Refetch storage connector in order to retrieve updated temporary credentials."""
         self._storage_connector_api.refetch(self)
 
 
+@public
 class AdlsConnector(StorageConnector):
     type = StorageConnector.ADLS
 
@@ -835,36 +1112,43 @@ class AdlsConnector(StorageConnector):
             else {}
         )
 
+    @public
     @property
     def generation(self) -> str | None:
         """Generation of the ADLS storage connector."""
         return self._generation
 
+    @public
     @property
     def directory_id(self) -> str | None:
         """Directory ID of the ADLS storage connector."""
         return self._directory_id
 
+    @public
     @property
     def application_id(self) -> str | None:
         """Application ID of the ADLS storage connector."""
         return self._application_id
 
+    @public
     @property
     def account_name(self) -> str | None:
         """Account name of the ADLS storage connector."""
         return self._account_name
 
+    @public
     @property
     def container_name(self) -> str | None:
         """Container name of the ADLS storage connector."""
         return self._container_name
 
+    @public
     @property
     def service_credential(self) -> str | None:
         """Service credential of the ADLS storage connector."""
         return self._service_credential
 
+    @public
     @property
     def path(self) -> str | None:
         """If the connector refers to a path (e.g. ADLS) - return the path of the connector."""
@@ -873,9 +1157,9 @@ class AdlsConnector(StorageConnector):
         return f"adl://{self.account_name}.azuredatalakestore.net"
 
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._spark_options
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -889,20 +1173,23 @@ class AdlsConnector(StorageConnector):
         ```
 
         Parameters:
-            path: Path to prepare for reading from cloud storage. Defaults to `None`.
+            path: Path to prepare for reading from cloud storage.
         """
         return engine.get_instance().setup_storage_connector(self, path)
 
     def _get_path(self, sub_path: str) -> str:
         return os.path.join(self.path, sub_path)
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
-        path: str = "",
-        dataframe_type: str = "default",
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -916,8 +1203,10 @@ class AdlsConnector(StorageConnector):
             query: Not relevant for ADLS connectors.
             data_format: The file format of the files to be read, e.g. `csv`, `parquet`.
             options: Any additional key/value options to be passed to the ADLS connector.
-            path: Path within the bucket to be read. For example, path=`path` will read directly from the container specified on connector by constructing the URI as 'abfss://[container-name]@[account_name].dfs.core.windows.net/[path]'.
-            If no path is specified default container path will be used from connector.
+            path:
+                Path within the bucket to be read.
+                For example, path=`path` will read directly from the container specified on connector by constructing the URI as 'abfss://[container-name]@[account_name].dfs.core.windows.net/[path]'.
+                If no path is specified default container path will be used from connector.
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
@@ -925,6 +1214,8 @@ class AdlsConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
+        if path is None:
+            path = ""
         path = path.strip()
         if not path.startswith("abfss://") or path.startswith("adl://"):
             path = self._get_path(path)
@@ -935,6 +1226,7 @@ class AdlsConnector(StorageConnector):
         )
 
 
+@public
 class SnowflakeConnector(StorageConnector):
     type = StorageConnector.SNOWFLAKE
     SNOWFLAKE_FORMAT = "net.snowflake.spark.snowflake"
@@ -981,80 +1273,100 @@ class SnowflakeConnector(StorageConnector):
             {opt["name"]: opt["value"] for opt in sf_options} if sf_options else {}
         )
 
+    @public
     @property
     def url(self) -> str | None:
         """URL of the Snowflake storage connector."""
         return self._url
 
+    @public
     @property
     def warehouse(self) -> str | None:
         """Warehouse of the Snowflake storage connector."""
         return self._warehouse
 
+    @public
     @property
     def database(self) -> str | None:
         """Database of the Snowflake storage connector."""
         return self._database
 
+    @public
     @property
     def user(self) -> Any | None:
         """User of the Snowflake storage connector."""
         return self._user
 
+    @public
     @property
     def password(self) -> str | None:
         """Password of the Snowflake storage connector."""
         return self._password
 
+    @public
     @property
     def token(self) -> str | None:
         """OAuth token of the Snowflake storage connector."""
         return self._token
 
+    @public
     @property
     def schema(self) -> str | None:
         """Schema of the Snowflake storage connector."""
         return self._schema
 
+    @public
     @property
     def table(self) -> str | None:
         """Table of the Snowflake storage connector."""
         return self._table
 
+    @public
     @property
     def role(self) -> Any | None:
         """Role of the Snowflake storage connector."""
         return self._role
 
+    @public
     @property
     def account(self) -> str | None:
         """Account of the Snowflake storage connector."""
         return self._url.replace("https://", "").replace(".snowflakecomputing.com", "")
 
+    @public
     @property
     def application(self) -> Any:
         """Application of the Snowflake storage connector."""
         return self._application
 
+    @public
     @property
     def options(self) -> dict[str, Any] | None:
         """Additional options for the Snowflake storage connector."""
         return self._options
 
+    @public
     @property
     def private_key(self) -> str | None:
         """Path to the private key file for key pair authentication."""
         return self._private_key
 
+    @public
     @property
     def passphrase(self) -> str | None:
         """Passphrase for the private key file."""
         return self._passphrase
 
+    @public
     def snowflake_connector_options(self) -> dict[str, Any] | None:
-        """Alias for `connector_options`."""
+        """Alias for `connector_options`.
+
+        Returns:
+            A dictionary with the needed arguments for you to connect to a Snowflake database.
+        """
         return self.connector_options()
 
+    @public
     def connector_options(self) -> dict[str, Any] | None:
         """Prepare a Python dictionary with the needed arguments for you to connect to a Snowflake database.
 
@@ -1066,6 +1378,9 @@ class SnowflakeConnector(StorageConnector):
         sc = fs.get_storage_connector("snowflake_conn")
         ctx = snowflake.connector.connect(**sc.connector_options())
         ```
+
+        Returns:
+            A dictionary with the needed arguments for you to connect to a Snowflake database.
         """
         props = {
             "user": self._user,
@@ -1084,7 +1399,6 @@ class SnowflakeConnector(StorageConnector):
         return props
 
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
         props = self._options
         props["sfURL"] = self._url
         props["sfSchema"] = self._schema
@@ -1133,13 +1447,16 @@ class SnowflakeConnector(StorageConnector):
             private_key_content,
         ).replace("\n", "")
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         path: str | None = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -1152,7 +1469,7 @@ class SnowflakeConnector(StorageConnector):
         Parameters:
             query: By default, the storage connector will read the table configured together
                 with the connector, if any. It's possible to overwrite this by passing a SQL
-                query here. Defaults to `None`.
+                query here.
             data_format: Not relevant for Snowflake connectors.
             options: Any additional key/value options to be passed to the engine.
             path: Not relevant for Snowflake connectors.
@@ -1183,10 +1500,457 @@ class SnowflakeConnector(StorageConnector):
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
         )
 
+    @public
     def prepare_spark(self, path=None):
         return engine.get_instance().setup_storage_connector(self, path)
 
 
+@public
+class SapHanaConnector(StorageConnector):
+    """SAP HANA storage connector backed by the SAP JDBC driver.
+
+    Use this connector to register an external feature group whose data lives
+    in SAP HANA, and to ingest data from HANA via the dlt-based ingestion job.
+    """
+
+    type = StorageConnector.SAP_HANA
+    JDBC_FORMAT = "jdbc"
+    DRIVER = "com.sap.db.jdbc.Driver"
+    DEFAULT_PORT = 39015
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        database: str | None = None,
+        schema: str | None = None,
+        table: str | None = None,
+        user: str | None = None,
+        password: str | None = None,
+        application: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+
+        self._host = host
+        self._port = port if port is not None else self.DEFAULT_PORT
+        self._database = database
+        self._schema = schema
+        self._table = table
+        self._user = user
+        self._password = password
+        self._application = application
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else arguments
+            if isinstance(arguments, dict)
+            else {}
+        )
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Hostname of the SAP HANA endpoint."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """Port of the SAP HANA endpoint."""
+        return self._port
+
+    @public
+    @property
+    def database(self) -> str | None:
+        """Tenant database name on the SAP HANA endpoint."""
+        return self._database
+
+    @public
+    @property
+    def schema(self) -> str | None:
+        """Default schema applied to unqualified queries."""
+        return self._schema
+
+    @public
+    @property
+    def table(self) -> str | None:
+        """Table the connector points at when no query is provided."""
+        return self._table
+
+    @public
+    @property
+    def user(self) -> str | None:
+        """Database user."""
+        return self._user
+
+    @public
+    @property
+    def password(self) -> str | None:
+        """Database password."""
+        return self._password
+
+    @public
+    @property
+    def application(self) -> str | None:
+        """Optional SAP HANA application name surfaced for session tracing."""
+        return self._application
+
+    @public
+    @property
+    def options(self) -> dict[str, Any]:
+        """Additional Spark and JDBC options merged into reads."""
+        return self._arguments
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return arguments suitable for an external Python HANA driver such as `hdbcli`.
+
+        ```python
+        from hdbcli import dbapi
+
+        sc = fs.get_storage_connector("hana_conn")
+        conn = dbapi.connect(**sc.connector_options())
+        ```
+        """
+        props: dict[str, Any] = {
+            "address": self._host,
+            "port": self._port,
+            "user": self._user,
+        }
+        if self._password:
+            props["password"] = self._password
+        if self._database:
+            props["databaseName"] = self._database
+        if self._schema:
+            props["currentSchema"] = self._schema
+        if self._application:
+            props["sessionVariables"] = {"APPLICATION": self._application}
+        return props
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return Spark JDBC options for the SAP HANA connector."""
+        if not self._host:
+            raise DataSourceException(
+                "SAP HANA connector requires a host. The connector was likely loaded "
+                "without credentials (basic info only); refetch it before reading."
+            )
+        opts: dict[str, Any] = {**(self._arguments or {})}
+        opts["driver"] = self.DRIVER
+        url = f"jdbc:sap://{self._host}:{self._port}/"
+        url_params: list[str] = []
+        if self._database:
+            url_params.append(f"databaseName={self._database}")
+        if self._schema:
+            url_params.append(f"currentschema={self._schema}")
+        if url_params:
+            url += "?" + "&".join(url_params)
+        opts["url"] = url
+        if self._user:
+            opts["user"] = self._user
+        if self._password:
+            opts["password"] = self._password
+        if self._table:
+            opts["dbtable"] = self._table
+        return opts
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Read a table or query from SAP HANA into a dataframe.
+
+        Parameters:
+            query: SQL query to read; overrides any configured table.
+            data_format: Not used for SAP HANA.
+            options: Extra key/value options passed to the Spark JDBC reader.
+            path: Not used for SAP HANA.
+            dataframe_type: Type of the returned dataframe.
+
+        Returns:
+            `DataFrame`.
+        """
+        if not engine.get_instance().is_connector_type_supported(self.type):
+            raise NotImplementedError(
+                "SAP HANA connector not yet supported for engine: " + engine.get_type()
+            )
+        self.refetch()
+        merged = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if query:
+            merged["query"] = query
+            merged.pop("dbtable", None)
+        return engine.get_instance().read(
+            self, self.JDBC_FORMAT, merged, None, dataframe_type
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Prepare the Spark session with the SAP HANA driver classpath when needed."""
+        return engine.get_instance().setup_storage_connector(self, path)
+
+
+@public
+class MongoDBConnector(StorageConnector):
+    """MongoDB storage connector backed by the official ``mongo-spark-connector`` and ``pymongo``.
+
+    Use this connector to register an external feature group whose data lives in a MongoDB collection.
+    The ``connection_string`` is a MongoDB URI without embedded credentials; the username and password
+    are kept in the Hopsworks secret store and spliced in at read time.
+    """
+
+    type = StorageConnector.MONGODB
+    MONGODB_FORMAT = "mongodb"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        connection_string: str | None = None,
+        database: str | None = None,
+        collection: str | None = None,
+        user: str | None = None,
+        password: str | None = None,
+        auth_source: str | None = None,
+        auth_mechanism: str | None = None,
+        options: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._connection_string = connection_string
+        self._database = database
+        self._collection = collection
+        self._user = user
+        self._password = password
+        self._auth_source = auth_source
+        self._auth_mechanism = auth_mechanism
+        self._options = (
+            {opt["name"]: opt["value"] for opt in options}
+            if isinstance(options, list)
+            else options
+            if isinstance(options, dict)
+            else {}
+        )
+
+    @public
+    @property
+    def connection_string(self) -> str | None:
+        """MongoDB connection URI (``mongodb://`` or ``mongodb+srv://``) without embedded credentials."""
+        return self._connection_string
+
+    @public
+    @property
+    def database(self) -> str | None:
+        """Default database name."""
+        return self._database
+
+    @public
+    @property
+    def collection(self) -> str | None:
+        """Default collection name used when none is provided at read time."""
+        return self._collection
+
+    @public
+    @property
+    def user(self) -> str | None:
+        """Database user."""
+        return self._user
+
+    @public
+    @property
+    def password(self) -> str | None:
+        """Database password resolved from the Hopsworks secret store."""
+        return self._password
+
+    @public
+    @property
+    def auth_source(self) -> str | None:
+        """MongoDB ``authSource`` URI parameter (typically ``admin``)."""
+        return self._auth_source
+
+    @public
+    @property
+    def auth_mechanism(self) -> str | None:
+        """MongoDB ``authMechanism`` URI parameter (e.g. ``SCRAM-SHA-256``)."""
+        return self._auth_mechanism
+
+    @public
+    @property
+    def options(self) -> dict[str, Any]:
+        """Extra options forwarded to the Spark / pymongo client."""
+        return self._options
+
+    def _connection_uri(self) -> str:
+        """Build a connection URI that embeds the secret credentials and the auth parameters.
+
+        ``authSource`` and ``authMechanism`` are always appended to the URI when set —
+        they are valid query parameters independent of whether userinfo is embedded
+        (e.g. a deployment authenticating via TLS client certs still needs
+        ``authMechanism=MONGODB-X509``). Userinfo is spliced in only when ``user``
+        is set; ``password`` remains optional.
+        """
+        if not self._connection_string:
+            raise DataSourceException(
+                "MongoDB connector requires a connection_string. The connector was likely "
+                "loaded without credentials (basic info only); refetch it before reading."
+            )
+        from urllib.parse import quote_plus
+
+        base = self._connection_string.strip()
+        scheme_end = base.find("://")
+        if scheme_end < 0:
+            # Malformed URI — surface as-is, the driver's parser will reject it.
+            return base
+        prefix = base[: scheme_end + 3]
+        rest = base[scheme_end + 3 :]
+        # Inject userinfo before the host portion only when a user is set.
+        if self._user:
+            userinfo = quote_plus(self._user)
+            if self._password:
+                userinfo = f"{userinfo}:{quote_plus(self._password)}"
+            rest = f"{userinfo}@{rest}"
+        # MongoDB connection-string spec requires a path component (`/`) before
+        # the query string. Add an empty path if the URI doesn't already have
+        # one before the existing query parameters (or before we add ours).
+        host_part, sep_existing, query_existing = rest.partition("?")
+        if "/" not in host_part:
+            host_part = f"{host_part}/"
+        url = f"{prefix}{host_part}"
+        params = []
+        if sep_existing:
+            params.append(query_existing)
+        if self._auth_source:
+            params.append(f"authSource={quote_plus(self._auth_source)}")
+        if self._auth_mechanism:
+            params.append(f"authMechanism={quote_plus(self._auth_mechanism)}")
+        if params:
+            url = url + "?" + "&".join(params)
+        return url
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return arguments suitable for an external ``pymongo`` client.
+
+        ```python
+        from pymongo import MongoClient
+
+        sc = fs.get_storage_connector("mongo_conn")
+        client = MongoClient(**sc.connector_options())
+        ```
+
+        Forwards any persisted ``self.options`` whose key looks like a
+        ``MongoClient`` constructor kwarg (lowercase letters, digits, and
+        underscores) so operator-set tuning knobs — ``maxPoolSize``,
+        ``serverSelectionTimeoutMS``, ``tlsAllowInvalidCertificates``, etc. —
+        reach the driver. Keys that look like URI parameters (camelCase,
+        already embedded in ``connection_uri``) and anything non-string are
+        dropped to avoid duplicate-config errors from pymongo.
+        """
+        opts: dict[str, Any] = {"host": self._connection_uri()}
+        # Pass through additional pymongo kwargs from self._options. Keep
+        # the filter conservative — anything we can't classify confidently
+        # is dropped so we don't trip the driver's argument validation.
+        for key, value in (self._options or {}).items():
+            if not isinstance(key, str) or not key:
+                continue
+            if key == "host":  # already set from connection_uri
+                continue
+            if value is None:
+                continue
+            opts[key] = value
+        return opts
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return options for ``spark.read.format('mongodb')``."""
+        opts: dict[str, Any] = {**(self._options or {})}
+        opts["connection.uri"] = self._connection_uri()
+        if self._database:
+            opts["database"] = self._database
+        if self._collection:
+            opts["collection"] = self._collection
+        return opts
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Read a collection from MongoDB into a dataframe.
+
+        Parameters:
+            query: Collection name to read; overrides the connector's default collection.
+                For advanced cases, pass a JSON-encoded aggregation pipeline; the engine
+                forwards it via the ``aggregation.pipeline`` option.
+            data_format: Not used for MongoDB.
+            options: Extra key/value options merged into the Spark reader configuration.
+            path: Not used for MongoDB.
+            dataframe_type: Type of the returned dataframe.
+
+        Returns:
+            `DataFrame`.
+        """
+        if not engine.get_instance().is_connector_type_supported(self.type):
+            raise NotImplementedError(
+                "MongoDB connector not yet supported for engine: " + engine.get_type()
+            )
+        self.refetch()
+        merged = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if query:
+            stripped = query.strip()
+            if stripped.startswith("["):
+                merged["aggregation.pipeline"] = stripped
+            else:
+                merged["collection"] = stripped
+        return engine.get_instance().read(
+            self, self.MONGODB_FORMAT, merged, None, dataframe_type
+        )
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Ensure the Spark session is wired with the ``mongo-spark-connector`` classpath."""
+        return engine.get_instance().setup_storage_connector(self, path)
+
+
+@public
 class JdbcConnector(StorageConnector):
     type = StorageConnector.JDBC
     JDBC_FORMAT = "jdbc"
@@ -1208,11 +1972,13 @@ class JdbcConnector(StorageConnector):
         self._connection_string = connection_string
         self._arguments = arguments
 
+    @public
     @property
     def connection_string(self) -> str | None:
         """JDBC connection string."""
         return self._connection_string
 
+    @public
     @property
     def arguments(self) -> dict[str, Any] | None:
         """Additional JDBC arguments.
@@ -1222,7 +1988,6 @@ class JdbcConnector(StorageConnector):
         return self._arguments
 
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
         options = (
             {arg.get("name"): arg.get("value") for arg in self._arguments}
             if self._arguments
@@ -1233,13 +1998,16 @@ class JdbcConnector(StorageConnector):
 
         return options
 
+    @public
     def read(
         self,
-        query: str,
+        query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         path: str | None = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -1275,6 +2043,7 @@ class JdbcConnector(StorageConnector):
         )
 
 
+@public
 class KafkaConnector(StorageConnector):
     type = StorageConnector.KAFKA
     SPARK_FORMAT = "kafka"
@@ -1319,36 +2088,43 @@ class KafkaConnector(StorageConnector):
         self._external_kafka = external_kafka
         self._pem_files_created = False
 
+    @public
     @property
     def bootstrap_servers(self) -> list[str] | None:
         """Bootstrap servers string."""
         return self._bootstrap_servers
 
+    @public
     @property
     def security_protocol(self) -> str | None:
         """Bootstrap servers string."""
         return self._security_protocol
 
+    @public
     @property
     def ssl_truststore_location(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_truststore_location
 
+    @public
     @property
     def ssl_keystore_location(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_keystore_location
 
+    @public
     @property
     def ssl_endpoint_identification_algorithm(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_endpoint_identification_algorithm
 
+    @public
     @property
     def options(self) -> dict[str, Any]:
         """Bootstrap servers string."""
         return self._options
 
+    @public
     def create_pem_files(self, kafka_options: dict[str, Any]) -> None:
         """Create PEM (Privacy Enhanced Mail) files for Kafka SSL authentication.
 
@@ -1362,6 +2138,9 @@ class KafkaConnector(StorageConnector):
 
         These files are used for configuring secure Kafka connections (e.g., with Spark or confluent_kafka).
         The method is idempotent and will only create the files once per connector instance.
+
+        Parameters:
+            kafka_options: A dictionary containing the Kafka configuration options, including keystore and truststore locations and passwords.
         """
         if not self._pem_files_created:
             (
@@ -1377,10 +2156,17 @@ class KafkaConnector(StorageConnector):
             )
             self._pem_files_created = True
 
-    def kafka_options(self, distribute=True) -> dict[str, Any]:
+    @public
+    def kafka_options(self, distribute: bool = True) -> dict[str, Any]:
         """Return prepared options to be passed to kafka, based on the additional arguments.
 
         See <https://kafka.apache.org/documentation/>.
+
+        Parameters:
+            distribute: Whether to distribute the SSL certificates to the cluster nodes.
+
+        Returns:
+            A dictionary containing the configuration options for kafka.
         """
         config = {}
 
@@ -1440,12 +2226,16 @@ class KafkaConnector(StorageConnector):
 
         return config
 
+    @public
     def confluent_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to confluent_kafka, based on the provided apache spark configuration.
 
         Right now only producer values with Importance >= medium are implemented.
 
         See <https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.html>.
+
+        Returns:
+            A dictionary containing the configuration options for confluent_kafka.
         """
         pem_files_assigned = False
         config = {}
@@ -1533,6 +2323,7 @@ class KafkaConnector(StorageConnector):
         with open(file_name) as file:
             return file.read()
 
+    @public
     def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments.
 
@@ -1583,19 +2374,31 @@ class KafkaConnector(StorageConnector):
 
         return spark_config
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         path: str | None = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> None:
-        """NOT SUPPORTED."""
+        """\
+
+        Failure:
+            This operation is not supported.
+            Use [`read_stream`][hsfs.storage_connector.KafkaConnector.read_stream] instead to read a Kafka stream into a streaming Spark Dataframe.
+
+        Raises:
+            NotImplementedError: Always, since this operation is not supported.
+        """
         raise NotImplementedError(
             "Reading a Kafka Stream into a static Spark Dataframe is not supported."
         )
 
+    @public
     def read_stream(
         self,
         topic: str,
@@ -1618,23 +2421,22 @@ class KafkaConnector(StorageConnector):
         Parameters:
             topic: Name or pattern of the topic(s) to subscribe to.
             topic_pattern: Flag to indicate if `topic` string is a pattern.
-                Defaults to `False`.
             message_format: The format of the messages to use for decoding.
-                Can be `"avro"` or `"json"`. Defaults to `"avro"`.
+                Can be `"avro"` or `"json"`.
             schema: Optional schema, to use for decoding, can be an Avro schema string for
                 `"avro"` message format, or for JSON encoding a Spark StructType schema,
-                or a DDL formatted string. Defaults to `None`.
+                or a DDL formatted string.
             options: Additional options as key/value string pairs to be passed to Spark.
                 Defaults to `{}`.
             include_metadata: Indicate whether to return additional metadata fields from
                 messages in the stream. Otherwise, only the decoded value fields are
-                returned. Defaults to `False`.
+                returned.
 
         Raises:
             ValueError: Malformed arguments.
 
         Returns:
-            `StreamingDataframe`: A Spark streaming dataframe.
+            A Spark streaming dataframe.
         """
         if message_format.lower() not in ["avro", "json", None]:
             raise ValueError("Can only read JSON and AVRO encoded records from Kafka.")
@@ -1654,6 +2456,7 @@ class KafkaConnector(StorageConnector):
         )
 
 
+@public
 class GcsConnector(StorageConnector):
     """This storage connector provides integration to Google Cloud Storage (GCS).
 
@@ -1697,31 +2500,37 @@ class GcsConnector(StorageConnector):
         self._encryption_key = encryption_key
         self._encryption_key_hash = encryption_key_hash
 
+    @public
     @property
     def key_path(self) -> str | None:
         """JSON keyfile for service account."""
         return self._key_path
 
+    @public
     @property
     def algorithm(self) -> str | None:
         """Encryption Algorithm."""
         return self._algorithm
 
+    @public
     @property
     def encryption_key(self) -> str | None:
         """Encryption Key."""
         return self._encryption_key
 
+    @public
     @property
     def encryption_key_hash(self) -> str | None:
         """Encryption Key Hash."""
         return self._encryption_key_hash
 
+    @public
     @property
     def path(self) -> str | None:
         """The path of the connector along with gs file system prefixed."""
         return self.GS_FS_PREFIX + self._bucket
 
+    @public
     @property
     def bucket(self) -> str | None:
         """GCS Bucket."""
@@ -1733,16 +2542,18 @@ class GcsConnector(StorageConnector):
         return self.path
 
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
-        path: str = "",
-        dataframe_type: str = "default",
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -1765,11 +2576,12 @@ class GcsConnector(StorageConnector):
         ```python
         conn.read(data_format='spark_formats',path='gs://BUCKET/DATA')
         ```
+
         Parameters:
             query: Not relevant for GCS connectors.
-            data_format: Spark data format. Defaults to `None`.
-            options: Spark options. Defaults to `None`.
-            path: GCS path. Defaults to `None`.
+            data_format: Spark data format.
+            options: Spark options.
+            path: GCS path.
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
@@ -1778,8 +2590,10 @@ class GcsConnector(StorageConnector):
             ValueError: Malformed arguments.
 
         Returns:
-            `Dataframe`: A Spark dataframe.
+            A Spark dataframe.
         """
+        if path is None:
+            path = ""
         # validate engine supports connector type
         if not engine.get_instance().is_connector_type_supported(self.type):
             raise NotImplementedError(
@@ -1797,6 +2611,7 @@ class GcsConnector(StorageConnector):
             self, data_format, options or {}, path, dataframe_type
         )
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -1808,11 +2623,12 @@ class GcsConnector(StorageConnector):
         ```
 
         Parameters:
-            path: Path to prepare for reading from Google cloud storage. Defaults to `None`.
+            path: Path to prepare for reading from Google cloud storage.
         """
         return engine.get_instance().setup_storage_connector(self, path)
 
 
+@public
 class BigQueryConnector(StorageConnector):
     """The BigQuery storage connector provides integration to Google Cloud BigQuery.
 
@@ -1863,41 +2679,49 @@ class BigQueryConnector(StorageConnector):
             {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
         )
 
+    @public
     @property
     def key_path(self) -> str | None:
         """JSON keyfile for service account."""
         return self._key_path
 
+    @public
     @property
     def parent_project(self) -> str | None:
         """BigQuery parent project (Google Cloud Project ID of the table to bill for the export)."""
         return self._parent_project
 
+    @public
     @property
     def dataset(self) -> str | None:
         """BigQuery dataset (The dataset containing the table)."""
         return self._dataset
 
+    @public
     @property
     def query_table(self) -> str | None:
         """BigQuery table name."""
         return self._query_table
 
+    @public
     @property
     def query_project(self) -> str | None:
         """BigQuery project (The Google Cloud Project ID of the table)."""
         return self._query_project
 
+    @public
     @property
     def materialization_dataset(self) -> str | None:
         """BigQuery materialization dataset (The dataset where the materialized view is going to be created, used in case of query)."""
         return self._materialization_dataset
 
+    @public
     @property
     def arguments(self) -> dict[str, Any]:
         """Additional spark options."""
         return self._arguments
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external BigQuery connector library."""
         return {
@@ -1907,7 +2731,6 @@ class BigQueryConnector(StorageConnector):
         }
 
     def spark_options(self) -> dict[str, Any]:
-        """Return spark options to be set for BigQuery spark connector."""
         properties = self._arguments
         properties[self.BIGQ_PARENT_PROJECT] = self._parent_project
 
@@ -1929,13 +2752,16 @@ class BigQueryConnector(StorageConnector):
 
         return properties
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         path: str | None = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -1966,10 +2792,10 @@ class BigQueryConnector(StorageConnector):
             ```
 
         Parameters:
-            query: BigQuery query. Defaults to `None`.
-            data_format: Spark data format. Defaults to `None`.
-            options: Spark options. Defaults to `None`.
-            path: BigQuery table path. Defaults to `None`.
+            query: BigQuery query.
+            data_format: Spark data format.
+            options: Spark options.
+            path: BigQuery table path.
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
@@ -1978,7 +2804,7 @@ class BigQueryConnector(StorageConnector):
             ValueError: Malformed arguments.
 
         Returns:
-            `Dataframe`: A Spark dataframe.
+            A Spark dataframe.
         """
         # validate engine supports connector type
         if not engine.get_instance().is_connector_type_supported(self.type):
@@ -2017,9 +2843,24 @@ class BigQueryConnector(StorageConnector):
         )
 
 
-class RdsConnector(StorageConnector):
-    type = StorageConnector.RDS
+class SqlConnector(StorageConnector):
+    type = StorageConnector.SQL
     JDBC_FORMAT = "jdbc"
+
+    MYSQL = "MYSQL"
+    POSTGRESQL = "POSTGRESQL"
+    ORACLE = "ORACLE"
+
+    _DRIVERS = {
+        MYSQL: "com.mysql.cj.jdbc.Driver",
+        POSTGRESQL: "org.postgresql.Driver",
+        ORACLE: "oracle.jdbc.driver.OracleDriver",
+    }
+    _JDBC_SCHEMES = {
+        MYSQL: "mysql",
+        POSTGRESQL: "postgresql",
+        ORACLE: "oracle:thin",
+    }
 
     def __init__(
         self,
@@ -2028,23 +2869,47 @@ class RdsConnector(StorageConnector):
         featurestore_id: int,
         description: str | None = None,
         # members specific to type of connector
+        database_type: str | None = None,
         host: str | None = None,
         port: int | None = None,
         database: str | None = None,
         user: str | None = None,
         password: str | None = None,
-        arguments: dict[str, Any] | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | str | None = None,
+        # Oracle-specific optional fields
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
+        if database_type is not None:
+            database_type = database_type.upper()
+            if database_type not in self._DRIVERS:
+                raise ValueError(
+                    f"Unsupported database_type '{database_type}'. "
+                    f"Supported values are: {sorted(self._DRIVERS)}."
+                )
+        self._database_type = database_type
         self._host = host
         self._port = port
         self._database = database
         self._user = user
         self._password = password
         self._arguments = (
-            {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else arguments
+            if isinstance(arguments, dict)
+            else {}
         )
+        # Oracle-specific fields
+        self._wallet_path = wallet_path
+        self._wallet_password = wallet_password
+
+    @property
+    def database_type(self) -> str | None:
+        """The database type, e.g. MYSQL or POSTGRESQL."""
+        return self._database_type
 
     @property
     def host(self) -> str | None:
@@ -2071,34 +2936,96 @@ class RdsConnector(StorageConnector):
         """Additional options."""
         return self._arguments
 
+    @property
+    def wallet_path(self) -> str | None:
+        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
+        return self._wallet_path
+
+    @property
+    def wallet_password(self) -> str | None:
+        """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
+        return self._wallet_password
+
+    def _prepare_wallet(self) -> str | None:
+        """Download (if needed) and extract the wallet, returning a local directory.
+
+        For Spark JDBC the Oracle driver runs inside the JVM and needs a local
+        filesystem path to the wallet directory.
+        When the wallet lives in HopsFS the file is first downloaded to the
+        driver via ``engine.add_file`` and then extracted.
+        JDBC reads are single-partition (driver-only) so the wallet does not
+        need to be distributed to executors.
+        Returns ``None`` when no wallet path is configured.
+        """
+        if not self._wallet_path:
+            return None
+        local_path = engine.get_instance().add_file(self._wallet_path, distribute=False)
+        if local_path.endswith(".zip") and os.path.isfile(local_path):
+            return util.extract_zip(local_path)
+        return local_path
+
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments."""
-        return {
+        opts = {
+            **(self._arguments if self._arguments else {}),
             "user": self.user,
             "password": self.password,
-            "driver": "org.postgresql.Driver",
+            "driver": self._DRIVERS.get(
+                self._database_type, self._DRIVERS[self.POSTGRESQL]
+            ),
         }
+        scheme = self._JDBC_SCHEMES.get(
+            self._database_type, self._JDBC_SCHEMES[self.POSTGRESQL]
+        )
+        host_port = f"{self._host}:{self._port}" if self._host and self._port else None
+        if self._database_type == self.ORACLE:
+            # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
+            # when a wallet is configured for mTLS.
+            if host_port:
+                prefix = "tcps://" if self._wallet_path else ""
+                opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
+            elif self._wallet_path:
+                # Wallet-only: the database field is a TNS alias resolved via
+                # the wallet's tnsnames.ora — the URL carries only the alias.
+                opts["url"] = f"jdbc:{scheme}:@{self._database}"
+            else:
+                raise DataSourceException(
+                    "Oracle connector requires either host+port or a wallet."
+                )
+        else:
+            opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
+        return opts
 
     def connector_options(self) -> dict[str, Any]:
-        """Return options to be passed to an external RDS connector library."""
+        """Return options to be passed to an external SQL connector library."""
         props = {
             "host": self.host,
             "port": self.port,
             "database": self.database,
+            "database_type": self.database_type,
         }
         if self.user:
             props["user"] = self.user
         if self.password:
             props["password"] = self.password
+        if self._database_type == self.ORACLE:
+            # Oracle Python drivers (e.g. oracledb) expect ``service_name``.
+            props["service_name"] = self.database
+            if self._wallet_path:
+                props["wallet_path"] = self._wallet_path
+            if self._wallet_password:
+                props["wallet_password"] = self._wallet_password
         return props
 
+    @public
     def read(
         self,
-        query: str,
+        query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         path: str | None = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -2110,12 +3037,18 @@ class RdsConnector(StorageConnector):
 
         Parameters:
             query: A SQL query to be read.
-            data_format: Not relevant for RDS based connectors.
-            options: Any additional key/value options to be passed to the RDS connector.
-            path: Not relevant for RDS based connectors.
+            data_format: Not relevant for SQL based connectors.
+            options: Any additional key/value options to be passed to the SQL connector.
+            path: Not relevant for SQL based connectors.
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        !!! note "Oracle"
+            The native Python engine reads Oracle only via the Hopsworks Query
+            Service (Arrow Flight). There is no SQLAlchemy / oracledb fallback
+            in `core/util_sql.py` — use the Spark engine or route through
+            Arrow Flight.
 
         Returns:
             `DataFrame`.
@@ -2129,7 +3062,17 @@ class RdsConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        options["url"] = f"jdbc:postgresql://{self.host}:{self.port}/{self.database}"
+        if self._database_type == self.ORACLE:
+            wallet_dir = self._prepare_wallet()
+            if wallet_dir:
+                options["oracle.net.wallet_location"] = (
+                    f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                )
+                # For wallet-only connectors the URL is a TNS alias; the JDBC
+                # driver needs tns_admin to find tnsnames.ora inside the wallet.
+                options["oracle.net.tns_admin"] = wallet_dir
+                if self._wallet_password:
+                    options["oracle.net.wallet_password"] = self._wallet_password
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
@@ -2208,10 +3151,6 @@ class OpenSearchConnector(StorageConnector):
         return self._arguments
 
     def spark_options(self) -> dict[str, Any]:
-        """Return prepared options to be passed to Spark.
-
-        Based on the additional arguments.
-        """
         return self.connector_options()
 
     def connector_options(self) -> dict[str, Any]:
@@ -2270,13 +3209,16 @@ class OpenSearchConnector(StorageConnector):
         setattr(self, ca_attr, ca_chain_path)
         return ca_chain_path
 
+    @public
     def read(
         self,
         query: str | None = None,
         data_format: str | None = None,
         options: dict[str, Any] | None = None,
         path: str | None = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -2284,6 +3226,945 @@ class OpenSearchConnector(StorageConnector):
         | np.ndarray
         | pl.DataFrame
     ):
+        """\
+
+        Failure:
+            This operation is not supported.
+            Use [`feature_group.read`][hsfs.feature_group.FeatureGroup.read] instead.
+
+        Raises:
+            NotImplementedError: Always, since this operation is not supported.
+        """
         raise NotImplementedError(
             "Cannot read from OpenSearch connector. Please use feature_group.read() instead."
         )
+
+
+class CRMSource(Enum):
+    HUBSPOT = "hubspot"
+    FACEBOOK_ADS = "facebook_ads"
+    SALESFORCE = "salesforce"
+    PIPEDRIVE = "pipedrive"
+    FRESHDESK = "freshdesk"
+    GOOGLE_ADS = "google_ads"
+    GOOGLE_ANALYTICS = "google_analytics"
+
+
+class CRMAndAnalyticsConnector(StorageConnector):
+    type = StorageConnector.CRM
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        crm_type: CRMSource,
+        description: str | None = None,
+        # members specific to type of connector
+        api_key: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        domain: str | None = None,
+        account_id: str | None = None,
+        key_path: str | None = None,
+        property_id: str | None = None,
+        dev_token: str | None = None,
+        customer_id: str | None = None,
+        impersonated_email: str | None = None,
+        refresh_token: str | None = None,
+        headers: dict[str, Any] | None = None,
+        parameters: dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._api_key = api_key
+        self._crm_type = crm_type
+        self._username = username
+        self._password = password
+        self._domain = domain
+        self._account_id = account_id
+        self._key_path = key_path
+        self._property_id = property_id
+        self._dev_token = dev_token
+        self._customer_id = customer_id
+        self._impersonated_email = impersonated_email
+        self._refresh_token = refresh_token
+        self._headers = headers or {}
+        self._parameters = parameters or {}
+
+    @property
+    def api_key(self):
+        return self._api_key
+
+    @property
+    def crm_type(self):
+        return self._crm_type
+
+    @property
+    def username(self):
+        return self._username
+
+    @property
+    def password(self):
+        return self._password
+
+    @property
+    def domain(self):
+        return self._domain
+
+    @property
+    def account_id(self):
+        return self._account_id
+
+    @property
+    def key_path(self):
+        return self._key_path
+
+    @property
+    def property_id(self):
+        return self._property_id
+
+    @property
+    def dev_token(self):
+        return self._dev_token
+
+    @property
+    def customer_id(self):
+        return self._customer_id
+
+    @property
+    def impersonated_email(self):
+        return self._impersonated_email
+
+    @property
+    def refresh_token(self):
+        return self._refresh_token
+
+    @property
+    def headers(self):
+        """Additional headers."""
+        return self._headers
+
+    @property
+    def parameters(self):
+        """Additional parameters."""
+        return self._parameters
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+
+@public
+class UnityCatalogConnector(StorageConnector):
+    """Databricks Unity Catalog storage connector.
+
+    Reads Delta-formatted tables governed by Unity Catalog via the Arrow Flight query service.
+    Direct Spark reads are not supported in this release; use the Arrow Flight path instead.
+    """
+
+    type = StorageConnector.UNITY_CATALOG
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        workspace_url: str | None = None,
+        access_token: str | None = None,
+        default_catalog: str | None = None,
+        aws_region: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        auth_method: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        oauth_endpoint: str | None = None,
+        account_id: str | None = None,
+        account_host: str | None = None,
+        has_access_token: bool | None = None,
+        has_client_secret: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._workspace_url = workspace_url
+        self._access_token = access_token
+        self._default_catalog = default_catalog
+        self._aws_region = aws_region
+        # auth_method defaults to 'PAT' for back-compat with connectors created
+        # before OAuth support landed; oauth_endpoint defaults to 'WORKSPACE'
+        # when caller asks for OAUTH_M2M without specifying one.
+        if auth_method is None:
+            self._auth_method = "PAT"
+        else:
+            self._auth_method = auth_method
+        self._client_id = client_id
+        self._client_secret = client_secret
+        if self._auth_method == "OAUTH_M2M" and oauth_endpoint is None:
+            self._oauth_endpoint = "WORKSPACE"
+        else:
+            self._oauth_endpoint = oauth_endpoint
+        self._account_id = account_id
+        self._account_host = account_host
+        # has_access_token / has_client_secret are server-emitted booleans that
+        # let callers tell whether a secret is on file without exposing it.
+        # They are never sent back on write (the backend ignores them).
+        self._has_access_token = (
+            bool(has_access_token)
+            if has_access_token is not None
+            else (access_token is not None)
+        )
+        self._has_client_secret = (
+            bool(has_client_secret)
+            if has_client_secret is not None
+            else (client_secret is not None)
+        )
+        if isinstance(arguments, list):
+            # Match the other connectors in this file: tolerate name-only entries
+            # and skip entries without a name. Backend serialises these as a list
+            # of {name, value} dicts but `value` is permitted to be missing.
+            self._arguments = {
+                a["name"]: a.get("value")
+                for a in arguments
+                if a.get("name") is not None
+            }
+        else:
+            self._arguments = arguments or {}
+
+    @public
+    @property
+    def workspace_url(self) -> str | None:
+        """Databricks workspace URL used for API calls."""
+        return self._workspace_url
+
+    @public
+    @property
+    def access_token(self) -> str | None:
+        """Databricks personal access token, decrypted from the Hopsworks secret store on retrieval."""
+        return self._access_token
+
+    @public
+    @property
+    def default_catalog(self) -> str | None:
+        """Optional default Unity Catalog catalog to use when no catalog is explicitly specified."""
+        return self._default_catalog
+
+    @public
+    @property
+    def aws_region(self) -> str | None:
+        """Optional explicit AWS region for the managed storage backing this Unity Catalog.
+
+        When unset, the Arrow Flight read path guesses the region from the STS
+        session-token Databricks returns with temporary table credentials.
+        """
+        return self._aws_region
+
+    @public
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Additional Unity Catalog connection arguments passed through to the Arrow Flight server."""
+        return self._arguments
+
+    @public
+    @property
+    def auth_method(self) -> str:
+        """Authentication method for the Databricks workspace, either "PAT" or "OAUTH_M2M".
+
+        Defaults to "PAT" for connectors created before OAuth support landed.
+        """
+        return self._auth_method
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """Databricks service principal client ID, only set when [`auth_method`][hsfs.storage_connector.UnityCatalogConnector.auth_method] is "OAUTH_M2M"."""
+        return self._client_id
+
+    @public
+    @property
+    def client_secret(self) -> str | None:
+        """Databricks service principal client secret.
+
+        Write-only on the backend: this property is only populated when the
+        caller has just constructed the connector locally with a secret in hand.
+        Server responses never carry it; use [`has_client_secret`][hsfs.storage_connector.UnityCatalogConnector.has_client_secret] to test
+        whether a secret is on file.
+        """
+        return self._client_secret
+
+    @public
+    @property
+    def oauth_endpoint(self) -> str | None:
+        """OAuth token endpoint flavour, either "WORKSPACE" or "ACCOUNT".
+
+        Only set when [`auth_method`][hsfs.storage_connector.UnityCatalogConnector.auth_method] is "OAUTH_M2M".
+        """
+        return self._oauth_endpoint
+
+    @public
+    @property
+    def account_id(self) -> str | None:
+        """Databricks account ID, only set when [`oauth_endpoint`][hsfs.storage_connector.UnityCatalogConnector.oauth_endpoint] is "ACCOUNT"."""
+        return self._account_id
+
+    @public
+    @property
+    def account_host(self) -> str | None:
+        """Databricks account-console host, only set when [`oauth_endpoint`][hsfs.storage_connector.UnityCatalogConnector.oauth_endpoint] is "ACCOUNT"."""
+        return self._account_host
+
+    @public
+    @property
+    def has_access_token(self) -> bool:
+        """True iff a personal access token is on file for this connector.
+
+        The server never returns the access token itself on read; this boolean
+        lets callers tell whether one exists without exposing the secret.
+        """
+        return self._has_access_token
+
+    @public
+    @property
+    def has_client_secret(self) -> bool:
+        """True iff a client secret is on file for this connector.
+
+        The server never returns the client secret itself on read; this boolean
+        lets callers tell whether one exists without exposing the secret.
+        """
+        return self._has_client_secret
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return UC connector options shaped for external library use."""
+        return {
+            "workspace_url": self._workspace_url,
+            "default_catalog": self._default_catalog,
+            "aws_region": self._aws_region,
+        }
+
+    def spark_options(self) -> dict[str, Any]:
+        # The bare spark_options() with no table argument can't return
+        # anything useful for UC — vended credentials are scoped per-table.
+        # Callers that want Spark options should use spark_options_for(...)
+        # or read(...) below.
+        raise NotImplementedError(
+            "Unity Catalog Spark options are table-scoped. Call "
+            "spark_options_for(catalog, schema, table) or read(spark, "
+            "catalog, schema, table) instead."
+        )
+
+    @public
+    def spark_options_for(
+        self,
+        catalog: str,
+        schema: str,
+        table: str,
+    ) -> UnityCatalogSparkOptions:
+        """Resolve Spark read options for a Unity Catalog table.
+
+        Mirrors the Python / Arrow Flight architecture: Hopsworks vends the
+        Databricks bearer; the SDK calls Databricks directly for vended S3
+        temp-credentials, then builds the per-bucket S3A keys + Delta path.
+
+        v1 supports AWS-backed Delta tables only.
+        Non-AWS storage (Azure / GCP) raises here.
+        Credentials live ~1 h; call this close to the action that triggers the read.
+
+        Parameters:
+            catalog: UC catalog name (e.g. `"main"`).
+            schema: UC schema name within the catalog (e.g. `"default"`).
+            table: UC table name within the schema (e.g. `"transactions"`).
+
+        Returns:
+            A typed [`UnityCatalogSparkOptions`][hsfs.storage_connector.UnityCatalogSparkOptions]
+            object carrying the Delta path, per-bucket S3A keys, and credential expiry metadata.
+        """
+        return _resolve_uc_spark_options(self, catalog, schema, table)
+
+    @public
+    def read(
+        self,
+        spark: Any,
+        catalog: str,
+        schema: str,
+        table: str,
+        *,
+        force_vended: bool = False,
+    ) -> Any:
+        """Read a Unity Catalog table as a Spark DataFrame.
+
+        Default behavior: if the SparkSession is connected to a Databricks
+        cluster, dispatch to native UC access (`spark.read.table()`),
+        which is faster, auth'd by the cluster identity, and skips the
+        Hopsworks round-trip.
+        Otherwise resolves vended S3 credentials via Hopsworks and reads
+        the Delta path directly.
+
+        Set `force_vended=True` to skip detection and always use the
+        vended path, useful if the cluster identity lacks the grants the
+        connector's SP has.
+        """
+        if not force_vended and _running_in_databricks(spark):
+            qualified = _quote_uc_identifier(catalog, schema, table)
+            return spark.read.table(qualified)
+        opts = self.spark_options_for(catalog=catalog, schema=schema, table=table)
+        return opts.read(spark)
+
+
+# Auto-detect a Databricks-hosted Spark session so the SDK can route to
+# native UC access. Works for both Databricks Runtime notebooks/jobs and
+# Databricks Connect (the cluster's config is propagated to the client).
+def _running_in_databricks(spark: Any) -> bool:
+    try:
+        cluster_name = spark.conf.get(
+            "spark.databricks.clusterUsageTags.clusterName", None
+        )
+        if cluster_name:
+            return True
+    except Exception:  # noqa: BLE001 — SparkSession variants vary
+        pass
+    return bool(os.environ.get("DATABRICKS_RUNTIME_VERSION"))
+
+
+def _quote_uc_identifier(catalog: str, schema: str, table: str) -> str:
+    """Escape each level for backtick-quoted Spark SQL identifiers.
+
+    Backticks in UC names are escaped by doubling per Databricks rules.
+    """
+    return ".".join(f"`{part.replace('`', '``')}`" for part in (catalog, schema, table))
+
+
+def _resolve_uc_spark_options(
+    connector: UnityCatalogConnector,
+    catalog: str,
+    schema: str,
+    table: str,
+) -> UnityCatalogSparkOptions:
+    """Build Spark read options for a Unity Catalog table from the SDK side.
+
+    Steps: get a bearer from EE, ask UC for its table id, ask UC for vended
+    temp-table-credentials, then translate the AWS branch into per-bucket
+    S3A Hadoop keys plus the Delta storage location.
+    """
+    import requests  # local import, dependency already pinned for the SDK
+    from hsfs.core import storage_connector_api  # avoid circular import
+
+    api = storage_connector_api.StorageConnectorApi()
+    bearer_resp = api.get_uc_bearer(connector._featurestore_id, connector._name)
+    bearer = bearer_resp.get("access_token") or bearer_resp.get("accessToken")
+    expires_in = int(
+        bearer_resp.get("expires_in_seconds")
+        or bearer_resp.get("expiresInSeconds")
+        or 0
+    )
+    if not bearer:
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        raise FeatureStoreException(
+            "Hopsworks vended an empty Unity Catalog bearer for connector "
+            f"{connector._name}."
+        )
+
+    workspace = (connector._workspace_url or "").rstrip("/")
+    if not workspace:
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        raise FeatureStoreException(
+            f"Unity Catalog connector {connector._name} has no workspace_url; "
+            "cannot call Databricks for vended credentials."
+        )
+
+    headers = {
+        "Authorization": f"Bearer {bearer}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+    table_url = f"{workspace}/api/2.1/unity-catalog/tables/{catalog}.{schema}.{table}"
+    table_resp = requests.get(table_url, headers=headers, timeout=30)
+    _raise_for_uc_status(table_resp, "table lookup")
+    table_payload = table_resp.json()
+    table_id = table_payload.get("table_id")
+    data_source_format = (table_payload.get("data_source_format") or "").upper()
+    storage_location = table_payload.get("storage_location") or ""
+    if data_source_format != "DELTA":
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        raise FeatureStoreException(
+            "Hopsworks PySpark support for Unity Catalog is limited to Delta "
+            f"tables (this v1). Table {catalog}.{schema}.{table} is "
+            f"{data_source_format or 'unknown'}."
+        )
+
+    creds_url = f"{workspace}/api/2.0/unity-catalog/temporary-table-credentials"
+    creds_resp = requests.post(
+        creds_url,
+        headers=headers,
+        json={"table_id": table_id, "operation": "READ"},
+        timeout=30,
+    )
+    _raise_for_uc_status(creds_resp, "temporary-table-credentials")
+    creds_payload = creds_resp.json()
+    aws = creds_payload.get("aws_temp_credentials")
+    if not aws:
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        raise FeatureStoreException(
+            "Hopsworks PySpark support for Unity Catalog is AWS-only in this v1. "
+            f"Table {catalog}.{schema}.{table} returned no aws_temp_credentials."
+        )
+
+    s3a_path = storage_location
+    if s3a_path.startswith("s3://"):
+        s3a_path = "s3a://" + s3a_path[len("s3://") :]
+    elif not s3a_path.startswith("s3a://"):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        raise FeatureStoreException(
+            "Hopsworks PySpark support for Unity Catalog is AWS-only in this v1. "
+            f"Table {catalog}.{schema}.{table} storage_location is "
+            f"{storage_location!r}."
+        )
+
+    bucket = s3a_path[len("s3a://") :].split("/", 1)[0]
+    storage_options: dict[str, str] = {
+        f"fs.s3a.bucket.{bucket}.access.key": aws.get("access_key_id", ""),
+        f"fs.s3a.bucket.{bucket}.secret.key": aws.get("secret_access_key", ""),
+        f"fs.s3a.bucket.{bucket}.session.token": aws.get("session_token", ""),
+        f"fs.s3a.bucket.{bucket}.aws.credentials.provider": (
+            "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider"
+        ),
+    }
+    if connector._aws_region:
+        storage_options[f"fs.s3a.bucket.{bucket}.endpoint.region"] = (
+            connector._aws_region
+        )
+
+    return UnityCatalogSparkOptions(
+        fmt="delta",
+        path=s3a_path,
+        cloud="aws",
+        storage_options=storage_options,
+        expires_at=creds_payload.get("expiration_time"),
+        expires_in_seconds=expires_in,
+    )
+
+
+def _raise_for_uc_status(resp: Any, what: str) -> None:
+    """Convert a non-2xx Databricks UC response into a FeatureStoreException."""
+    if 200 <= resp.status_code < 300:
+        return
+    from hopsworks_common.client.exceptions import FeatureStoreException
+
+    body = (resp.text or "")[:500]
+    raise FeatureStoreException(
+        f"Databricks Unity Catalog {what} failed with HTTP {resp.status_code}: {body}"
+    )
+
+
+@public
+class UnityCatalogSparkOptions:
+    """Typed Spark read options vended for a Unity Catalog table.
+
+    Returned by [`UnityCatalogConnector.spark_options_for`][hsfs.storage_connector.UnityCatalogConnector.spark_options_for].
+    Carries short-lived AWS credentials (in [`storage_options`][hsfs.storage_connector.UnityCatalogSparkOptions.storage_options])
+    plus the Delta path the table is stored at.
+
+    Use [`apply_to`][hsfs.storage_connector.UnityCatalogSparkOptions.apply_to]
+    to wire the S3A credentials onto a SparkSession's Hadoop config, then
+    `spark.read.format(opts.format).load(opts.path)`.
+    Or use [`read`][hsfs.storage_connector.UnityCatalogSparkOptions.read]
+    which does both in one call.
+
+    Credentials live ~1 h.
+    Spark is lazy, so a long delay between `spark_options_for()`
+    and the first action that actually reads from S3 can outlive the
+    credentials. Mitigation: call close to the action, or use `read()`.
+    """
+
+    def __init__(
+        self,
+        fmt: str,
+        path: str,
+        cloud: str,
+        storage_options: dict[str, str],
+        expires_at: str | None,
+        expires_in_seconds: int,
+    ) -> None:
+        self._format = fmt
+        self._path = path
+        self._cloud = cloud
+        self._storage_options = storage_options or {}
+        self._expires_at = expires_at
+        self._expires_in_seconds = int(expires_in_seconds)
+
+    @public
+    @property
+    def format(self) -> str:
+        """Spark read format. Currently always `"delta"`."""
+        return self._format
+
+    @public
+    @property
+    def path(self) -> str:
+        """S3A path to the Delta table root."""
+        return self._path
+
+    @public
+    @property
+    def cloud(self) -> str:
+        """Cloud the storage is on. Currently always `"aws"`."""
+        return self._cloud
+
+    @public
+    @property
+    def storage_options(self) -> dict[str, str]:
+        """Per-bucket S3A Hadoop config keys + values."""
+        return dict(self._storage_options)
+
+    @public
+    @property
+    def expires_at(self) -> str | None:
+        """ISO-8601 instant when the vended credentials expire."""
+        return self._expires_at
+
+    @public
+    @property
+    def expires_in_seconds(self) -> int:
+        """Seconds remaining at the moment the server built this response."""
+        return self._expires_in_seconds
+
+    @public
+    def apply_to(self, spark: Any) -> None:
+        """Apply the per-bucket S3A keys to spark's Hadoop config.
+
+        Per-bucket scope (`fs.s3a.bucket.<bucket>.*`) means adjacent reads
+        to other buckets in the same SparkSession are unaffected.
+        Subsequent reads of the same bucket will pick up the most-recently-applied
+        credentials — matches AWS STS rotation semantics.
+
+        Parameters:
+            spark: A `SparkSession`; the per-bucket keys are written to
+                its underlying Hadoop configuration.
+        """
+        hadoop_conf = spark.sparkContext._jsc.hadoopConfiguration()
+        for k, v in self._storage_options.items():
+            hadoop_conf.set(k, v)
+
+    @public
+    def read(self, spark: Any) -> Any:
+        """Apply credentials, then issue the Delta read.
+
+        Parameters:
+            spark: A `SparkSession`; the per-bucket S3A keys are applied
+                to its Hadoop configuration before the read.
+
+        Returns:
+            The Spark `DataFrame` produced by reading the Delta path.
+        """
+        # delta-spark 3.x rejects path reads when the SparkSession was built
+        # without the DeltaSparkSessionExtension. Detect that up front and
+        # raise an actionable error pointing at the fix, rather than let
+        # delta-spark surface its generic "configure your session" message
+        # several frames down. Skipped on Databricks, where the runtime has
+        # Delta wired in and the extension config isn't user-visible.
+        _assert_delta_extension_loaded(spark)
+        self.apply_to(spark)
+        return spark.read.format(self._format).load(self._path)
+
+
+def _assert_delta_extension_loaded(spark: Any) -> None:
+    if _running_in_databricks(spark):
+        return
+    try:
+        exts = spark.conf.get("spark.sql.extensions", "") or ""
+    except Exception:  # noqa: BLE001 — SparkSession variants vary
+        exts = ""
+    if "io.delta.sql.DeltaSparkSessionExtension" in exts:
+        return
+    from hopsworks_common.client.exceptions import FeatureStoreException
+
+    raise FeatureStoreException(
+        "Reading a Unity Catalog table requires the Delta extension on the "
+        "SparkSession. The current session was built without it, and "
+        "spark.sql.extensions can only be set when the session is created "
+        "— not afterwards. Restart your kernel and put this block FIRST, "
+        "before any other Spark or Hopsworks call:\n\n"
+        "    from pyspark.sql import SparkSession\n"
+        "    spark = (\n"
+        "        SparkSession.builder\n"
+        '            .config("spark.sql.extensions",\n'
+        '                    "io.delta.sql.DeltaSparkSessionExtension")\n'
+        '            .config("spark.sql.catalog.spark_catalog",\n'
+        '                    "org.apache.spark.sql.delta.catalog.DeltaCatalog")\n'
+        "            .enableHiveSupport()\n"
+        "            .getOrCreate()\n"
+        "    )\n\n"
+        "If you are running inside Databricks Runtime or Databricks Connect, "
+        "the SDK should have routed to spark.read.table() instead; if you "
+        "see this error there, file a bug."
+    )
+
+
+class RestConnectorHeader:
+    def __init__(self, name: str, value: str) -> None:
+        self._name = name
+        self._value = value
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "name": self._name,
+            "value": self._value,
+        }
+
+
+class RestConnectorClientConfig:
+    def __init__(
+        self, base_url: str, headers: list[RestConnectorHeader] | None = None
+    ) -> None:
+        self._base_url = base_url
+        self._headers = self._normalize_headers(headers or [])
+
+    def _normalize_headers(
+        self, headers: list[RestConnectorHeader | dict[str, str]]
+    ) -> list[RestConnectorHeader]:
+        normalized_headers: list[RestConnectorHeader] = []
+        for header in headers:
+            if isinstance(header, RestConnectorHeader):
+                normalized_headers.append(header)
+            elif isinstance(header, dict):
+                normalized_headers.append(RestConnectorHeader(**header))
+            else:
+                raise TypeError(
+                    "REST connector headers must be RestConnectorHeader or dict."
+                )
+        return normalized_headers
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    @property
+    def headers(self):
+        return self._headers
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "baseUrl": self._base_url,
+            "headers": [header.to_dict() for header in self._headers],
+        }
+
+
+class RestConnectorAuthConfig:
+    def __init__(
+        self,
+        auth_type: RestConnectorAuthType | str | None = None,
+        bearer_token: str | None = None,
+        api_key: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        access_token: str | None = None,
+        access_token_url: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        access_token_request_params: list[dict[str, Any]] | None = None,
+        default_token_timeout_minutes: int | None = None,
+    ) -> None:
+        self._auth_type = self._normalize_auth_type(auth_type)
+        self._bearer_token = bearer_token
+        self._api_key = api_key
+        self._username = username
+        self._password = password
+        self._access_token = access_token
+        self._access_token_url = access_token_url
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._access_token_request_params = access_token_request_params or []
+        self._default_token_timeout_minutes = default_token_timeout_minutes
+
+    def _normalize_auth_type(
+        self, auth_type: RestConnectorAuthType | str | None
+    ) -> RestConnectorAuthType | str | None:
+        if isinstance(auth_type, RestConnectorAuthType) or auth_type is None:
+            return auth_type
+        if isinstance(auth_type, str):
+            try:
+                return RestConnectorAuthType[auth_type.upper()]
+            except KeyError:
+                try:
+                    return RestConnectorAuthType(auth_type)
+                except ValueError:
+                    return auth_type
+        return auth_type
+
+    def _serialize_auth_type(self) -> str | None:
+        if isinstance(self._auth_type, RestConnectorAuthType):
+            return self._auth_type.name
+        if isinstance(self._auth_type, str):
+            return self._auth_type
+        return None
+
+    @property
+    def auth_type(self):
+        return self._auth_type
+
+    @property
+    def bearer_token(self):
+        return self._bearer_token
+
+    @property
+    def api_key(self):
+        return self._api_key
+
+    @property
+    def username(self):
+        return self._username
+
+    @property
+    def password(self):
+        return self._password
+
+    @property
+    def access_token(self):
+        return self._access_token
+
+    @property
+    def access_token_url(self):
+        return self._access_token_url
+
+    @property
+    def client_id(self):
+        return self._client_id
+
+    @property
+    def client_secret(self):
+        return self._client_secret
+
+    @property
+    def access_token_request_params(self):
+        return self._access_token_request_params
+
+    @property
+    def default_token_timeout_minutes(self):
+        return self._default_token_timeout_minutes
+
+    def to_dict(self) -> dict[str, Any]:
+        access_token_request_params = (
+            self._access_token_request_params
+            if self._access_token_request_params
+            else None
+        )
+        payload = {
+            "authType": self._serialize_auth_type(),
+            "bearerToken": self._bearer_token,
+            "apiKey": self._api_key,
+            "username": self._username,
+            "password": self._password,
+            "accessToken": self._access_token,
+            "accessTokenUrl": self._access_token_url,
+            "clientId": self._client_id,
+            "clientSecret": self._client_secret,
+            "accessTokenRequestParams": access_token_request_params,
+            "defaultTokenTimeoutMinutes": self._default_token_timeout_minutes,
+        }
+        return {key: value for key, value in payload.items() if value is not None}
+
+
+class RestConnectorAuthType(Enum):
+    NONE = "none"
+    BASIC = "http_basic"
+    BEARER = "bearer"
+    API_KEY = "api_key"
+    OAUTH2 = "oauth2_client_credentials"
+
+
+class RestConnector(StorageConnector):
+    type = StorageConnector.REST
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        # members specific to type of connector
+        client_config: RestConnectorClientConfig | None = None,
+        auth_config: RestConnectorAuthConfig | None = None,
+        auth_type: RestConnectorAuthType | None = RestConnectorAuthType.NONE,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._client_config = self._normalize_client_config(client_config)
+        self._auth_config = self._normalize_auth_config(auth_config, auth_type)
+        self._auth_type = (
+            self._auth_config.auth_type if self._auth_config else auth_type
+        )
+
+    def _normalize_client_config(
+        self, client_config: RestConnectorClientConfig | dict[str, Any] | None
+    ) -> RestConnectorClientConfig | None:
+        if client_config is None:
+            return None
+        if isinstance(client_config, RestConnectorClientConfig):
+            return client_config
+        if isinstance(client_config, dict):
+            return RestConnectorClientConfig(**humps.decamelize(client_config))
+        raise TypeError("REST connector client config must be dict or object.")
+
+    def _normalize_auth_config(
+        self,
+        auth_config: RestConnectorAuthConfig | dict[str, Any] | None,
+        auth_type: RestConnectorAuthType | None,
+    ) -> RestConnectorAuthConfig | None:
+        if auth_config is None:
+            if auth_type is None:
+                return None
+            return RestConnectorAuthConfig(auth_type=auth_type)
+        if isinstance(auth_config, RestConnectorAuthConfig):
+            return auth_config
+        if isinstance(auth_config, dict):
+            config = humps.decamelize(auth_config)
+            if "auth_type" not in config and auth_type is not None:
+                config["auth_type"] = auth_type
+            return RestConnectorAuthConfig(**config)
+        raise TypeError("REST connector auth config must be dict or object.")
+
+    @property
+    def client_config(self):
+        return self._client_config
+
+    @property
+    def auth_config(self):
+        return self._auth_config
+
+    @property
+    def auth_type(self):
+        if self._auth_config and self._auth_config.auth_type is not None:
+            return self._auth_config.auth_type
+        return self._auth_type
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "type": "featurestoreRESTConnectorDTO",
+                "description": self._description,
+                "authConfig": (
+                    self._auth_config.to_dict() if self._auth_config else None
+                ),
+                "clientConfig": (
+                    self._client_config.to_dict() if self._client_config else None
+                ),
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}

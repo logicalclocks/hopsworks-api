@@ -16,9 +16,11 @@
 import os
 import sys
 import types
+from datetime import date
 from unittest import mock
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
@@ -62,7 +64,7 @@ def _patch_apis(
         proj_api.get_user_info.return_value = {"username": username}
     else:
         proj_api.get_user_info.return_value = {}
-    mocker.patch("hopsworks.core.project_api.ProjectApi", return_value=proj_api)
+    mocker.patch("hopsworks_common.core.project_api.ProjectApi", return_value=proj_api)
 
     return var_api, proj_api
 
@@ -108,6 +110,23 @@ def _force_missing_deltalake(monkeypatch):
         if mod in sys.modules:
             monkeypatch.delitem(sys.modules, mod, raising=False)
     monkeypatch.setattr(builtins, "__import__", fake_import)
+
+
+def _patch_deltalake_modules(mocker, monkeypatch, table_factory):
+    table_not_found_error = type("TableNotFoundError", (Exception,), {})
+    fake_deltalake = types.ModuleType("deltalake")
+    fake_deltalake.__path__ = []
+    fake_deltalake.DeltaTable = table_factory
+    fake_deltalake.write_deltalake = mocker.Mock()
+
+    fake_exceptions = types.ModuleType("deltalake.exceptions")
+    fake_exceptions.TableNotFoundError = table_not_found_error
+    fake_deltalake.exceptions = fake_exceptions
+
+    monkeypatch.setitem(sys.modules, "deltalake", fake_deltalake)
+    monkeypatch.setitem(sys.modules, "deltalake.exceptions", fake_exceptions)
+
+    return fake_deltalake, table_not_found_error
 
 
 class TestDeltaEngine:
@@ -342,6 +361,42 @@ class TestDeltaEngine:
         # Assert
         assert q == "s.id == u.id AND s.ts == u.ts AND s.p1 == u.p1 AND s.p2 == u.p2"
 
+    def test_generate_merge_query_with_partition_values_adds_in_clause(self, mocker):
+        # Arrange - verify Option A: literal IN filters are appended so DataFusion
+        # can prune Parquet files to only the overlapping partitions.
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = ["month"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        partition_values = {"month": ["2024-01", "2024-02"]}
+
+        # Act
+        q = engine._generate_merge_query("src", "upd", partition_values)
+
+        # Assert - join predicates first, then IN filter for partition pruning
+        assert "src.id == upd.id" in q
+        assert "src.month == upd.month" in q
+        assert "src.month IN ('2024-01', '2024-02')" in q
+
+    def test_generate_merge_query_no_partition_values_unchanged(self, mocker):
+        # Arrange - when partition_values is None (e.g. no partition key or
+        # unpartitioned table), the query must match the baseline without IN clauses.
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = ["month"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        q_no_pv = engine._generate_merge_query("s", "u", partition_values=None)
+        q_baseline = engine._generate_merge_query("s", "u")
+
+        assert q_no_pv == q_baseline
+        assert "IN" not in q_no_pv
+
     def test_register_temporary_table_calls_spark_read(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=False)
@@ -484,6 +539,82 @@ class TestDeltaEngine:
             engine._write_delta_rs_dataset(dataset=mock.Mock())
         assert "hops-deltalake" in str(e.value)
 
+    def test_write_delta_rs_dataset_append_mode_skips_merge(self, mocker, monkeypatch):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = []
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        delta_table = mocker.MagicMock()
+        fake_deltalake, _ = _patch_deltalake_modules(
+            mocker, monkeypatch, mocker.MagicMock(return_value=delta_table)
+        )
+        dataset = mocker.Mock()
+        mocker.patch.object(engine, "_prepare_df_for_delta", return_value=dataset)
+        mock_commit = mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value="commit"
+        )
+
+        # Act
+        result = engine._write_delta_rs_dataset(
+            dataset=mocker.Mock(), write_options={"mode": "append"}
+        )
+
+        # Assert
+        assert result == "commit"
+        fake_deltalake.write_deltalake.assert_called_once_with(
+            "hdfs://nn:8020/p", dataset, mode="append", storage_options=None
+        )
+        delta_table.merge.assert_not_called()
+        mock_commit.assert_called_once_with(
+            None, "hdfs://nn:8020/p", storage_options={}
+        )
+
+    def test_write_delta_rs_dataset_existing_table_uses_merge_by_default(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = []
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        delta_table = mocker.MagicMock()
+        merge_builder = delta_table.merge.return_value
+        fake_deltalake, _ = _patch_deltalake_modules(
+            mocker, monkeypatch, mocker.MagicMock(return_value=delta_table)
+        )
+        dataset = mocker.Mock()
+        mocker.patch.object(engine, "_prepare_df_for_delta", return_value=dataset)
+        mock_commit = mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value="commit"
+        )
+
+        # Act
+        result = engine._write_delta_rs_dataset(
+            dataset=mocker.Mock(), write_options={"mode": "overwrite"}
+        )
+
+        # Assert
+        assert result == "commit"
+        delta_table.merge.assert_called_once_with(
+            source=dataset,
+            predicate="fg_1_source.id == fg_1_updates.id",
+            source_alias="fg_1_updates",
+            target_alias="fg_1_source",
+        )
+        merge_builder.when_matched_update_all.assert_called_once()
+        insert_builder = merge_builder.when_matched_update_all.return_value.when_not_matched_insert_all
+        insert_builder.assert_called_once()
+        insert_builder.return_value.execute.assert_called_once()
+        fake_deltalake.write_deltalake.assert_not_called()
+        mock_commit.assert_called_once_with(
+            None, "hdfs://nn:8020/p", storage_options={}
+        )
+
     def test_prepare_df_for_delta_importerror(self, monkeypatch):
         # Arrange
         # Force ImportError by ensuring pandas/pyarrow imports fail
@@ -537,6 +668,84 @@ class TestDeltaEngine:
         # Other columns should remain unchanged
         assert len(table.columns) == df.shape[1]
 
+    def test_prepare_df_for_delta_date64_cast_to_date32(self):
+        # Arrange — date64 (milliseconds since epoch) must be cast to date32
+        # (days since epoch) because the Delta kernel statistics parser rejects
+        # millisecond values when decoding date fields.
+        import pyarrow as pa
+
+        df = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "date32_col": pd.array(
+                    [date(2022, 1, 1), date(2022, 6, 15), date(2022, 12, 31)],
+                    dtype=pd.ArrowDtype(pa.date32()),
+                ),
+                "date64_col": pd.array(
+                    [date(2022, 1, 1), date(2022, 6, 15), date(2022, 12, 31)],
+                    dtype=pd.ArrowDtype(pa.date64()),
+                ),
+            }
+        )
+
+        # Act
+        table = DeltaEngine._prepare_df_for_delta(df)
+
+        # Assert — both date columns must be date32 in the output
+        assert isinstance(table, pa.Table)
+        for field in table.schema:
+            if pa.types.is_date(field.type):
+                assert field.type == pa.date32(), (
+                    f"Column '{field.name}' has type {field.type}, expected date32"
+                )
+        # Calendar values must be preserved after the cast
+        assert table.column("date64_col").to_pylist() == [
+            date(2022, 1, 1),
+            date(2022, 6, 15),
+            date(2022, 12, 31),
+        ]
+        assert len(table.columns) == df.shape[1]
+
+    def test_prepare_df_for_delta_arrow_table_casts_float16(self):
+        # PyArrow tables (e.g. produced from polars.DataFrame.to_arrow()) must be
+        # accepted directly so the float16->float32 cast still runs; Delta Lake
+        # rejects Float16 outright.
+        import pyarrow as pa
+
+        table = pa.table(
+            {
+                "id": pa.array([1, 2], type=pa.int32()),
+                "f16": pa.array([1.5, 2.5], type=pa.float16()),
+            }
+        )
+
+        result = DeltaEngine._prepare_df_for_delta(table)
+
+        assert isinstance(result, pa.Table)
+        assert result.schema.field("f16").type == pa.float32()
+        assert result.column("f16").to_pylist() == [1.5, 2.5]
+
+    def test_prepare_df_for_delta_does_not_mutate_shallow_copy_input(self):
+        # Arrange
+        # Simulate the real call path: convert_to_default_dataframe produces a
+        # shallow copy (deep=False), which is then passed to _prepare_df_for_delta.
+        # Column assignment inside the function must only update the copy's column
+        # reference and must never propagate back to the original via shared arrays.
+        df = pd.DataFrame(
+            {
+                "ts": pd.to_datetime(["2024-01-01", "2024-01-02"]).tz_localize("UTC"),
+                "value": [1.0, 2.0],
+            }
+        )
+        shallow = df.copy(deep=False)
+        original_tz = df["ts"].dt.tz
+
+        # Act
+        DeltaEngine._prepare_df_for_delta(shallow)
+
+        # Assert - the original df's tz-aware column must be untouched
+        assert df["ts"].dt.tz == original_tz
+
     def test_vacuum_executes_sql(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=False)
@@ -552,9 +761,14 @@ class TestDeltaEngine:
         spark.sql.assert_called_once()
         assert "VACUUM '/loc' RETAIN 24 HOURS" in spark.sql.call_args[0][0]
 
-    def test_get_last_commit_metadata_importerror_spark(self, monkeypatch):
-        # Arrange
+    def test_get_last_commit_metadata_importerror_spark(self, monkeypatch, mocker):
+        # Arrange — classic (non-Connect) Spark session that can't import
+        # delta-spark; the engine should raise a clear ImportError.
         _force_missing_delta_spark(monkeypatch)
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            return_value=False,
+        )
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
@@ -573,7 +787,11 @@ class TestDeltaEngine:
         assert "hops-deltalake" in str(e.value)
 
     def test_get_last_commit_metadata_spark(self, mocker):
-        # Arrange
+        # Arrange — classic Spark path uses ``DeltaTable.forPath(...).history()``.
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            return_value=False,
+        )
         mock_history_data = [
             {"version": 1, "operation": "WRITE", "timestamp": "2024-01-01T00:00:00Z"},
             {"version": 2, "operation": "MERGE", "timestamp": "2024-01-02T00:00:00Z"},
@@ -613,6 +831,61 @@ class TestDeltaEngine:
         # Assert
         assert result == "result"
         mocker_get_delta_feature_group_commit.assert_called_once()
+        mocker_get_delta_feature_group_commit.assert_called_once_with(
+            mock_history_data[1], mock_history_data[0]
+        )
+
+    def test_get_last_commit_metadata_spark_connect(self, mocker):
+        # Arrange — Connect path bypasses Hive by reading ``_delta_log/*.json``.
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            return_value=True,
+        )
+        mock_history_data = [
+            {"version": 1, "operation": "WRITE", "timestamp": "2024-01-01T00:00:00Z"},
+            {"version": 2, "operation": "MERGE", "timestamp": "2024-01-02T00:00:00Z"},
+            {
+                "version": 3,
+                "operation": "OPTIMIZE",
+                "timestamp": "2024-01-03T00:00:00Z",
+            },
+        ]
+
+        # asDict must accept ``recursive=True`` because the engine recurses to
+        # convert nested ``operationMetrics`` structs into dicts.
+        mock_rows = [
+            mocker.MagicMock(
+                asDict=lambda recursive=True, row=row: row  # noqa: ARG005
+            )
+            for row in mock_history_data
+        ]
+
+        mock_projected_df = mocker.MagicMock()
+        mock_projected_df.collect.return_value = mock_rows
+
+        mock_log_df = mocker.MagicMock()
+        mock_log_df.columns = ["commitInfo", "metaData", "add"]
+        chained = mocker.MagicMock()
+        mock_log_df.withColumn.return_value = chained
+        chained.filter.return_value = chained
+        chained.withColumn.return_value = chained
+        chained.select.return_value = mock_projected_df
+
+        mocker_get_delta_feature_group_commit = mocker.patch(
+            "hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit",
+            return_value="result",
+        )
+
+        mock_spark = mocker.MagicMock()
+        mock_spark.read.json.return_value = mock_log_df
+
+        # Act
+        result = DeltaEngine._get_last_commit_metadata(mock_spark, "s3://some/path")
+
+        # Assert: the engine read ``_delta_log/*.json`` instead of routing
+        # through ``DESCRIBE HISTORY`` (which would hit the Hive Metastore).
+        mock_spark.read.json.assert_called_once_with("s3://some/path/_delta_log/*.json")
+        assert result == "result"
         mocker_get_delta_feature_group_commit.assert_called_once_with(
             mock_history_data[1], mock_history_data[0]
         )
@@ -946,3 +1219,379 @@ class TestDeltaEngine:
         assert fg_commit.rows_updated == 0
         assert fg_commit.rows_deleted == 0
         assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
+
+    # ------------------------------------------------------------------
+    # _can_use_append
+    # ------------------------------------------------------------------
+
+    def test_can_use_append_no_partition_key_returns_false(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = []
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        fg_source_table = mock.Mock()
+
+        # Act
+        result = engine._can_use_append(fg_source_table, mock.Mock())
+
+        # Assert
+        assert result is False
+        fg_source_table.file_uris.assert_not_called()
+
+    def test_can_use_append_no_overlap_returns_true(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        dataset = pa.table(
+            {"month": ["2024-01", "2024-01", "2024-02"], "val": [1, 2, 3]}
+        )
+        fg_source_table = mock.Mock()
+        fg_source_table.file_uris.return_value = []
+
+        # Act
+        result = engine._can_use_append(fg_source_table, dataset)
+
+        # Assert
+        assert result is True
+        fg_source_table.file_uris.assert_called_once_with(
+            partition_filters=[("month", "in", ["2024-01", "2024-02"])]
+        )
+
+    def test_can_use_append_overlap_returns_false(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        dataset = pa.table({"month": ["2024-01"], "val": [1]})
+        fg_source_table = mock.Mock()
+        fg_source_table.file_uris.return_value = [
+            "hdfs://nn/p/month=2024-01/part-0.parquet"
+        ]
+
+        # Act
+        result = engine._can_use_append(fg_source_table, dataset)
+
+        # Assert
+        assert result is False
+
+    def test_can_use_append_exception_falls_back_to_false(self, mocker):
+        # Arrange - any error in the overlap check must not crash the write path
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn/p")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        dataset = pa.table({"month": ["2024-01"], "val": [1]})
+        fg_source_table = mock.Mock()
+        fg_source_table.file_uris.side_effect = RuntimeError("HDFS unavailable")
+
+        # Act
+        result = engine._can_use_append(fg_source_table, dataset)
+
+        # Assert
+        assert result is False
+
+    # ------------------------------------------------------------------
+    # _write_delta_rs_dataset routing: append vs merge
+    # ------------------------------------------------------------------
+
+    def _setup_fake_deltalake(self, mocker):
+        """Inject a fake deltalake module and return the key mocks."""
+        fake_write = mocker.Mock()
+        fake_delta_table = mocker.Mock()
+        fake_delta_table.merge.return_value.when_matched_update_all.return_value.when_not_matched_insert_all.return_value.execute = mocker.Mock()
+
+        class _FakeTableNotFoundError(Exception):
+            pass
+
+        fake_deltalake = types.SimpleNamespace(
+            DeltaTable=mocker.Mock(return_value=fake_delta_table),
+            write_deltalake=fake_write,
+        )
+        fake_exceptions = types.SimpleNamespace(
+            TableNotFoundError=_FakeTableNotFoundError,
+        )
+        mocker.patch.dict(
+            sys.modules,
+            {"deltalake": fake_deltalake, "deltalake.exceptions": fake_exceptions},
+        )
+        return fake_write, fake_delta_table
+
+    def test_write_delta_rs_uses_append_when_no_overlap(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        fg.partition_key = ["month"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        fake_write, _ = self._setup_fake_deltalake(mocker)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hdfs://nn/p"
+        )
+        mocker.patch.object(engine, "_can_use_append", return_value=True)
+        mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value=mock.Mock()
+        )
+
+        dataset = pa.table({"month": ["2024-01"], "id": [1]})
+
+        # Act
+        engine._write_delta_rs_dataset(dataset)
+
+        # Assert - plain append used, merge chain never invoked
+        fake_write.assert_called_once()
+        assert fake_write.call_args.kwargs.get("mode") == "append"
+
+    def test_write_delta_rs_uses_merge_when_overlap(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        fg.partition_key = ["month"]
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        fake_write, fake_delta_table = self._setup_fake_deltalake(mocker)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hdfs://nn/p"
+        )
+        mocker.patch.object(engine, "_can_use_append", return_value=False)
+        mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value=mock.Mock()
+        )
+
+        dataset = pa.table({"month": ["2024-01"], "id": [1]})
+
+        # Act
+        engine._write_delta_rs_dataset(dataset)
+
+        # Assert - merge executed, plain append not called
+        fake_delta_table.merge.assert_called_once()
+        fake_delta_table.merge.return_value.when_matched_update_all.return_value.when_not_matched_insert_all.return_value.execute.assert_called_once()
+        fake_write.assert_not_called()
+
+    def _setup_fake_deltalake_insert(self, mocker):
+        """Minimal fake deltalake module for operation=insert tests.
+
+        Only sets up write_deltalake and a table that exists — no merge builder chain needed.
+        """
+        fake_write = mocker.Mock()
+
+        class _FakeTableNotFoundError(Exception):
+            pass
+
+        fake_deltalake = types.SimpleNamespace(
+            DeltaTable=mocker.Mock(return_value=mocker.Mock()),
+            write_deltalake=fake_write,
+        )
+        fake_exceptions = types.SimpleNamespace(
+            TableNotFoundError=_FakeTableNotFoundError,
+        )
+        mocker.patch.dict(
+            sys.modules,
+            {"deltalake": fake_deltalake, "deltalake.exceptions": fake_exceptions},
+        )
+        return fake_write
+
+    def test_write_delta_rs_insert_operation_skips_merge(self, mocker):
+        # Arrange: existing table, operation="insert" should append directly, bypassing merge
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        fake_write = self._setup_fake_deltalake_insert(mocker)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hdfs://nn/p"
+        )
+        mocker.patch.object(
+            engine, "_get_last_commit_metadata", return_value=mock.Mock()
+        )
+
+        dataset = pa.table({"id": [1]})
+
+        # Act
+        engine._write_delta_rs_dataset(dataset, operation="insert")
+
+        # Assert - plain append used
+        fake_write.assert_called_once()
+        assert fake_write.call_args.kwargs.get("mode") == "append"
+
+    def test_write_delta_dataset_insert_operation_skips_merge(
+        self, mocker, monkeypatch
+    ):
+        # Arrange: existing Spark delta table, operation="insert" should use append not merge
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = []
+        fg.primary_key = ["id"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta_table_cls.isDeltaTable.return_value = True
+
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        mocker.patch.object(engine, "_get_last_commit_metadata", return_value="commit")
+
+        dataset = mocker.MagicMock()
+
+        # Act
+        result = engine._write_delta_dataset(
+            dataset, write_options={}, operation="insert"
+        )
+
+        # Assert - append write used, merge builder never invoked
+        assert result == "commit"
+        dataset.write.format.return_value.options.return_value.mode.assert_called_with(
+            "append"
+        )
+        fake_delta_table_cls.forPath.assert_not_called()
+
+    def test_save_delta_fg_passes_operation_spark(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        write_mock = mocker.patch.object(
+            engine, "_write_delta_dataset", return_value=mock.Mock()
+        )
+
+        # Act
+        engine.save_delta_fg(
+            dataset=mock.Mock(),
+            write_options={},
+            validation_id=None,
+            operation="insert",
+        )
+
+        # Assert - operation forwarded to _write_delta_dataset
+        write_mock.assert_called_once()
+        assert write_mock.call_args.args[2] == "insert"
+
+    def test_save_delta_fg_passes_operation_rs(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        write_mock = mocker.patch.object(
+            engine, "_write_delta_rs_dataset", return_value=mock.Mock()
+        )
+
+        # Act
+        engine.save_delta_fg(
+            dataset=mock.Mock(),
+            write_options=None,
+            validation_id=None,
+            operation="insert",
+        )
+
+        # Assert - operation forwarded to _write_delta_rs_dataset
+        write_mock.assert_called_once()
+        assert write_mock.call_args.kwargs.get("operation") == "insert"
+
+
+class TestDeltaEngineConnectMode:
+    """Tests for DeltaEngine initialization in Spark Connect mode."""
+
+    def test_warns_when_delta_extension_missing(self, mocker, caplog):
+        """In Connect mode, warn if DeltaSparkSessionExtension is not configured."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_session.conf.get.return_value = ""
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="hsfs.core.delta_engine"):
+            DeltaEngine(
+                feature_store_id=1,
+                feature_store_name="fs",
+                feature_group=_make_fg("hdfs:///path"),
+                spark_session=spark_session,
+                spark_context=None,
+            )
+
+        assert "Delta SQL extension not configured" in caplog.text
+
+    def test_no_warning_when_delta_extension_present(self, mocker, caplog):
+        """No warning when the extension is already on the session."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_session.conf.get.return_value = "io.delta.sql.DeltaSparkSessionExtension"
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="hsfs.core.delta_engine"):
+            DeltaEngine(
+                feature_store_id=1,
+                feature_store_name="fs",
+                feature_group=_make_fg("hdfs:///path"),
+                spark_session=spark_session,
+                spark_context=None,
+            )
+
+        assert "Delta SQL extension not configured" not in caplog.text
+
+    def test_classic_mode_skips_extension_check(self, mocker, caplog):
+        """In classic Spark mode, the extension check is skipped entirely."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_context = mock.MagicMock()
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="hsfs.core.delta_engine"):
+            DeltaEngine(
+                feature_store_id=1,
+                feature_store_name="fs",
+                feature_group=_make_fg("hdfs:///path"),
+                spark_session=spark_session,
+                spark_context=spark_context,
+            )
+
+        # conf.get should NOT have been called for extensions
+        spark_session.conf.get.assert_not_called()
+        assert "Delta SQL extension not configured" not in caplog.text
+
+    def test_classic_mode_sets_delta_catalog(self, mocker):
+        """In classic Spark mode, set spark.sql.catalog.spark_catalog at runtime."""
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+
+        spark_session = mock.MagicMock()
+        spark_context = mock.MagicMock()
+
+        DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=_make_fg("hdfs:///path"),
+            spark_session=spark_session,
+            spark_context=spark_context,
+        )
+
+        spark_session.conf.set.assert_called_once_with(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )

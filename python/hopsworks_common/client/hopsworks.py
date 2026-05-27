@@ -14,18 +14,32 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import contextlib
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import requests
 from hopsworks_common.client import auth, base
 
 
+if TYPE_CHECKING:
+    from urllib.parse import ParseResult
+
+
 with contextlib.suppress(ImportError):
     import jks
 
+from hopsworks_apigen import also_available_as
 
+
+@also_available_as(
+    "hopsworks.client.hopsworks.Client",
+    "hsfs.client.hopsworks.Client",
+    "hsml.client.hopsworks.Client",
+)
 class Client(base.Client):
     HOPSWORKS_HOSTNAME_VERIFICATION = "HOPSWORKS_HOSTNAME_VERIFICATION"
     DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"
@@ -159,8 +173,15 @@ class Client(base.Client):
         with pwd_path.open() as f:
             return f.read()
 
-    def replace_public_host(self, url):
-        """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST."""
+    def replace_public_host(self, url: ParseResult) -> ParseResult:
+        """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST.
+
+        Parameters:
+            url: The URL to replace the host in.
+
+        Returns:
+            The URL with the host replaced.
+        """
         return url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
 
     def _is_external(self):

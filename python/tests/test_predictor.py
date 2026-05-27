@@ -17,6 +17,7 @@
 import copy
 
 import pytest
+from hopsworks_common.constants import SCALING_CONFIG
 from hsml import (
     inference_batcher,
     inference_logger,
@@ -25,7 +26,7 @@ from hsml import (
     transformer,
     util,
 )
-from hsml.constants import MODEL, PREDICTOR, RESOURCES
+from hsml.constants import MODEL, PREDICTOR
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -90,6 +91,13 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
+        assert p.env_vars == {"FOO": "bar", "BAZ": "qux"}
+        assert p.transformer.env_vars == {"X": "y"}
 
     def test_from_response_json_list(self, mocker, backend_fixtures):
         # Arrange
@@ -134,6 +142,11 @@ class TestPredictor:
             assert p.inference_batcher.enabled == bool(
                 p_json["batching_configuration"]["batching_enabled"]
             )
+            assert p.scaling_configuration is not None
+            assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+            assert p.scaling_configuration.min_instances == 0
+            assert p.scaling_configuration.scale_metric.name == "RPS"
+            assert p.scaling_configuration.target == 100
 
     def test_from_response_json_single(self, mocker, backend_fixtures):
         # Arrange
@@ -173,6 +186,11 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
 
     # constructor
 
@@ -220,12 +238,16 @@ class TestPredictor:
             transformer={
                 "script_file": p_json["transformer"],
                 "resources": copy.deepcopy(p_json["transformer_resources"]),
+                "scaling_configuration": copy.deepcopy(
+                    p_json["transformer_scaling_config"]
+                ),
             },
             inference_logger={
                 "mode": p_json["inference_logging"],
                 "kafka_topic": copy.deepcopy(p_json["kafka_topic_dto"]),
             },
             inference_batcher=copy.deepcopy(p_json["batching_configuration"]),
+            scaling_configuration=copy.deepcopy(p_json["predictor_scaling_config"]),
         )
 
         # Assert
@@ -255,6 +277,12 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
+
         mock_validate_serving_tool.assert_called_once_with(p_json["serving_tool"])
         assert mock_validate_resources.call_count == 1
         mock_validate_script_file.assert_called_once_with(
@@ -563,7 +591,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_non_kserve_with_scale_to_zero(self, mocker):
         # Arrange
@@ -576,7 +604,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_kserve_without_scale_to_zero(self, mocker):
         # Arrange
@@ -589,7 +617,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_kserve_with_scale_to_zero(self, mocker):
         # Arrange
@@ -678,6 +706,13 @@ class TestPredictor:
         assert isinstance(
             kwargs["transformer"].resources, resources.TransformerResources
         )
+        assert kwargs["scaling_configuration"] is not None
+        assert isinstance(
+            kwargs["scaling_configuration"], predictor.PredictorScalingConfig
+        )
+        assert kwargs["scaling_configuration"].min_instances == 0
+        assert kwargs["scaling_configuration"].scale_metric.name == "RPS"
+        assert kwargs["scaling_configuration"].target == 100
 
     # deploy
 
@@ -704,6 +739,614 @@ class TestPredictor:
             description=p.description,
         )
         mock_deployment_save.assert_called_once()
+
+    # get_endpoint_url
+
+    def test_get_endpoint_url_with_istio(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_endpoint_url()
+
+        # Assert
+        assert url == "https://istio.example.com/v1/my_project/my_model"
+
+    def test_get_endpoint_url_no_istio_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=None,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_endpoint_url()
+
+        # Assert
+        assert url is None
+
+    # get_openai_url
+
+    def test_get_openai_url_vllm_with_istio(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_name="my_llm",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_LLM,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url == "https://istio.example.com/v1/my_project/my_llm/v1"
+
+    def test_get_openai_url_non_vllm_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url is None
+
+    def test_get_openai_url_non_vllm_without_model_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_server",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="script.py",
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url is None
+
+    def test_get_openai_url_vllm_no_istio_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=None,
+        )
+
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_name="my_llm",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_LLM,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_openai_url()
+
+        # Assert
+        assert url is None
+
+    # get_inference_url
+
+    def test_get_inference_url_standard_model_with_istio(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert (
+            url
+            == "https://istio.example.com/v1/my_project/my_model/v1/models/my_model:predict"
+        )
+
+    def test_get_inference_url_standard_model_fallback_hopsworks(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=None,
+        )
+        mock_hopsworks_client = mocker.MagicMock()
+        mock_hopsworks_client._base_url = "https://hopsworks.example.com"
+        mock_hopsworks_client._project_id = 123
+        mocker.patch(
+            "hopsworks_common.client.get_instance",
+            return_value=mock_hopsworks_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert (
+            url
+            == "https://hopsworks.example.com/hopsworks-api/api/project/123/inference/models/my_model:predict"
+        )
+
+    def test_get_inference_url_vllm_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_name="my_llm",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_LLM,
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert url is None
+
+    def test_get_inference_url_no_model_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mock_istio_client = mocker.MagicMock()
+        mock_istio_client._base_url = "https://istio.example.com"
+        mocker.patch(
+            "hopsworks_common.client.istio.get_instance",
+            return_value=mock_istio_client,
+        )
+
+        p = predictor.Predictor(
+            name="my_server",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="script.py",
+        )
+        p._project_name = "my_project"
+
+        # Act
+        url = p.get_inference_url()
+
+        # Assert
+        assert url is None
+
+    # env vars
+
+    def test_to_dict_env_vars_serialises_to_predictor_env_vars_list(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={"FOO": "bar", "BAZ": "qux"},
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "envVars" not in d
+        assert "predictorEnvVars" in d
+        assert sorted(d["predictorEnvVars"]) == ["BAZ=qux", "FOO=bar"]
+
+    def test_to_dict_env_vars_none_omits_key(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars=None,
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "predictorEnvVars" not in d
+        assert "envVars" not in d
+
+    def test_to_dict_env_vars_empty_omits_key(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={},
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "predictorEnvVars" not in d
+
+    def test_extract_fields_from_json_env_vars_roundtrip(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        p_json["predictor_env_vars"] = ["FOO=bar", "K=V=with=eq"]
+
+        # Act
+        kwargs = predictor.Predictor.extract_fields_from_json(p_json)
+
+        # Assert
+        assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
+        # Key consumed (popped) on the way out
+        assert "predictor_env_vars" not in p_json
+
+    def test_extract_fields_from_json_env_vars_absent(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        p_json.pop("predictor_env_vars", None)
+
+        # Act
+        kwargs = predictor.Predictor.extract_fields_from_json(p_json)
+
+        # Assert
+        assert "env_vars" not in kwargs
+
+    def test_env_vars_setter(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        assert p.env_vars is None
+
+        # Act
+        p.env_vars = {"A": "1"}
+
+        # Assert
+        assert p.env_vars == {"A": "1"}
+
+    def test_env_vars_lifecycle_add_change_remove(self, mocker):
+        # Mirrors the loadtest scenario: set on construct, override, clear with
+        # None, re-set, clear with {}. Each transition both holds in memory and
+        # round-trips through to_dict so a save() on the live backend would send
+        # the right payload.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={"FOO": "bar", "BAZ": "qux"},
+        )
+        assert p.env_vars == {"FOO": "bar", "BAZ": "qux"}
+        assert sorted(p.to_dict()["predictorEnvVars"]) == ["BAZ=qux", "FOO=bar"]
+
+        # Override
+        p.env_vars = {"NEW": "1"}
+        assert p.env_vars == {"NEW": "1"}
+        assert p.to_dict()["predictorEnvVars"] == ["NEW=1"]
+
+        # Clear with None — to_dict must omit the field so the backend stores null.
+        p.env_vars = None
+        assert p.env_vars is None
+        assert "predictorEnvVars" not in p.to_dict()
+
+        # Re-set, then clear with {} — must serialise the same as None.
+        p.env_vars = {"AGAIN": "2"}
+        assert p.to_dict()["predictorEnvVars"] == ["AGAIN=2"]
+        p.env_vars = {}
+        assert p.env_vars == {}
+        assert "predictorEnvVars" not in p.to_dict()
+
+    def test_env_vars_wire_round_trip(self, mocker, backend_fixtures):
+        # Set-on-SDK → to_dict → decamelize (mimics humps.decamelize on the wire)
+        # → extract_fields_from_json → assert env_vars survives. Catches any drift
+        # between the serialiser and parser, which is what the loadtest's
+        # `fetched_deployment.env_vars == ...` ultimately checks.
+        import humps
+
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            env_vars={"FOO": "bar", "K": "V=with=eq"},
+        )
+        # Combine the to_dict output with the rest of a real fixture so the
+        # extract path doesn't choke on missing required fields.
+        wire = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        wire["predictor_env_vars"] = humps.decamelize(p.to_dict())["predictor_env_vars"]
+
+        kwargs = predictor.Predictor.extract_fields_from_json(wire)
+
+        assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
+
+    # vLLM variant round-trip
+
+    def test_vllm_variant_vllm_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_vllm_variant"
+        ]["response"]
+
+        # Act
+        p = predictor.Predictor.from_response_json(p_json)
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.vllm_variant == "VLLM"
+        assert p.vllm_image_tag is None
+        assert p2.vllm_variant == p.vllm_variant
+        assert p2.vllm_image_tag == p.vllm_image_tag
+        assert serialized["vllmVariant"] == "VLLM"
+        assert serialized["vllmImageTag"] is None
+
+    def test_vllm_variant_omni_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_omni_variant"
+        ]["response"]
+
+        # Act
+        p = predictor.Predictor.from_response_json(p_json)
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.vllm_variant == "VLLM_OMNI"
+        assert p.vllm_image_tag == "v0.14.0"
+        assert p2.vllm_variant == p.vllm_variant
+        assert p2.vllm_image_tag == p.vllm_image_tag
+        assert serialized["vllmVariant"] == "VLLM_OMNI"
+        assert serialized["vllmImageTag"] == "v0.14.0"
+
+    def test_llm_predictor_default_variant(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act
+        p = LLMPredictor(name="my_llm")
+
+        # Assert
+        assert p.vllm_variant == PREDICTOR.VLLM_VARIANT_VLLM
+        assert p.vllm_image_tag is None
+
+    def test_llm_predictor_omni_variant(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act
+        p = LLMPredictor(
+            name="my_llm",
+            vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI,
+            vllm_image_tag="v0.14.0",
+        )
+
+        # Assert
+        assert p.vllm_variant == PREDICTOR.VLLM_VARIANT_OMNI
+        assert p.vllm_image_tag == "v0.14.0"
+
+    def test_llm_predictor_invalid_variant_raises(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act + Assert
+        with pytest.raises(ValueError) as e_info:
+            LLMPredictor(name="my_llm", vllm_variant="INVALID")
+
+        assert "is not valid" in str(e_info.value)
+
+    def test_llm_predictor_default_to_dict_wire_format(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        p = LLMPredictor(name="my_llm")
+
+        # Act
+        serialized = p.to_dict()
+
+        # Assert
+        assert serialized["vllmVariant"] == PREDICTOR.VLLM_VARIANT_VLLM
+        assert serialized["vllmImageTag"] is None
+
+    def test_non_vllm_to_dict_does_not_emit_vllm_keys(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+
+        # Act
+        serialized = p.to_dict()
+
+        # Assert
+        assert "vllmVariant" not in serialized
+        assert "vllmImageTag" not in serialized
+
+    def test_for_model_propagates_variant_and_image_tag(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        captured_kwargs = {}
+
+        def fake_get_predictor_for_model(model, **kwargs):
+            captured_kwargs.update(kwargs)
+            from hsml.llm.predictor import Predictor as LLMPredictor
+
+            return LLMPredictor(
+                name=kwargs["model_name"],
+                vllm_variant=kwargs.get("vllm_variant", PREDICTOR.VLLM_VARIANT_VLLM),
+                vllm_image_tag=kwargs.get("vllm_image_tag"),
+            )
+
+        mocker.patch(
+            "hopsworks_common.util.get_predictor_for_model",
+            side_effect=fake_get_predictor_for_model,
+        )
+
+        class MockModel:
+            name = "my_llm"
+            version = 1
+            model_path = "llm_model_path"
+
+        mock_model = MockModel()
+
+        # Act
+        p = predictor.Predictor.for_model(
+            mock_model,
+            vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI,
+            vllm_image_tag="v0.14.0",
+        )
+
+        # Assert
+        assert captured_kwargs["vllm_variant"] == PREDICTOR.VLLM_VARIANT_OMNI
+        assert captured_kwargs["vllm_image_tag"] == "v0.14.0"
+        assert p.vllm_variant == PREDICTOR.VLLM_VARIANT_OMNI
+        assert p.vllm_image_tag == "v0.14.0"
+
+    def test_update_from_response_json_preserves_vllm_fields(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_omni_variant"
+        ]["response"]
+
+        p = predictor.Predictor.from_response_json(p_json)
+
+        # Mutate in-place then refresh from the same JSON
+        p.update_from_response_json(p_json)
+
+        # Assert both fields survive the refresh
+        assert p.vllm_variant == "VLLM_OMNI"
+        assert p.vllm_image_tag == "v0.14.0"
 
     # auxiliary methods
 

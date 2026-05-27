@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_common import client
 from hopsworks_common.core.constants import (
@@ -52,6 +52,8 @@ elif HAS_AVRO:
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
@@ -106,7 +108,7 @@ def _init_kafka_resources(
         feature_group.feature_store_id, offline_write_options
     )
     # setup headers
-    headers = get_headers(feature_group, num_entries)
+    headers = get_headers(feature_group, num_entries, offline_write_options)
     # setup writers
     feature_writers, writer = get_writer_function(feature_group)
 
@@ -129,6 +131,7 @@ def get_writer_function(
 def get_headers(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     num_entries: int | None = None,
+    options: dict[str, Any] | None = None,
 ) -> dict[str, bytes]:
     # custom headers for hopsworks onlineFS
     headers = {
@@ -136,6 +139,12 @@ def get_headers(
         "featureGroupId": str(feature_group._id).encode("utf8"),
         "subjectId": str(feature_group.subject["id"]).encode("utf8"),
     }
+
+    online_ingestion_options = (
+        options.get("online_ingestion_options") if options else None
+    )
+    if online_ingestion_options and online_ingestion_options.get("upsert_if_newer"):
+        headers["upsertIfNewer"] = b"1"
 
     if feature_group.online_enabled:
         # setup online ingestion id
@@ -290,10 +299,16 @@ def build_ack_callback_and_optional_progress_bar(
     n_rows: int, is_multi_part_insert: bool, offline_write_options: dict[str, Any]
 ) -> tuple[Callable, tqdm | None]:
     if not is_multi_part_insert:
+        if n_rows is None:
+            bar_format = "{desc}: {n_fmt} Rows | Elapsed Time: {elapsed}"
+        else:
+            bar_format = (
+                "{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt} | "
+                "Elapsed Time: {elapsed} | Remaining Time: {remaining}"
+            )
         progress_bar = tqdm(
             total=n_rows,
-            bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt} | "
-            "Elapsed Time: {elapsed} | Remaining Time: {remaining}",
+            bar_format=bar_format,
             desc="Uploading Dataframe",
             mininterval=1,
         )

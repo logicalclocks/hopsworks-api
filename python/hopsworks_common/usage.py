@@ -183,7 +183,7 @@ def init_usage(hostname, backend_version):
 
 
 def _is_target_hostname(hostname):
-    target_hostname = {"c.app.hopsworks.ai"}
+    target_hostname = {"eu-west.cloud.hopsworks.ai"}
     return hostname in target_hostname
 
 

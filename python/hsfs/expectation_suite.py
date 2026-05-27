@@ -19,6 +19,8 @@ import json
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
+from hopsworks_apigen import public
+
 
 if TYPE_CHECKING:
     import great_expectations
@@ -28,6 +30,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
 from hsfs.core import expectation_suite_engine
 from hsfs.core.constants import (
+    GE_MAJOR,
     HAS_GREAT_EXPECTATIONS,
     initialise_expectation_suite_for_single_expectation_api_message,
 )
@@ -42,19 +45,28 @@ from hsfs.ge_expectation import GeExpectation
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
 
+    if GE_MAJOR == 1:
+        from great_expectations.expectations.expectation_configuration import (
+            ExpectationConfiguration as _ExpectationConfiguration,
+        )
+    else:
+        _ExpectationConfiguration = great_expectations.core.ExpectationConfiguration
 
+
+@public
 class ExpectationSuite:
     """Metadata object representing a feature validation expectation in the Feature Store."""
 
     def __init__(
         self,
-        expectation_suite_name: str,
+        expectation_suite_name: str | None = None,
         expectations: list[
             great_expectations.core.ExpectationConfiguration
             | dict[str, Any]
             | GeExpectation
-        ],
-        meta: dict[str, Any],
+        ]
+        | None = None,
+        meta: dict[str, Any] | None = None,
         id: int | None = None,
         run_validation: bool = True,
         validation_ingestion_policy: Literal["always", " strict"] = "always",
@@ -63,6 +75,16 @@ class ExpectationSuite:
         href: str | None = None,
         **kwargs,
     ) -> None:
+        # GE 1.x to_json_dict shape: name (str) + notes + suite_parameters + UUID id.
+        # When splatted via ExpectationSuite(**ge_suite.to_json_dict(), ...),
+        # remap name -> expectation_suite_name and discard incompatible keys.
+        if expectation_suite_name is None and "name" in kwargs:
+            expectation_suite_name = kwargs.pop("name")
+        kwargs.pop("notes", None)
+        kwargs.pop("suite_parameters", None)
+        if id is not None and not isinstance(id, int):
+            id = None
+
         self._id = id
         self._expectation_suite_name = expectation_suite_name
         self._ge_cloud_id = kwargs.get("ge_cloud_id")
@@ -127,6 +149,7 @@ class ExpectationSuite:
             ]
         return cls(**json_decamelized)
 
+    @public
     @classmethod
     @uses_great_expectations
     def from_ge_type(
@@ -154,6 +177,20 @@ class ExpectationSuite:
             Hopsworks Expectation Suite instance.
         """
         suite_dict = ge_expectation_suite.to_json_dict()
+        # GE 1.x: name (str) instead of expectation_suite_name; suite-level id is a UUID string,
+        # not the Hopsworks int id; notes/suite_parameters are not part of the Hopsworks model.
+        if "name" in suite_dict and "expectation_suite_name" not in suite_dict:
+            suite_dict["expectation_suite_name"] = suite_dict.pop("name")
+        suite_dict.pop("notes", None)
+        suite_dict.pop("suite_parameters", None)
+        if "id" in suite_dict and not isinstance(suite_dict["id"], int):
+            suite_dict.pop("id")
+        # Each expectation dict may carry GE 1.x shape (type, severity); normalize to legacy.
+        for exp in suite_dict.get("expectations") or []:
+            if isinstance(exp, dict):
+                if "type" in exp and "expectation_type" not in exp:
+                    exp["expectation_type"] = exp.pop("type")
+                exp.pop("severity", None)
         if id is None and "id" in suite_dict:
             id = suite_dict.pop("id")
         return cls(
@@ -179,6 +216,7 @@ class ExpectationSuite:
             "validationIngestionPolicy": self._validation_ingestion_policy.upper(),
         }
 
+    @public
     def to_json_dict(self, decamelize: bool = False) -> dict[str, Any]:
         the_dict = {
             "id": self._id,
@@ -202,9 +240,23 @@ class ExpectationSuite:
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuite:
-        """Convert to Great Expectations ExpectationSuite type."""
+        """Convert to Great Expectations ExpectationSuite type.
+
+        Returns:
+            The Great Expectations native ExpectationSuite object.
+        """
+        if GE_MAJOR == 1:
+            # GE 1.x dropped data_asset_type and ge_cloud_id; renamed expectation_suite_name to name.
+            return great_expectations.core.ExpectationSuite(
+                name=self._expectation_suite_name,
+                expectations=[
+                    expectation.to_ge_type() for expectation in self._expectations
+                ],
+                meta=self._meta,
+            )
         return great_expectations.core.ExpectationSuite(
             expectation_suite_name=self._expectation_suite_name,
             ge_cloud_id=self._ge_cloud_id,
@@ -278,15 +330,26 @@ class ExpectationSuite:
             TypeError: If the expectation type is not supported.
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
-            expectation, great_expectations.core.ExpectationConfiguration
+            expectation, _ExpectationConfiguration
         ):
-            return GeExpectation(**expectation.to_json_dict())
+            json_dict = expectation.to_json_dict()
+            # GE 1.x ships type/severity fields; map back to the legacy shape.
+            if "type" in json_dict and "expectation_type" not in json_dict:
+                json_dict["expectation_type"] = json_dict.pop("type")
+            json_dict.pop("severity", None)
+            return GeExpectation(**json_dict)
         if isinstance(expectation, GeExpectation):
             return expectation
         if isinstance(expectation, dict):
-            return GeExpectation(**expectation)
+            # Normalize GE 1.x dict shape (type, severity) to legacy.
+            normalized = dict(expectation)
+            if "type" in normalized and "expectation_type" not in normalized:
+                normalized["expectation_type"] = normalized.pop("type")
+            normalized.pop("severity", None)
+            return GeExpectation(**normalized)
         raise TypeError(f"Expectation of type {type(expectation)} is not supported.")
 
+    @public
     def get_expectation(
         self, expectation_id: int, ge_type: bool = HAS_GREAT_EXPECTATIONS
     ) -> GeExpectation | great_expectations.core.ExpectationConfiguration:
@@ -323,6 +386,7 @@ class ExpectationSuite:
             initialise_expectation_suite_for_single_expectation_api_message
         )
 
+    @public
     def add_expectation(
         self,
         expectation: GeExpectation | great_expectations.core.ExpectationConfiguration,
@@ -381,6 +445,7 @@ class ExpectationSuite:
             initialise_expectation_suite_for_single_expectation_api_message
         )
 
+    @public
     def replace_expectation(
         self,
         expectation: GeExpectation | great_expectations.core.ExpectationConfiguration,
@@ -423,6 +488,7 @@ class ExpectationSuite:
             initialise_expectation_suite_for_single_expectation_api_message
         )
 
+    @public
     def remove_expectation(self, expectation_id: int | None = None) -> None:
         """Remove an expectation from the suite locally and from the backend if attached to a Feature Group.
 
@@ -474,6 +540,7 @@ class ExpectationSuite:
         es += ")"
         return es
 
+    @public
     @property
     def id(self) -> int | None:
         """Id of the expectation suite, set by backend."""
@@ -483,6 +550,7 @@ class ExpectationSuite:
     def id(self, id: int) -> None:
         self._id = id
 
+    @public
     @property
     def expectation_suite_name(self) -> str:
         """Name of the expectation suite."""
@@ -496,6 +564,7 @@ class ExpectationSuite:
                 **humps.decamelize(self.to_dict())
             )
 
+    @public
     @property
     def data_asset_type(self) -> str | None:
         """Data asset type of the expectation suite, not used by backend."""
@@ -505,6 +574,7 @@ class ExpectationSuite:
     def data_asset_type(self, data_asset_type: str | None) -> None:
         self._data_asset_type = data_asset_type
 
+    @public
     @property
     def ge_cloud_id(self) -> int | None:
         """ge_cloud_id of the expectation suite, not used by backend."""
@@ -514,6 +584,7 @@ class ExpectationSuite:
     def ge_coud_id(self, ge_cloud_id: int | None) -> None:
         self._ge_cloud_id = ge_cloud_id
 
+    @public
     @property
     def run_validation(self) -> bool:
         """Boolean to determine whether or not the expectation suite shoudl run on ingestion."""
@@ -527,6 +598,7 @@ class ExpectationSuite:
                 **humps.decamelize(self.to_dict())
             )
 
+    @public
     @property
     def validation_ingestion_policy(self) -> Literal["always", "strict"]:
         """Whether to ingest a df based on the validation result.
@@ -546,6 +618,7 @@ class ExpectationSuite:
                 **humps.decamelize(self.to_dict())
             )
 
+    @public
     @property
     def expectations(self) -> list[GeExpectation]:
         """List of expectations to run at validation."""
@@ -570,6 +643,7 @@ class ExpectationSuite:
                 f"Type {type(expectations)} not supported. Expectations must be None or a list."
             )
 
+    @public
     @property
     def meta(self) -> dict[str, Any]:
         """Meta field of the expectation suite to store additional information."""

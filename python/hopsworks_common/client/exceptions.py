@@ -19,6 +19,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import also_available_as, public
 from requests.exceptions import SSLError
 
 
@@ -26,6 +27,8 @@ if TYPE_CHECKING:
     import requests
 
 
+@public("hopsworks.client.exceptions.RestAPIError")
+@also_available_as("hsml.client.exceptions.RestAPIError")
 class RestAPIError(Exception):
     """REST Exception encapsulating the response object and url."""
 
@@ -74,20 +77,40 @@ class RestAPIError(Exception):
         self.response = response
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.UnknownSecretStorageError",
+    "hsml.client.exceptions.UnknownSecretStorageError",
+)
 class UnknownSecretStorageError(Exception):
     """This exception will be raised if an unused secrets storage is passed as a parameter."""
 
 
+@public("hopsworks.client.exceptions.FeatureStoreException")
+@also_available_as("hsml.client.exceptions.FeatureStoreException")
 class FeatureStoreException(Exception):
     """Generic feature store exception."""
 
-    DUPLICATE_RECORD_ERROR_MESSAGE = (
-        "Duplicate records detected: The dataset contains multiple rows that share identical values "
-        "across all available columns from primary_key, and if defined: event_time and partition_key. "
-        "Please remove or deduplicate these records before inserting."
-    )
+
+class TransformationFunctionException(Exception):
+    """Exception raised when a transformation function fails."""
+
+    def __init__(
+        self,
+        message: str,
+        missing_features: set[str],
+        transformation_function_name: str,
+        transformation_type: str,
+    ) -> None:
+        self.missing_features = missing_features
+        self.transformation_function_name = transformation_function_name
+        self.transformation_type = transformation_type.replace("_", "-")
+        super().__init__(message)
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.VectorDatabaseException",
+    "hsml.client.exceptions.VectorDatabaseException",
+)
 class VectorDatabaseException(Exception):
     # reason
     REQUESTED_K_TOO_LARGE = "REQUESTED_K_TOO_LARGE"
@@ -112,6 +135,8 @@ class VectorDatabaseException(Exception):
         return self._info
 
 
+@public("hopsworks.client.exceptions.DataValidationException")
+@also_available_as("hsml.client.exceptions.DataValidationException")
 class DataValidationException(FeatureStoreException):
     """Raised when data validation fails only when using "STRICT" validation ingestion policy."""
 
@@ -119,6 +144,10 @@ class DataValidationException(FeatureStoreException):
         super().__init__(message)
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.ExternalClientError",
+    "hsml.client.exceptions.ExternalClientError",
+)
 class ExternalClientError(TypeError):
     """Raised when external client cannot be initialized due to missing arguments."""
 
@@ -130,6 +159,7 @@ class ExternalClientError(TypeError):
         super().__init__(message)
 
 
+@also_available_as("hsml.client.exceptions.InternalClientError")
 class InternalClientError(TypeError):
     """Raised when hopsworks internal client is missing some necessary configuration."""
 
@@ -137,49 +167,121 @@ class InternalClientError(TypeError):
         super().__init__(message)
 
 
+@public("hopsworks.client.exceptions.HopsworksSSLClientError")
+@also_available_as("hsml.client.exceptions.HopsworksSSLClientError")
 class HopsworksSSLClientError(SSLError):
-    """Raised when the client connection fails with SSL related errors."""
+    """Raised when the client connection fails with SSL related errors.
+
+    `SSLError` inherits from [`requests.exceptions.ConnectionError`][requests.exceptions.ConnectionError].
+    """
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.GitException", "hsml.client.exceptions.GitException"
+)
 class GitException(Exception):
     """Generic git exception."""
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.JobException", "hsml.client.exceptions.JobException"
+)
 class JobException(Exception):
     """Generic job exception."""
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.EnvironmentException",
+    "hsml.client.exceptions.EnvironmentException",
+)
 class EnvironmentException(Exception):
     """Generic python environment exception."""
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.KafkaException",
+    "hsml.client.exceptions.KafkaException",
+)
 class KafkaException(Exception):
     """Generic kafka exception."""
 
 
+@public("hopsworks.client.exceptions.DatasetException")
+@also_available_as("hsml.client.exceptions.DatasetException")
 class DatasetException(Exception):
     """Generic dataset exception."""
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.ProjectException",
+    "hsml.client.exceptions.ProjectException",
+)
 class ProjectException(Exception):
     """Generic project exception."""
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.OpenSearchException",
+    "hsml.client.exceptions.OpenSearchException",
+)
 class OpenSearchException(Exception):
     """Generic opensearch exception."""
 
 
+@also_available_as(
+    "hopsworks.client.exceptions.JobExecutionException",
+    "hsml.client.exceptions.JobExecutionException",
+)
 class JobExecutionException(Exception):
     """Generic job executions exception."""
 
 
+@also_available_as("hsml.client.exceptions.ModelRegistryException")
 class ModelRegistryException(Exception):
     """Generic model registry exception."""
 
 
+@public("hopsworks.client.exceptions.HuggingFaceImportException")
+@also_available_as("hsml.client.exceptions.HuggingFaceImportException")
+class HuggingFaceImportException(ModelRegistryException):
+    """Raised when an asynchronous HuggingFace model import does not complete successfully.
+
+    Carries the stable error code emitted by the backend so callers can branch on it.
+    The backend codes are:
+
+    - ``auth_required`` — the supplied HuggingFace access token was rejected (invalid,
+      expired, or missing the gated-repo grant). Retry with a different token.
+    - ``not_found_or_auth_required`` — no token was supplied and HuggingFace returned
+      401 for the repo. Either the model id is wrong or the repo is private/gated;
+      HuggingFace deliberately hides which.
+    - ``model_not_found`` — HuggingFace returned 404 for the repo.
+    - ``no_disk_space`` — HopsFS storage quota was exhausted while downloading.
+    - ``download_failed: <file>`` — a specific file failed to download (network etc.).
+    - ``invalid_filename: <name>`` — a file in the repo had a name disallowed by the
+      path-safety check (``..`` segments, absolute paths, …).
+    - ``registration_failed: ...`` — files downloaded but the final registration step
+      failed.
+    - ``fetch_failed`` — generic upstream / metadata error talking to HuggingFace.
+    """
+
+    # Stable error keys returned by the backend. Match these against
+    # ``HuggingFaceImportException.error_code`` rather than substring-checking the message.
+    AUTH_REQUIRED = "auth_required"
+    NOT_FOUND_OR_AUTH_REQUIRED = "not_found_or_auth_required"
+    MODEL_NOT_FOUND = "model_not_found"
+    NO_DISK_SPACE = "no_disk_space"
+    FETCH_FAILED = "fetch_failed"
+
+    def __init__(self, error_code: str, message: str | None = None):
+        self.error_code = error_code
+        self.message = message or error_code
+        super().__init__(self.message)
+
+
+@also_available_as("hsml.client.exceptions.ModelServingException")
 class ModelServingException(Exception):
     """Generic model serving exception."""
 
@@ -188,3 +290,34 @@ class ModelServingException(Exception):
     ERROR_CODE_DUPLICATED_ENTRY = 240011
 
     ERROR_CODE_DEPLOYMENT_NOT_RUNNING = 250001
+
+
+class DataSourceException(Exception):
+    """Generic data source exception."""
+
+
+@public("hopsworks.client.exceptions.PlatformIntelligenceException")
+@also_available_as("hsml.client.exceptions.PlatformIntelligenceException")
+class PlatformIntelligenceException(Exception):
+    """Raised when a platform-intelligence call cannot be served.
+
+    Either the cluster's LLM is not configured (admin has not set
+    `PLATFORM_INTELLIGENCE_LLM_API_KEY`) or the LLM call itself failed.
+    Inspect the ``reason`` attribute, which is set to one of the constants
+    below, to disambiguate.
+
+    Attributes:
+        NOT_CONFIGURED: Reason value when the cluster has no LLM API key configured.
+        INFERENCE_FAILED: Reason value when the LLM call itself failed.
+    """
+
+    NOT_CONFIGURED = "not_configured"
+    INFERENCE_FAILED = "inference_failed"
+
+    def __init__(self, reason: str, message: str) -> None:
+        self.reason = reason
+        super().__init__(message)
+
+
+class TrinoException(Exception):
+    """Generic Trino exception."""

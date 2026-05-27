@@ -19,9 +19,10 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import alert, client, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
@@ -29,6 +30,11 @@ from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
 
 
+if TYPE_CHECKING:
+    from hopsworks_common.execution import Execution
+
+
+@public("hopsworks.job.Job", "hsfs.core.job.Job")
 class Job:
     NOT_FOUND_ERROR_CODE = 130009
 
@@ -88,21 +94,25 @@ class Job:
         json_decamelized["config"] = config
         return cls(**json_decamelized)
 
+    @public
     @property
     def id(self):
         """Id of the job."""
         return self._id
 
+    @public
     @property
     def name(self):
         """Name of the job."""
         return self._name
 
+    @public
     @property
     def creation_time(self):
         """Date of creation for the job."""
         return self._creation_time
 
+    @public
     @property
     def config(self):
         """Configuration for the job."""
@@ -110,46 +120,61 @@ class Job:
 
     @config.setter
     def config(self, config: dict):
-        """Update configuration for the job."""
         self._config = config
 
+    @public
     @property
     def job_type(self):
         """Type of the job."""
         return self._job_type
 
+    @public
     @property
     def creator(self):
         """Creator of the job."""
         return self._creator
 
+    @public
     @property
     def job_schedule(self):
         """Return the Job schedule."""
         return self._job_schedule
 
+    @public
     @property
     def executions(self):
         """List of executions for the job."""
         return self._executions
 
+    @public
     @property
     def href(self):
         """The URL of the job in Hopsworks UI, use `get_url` instead."""
         return self._href
 
+    @public
     @property
     def config(self):
         """Configuration for the job."""
         return self._config
 
+    @public
     @usage.method_logger
-    def run(self, args: str = None, await_termination: bool = True):
+    def run(
+        self,
+        args: str | None = None,
+        await_termination: bool = True,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        logical_date: datetime | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> Execution:
         """Run the job.
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
 
-        Example:
+        Example (batch job):
             ```python
             # connect to the Feature Store
             fs = ...
@@ -170,24 +195,86 @@ class Job:
             out_log_path, err_log_path = execution.download_logs()
             ```
 
+        Example (Python App / Streamlit):
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            job_api = project.get_job_api()
+
+            # Get default Python App configuration
+            config = job_api.get_configuration("PYTHON_APP")
+            config["appPath"] = "Resources/my_streamlit_app.py"
+
+            # Create the job
+            job = job_api.create_job("my_app", config)
+
+            # Run - waits until the app is ready, then prints the App UI URL
+            execution = job.run()
+
+            # Access the Streamlit UI URL programmatically
+            print(execution.app_url)
+
+            # Stop the app
+            execution.stop()
+
+            # Delete the job
+            job.delete()
+            ```
+
         Parameters:
             args: Optional runtime arguments for the job.
             await_termination: Identifies if the client should wait for the job to complete.
+                Ignored for Python App jobs which wait for RUNNING state instead.
+            start_time:
+                Optional. If set, injects `HOPS_START_TIME` (and `HOPS_END_TIME` if `end_time` is
+                also set) as env vars on this one-shot execution. Useful for manual backfills
+                without creating a schedule. Overrides any scheduler-computed value for this run.
+            end_time:
+                Optional. Paired with `start_time`; sets `HOPS_END_TIME` and also serves as the
+                run's `data_interval_end` for reconciliation purposes.
+            logical_date:
+                Optional. If set, overrides the run's logical date (data interval start). Usually
+                inferred from `start_time` / the schedule.
+            env_vars:
+                Optional dict of arbitrary env vars to inject into this execution. Values take
+                precedence over anything with the same name from the job config or the scheduler.
 
         Returns:
-            `Execution`: The execution object for the submitted run.
+            The execution object for the submitted run.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If `await_termination` is `True` and the job finished with a failure status.
         """
         if self._is_materialization_running(args):
             return None
         print(f"Launching job: {self.name}")
-        execution = self._execution_api._start(self, args=args)
-        print(
-            f"Job started successfully, you can follow the progress at \n{execution.get_url()}"
+        execution = self._execution_api._start(
+            self,
+            args=args,
+            start_time=start_time,
+            end_time=end_time,
+            logical_date=logical_date,
+            env_vars=env_vars,
         )
-        if await_termination:
-            return self._execution_engine.wait_until_finished(self, execution)
+        if self._job_type == "PYTHON_APP":
+            print("Python App started, waiting for it to become ready...")
+            execution = self._execution_engine.wait_for_running(self, execution)
+            if execution.app_url:
+                print(f"App is running at:\n{execution.app_url}")
+            else:
+                print(
+                    f"App started, you can follow the progress at \n{execution.get_url()}"
+                )
+        else:
+            print(
+                f"Job started successfully, you can follow the progress at \n{execution.get_url()}"
+            )
+            if await_termination:
+                return self._execution_engine.wait_until_finished(self, execution)
         return execution
 
+    @public
     def get_state(
         self,
     ) -> Literal[
@@ -221,6 +308,7 @@ class Job:
 
         return last_execution[0].state
 
+    @public
     def get_final_state(
         self,
     ) -> Literal[
@@ -244,17 +332,19 @@ class Job:
 
         return last_execution[0].final_status
 
-    def get_executions(self):
+    @public
+    def get_executions(self) -> list[Execution]:
         """Retrieves all executions for the job ordered by submission time.
 
         Returns:
-            `List[Execution]`: List of Execution objects.
+            List of Execution objects.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._execution_api._get_all(self)
 
+    @public
     @usage.method_logger
     def save(self) -> Job:
         """Save the job.
@@ -271,6 +361,7 @@ class Job:
         """
         return self._job_api._update_job(self.name, self.config)
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the job.
@@ -320,59 +411,100 @@ class Job:
                 job=self, execution=execution, timeout=timeout
             )
 
+    @public
     def schedule(
         self,
         cron_expression: str,
         start_time: datetime = None,
         end_time: datetime = None,
+        *,
+        catchup: bool = False,
+        max_active_runs: int = 1,
+        start_time_offset_seconds: int | None = None,
+        end_time_offset_seconds: int | None = None,
+        skip_to_date: datetime = None,
+        max_catchup_runs: int = None,
     ) -> JobSchedule:
         """Schedule the execution of the job.
 
         If a schedule for this job already exists, the method updates it.
 
         ```python
-        # Schedule the job
+        # Defaults (None, None): HOPS_START_TIME = last execution time (= previous cron fire),
+        # HOPS_END_TIME = current cron fire. Works on any cron — no per-schedule tuning needed.
         job.schedule(
-            cron_expression="0 */5 * ? * * *",
-            start_time=datetime.datetime.now(tz=timezone.utc)
+            cron_expression="0 0 * ? * * *",
+            start_time=datetime.now(tz=timezone.utc),
         )
 
-        # Retrieve the next execution time
-        print(job.job_schedule.next_execution_date_time)
+        # Fixed 2-hour window ending at the cron fire (e.g. 08:00 → 10:00 at 10:00):
+        job.schedule(
+            cron_expression="0 0 * ? * * *",
+            start_time_offset_seconds=-2 * 3600,   # HOPS_START_TIME = fire - 2h
+            end_time_offset_seconds=0,             # HOPS_END_TIME   = fire
+            catchup=True,              # replay all missed intervals on recovery
+            max_active_runs=2,         # allow at most 2 concurrent runs
+        )
         ```
 
         Parameters:
             cron_expression: The quartz cron expression.
             start_time:
-                The schedule start time in UTC.
-                If `None`, the current time is used.
-                The `start_time` can be a value in the past.
+                The schedule start time in UTC. If `None`, the current time is used.
+                Can be in the past.
             end_time:
-                The schedule end time in UTC.
-                If `None`, the schedule will continue running indefinitely.
-                The `end_time` can be a value in the past.
+                The schedule end time in UTC. If `None`, runs indefinitely. Can be in the past.
+            catchup:
+                If True and the scheduler missed fires (outage, etc.), create one execution per
+                missed interval on recovery. If False (default), only create the most recent.
+            max_active_runs:
+                Upper bound on concurrent executions for this job. Default 1.
+            start_time_offset_seconds:
+                Controls `HOPS_START_TIME`. Three modes:
+
+                - `None` (default) — use the previous cron fire (last execution time). Adapts
+                  to any cron naturally.
+                - `int` — `HOPS_START_TIME = cron_fire + seconds`. Negative values look
+                  backwards from the fire; positive look forward.
+            end_time_offset_seconds:
+                Controls `HOPS_END_TIME`. Three modes:
+
+                - `None` (default) — use the cron fire time (`HOPS_END_TIME = cron_fire`).
+                - `int` — `HOPS_END_TIME = cron_fire + seconds`.
+            skip_to_date:
+                If set, reconciliation skips every missed interval strictly before this date.
+            max_catchup_runs:
+                Upper bound on missed intervals created during reconciliation (keeps most recent).
 
         Returns:
-            The schedule of the job
+            The schedule of the job.
         """
         job_schedule = JobSchedule(
             id=self._job_schedule.id if self._job_schedule else None,
             start_date_time=start_time if start_time else datetime.now(tz=timezone.utc),
             cron_expression=cron_expression,
-            end_time=end_time,
+            end_date_time=end_time,
             enabled=True,
+            catchup=catchup,
+            max_active_runs=max_active_runs,
+            start_time_offset_seconds=start_time_offset_seconds,
+            end_time_offset_seconds=end_time_offset_seconds,
+            skip_to_date=skip_to_date,
+            max_catchup_runs=max_catchup_runs,
         )
         self._job_schedule = self._job_api._schedule_job(
             self._name, job_schedule.to_dict()
         )
         return self._job_schedule
 
+    @public
     @usage.method_logger
     def unschedule(self):
         """Unschedule the exceution of a Job."""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
 
+    @public
     @usage.method_logger
     def resume_schedule(self):
         """Resumes the schedule of a Job execution."""
@@ -383,11 +515,12 @@ class Job:
             id=self._job_schedule.id,
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
-            end_time=self._job_schedule.end_date_time,
+            end_date_time=self._job_schedule.end_date_time,
             enabled=False,
         )
         return self._update_schedule(job_schedule)
 
+    @public
     @usage.method_logger
     def pause_schedule(self):
         """Pauses the schedule of a Job execution."""
@@ -398,11 +531,12 @@ class Job:
             id=self._job_schedule.id,
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
-            end_time=self._job_schedule.end_date_time,
+            end_date_time=self._job_schedule.end_date_time,
             enabled=True,
         )
         return self._update_schedule(job_schedule)
 
+    @public
     @usage.method_logger
     def get_alerts(self) -> list[alert.JobAlert]:
         """Get all alerts for the job.
@@ -415,6 +549,7 @@ class Job:
         """
         return self._alerts_api.get_job_alerts(self._name)
 
+    @public
     @usage.method_logger
     def get_alert(self, alert_id: int) -> alert.JobAlert:
         """Get an alert for the job by ID.
@@ -430,6 +565,7 @@ class Job:
         """
         return self._alerts_api.get_job_alert(self._name, alert_id)
 
+    @public
     @usage.method_logger
     def create_alert(
         self,
@@ -477,6 +613,7 @@ class Job:
     def __repr__(self) -> str:
         return f"Job({self._name!r}, {self._job_type!r})"
 
+    @public
     def get_url(self):
         """Get url to the job in Hopsworks."""
         _client = client.get_instance()

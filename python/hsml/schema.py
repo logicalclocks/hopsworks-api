@@ -19,6 +19,7 @@ import json
 from typing import TYPE_CHECKING, TypeVar
 
 import numpy
+from hopsworks_apigen import public
 from hsml.utils.schema.columnar_schema import ColumnarSchema
 from hsml.utils.schema.tensor_schema import TensorSchema
 
@@ -27,14 +28,12 @@ if TYPE_CHECKING:
     import pandas
 
 
+@public
 class Schema:
     """Create a schema for a model input or output.
 
     Parameters:
         object: The object to construct the schema from.
-
-    Returns:
-        `Schema`. The schema object.
     """
 
     def __init__(
@@ -74,6 +73,7 @@ class Schema:
             self, default=lambda o: getattr(o, "__dict__", o), sort_keys=True, indent=2
         )
 
+    @public
     def to_dict(self):
         """Get dict representation of the Schema."""
         return json.loads(self.json())

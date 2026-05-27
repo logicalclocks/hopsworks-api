@@ -16,23 +16,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
+from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
-from hsml.client.exceptions import ModelServingException
 from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.predictor_state import PredictorState
     from hsml.resources import Resources
+    from hsml.scaling_config import PredictorScalingConfig
     from hsml.transformer import Transformer
 
 
+@public
 class Deployment:
     NOT_FOUND_ERROR_CODE = 240000
     """Metadata object representing a deployment in Model Serving."""
@@ -70,6 +75,7 @@ class Deployment:
         self._grpc_channel = None
         self._model_registry_id = None
 
+    @public
     @usage.method_logger
     def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
@@ -80,10 +86,11 @@ class Deployment:
                           the update in the background.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.save(self, await_update)
 
+    @public
     @usage.method_logger
     def start(self, await_running: int | None = 600):
         """Start the deployment.
@@ -94,10 +101,11 @@ class Deployment:
                            it deploys in the background.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.start(self, await_status=await_running)
 
+    @public
     @usage.method_logger
     def stop(self, await_stopped: int | None = 600):
         """Stop the deployment.
@@ -108,12 +116,35 @@ class Deployment:
                            it stopping in the background.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.stop(self, await_status=await_stopped)
 
+    @public
     @usage.method_logger
-    def delete(self, force=False):
+    def restart(
+        self,
+        await_stopped: int | None = 600,
+        await_running: int | None = 600,
+    ) -> None:
+        """Restart the deployment so it picks up the latest code and environment state.
+
+        If the deployment is already stopped, it is started in place.
+
+        Parameters:
+            await_stopped: Awaiting time (seconds) for the deployment to stop.
+            await_running: Awaiting time (seconds) for the deployment to start again.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        if not self.is_stopped():
+            self.stop(await_stopped=await_stopped)
+        self.start(await_running=await_running)
+
+    @public
+    @usage.method_logger
+    def delete(self, force: bool = False):
         """Delete the deployment.
 
         Parameters:
@@ -122,50 +153,53 @@ class Deployment:
                 If the deployment is running, it will be stopped and deleted automatically.
 
         Warning:
-                    A call to this method does not ask for a second confirmation.
+            A call to this method does not ask for a second confirmation.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine.delete(self, force)
 
+    @public
     def get_state(self) -> PredictorState:
         """Get the current state of the deployment.
 
         Returns:
-            `PredictorState`. The state of the deployment.
+            The state of the deployment.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return self._serving_engine.get_state(self)
 
+    @public
     def is_created(self) -> bool:
         """Check whether the deployment is created.
 
         Returns:
-            `bool`. Whether the deployment is created or not.
+            Whether the deployment is created or not.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return (
             self._serving_engine.get_state(self).status
             != PREDICTOR_STATE.STATUS_CREATING
         )
 
-    def is_running(self, or_idle=True, or_updating=True) -> bool:
+    @public
+    def is_running(self, or_idle: bool = True, or_updating: bool = True) -> bool:
         """Check whether the deployment is ready to handle inference requests.
 
         Parameters:
-            or_idle: Whether the idle state is considered as running (default is True)
-            or_updating: Whether the updating state is considered as running (default is True)
+            or_idle: Whether the idle state is considered as running (default is True).
+            or_updating: Whether the updating state is considered as running (default is True).
 
         Returns:
-            `bool`. Whether the deployment is ready or not.
+            Whether the deployment is ready or not.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         status = self._serving_engine.get_state(self).status
         return (
@@ -174,17 +208,18 @@ class Deployment:
             or (or_updating and status == PREDICTOR_STATE.STATUS_UPDATING)
         )
 
-    def is_stopped(self, or_created=True) -> bool:
+    @public
+    def is_stopped(self, or_created: bool = True) -> bool:
         """Check whether the deployment is stopped.
 
         Parameters:
-            or_created: Whether the creating and created state is considered as stopped (default is True)
+            or_created: Whether the creating and created state is considered as stopped (default is True).
 
         Returns:
-            `bool`. Whether the deployment is stopped or not.
+            Whether the deployment is stopped or not.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         status = self._serving_engine.get_state(self).status
         return status == PREDICTOR_STATE.STATUS_STOPPED or (
@@ -195,17 +230,28 @@ class Deployment:
             )
         )
 
+    @public
     def predict(
         self,
         data: dict | InferInput = None,
         inputs: list | dict = None,
-    ):
+    ) -> dict:
         """Send inference requests to the deployment.
 
         One of data or inputs parameters must be set.
         If both are set, inputs will be ignored.
 
-        Example:
+        Parameters:
+            data: Payload dictionary for the inference request including the model input(s).
+            inputs: Model inputs used in the inference requests.
+
+        Returns:
+            Inference response.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Examples:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -226,46 +272,45 @@ class Deployment:
             data = { "instances": [ my_model.input_example ], "key2": "value2" }
             predictions = my_deployment.predict(data)
             ```
-
-        Parameters:
-            data: Payload dictionary for the inference request including the model input(s)
-            inputs: Model inputs used in the inference requests
-
-        Returns:
-            `dict`. Inference response.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._serving_engine.predict(self, data, inputs)
 
+    @public
     def get_model(self):
         """Retrieve the metadata object for the model being used by this deployment."""
         return self._model_api.get(
             self.model_name, self.model_version, self.model_registry_id
         )
 
+    @public
     @usage.method_logger
-    def download_artifact_files(self, local_path=None):
+    def download_artifact_files(self, local_path: str | None = None):
         """Download the artifact files served by the deployment.
 
         Parameters:
-            local_path: path where to download the artifact files in the local filesystem
+            local_path: Path where to download the artifact files in the local filesystem.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
-    def get_logs(self, component="predictor", tail=10):
+    @public
+    def get_logs(self, component: str = "predictor", tail: int = 10):
         """Prints the deployment logs of the predictor or transformer.
 
+        .. note::
+            Legacy: this method **prints to stdout and returns ``None``**.
+            New code (and any agent / scripted use) should call
+            :py:meth:`read_logs` for a string return value or
+            :py:meth:`tail_logs` for incremental streaming.
+
         Parameters:
-            component: Deployment component to get the logs from (e.g., predictor or transformer)
+            component: Deployment component to get the logs from (e.g., predictor or transformer).
             tail: Number of most recent lines to retrieve from the logs.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         # validate component
         components = list(util.get_members(DEPLOYABLE_COMPONENT))
@@ -281,6 +326,112 @@ class Deployment:
             for log in logs:
                 print(log, end="\n\n")
 
+    @public
+    def read_logs(
+        self,
+        component: str = "predictor",
+        tail: int = 100,
+        source: str = "opensearch",
+        since: str | None = None,
+        until: str | None = None,
+        pod: str | None = None,
+    ) -> str:
+        r"""Return deployment logs as a single plain-text string.
+
+        Programmatic counterpart to :py:meth:`get_logs`. Suitable for
+        agents and scripts: never prints, never short-circuits on
+        deployment state. The default ``source="opensearch"`` reads the
+        project's serving index and works for stopped or restarted
+        deployments — :py:meth:`get_logs` only reads live pod stdout and
+        returns ``None`` when the deployment isn't running.
+
+        Parameters:
+            component: ``predictor`` or ``transformer``.
+            tail: Most-recent lines to retrieve. Capped server-side.
+            source: ``opensearch`` (historical, default) or ``kubernetes``
+                (live pod-tailing; only works while running).
+            since: ISO-8601 lower bound on log timestamp. Ignored on the
+                Kubernetes path.
+            until: ISO-8601 upper bound on log timestamp. Ignored on the
+                Kubernetes path.
+            pod: Restrict to one instance / container name.
+
+        Returns:
+            The joined logs as plain text. Empty string when there are no
+            matching lines; ``==> <instance> <==\\n`` block headers when
+            multiple instances are present.
+        """
+        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        if component not in components:
+            raise ValueError(
+                "Component '{}' is not valid. Possible values are '{}'".format(
+                    component, ", ".join(components)
+                )
+            )
+        return self._serving_engine.read_logs(
+            self,
+            component=component,
+            tail=tail,
+            source=source,
+            since=since,
+            until=until,
+            pod=pod,
+        )
+
+    @public
+    def tail_logs(
+        self,
+        component: str = "predictor",
+        interval: float = 2.0,
+        source: str = "opensearch",
+        since: str | None = "now",
+        timeout: float | None = None,
+        stop_on_status: str | None = None,
+    ) -> Iterator[str]:
+        """Yield only newly observed log chunks as plain text.
+
+        Client-side polling, not server-streaming: each tick calls
+        :py:meth:`read_logs` with a moving cursor and yields the portion
+        not already seen. Deduplication uses the OpenSearch ``timestamp``
+        + ``doc_id`` pair; a content-hash fallback covers the Kubernetes
+        path.
+
+        Example::
+
+            for chunk in dep.tail_logs(timeout=120):
+                print(chunk, end="")
+
+        Parameters:
+            component: ``predictor`` or ``transformer``.
+            interval: Seconds between polls.
+            source: ``opensearch`` (default) or ``kubernetes``.
+            since: ``"now"`` to start from the current instant (default),
+                or an ISO-8601 timestamp to replay from a specific point.
+            timeout: Stop after this many seconds. ``None`` runs forever.
+            stop_on_status: Stop when ``deployment.get_state().status``
+                matches this string (e.g. ``"Stopped"``).
+
+        Yields:
+            Plain-text log chunks containing only newly observed content.
+        """
+        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        if component not in components:
+            raise ValueError(
+                "Component '{}' is not valid. Possible values are '{}'".format(
+                    component, ", ".join(components)
+                )
+            )
+        yield from self._serving_engine.tail_logs(
+            self,
+            component=component,
+            interval=interval,
+            source=source,
+            since=since,
+            timeout=timeout,
+            stop_on_status=stop_on_status,
+        )
+
+    @public
     def get_url(self):
         """Get url to the deployment in Hopsworks."""
         path = (
@@ -291,6 +442,73 @@ class Deployment:
         )
         return util.get_hostname_replaced_url(path)
 
+    @public
+    def get_endpoint_url(self) -> str | None:
+        """Get the base endpoint URL for this deployment.
+
+        Returns the base URL that can be used with external HTTP clients.
+        This is the path-based routing base endpoint without any protocol-specific
+        suffixes like `:predict` or `/v1`.
+
+        If Istio client is not available, returns `None`.
+
+        Returns:
+            Base endpoint URL, or `None` if unavailable.
+
+        Examples:
+            ```python
+            deployment = ms.get_deployment("my_deployment")
+            url = deployment.get_endpoint_url()
+            # url = "https://host:port/v1/project/name"
+            ```
+        """
+        return self._predictor.get_endpoint_url()
+
+    @public
+    def get_openai_url(self) -> str | None:
+        """Get the OpenAI-compatible API URL for vLLM deployments.
+
+        Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
+        This method only returns a URL for LLM (vLLM) deployments.
+
+        Returns:
+            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment.
+
+        Examples:
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            url = deployment.get_openai_url()
+            # url = "https://host:port/v1/project/name/v1"
+            # Then use: url + "/chat/completions"
+            ```
+        """
+        return self._predictor.get_openai_url()
+
+    @public
+    def get_inference_url(self) -> str | None:
+        """Get the KServe inference URL for standard model deployments.
+
+        Returns the full URL with `:predict` suffix for KServe inference protocol.
+        This method only returns a URL for standard model deployments (non-vLLM,
+        with a model attached).
+
+        If Istio client is not available, falls back to Hopsworks REST API path.
+
+        Returns:
+            Inference URL with `:predict` suffix, or `None` if not a standard model deployment.
+
+        Examples:
+            ```python
+            deployment = ms.get_deployment("my_deployment")
+            url = deployment.get_inference_url()
+            # Use with any HTTP client
+            import requests
+            response = requests.post(url, json={"instances": [[1, 2, 3]]})
+            ```
+        """
+        return self._predictor.get_inference_url()
+
+    @public
     def describe(self):
         """Print a JSON description of the deployment."""
         util.pretty_print(self)
@@ -330,11 +548,13 @@ class Deployment:
 
     # Deployment
 
+    @public
     @property
     def id(self):
         """Id of the deployment."""
         return self._predictor.id
 
+    @public
     @property
     def name(self):
         """Name of the deployment."""
@@ -344,11 +564,13 @@ class Deployment:
     def name(self, name: str):
         self._predictor.name = name
 
+    @public
     @property
     def version(self):
         """Version of the deployment."""
         return self._predictor.version
 
+    @public
     @property
     def description(self):
         """Description of the deployment."""
@@ -358,11 +580,13 @@ class Deployment:
     def description(self, description: str):
         self._description = description
 
+    @public
     @property
     def has_model(self):
         """Whether the deployment has a model associated."""
         return self.model_name is not None and self.model_version is not None
 
+    @public
     @property
     def predictor(self):
         """Predictor used in the deployment."""
@@ -372,6 +596,7 @@ class Deployment:
     def predictor(self, predictor):
         self._predictor = predictor
 
+    @public
     @property
     def requested_instances(self):
         """Total number of requested instances in the deployment."""
@@ -379,6 +604,7 @@ class Deployment:
 
     # Single predictor
 
+    @public
     @property
     def model_name(self):
         """Name of the model deployed by the predictor."""
@@ -388,6 +614,7 @@ class Deployment:
     def model_name(self, model_name: str):
         self._predictor.model_name = model_name
 
+    @public
     @property
     def model_path(self):
         """Model path deployed by the predictor."""
@@ -397,6 +624,7 @@ class Deployment:
     def model_path(self, model_path: str):
         self._predictor.model_path = model_path
 
+    @public
     @property
     def model_version(self):
         """Model version deployed by the predictor."""
@@ -406,6 +634,7 @@ class Deployment:
     def model_version(self, model_version: int):
         self._predictor.model_version = model_version
 
+    @public
     @property
     def artifact_version(self):
         """Artifact version deployed by the predictor.
@@ -419,11 +648,13 @@ class Deployment:
     def artifact_version(self, version: int | str):
         pass  # do nothing, kept for backward compatibility
 
+    @public
     @property
     def artifact_files_path(self):
         """Path of the artifact files deployed by the predictor."""
         return self._predictor.artifact_files_path
 
+    @public
     @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor.
@@ -433,6 +664,7 @@ class Deployment:
         """
         return self.artifact_files_path
 
+    @public
     @property
     def model_server(self):
         """Model server ran by the predictor."""
@@ -442,6 +674,7 @@ class Deployment:
     def model_server(self, model_server: str):
         self._predictor.model_server = model_server
 
+    @public
     @property
     def serving_tool(self):
         """Serving tool used to run the model server."""
@@ -451,6 +684,7 @@ class Deployment:
     def serving_tool(self, serving_tool: str):
         self._predictor.serving_tool = serving_tool
 
+    @public
     @property
     def script_file(self):
         """Script file used by the predictor."""
@@ -460,6 +694,7 @@ class Deployment:
     def script_file(self, script_file: str):
         self._predictor.script_file = script_file
 
+    @public
     @property
     def config_file(self):
         """Model server configuration file passed to the model deployment.
@@ -473,6 +708,7 @@ class Deployment:
     def config_file(self, config_file: str):
         self._predictor.config_file = config_file
 
+    @public
     @property
     def resources(self):
         """Resource configuration for the predictor."""
@@ -482,6 +718,7 @@ class Deployment:
     def resources(self, resources: Resources):
         self._predictor.resources = resources
 
+    @public
     @property
     def inference_logger(self):
         """Configuration of the inference logger attached to this predictor."""
@@ -491,6 +728,7 @@ class Deployment:
     def inference_logger(self, inference_logger: InferenceLogger):
         self._predictor.inference_logger = inference_logger
 
+    @public
     @property
     def inference_batcher(self):
         """Configuration of the inference batcher attached to this predictor."""
@@ -500,6 +738,7 @@ class Deployment:
     def inference_batcher(self, inference_batcher: InferenceBatcher):
         self._predictor.inference_batcher = inference_batcher
 
+    @public
     @property
     def transformer(self):
         """Transformer configured in the predictor."""
@@ -509,6 +748,7 @@ class Deployment:
     def transformer(self, transformer: Transformer):
         self._predictor.transformer = transformer
 
+    @public
     @property
     def model_registry_id(self):
         """Model Registry Id of the deployment."""
@@ -518,16 +758,19 @@ class Deployment:
     def model_registry_id(self, model_registry_id: int):
         self._model_registry_id = model_registry_id
 
+    @public
     @property
     def created_at(self):
         """Created at date of the predictor."""
         return self._predictor.created_at
 
+    @public
     @property
     def creator(self):
         """Creator of the predictor."""
         return self._predictor.creator
 
+    @public
     @property
     def api_protocol(self):
         """API protocol enabled in the deployment (e.g., HTTP or GRPC)."""
@@ -537,6 +780,7 @@ class Deployment:
     def api_protocol(self, api_protocol: str):
         self._predictor.api_protocol = api_protocol
 
+    @public
     @property
     def environment(self):
         """Name of inference environment."""
@@ -546,15 +790,27 @@ class Deployment:
     def environment(self, environment: str):
         self._predictor.environment = environment
 
+    @public
+    @property
+    def env_vars(self):
+        """Environment variables of the predictor."""
+        return self._predictor.env_vars
+
+    @env_vars.setter
+    def env_vars(self, env_vars: dict[str, str] | None):
+        self._predictor.env_vars = env_vars
+
+    @public
     @property
     def project_namespace(self):
-        """Name of inference environment."""
+        """Name of the Kubernetes namespace the project is in."""
         return self._predictor.project_namespace
 
     @project_namespace.setter
     def project_namespace(self, project_namespace: str):
         self._predictor.project_namespace = project_namespace
 
+    @public
     @property
     def project_name(self):
         """Name of the project the deployment belongs to."""
@@ -563,6 +819,16 @@ class Deployment:
     @project_name.setter
     def project_name(self, project_name: str):
         self._predictor._project_name = project_name
+
+    @public
+    @property
+    def scaling_configuration(self):
+        """Scaling configuration for the deployment."""
+        return self._predictor.scaling_configuration
+
+    @scaling_configuration.setter
+    def scaling_configuration(self, scaling_configuration: PredictorScalingConfig):
+        self._predictor.scaling_configuration = scaling_configuration
 
     def __repr__(self):
         desc = (

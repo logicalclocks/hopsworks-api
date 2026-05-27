@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.spark.engine;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
 import com.logicalclocks.hsfs.Feature;
@@ -132,7 +133,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
     }
 
     saveDataframe(featureGroup, featureData, storage, operation,
-        writeOptions, SparkEngine.getInstance().getKafkaConfig(featureGroup, writeOptions), validationId);
+        writeOptions, validationId);
   }
 
   public void insert(StreamFeatureGroup streamFeatureGroup, Dataset<Row> featureData,
@@ -152,9 +153,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       // After that it's going to be just a normal append
       featureGroupApi.deleteContent(streamFeatureGroup);
     }
-    SparkEngine.getInstance().writeOnlineDataframe(streamFeatureGroup, featureData,
-        streamFeatureGroup.getOnlineTopicName(),
-        SparkEngine.getInstance().getKafkaConfig(streamFeatureGroup, writeOptions));
+    SparkEngine.getInstance().writeOnlineDataframe(streamFeatureGroup, featureData, writeOptions);
   }
 
   public void insert(ExternalFeatureGroup externalFeatureGroup, Dataset<Row> featureData,
@@ -171,9 +170,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       externalFeatureGroup = saveExternalFeatureGroup(externalFeatureGroup);
     }
 
-    SparkEngine.getInstance().writeOnlineDataframe(externalFeatureGroup, featureData,
-        externalFeatureGroup.getOnlineTopicName(),
-        SparkEngine.getInstance().getKafkaConfig(externalFeatureGroup, writeOptions));
+    SparkEngine.getInstance().writeOnlineDataframe(externalFeatureGroup, featureData, writeOptions);
   }
 
   @Deprecated
@@ -223,7 +220,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
 
   public void saveDataframe(FeatureGroup featureGroup, Dataset<Row> dataset, Storage storage,
                             HudiOperationType operation, Map<String, String> offlineWriteOptions,
-                            Map<String, String> onlineWriteOptions, Integer validationId)
+                            Integer validationId)
           throws IOException, FeatureStoreException, ParseException {
     if (!featureGroup.getOnlineEnabled() && storage == Storage.ONLINE) {
       throw new FeatureStoreException("Online storage is not enabled for this feature group. Set `online=false` to "
@@ -232,13 +229,11 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       SparkEngine.getInstance().writeOfflineDataframe(featureGroup, dataset, operation,
               offlineWriteOptions, validationId);
     } else if (storage == Storage.ONLINE) {
-      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, featureGroup.getOnlineTopicName(),
-              onlineWriteOptions);
+      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions);
     } else if (featureGroup.getOnlineEnabled() && storage == null) {
       SparkEngine.getInstance().writeOfflineDataframe(featureGroup, dataset, operation,
               offlineWriteOptions, validationId);
-      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, featureGroup.getOnlineTopicName(),
-              onlineWriteOptions);
+      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions);
     } else {
       throw new FeatureStoreException("Error writing to offline and online feature store.");
     }
@@ -400,6 +395,23 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
     }
 
     return featureGroup;
+  }
+
+  public StreamFeatureGroup getOrCreateStreamFeatureGroup(FeatureStore featureStore, String name, Integer version,
+                                                          String description, List<String> primaryKeys,
+                                                          List<String> partitionKeys, String hudiPrecombineKey,
+                                                          boolean onlineEnabled,
+                                                          StatisticsConfig statisticsConfig,
+                                                          String eventTime, TimeTravelFormat timeTravelFormat,
+                                                          List<Feature> features, DataSource dataSource,
+                                                          OnlineConfig onlineConfig)
+      throws IOException, FeatureStoreException {
+
+    return getOrCreateStreamFeatureGroup(featureStore, name, version, description, primaryKeys, partitionKeys,
+        hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat, features,
+        dataSource != null ? dataSource.getStorageConnector() : null,
+        dataSource != null ? dataSource.getPath() : null,
+        onlineConfig);
   }
 
   public StreamFeatureGroup getStreamFeatureGroup(FeatureStore featureStore, String fgName, Integer fgVersion)

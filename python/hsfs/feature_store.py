@@ -20,12 +20,14 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
+from hopsworks_apigen import deprecated, public
 from hsfs import (
     expectation_suite,
     feature,
     feature_group,
     feature_view,
     storage_connector,
+    tag,
     training_dataset,
     usage,
     util,
@@ -37,10 +39,16 @@ from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
+    search_api,
     storage_connector_api,
     training_dataset_api,
     transformation_function_engine,
 )
+from hsfs.core.chart import Chart
+from hsfs.core.chart_api import ChartApi
+from hsfs.core.dashboard import Dashboard
+from hsfs.core.dashboard_api import DashboardApi
+from hsfs.core.job import Job
 from hsfs.decorators import typechecked
 from hsfs.transformation_function import TransformationFunction
 
@@ -64,6 +72,7 @@ if TYPE_CHECKING:
     from hsfs.statistics_config import StatisticsConfig
 
 
+@public
 @typechecked
 class FeatureStore:
     """Feature Store class used to manage feature store entities, like feature groups and feature views."""
@@ -121,6 +130,7 @@ class FeatureStore:
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
         )
+        self._search_api: search_api.SearchApi = search_api.SearchApi()
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureStore:
@@ -131,6 +141,7 @@ class FeatureStore:
         json_decamelized.pop("inode_id", None)
         return cls(**json_decamelized)
 
+    @public
     def get_feature_group(
         self, name: str, version: int = None
     ) -> (
@@ -173,8 +184,12 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if feature_group_object:
             feature_group_object.feature_store = self
+            util.check_missing_mandatory_tags(
+                feature_group_object.missing_mandatory_tags
+            )
         return feature_group_object
 
+    @public
     def get_feature_groups(
         self, name: str | None = None
     ) -> list[
@@ -223,6 +238,7 @@ class FeatureStore:
             fg_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_on_demand_feature_group(
         self, name: str, version: int = None
@@ -247,6 +263,7 @@ class FeatureStore:
         """
         return self.get_external_feature_group(name, version)
 
+    @public
     @usage.method_logger
     def get_external_feature_group(
         self, name: str, version: int = None
@@ -287,8 +304,12 @@ class FeatureStore:
         )
         if feature_group_object:
             feature_group_object.feature_store = self
+            util.check_missing_mandatory_tags(
+                feature_group_object.missing_mandatory_tags
+            )
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_on_demand_feature_groups(
         self, name: str
@@ -312,6 +333,7 @@ class FeatureStore:
         """
         return self.get_external_feature_groups(name)
 
+    @public
     @usage.method_logger
     def get_external_feature_groups(
         self, name: str | None = None
@@ -349,6 +371,7 @@ class FeatureStore:
         fgs = self.get_feature_groups(name)
         return [fg for fg in fgs if isinstance(fg, feature_group.ExternalFeatureGroup)]
 
+    @public
     def get_training_dataset(
         self, name: str, version: int = None
     ) -> training_dataset.TrainingDataset:
@@ -379,8 +402,14 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        return self._training_dataset_api.get(name, version)
+        training_dataset_object = self._training_dataset_api.get(name, version)
+        if training_dataset_object:
+            util.check_missing_mandatory_tags(
+                training_dataset_object.missing_mandatory_tags
+            )
+        return training_dataset_object
 
+    @public
     def get_training_datasets(
         self, name: str
     ) -> list[training_dataset.TrainingDataset]:
@@ -402,6 +431,8 @@ class FeatureStore:
         """
         return self._training_dataset_api.get(name, None)
 
+    @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
+    @public
     @usage.method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
         """Get a previously created storage connector from the feature store.
@@ -425,8 +456,118 @@ class FeatureStore:
         Returns:
             Storage connector object.
         """
-        return self._storage_connector_api.get(self._id, name)
+        return self.get_data_source(name).storage_connector
 
+    @public
+    @usage.method_logger
+    def get_data_source(self, name: str) -> ds.DataSource:
+        """Get a data source from the feature store.
+
+        Data sources encapsulate all information needed for the execution engine
+        to read and write to specific storage.
+
+        If you want to connect to the online feature store, see the
+        `get_online_data_source` method to get the JDBC connector for the Online
+        Feature Store.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            data_source = fs.get_data_source("test_data_source")
+            ```
+
+        Parameters:
+            name: Name of the data source to retrieve.
+
+        Returns:
+            `DataSource`. Data source object.
+        """
+        return ds.DataSource(
+            storage_connector=self._storage_connector_api.get(self._id, name)
+        )
+
+    @public
+    @usage.method_logger
+    def share(self, target_project: str | int) -> None:
+        """Share this entire feature store with another project.
+
+        After the share, members of ``target_project`` can read every
+        feature group in this feature store (subject to per-feature-group
+        permissions configured at share time on the backend).
+
+        Requires the **Data Owner** role in the source project.
+
+        Example:
+            ```python
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+            fs.share("other_project")
+            ```
+
+        Parameters:
+            target_project: Project name (preferred) or numeric id.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+            hopsworks.client.exceptions.RestAPIError: If the target project
+                doesn't exist or the backend otherwise rejects the request.
+        """
+        from hsfs.core import share_api
+
+        share_api.ShareApi(self._id).share_feature_store(target_project)
+
+    @public
+    @usage.method_logger
+    def shared_with(self) -> list[dict]:
+        """List the projects this feature store has been shared with.
+
+        Each entry has at least ``sharedWithProject`` (with ``name`` and
+        ``id``), ``sharedBy``, ``sharedOn``, and ``sharedEntirely`` (true
+        when the whole feature store was shared rather than an individual
+        feature group). Requires the Data Owner role in the source project.
+
+        Example:
+            ```python
+            for share in fs.shared_with():
+                print(share["sharedWithProject"]["name"], share["sharedOn"])
+            ```
+
+        Returns:
+            A list of dicts as returned by the backend; empty when the
+            feature store has not been shared.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+        """
+        from hsfs.core import share_api
+
+        return share_api.ShareApi(self._id).list_feature_store_shares()
+
+    @public
+    @usage.method_logger
+    def unshare(self, target_project: str | int) -> None:
+        """Revoke a previously-granted feature-store-level share.
+
+        Requires the **Data Owner** role in the source project.
+
+        Parameters:
+            target_project: Project name or numeric id.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the source
+                project.
+            hopsworks.client.exceptions.RestAPIError: If the share doesn't
+                exist or the backend otherwise rejects the request.
+        """
+        from hsfs.core import share_api
+
+        share_api.ShareApi(self._id).unshare_feature_store(target_project)
+
+    @public
     def sql(
         self,
         query: str,
@@ -469,11 +610,15 @@ class FeatureStore:
             query, self._name, dataframe_type, online, read_options or {}
         )
 
+    @public
     @usage.method_logger
     def get_online_storage_connector(self) -> storage_connector.StorageConnector:
         """Get the storage connector for the Online Feature Store of the respective project's feature store.
 
         The returned storage connector depends on the project that you are connected to.
+
+        !!! warning "Deprecated"
+            `get_online_storage_connector` method is deprecated. Use `get_online_data_source` instead.
 
         Example:
             ```python
@@ -486,8 +631,44 @@ class FeatureStore:
         Returns:
             JDBC storage connector to the Online Feature Store.
         """
-        return self._storage_connector_api.get_online_connector(self._id)
+        return self.get_online_data_source().storage_connector
 
+    @usage.method_logger
+    def get_online_data_source(self) -> ds.DataSource:
+        """Get the data source for the Online Feature Store of the respective project's feature store.
+
+        The returned data source depends on the project that you are connected to.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            online_data_source = fs.get_online_data_source()
+            ```
+
+        Returns:
+            `DataSource`. JDBC data source to the Online Feature Store.
+        """
+        return ds.DataSource(
+            storage_connector=self._storage_connector_api.get_online_connector(self._id)
+        )
+
+    def _normalize_tags(
+        self,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None,
+    ) -> list[tag.Tag]:
+        """Normalize tags input to a list of Tag objects.
+
+        # Arguments
+            tags: Tags in various formats (single Tag, dict, or list of Tags/dicts)
+
+        # Returns
+            `list[tag.Tag]`: List of Tag objects.
+        """
+        return tag.Tag.normalize(tags)
+
+    @public
     @usage.method_logger
     def create_feature_group(
         self,
@@ -495,7 +676,7 @@ class FeatureStore:
         version: int | None = None,
         description: str = "",
         online_enabled: bool = False,
-        time_travel_format: str | None = None,
+        time_travel_format: str | None = "DELTA",
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -505,14 +686,17 @@ class FeatureStore:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         event_time: str | None = None,
         stream: bool = False,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         parents: list[feature_group.FeatureGroup] | None = None,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
-        transformation_functions: list[TransformationFunction | HopsworksUdf]
-        | None = None,
+        transformation_functions: (
+            list[TransformationFunction | HopsworksUdf] | None
+        ) = None,
         online_config: OnlineConfig | dict[str, Any] | None = None,
         offline_backfill_every_hr: int | str | None = None,
         storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
@@ -521,6 +705,9 @@ class FeatureStore:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        sink_enabled: bool | None = False,
+        sink_job_conf: dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -564,7 +751,7 @@ class FeatureStore:
             version: Version of the feature group to create, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, defaults to `"HUDI"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -618,14 +805,26 @@ class FeatureStore:
                 On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
-            online_config: Optionally, define configuration which is used to configure online table.
+            online_config:
+                Optionally, configure the underlying RonDB online table.
+                Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
+
+                Recognized fields:
+
+                - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
+                - `table_space`: Name of the RonDB tablespace for on-disk storage.
+                  Overridden by `online_disk=True`.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
+                  See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
+                  Set at feature group creation time only — cannot be changed after the table exists.
             offline_backfill_every_hr:
                 If specified, the materialization job will be scheduled to run periodically.
                 The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
                 Set the value to None to avoid scheduling the materialization job.
                 By default, no scheduling is done.
-            storage_connector: The storage connector used to establish connectivity with the data source.
-            path: The location within the scope of the storage connector, from where to read the data for the external feature group.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             data_source:
                 The data source specifying the location of the data.
                 Overrides the path and query arguments when specified.
@@ -648,12 +847,33 @@ class FeatureStore:
                 When set to True data will be stored on disk, instead of in memory.
                 Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
+            sink_enabled:
+                Enable automatic ingestion from the configured data source using a sink job.
+            sink_job_conf:
+                Optional configuration describing the sink job to create when `sink_enabled` is True.
+                Accepts either a job configuration object or a dictionary.
+            tags:
+                Optionally, define tags for the feature group. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature group after it is saved.
 
         Returns:
             The feature group metadata object.
         """
+        normalized_tags = self._normalize_tags(tags)
+
         if not data_source:
-            data_source = ds.DataSource(path=path)
+            data_source = ds.DataSource(storage_connector=storage_connector, path=path)
+        elif storage_connector is not None or path is not None:
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector` and `path` "
+                "parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -678,15 +898,18 @@ class FeatureStore:
             transformation_functions=transformation_functions,
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
-            storage_connector=storage_connector,
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            sink_enabled=sink_enabled,
+            sink_job_conf=sink_job_conf,
+            tags=normalized_tags,
         )
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_or_create_feature_group(
         self,
@@ -694,7 +917,7 @@ class FeatureStore:
         version: int,
         description: str | None = "",
         online_enabled: bool | None = False,
-        time_travel_format: str | None = None,
+        time_travel_format: str | None = "DELTA",
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -702,16 +925,19 @@ class FeatureStore:
         hudi_precombine_key: str | None = None,
         features: list[feature.Feature] | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         event_time: str | None = None,
         stream: bool | None = False,
         parents: list[feature_group.FeatureGroup] | None = None,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
-        transformation_functions: list[TransformationFunction | HopsworksUdf]
-        | None = None,
+        transformation_functions: (
+            list[TransformationFunction | HopsworksUdf] | None
+        ) = None,
         online_config: OnlineConfig | dict[str, Any] | None = None,
         offline_backfill_every_hr: int | str | None = None,
         storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
@@ -720,6 +946,8 @@ class FeatureStore:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        sink_enabled: bool | None = False,
+        sink_job_conf: dict[str, Any] | None = None,
     ) -> (
         feature_group.FeatureGroup
         | feature_group.ExternalFeatureGroup
@@ -757,7 +985,7 @@ class FeatureStore:
             version: Version of the feature group to retrieve or create.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, defaults to `"HUDI"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -787,6 +1015,8 @@ class FeatureStore:
                 The values should be booleans indicating the setting.
                 To fully turn off statistics computation pass `statistics_config=False`.
                 By default, it computes only descriptive statistics.
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             event_time:
                 Optionally, provide the name of the feature containing the event time for the features in this feature group.
                 If event_time is set the feature group can be used for point-in-time joins.
@@ -797,8 +1027,6 @@ class FeatureStore:
             stream:
                 Optionally, define whether the feature group should support real time stream writing capabilities.
                 Stream enabled Feature Groups have unified single API for writing streaming features transparently to both online and offline store.
-            expectation_suite:
-                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             parents:
                 Optionally, define the parents of this feature group as the origin where the data is coming from.
             topic_name:
@@ -811,14 +1039,26 @@ class FeatureStore:
                 On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
-            online_config: Optionally, define configuration which is used to configure online table.
+            online_config:
+                Optionally, configure the underlying RonDB online table.
+                Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
+
+                Recognized fields:
+
+                - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
+                - `table_space`: Name of the RonDB tablespace for on-disk storage.
+                  Overridden by `online_disk=True`.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
+                  See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
+                  Set at feature group creation time only — cannot be changed after the table exists.
             offline_backfill_every_hr:
                 If specified, the materialization job will be scheduled to run periodically.
                 The value can be either an integer representing the number of hours between each run or a string representing a cron expression.
                 Set the value to None to avoid scheduling the materialization job.
                 By default, no scheduling is done.
-            storage_connector: The storage connector used to establish connectivity with the data source.
-            path: The location within the scope of the storage connector, from where to read the data for the external feature group.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             data_source:
                 The data source specifying the location of the data.
                 Overrides the path and query arguments when specified.
@@ -841,6 +1081,10 @@ class FeatureStore:
                 When set to True data will be stored on disk, instead of in memory.
                 Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
+            sink_enabled:
+                Enable copying data from the configured data source to the feature group.
+            sink_job_conf:
+                Optional configuration describing the sink job to create when `sink_enabled` is True.
 
         Returns:
             The feature group metadata object.
@@ -848,7 +1092,16 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if not feature_group_object:
             if not data_source:
-                data_source = ds.DataSource(path=path)
+                data_source = ds.DataSource(
+                    storage_connector=storage_connector, path=path
+                )
+            elif storage_connector is not None or path is not None:
+                warnings.warn(
+                    "When `data_source` is provided, `storage_connector` and `path` "
+                    "parameters are ignored. Use `data_source` only.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -873,20 +1126,22 @@ class FeatureStore:
                 transformation_functions=transformation_functions,
                 online_config=online_config,
                 offline_backfill_every_hr=offline_backfill_every_hr,
-                storage_connector=storage_connector,
                 data_source=data_source,
                 ttl=ttl,
                 ttl_enabled=ttl_enabled,
                 online_disk=online_disk,
+                sink_enabled=sink_enabled,
+                sink_job_conf=sink_job_conf,
             )
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def create_on_demand_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: storage_connector.StorageConnector | None = None,
         query: str | None = None,
         data_format: str | None = None,
         path: str | None = "",
@@ -898,9 +1153,11 @@ class FeatureStore:
         features: list[feature.Feature] | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         event_time: str | None = None,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
@@ -921,12 +1178,12 @@ class FeatureStore:
 
         Parameters:
             name: Name of the external feature group to create.
-            storage_connector: The storage connector used to establish connectivity with the data source.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query:
                 A string containing a SQL query valid for the target data source.
-                The query will be used to pull data from the data sources when the feature group is used.
+                The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format: If the external feature groups refers to a directory with data, the data format to use when reading it.
-            path: The location within the scope of the storage connector, from where to read the data for the external feature group.
+            path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
                 Additional options to be used by the engine when reading data from the specified storage connector.
                 For example, `{"header": True}` when reading CSV files with column names in the first row.
@@ -962,17 +1219,17 @@ class FeatureStore:
                 Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
+            expectation_suite:
+                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
             notification_topic_name:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
-            expectation_suite:
-                Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
             data_source:
                 The data source specifying the location of the data.
-                Overrides the path and query arguments when specified.
+                Overrides the storage_connector, path and query arguments when specified.
             online_enabled:
                 Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             ttl:
@@ -994,12 +1251,26 @@ class FeatureStore:
             The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            if not storage_connector:
+                raise ValueError(
+                    "Data source must be provided to create an external feature group."
+                )
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, query=query, path=path
+            )
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector`, `query` and "
+                "`path` parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
@@ -1020,11 +1291,12 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def create_external_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: storage_connector.StorageConnector | None = None,
         query: str | None = None,
         data_format: str | None = None,
         path: str | None = "",
@@ -1037,9 +1309,11 @@ class FeatureStore:
         features: list[feature.Feature] | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         event_time: str | None = None,
-        expectation_suite: expectation_suite.ExpectationSuite
-        | TypeVar("great_expectations.core.ExpectationSuite")
-        | None = None,
+        expectation_suite: (
+            expectation_suite.ExpectationSuite
+            | TypeVar("great_expectations.core.ExpectationSuite")
+            | None
+        ) = None,
         online_enabled: bool = False,
         topic_name: str | None = None,
         notification_topic_name: str | None = None,
@@ -1060,8 +1334,7 @@ class FeatureStore:
                 name="sales",
                 version=1,
                 description="Physical shop sales features",
-                query=query,
-                storage_connector=connector,
+                data_source=data_source,
                 primary_key=['ss_store_sk'],
                 event_time='sale_date',
                 ttl=timedelta(days=30),
@@ -1080,8 +1353,7 @@ class FeatureStore:
             name="sales",
             version=1,
             description="Physical shop sales features",
-            query=query,
-            storage_connector=connector,
+            data_source=data_source,
             primary_key=['ss_store_sk'],
             event_time='sale_date',
             online_enabled=True,
@@ -1100,14 +1372,14 @@ class FeatureStore:
 
         Parameters:
             name: Name of the external feature group to create.
-            storage_connector: The storage connector used to establish connectivity with the data source.
+            storage_connector: The storage connector used to establish connectivity with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query:
                 A string containing a SQL query valid for the target data source.
-                The query will be used to pull data from the data sources when the feature group is used.
+                The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format:
                 If the external feature groups refers to a directory with data, the data format to use when reading it.
             path:
-                The location within the scope of the storage connector, from where to read the data for the external feature group.
+                The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
                 Additional options to be used by the engine when reading data from the specified storage connector.
                 For example, `{"header": True}` when reading CSV files with column names in the first row.
@@ -1123,6 +1395,8 @@ class FeatureStore:
                 A list of feature names to be used as foreign key for the feature group.
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
+            embedding_index:
+                If an embedding index is provided, vector database is used as online feature store.
             features:
                 Optionally, define the schema of the external feature group manually as a list of `Feature` objects.
                 Defaults to empty list `[]` and will use the schema information of the DataFrame resulting by executing the provided query against the data source.
@@ -1144,10 +1418,10 @@ class FeatureStore:
                 Note: Event time data type restriction
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-            online_enabled:
-                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             expectation_suite:
                 Optionally, attach an expectation suite to the feature group which dataframes should be validated against upon insertion.
+            online_enabled:
+                Define whether it should be possible to sync the feature group to the online feature store for low latency access.
             topic_name:
                 Optionally, define the name of the topic used for data ingestion.
                 If left undefined it defaults to using project topic.
@@ -1155,10 +1429,21 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             online_config:
-                Optionally, define configuration which is used to configure online table.
+                Optionally, configure the underlying RonDB online table.
+                Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
+
+                Recognized fields:
+
+                - `online_comments`: List of RonDB `COMMENT` directives applied to the table (e.g. `NDB_TABLE=READ_BACKUP=1`).
+                - `table_space`: Name of the RonDB tablespace for on-disk storage.
+                  Overridden by `online_disk=True`.
+                - `primary_key_index_type`: Primary key index shape — `"HASH"` (hash-only, fastest point lookups), `"ORDERED"` (hash + ordered indexes, supports both point lookups and range scans), or unset.
+                  Left unset, a TTL-driven default is applied: `"HASH"` when TTL is disabled, hash + ordered when TTL is enabled so the TTL cleaner can range-scan by event time.
+                  See [`OnlineConfig.primary_key_index_type`][hsfs.online_config.OnlineConfig.primary_key_index_type] for full per-value guidance.
+                  Set at feature group creation time only — cannot be changed after the table exists.
             data_source:
                 The data source specifying the location of the data.
-                Overrides the path and query arguments when specified.
+                Overrides the storage_connector, path and query arguments when specified.
             ttl:
                 Optional time-to-live duration for features in this group.
 
@@ -1183,12 +1468,26 @@ class FeatureStore:
             The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            if not storage_connector:
+                raise ValueError(
+                    "Data source must be provided to create an external feature group."
+                )
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, query=query, path=path
+            )
+        elif (
+            storage_connector is not None or query is not None or path not in (None, "")
+        ):
+            warnings.warn(
+                "When `data_source` is provided, `storage_connector`, `query` and "
+                "`path` parameters are ignored. Use `data_source` only.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
@@ -1212,6 +1511,7 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @public
     @usage.method_logger
     def get_or_create_spine_group(
         self,
@@ -1222,11 +1522,13 @@ class FeatureStore:
         foreign_key: list[str] | None = None,
         event_time: str | None = None,
         features: list[feature.Feature] | None = None,
-        dataframe: pd.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[list] = None,
+        dataframe: (
+            pd.DataFrame
+            | TypeVar("pyspark.sql.DataFrame")
+            | TypeVar("pyspark.RDD")
+            | np.ndarray
+            | list[list]
+        ) = None,
     ) -> feature_group.SpineGroup:
         """Create a spine group metadata object.
 
@@ -1339,6 +1641,7 @@ class FeatureStore:
         spine.feature_store = self
         return spine._save()
 
+    @public
     def create_training_dataset(
         self,
         name: str,
@@ -1354,6 +1657,8 @@ class FeatureStore:
         label: list[str] | None = None,
         transformation_functions: dict[str, TransformationFunction] | None = None,
         train_split: str = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> training_dataset.TrainingDataset:
         """Create a training dataset metadata object.
 
@@ -1387,7 +1692,7 @@ class FeatureStore:
                 If true the training dataset data will be coalesced into a single partition before writing.
                 The resulting training dataset will be a single file per split.
             storage_connector:
-                Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS.
+                Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             splits:
                 A dictionary defining training dataset splits to be created.
                 Keys in the dictionary define the name of the split as `str`, values represent percentage of samples in the split as `float`.
@@ -1395,11 +1700,10 @@ class FeatureStore:
                 Defaults to empty dict`{}`, creating only a single training dataset without splits.
             location:
                 Path to complement the sink storage connector with, e.g., if the storage connector points to an S3 bucket, this path can be used to define a sub-directory inside the bucket to place the training dataset.
-                Defaults to `""`, saving the training dataset at the root defined by the storage connector.
+                Defaults to `""`, saving the training dataset at the root defined by the storage connector. **[DEPRECATED: Use `data_source` instead.]**
             seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
             statistics_config:
                 A configuration object, or a dictionary with keys:
-
                 - `"enabled"` to generally enable descriptive statistics computation for this feature group,
                 - `"correlations"` to turn on feature correlation computation, and
                 - `"histograms"` to compute feature value frequencies.
@@ -1417,17 +1721,30 @@ class FeatureStore:
             train_split:
                 If `splits` is set, provide the name of the split that is going to be used for training.
                 The statistics of this split will be used for transformation functions if necessary.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
+            tags:
+                Optionally, define tags for the training dataset. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the training dataset after it is saved.
 
         Returns:
             The training dataset metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(
+                storage_connector=storage_connector, path=location
+            )
+        normalized_tags = self._normalize_tags(tags)
+
         return training_dataset.TrainingDataset(
             name=name,
             version=version,
             description=description,
             data_format=data_format,
-            storage_connector=storage_connector,
-            location=location,
+            data_source=data_source,
             featurestore_id=self._id,
             splits=splits or {},
             seed=seed,
@@ -1436,8 +1753,10 @@ class FeatureStore:
             coalesce=coalesce,
             transformation_functions=transformation_functions or {},
             train_split=train_split,
+            tags=normalized_tags,
         )
 
+    @public
     @usage.method_logger
     def create_transformation_function(
         self,
@@ -1455,9 +1774,9 @@ class FeatureStore:
 
             # create transformation function
             plus_one_meta = fs.create_transformation_function(
-                    transformation_function=plus_one,
-                    version=1
-                )
+                transformation_function=plus_one,
+                version=1,
+            )
 
             # persist transformation function in backend
             plus_one_meta.save()
@@ -1469,6 +1788,7 @@ class FeatureStore:
 
         Parameters:
             transformation_function: Hopsworks UDF.
+            version: Version of the transformation function to create.
 
         Returns:
             The TransformationFunction metadata object.
@@ -1479,6 +1799,7 @@ class FeatureStore:
             version=version,
         )
 
+    @public
     @usage.method_logger
     def get_transformation_function(
         self,
@@ -1582,6 +1903,7 @@ class FeatureStore:
         """
         return self._transformation_function_engine.get_transformation_fn(name, version)
 
+    @public
     @usage.method_logger
     def get_transformation_functions(self) -> list[TransformationFunction]:
         """Get  all transformation functions metadata objects.
@@ -1600,6 +1922,7 @@ class FeatureStore:
         """
         return self._transformation_function_engine.get_transformation_fns()
 
+    @public
     @usage.method_logger
     def create_feature_view(
         self,
@@ -1610,10 +1933,12 @@ class FeatureStore:
         labels: list[str] | None = None,
         inference_helper_columns: list[str] | None = None,
         training_helper_columns: list[str] | None = None,
-        transformation_functions: list[TransformationFunction | HopsworksUdf]
-        | None = None,
+        transformation_functions: (
+            list[TransformationFunction | HopsworksUdf] | None
+        ) = None,
         logging_enabled: bool | None = False,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
@@ -1701,10 +2026,19 @@ class FeatureStore:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
                 Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
+            tags:
+                Optionally, define tags for the feature view. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature view after it is saved.
 
         Returns:
             The feature view metadata object.
         """
+        normalized_tags = self._normalize_tags(tags)
+
         feat_view = feature_view.FeatureView(
             name=name,
             query=query,
@@ -1718,9 +2052,11 @@ class FeatureStore:
             featurestore_name=self._name,
             logging_enabled=logging_enabled,
             extra_log_columns=extra_log_columns,
+            tags=normalized_tags,
         )
         return self._feature_view_engine.save(feat_view)
 
+    @public
     @usage.method_logger
     def get_or_create_feature_view(
         self,
@@ -1806,6 +2142,7 @@ class FeatureStore:
             )
         return fv_object
 
+    @public
     @usage.method_logger
     def get_feature_view(
         self, name: str, version: int = None
@@ -1843,8 +2180,14 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        return self._feature_view_engine.get(name, version)
+        feature_view_object = self._feature_view_engine.get(name, version)
+        if feature_view_object:
+            util.check_missing_mandatory_tags(
+                feature_view_object.missing_mandatory_tags
+            )
+        return feature_view_object
 
+    @public
     @usage.method_logger
     def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
         """Get a list of all versions of a feature view entity from the feature store.
@@ -1886,37 +2229,532 @@ class FeatureStore:
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
 
+    def create_chart(
+        self, title: str, description: str, url: str, job_id: int | None = None
+    ) -> None:
+        """Create a chart in the feature store.
+
+        Registers an HTML file as a chart in Hopsworks.
+        This enables it to be used in a [`Dashboard`][hsfs.core.dashboard.Dashboard].
+
+        Each chart with a set `job_id` has a refresh button which triggers the job and redraws the chart once the job finishes.
+        You can use this job to conviniently extract and prepare the data from Hopsworks Feature Store using its Python API.
+        Once the data is acquired, it can be put into JSON to simplify the Javascript code in the HTML.
+
+        Note: Jobless charts
+            Although charts can be created without a data preparation job, such charts are not suited to visualize data stored in Hopsworks.
+            Jobless charts can be useful, for example, in case you want to display data which is already available in JSON via a REST API of an external service, or if the chart is completely static.
+            Jobless charts do not have a refresh button attached to them.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # create a chart
+            fs.create_chart(
+                title="My Chart",
+                description="This is my chart description",
+                url="/Resources/chart.html"
+            )
+            ```
+
+        Parameters:
+            title: Title of the chart.
+            description: Description of the chart.
+            url: URL where the chart is hosted or can be accessed.
+            job_id: ID of the job that prepares the data to be displayed in the chart.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        chart = Chart(
+            title=title,
+            description=description,
+            url=url,
+            job=Job(id=job_id) if job_id else None,
+        )
+        return ChartApi().create_chart(chart)
+
+    def get_charts(self) -> list[Chart]:
+        """Get all charts in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all charts
+            charts = fs.get_charts()
+            ```
+
+        Returns:
+            List of chart metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_charts()
+
+    def get_chart(self, chart_id: int) -> Chart:
+        """Get a chart by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific chart
+            chart = fs.get_chart(chart_id=123)
+            ```
+
+        Parameters:
+            chart_id: ID of the chart to retrieve.
+
+        Returns:
+            The chart metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return ChartApi().get_chart(chart_id)
+
+    def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
+        """Create a dashboard in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            chart = fs.get_chart(chart_id=321)
+            chart.width = 12
+            chart.height = 8
+            chart.x = 0
+            chart.y = 0
+
+            # create a dashboard
+            fs.create_dashboard(
+                name="My Dashboard",
+                charts=[chart]  # optional
+            )
+            ```
+
+        Parameters:
+            name: Name of the dashboard.
+            charts: List of charts to include in the dashboard.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        dashboard = Dashboard(
+            name=name,
+            charts=charts,
+        )
+        return DashboardApi().create_dashboard(dashboard)
+
+    def get_dashboards(self) -> list[Dashboard]:
+        """Get all dashboards in the feature store.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get all dashboards
+            dashboards = fs.get_dashboards()
+            ```
+
+        Returns:
+            List of dashboard metadata objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboards()
+
+    def get_dashboard(self, dashboard_id: int) -> Dashboard:
+        """Get a dashboard by its ID.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get a specific dashboard
+            dashboard = fs.get_dashboard(dashboard_id=123)
+            ```
+
+        Parameters:
+            dashboard_id: ID of the dashboard to retrieve.
+
+        Returns:
+            The dashboard metadata object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return DashboardApi().get_dashboard(dashboard_id)
+
+    @public
     @property
     def id(self) -> int:
         """Id of the feature store."""
         return self._id
 
+    @public
     @property
     def name(self) -> str:
         """Name of the feature store."""
         return self._name
 
+    @public
     @property
     def project_name(self) -> str:
         """Name of the project in which the feature store is located."""
         return self._project_name
 
+    @public
     @property
     def project_id(self) -> int:
         """Id of the project in which the feature store is located."""
         return self._project_id
 
+    @public
     @property
     def online_featurestore_name(self) -> str | None:
         """Name of the online feature store database."""
         return self._online_feature_store_name
 
+    @public
     @property
     def online_enabled(self) -> bool:
         """Indicator whether online feature store is enabled."""
         return self._online_enabled
 
+    @public
     @property
     def offline_featurestore_name(self) -> str:
         """Name of the offline feature store database."""
         return self._offline_feature_store_name
+
+    @usage.method_logger
+    def search(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> search_api.FeaturestoreSearchResult:
+        """Search for feature groups, feature views, training datasets and features.
+
+        Parameters:
+           search_term: the term to search for.
+           keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+           tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+           offset: the number of results to skip (default is 0).
+           limit: the number of search results to return (default is 100).
+           global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+           `FeaturestoreSearchResult`: The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+
+        Raises:
+           `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Simple search
+        result = fs.search("search-term")
+
+        # Access results
+        for fg_meta in result.feature_groups:
+           print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+           print(f"Description: {fg_meta.description}")
+           print(f"Highlights: {fg_meta.highlights}")
+
+           # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+           fg = fg_meta.get()
+
+        # Search with a single keyword (string)
+        result = fs.search("search-term", keyword_filter="ml")
+
+        # Search with multiple keywords (array of strings)
+        result = fs.search("search-term", keyword_filter=["ml", "production"])
+
+        # Search with tag filter as a single dictionary
+        result = fs.search(
+           "search-term",
+           tag_filter={"name": "tag1", "key": "environment", "value": "production"}
+        )
+
+        # Search with tag filter as an array of dictionaries
+        result = fs.search(
+           "search-term",
+           tag_filter=[
+               {"name": "tag1", "key": "environment", "value": "production"},
+               {"name": "tag2", "key": "version", "value": "v1.0"}
+           ]
+        )
+
+        # Search with TagSearchFilter objects
+        from hsfs.core.search_api import TagSearchFilter
+        tags = [
+           TagSearchFilter(name="tag1", key="environment", value="production"),
+           TagSearchFilter(name="tag2", key="version", value="v1.0")
+        ]
+        result = fs.search("search-term", tag_filter=tags)
+
+        # Search with both keyword_filter and tag_filter
+        result = fs.search(
+           "search-term",
+           keyword_filter=["ml", "production"],
+           tag_filter=tags
+        )
+        ```
+        """
+        return self._search_api.feature_store(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_feature_groups(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureGroupSearchResult]:
+        """Search for feature groups only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for feature groups matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature groups
+        fg_metas = fs.search_feature_groups("customer")
+
+        for fg_meta in fg_metas:
+            print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+
+            # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+            fg = fg_meta.get()
+        ```
+        """
+        return self._search_api.feature_groups(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_feature_views(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureViewSearchResult]:
+        """Search for feature views only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for feature views matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature views
+        fv_metas = fs.search_feature_views("customer")
+
+        for fv_meta in fv_metas:
+            print(f"Feature View: {fv_meta.name} v{fv_meta.version}")
+
+            # Get the same FeatureView object as returned by featurestore.get_feature_view
+            fv = fv_meta.get()
+        ```
+        """
+        return self._search_api.feature_views(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_training_datasets(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.TrainingDatasetSearchResult]:
+        """Search for training datasets only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of metadata objects for training datasets matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for training datasets
+        td_metas = fs.search_training_datasets("model")
+
+        for td_meta in td_metas:
+            print(f"Training Dataset: {td_meta.name} v{td_meta.version}")
+
+            # Get the same TrainingDataset object as returned by featurestore.get_training_dataset
+            td = td_meta.get()
+        ```
+        """
+        return self._search_api.training_datasets(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+
+    @usage.method_logger
+    def search_features(
+        self,
+        search_term: str = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | search_api.TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[search_api.FeatureSearchResult]:
+        """Search for features only.
+
+        Parameters:
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
+               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+               schema), and ``value`` (the value to match).
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+
+        Returns:
+            `List`: A list of features matching the search criteria.
+
+        Raises:
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Example:
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for features
+        features = fs.search_features("age")
+
+        for feature in features:
+            print(f"Feature: {feature.name}")
+        ```
+        """
+        return self._search_api.features(
+            search_term=search_term,
+            tag_filter=tag_filter,
+            keyword_filter=keyword_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )

@@ -585,3 +585,78 @@ class TestKafkaEngine:
             "projectId": b"234",
             "subjectId": b"823",
         }
+
+    def test_get_headers_upsert_if_newer_true(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine.get_headers(
+            fg,
+            num_entries=10,
+            options={"online_ingestion_options": {"upsert_if_newer": True}},
+        )
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "onlineIngestionId": b"1",
+            "projectId": b"234",
+            "subjectId": b"823",
+            "upsertIfNewer": b"1",
+        }
+
+    def test_get_headers_upsert_if_newer_false(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine.get_headers(
+            fg,
+            num_entries=10,
+            options={"online_ingestion_options": {"upsert_if_newer": False}},
+        )
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "onlineIngestionId": b"1",
+            "projectId": b"234",
+            "subjectId": b"823",
+        }

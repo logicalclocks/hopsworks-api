@@ -84,4 +84,47 @@ public class TestFlinkEngine {
                     ((X509CertificateHolder) pemParser.readObject()).getSubject().toString());
         }
     }
+
+    @Test
+    public void testKafkaProperties_NullKeystoreAndTruststore() throws IOException, FeatureStoreException {
+        // Arrange
+        HopsworksClient.setInstance(new HopsworksClient(Mockito.mock(HopsworksHttpClient.class), "host"));
+
+        StorageConnector.KafkaConnector kafkaConnector = new StorageConnector.KafkaConnector();
+        kafkaConnector.setSslKeystoreLocation(null);
+        kafkaConnector.setSslKeystorePassword(null);
+        kafkaConnector.setSslTruststoreLocation(null);
+        kafkaConnector.setSslTruststorePassword(null);
+        kafkaConnector.setSecurityProtocol(SecurityProtocol.SSL);
+        kafkaConnector.setSslEndpointIdentificationAlgorithm(SslEndpointIdentificationAlgorithm.EMPTY);
+        kafkaConnector.setExternalKafka(true);
+
+        StorageConnectorApi storageConnectorApi = Mockito.mock(StorageConnectorApi.class);
+        Mockito.when(storageConnectorApi.getKafkaStorageConnector(Mockito.any(), Mockito.anyBoolean()))
+                .thenReturn(kafkaConnector);
+        FlinkEngine flinkEngine = Mockito.spy(FlinkEngine.getInstance());
+        flinkEngine.setStorageConnectorApi(storageConnectorApi);
+        Mockito.doAnswer(invocation -> invocation.getArgument(0))
+                .when(flinkEngine).addFile(Mockito.any());
+
+        StreamFeatureGroup featureGroup = new StreamFeatureGroup();
+        featureGroup.setFeatureStore(new FeatureStore());
+
+        // Act
+        Map<String, String> kafkaOptions = flinkEngine.getKafkaConfig(featureGroup, new HashMap<>());
+
+        // Assert - no PEM configs should be set
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_KEYSTORE_KEY_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_KEYSTORE_CERTIFICATE_CHAIN_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_TRUSTSTORE_CERTIFICATES_CONFIG));
+
+        // Assert - all original SSL location/password entries should be removed
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG));
+        Assert.assertNull(kafkaOptions.get(SslConfigs.SSL_KEY_PASSWORD_CONFIG));
+    }
 }

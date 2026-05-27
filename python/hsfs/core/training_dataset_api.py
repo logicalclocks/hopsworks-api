@@ -121,9 +121,12 @@ class TrainingDatasetApi:
     ) -> job.Job:
         """Setup a Hopsworks job to compute the query and write the training dataset.
 
-        Args:
+        Parameters:
             training_dataset_instance: the metadata instance of the training dataset
             td_app_conf: the configuration for the training dataset job application.
+
+        Returns:
+            The job metadata object for the compute job.
         """
         _client = client.get_instance()
         path_params = [
@@ -193,9 +196,12 @@ class TrainingDatasetApi:
     ) -> serving_prepared_statement.ServingPreparedStatement:
         """Get serving prepared statement metadata object for a training dataset.
 
-        Args:
-            training_dataset_instance (training_dataset): the metadata instance of the training dataset
+        Parameters:
+            training_dataset_instance: the metadata instance of the training dataset
             batch: boolean. Weather to retrieve batch serving vector or not.
+
+        Returns:
+            The serving prepared statement metadata object.
         """
         _client = client.get_instance()
         path_params = [
@@ -216,7 +222,11 @@ class TrainingDatasetApi:
     def delete(
         self, training_dataset_instance: training_dataset.TrainingDataset
     ) -> None:
-        """Delete the training dataset and materialized files in HopsFS."""
+        """Delete the training dataset and materialized files in HopsFS.
+
+        Parameters:
+            training_dataset_instance: The training dataset metadata object to delete.
+        """
         _client = client.get_instance()
         path_params = [
             "project",

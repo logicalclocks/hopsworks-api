@@ -17,16 +17,19 @@
 """MCP server for Hopsworks."""
 
 from fastmcp import FastMCP
+from starlette import status
+from starlette.responses import Response
 
 from .prompts import ProjectPrompts, SystemPrompts
-from .resources import FeatureStoreResources, ProjectResources
+from .resources.project import ProjectResources
 from .tools import (
     AuthTools,
+    BrewerTools,
     DatasetTools,
     FeatureGroupTools,
-    FeatureStoreTools,
     JobTools,
     ProjectTools,
+    TerminalTools,
 )
 
 
@@ -34,13 +37,21 @@ from .tools import (
 mcp = FastMCP(name="Hopsworks MCP")
 
 # Initialize tools and resources
-_auth_tools = AuthTools(mcp)
-_project_tools = ProjectTools(mcp)
-_feature_store_tools = FeatureStoreTools(mcp)
-_feature_store_resources = FeatureStoreResources(mcp)
-_project_resource = ProjectResources(mcp)
-_project_prompts = ProjectPrompts(mcp)
-_system_prompts = SystemPrompts(mcp)
-_job_tools = JobTools(mcp)
-_dataset_tools = DatasetTools(mcp)
-_feature_group_tools = FeatureGroupTools(mcp)
+AuthTools(mcp)
+ProjectTools(mcp)
+ProjectResources(mcp)
+ProjectPrompts(mcp)
+SystemPrompts(mcp)
+JobTools(mcp)
+DatasetTools(mcp)
+FeatureGroupTools(mcp)
+TerminalTools(mcp)
+BrewerTools(mcp)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(_):
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+app = mcp.http_app()

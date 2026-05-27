@@ -32,6 +32,7 @@ from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import fs_query
 from hsfs.constructor.query import Query
 from hsfs.core import arrow_flight_client, feature_view_engine
+from hsfs.core import data_source as ds
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.hopsworks_udf import udf
@@ -160,10 +161,9 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
 
     def test_save_time_travel_query(self, mocker):
@@ -198,14 +198,13 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
         assert mock_warning.call_args[0][0] == (
             "`as_of` argument in the `Query` will be ignored because"
-            + " feature view does not support time travel query."
+            " feature view does not support time travel query."
         )
 
     def test_save_time_travel_sub_query(self, mocker):
@@ -242,14 +241,13 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
         assert mock_warning.call_args[0][0] == (
             "`as_of` argument in the `Query` will be ignored because"
-            + " feature view does not support time travel query."
+            " feature view does not support time travel query."
         )
 
     def template_save_label_success(self, mocker, _query, label, label_fg_id):
@@ -288,10 +286,9 @@ class TestFeatureViewEngine:
         )
         assert mock_fv_api.return_value.post.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature view created successfully, explore it at \n{}".format(
-            feature_view_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature view created successfully, explore it at \n{feature_view_url}"
         )
 
     def template_save_label_fail(self, mocker, _query, label, msg):
@@ -518,6 +515,120 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
 
+    def test_get_batch_query_with_extra_filter(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_query(
+            feature_view_obj=fv,
+            start_time=1000000000,
+            end_time=2000000000,
+            with_label=False,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_fv_api.return_value.get_batch_query.call_count == 1
+        call_kwargs = mock_fv_api.return_value.get_batch_query.call_args
+        forwarded = call_kwargs[1]["extra_filter"]
+        # Use the public Logic API instead of reaching into `_left_f` /
+        # `_type` so the assertion is stable across internal refactors.
+        assert forwarded.type == "SINGLE"
+        assert forwarded.get_left_filter_or_logic() is extra_filter
+
+    def test_get_batch_query_with_extra_filter_wire_payload(self, mocker):
+        # Verify the full path engine -> FeatureViewApi -> client: the
+        # raw Filter is wrapped into Logic(SINGLE), the request method is
+        # POST against the .../query/batch path, and the JSON body matches
+        # the backend FilterLogicDTO shape.
+        feature_store_id = 99
+        mock_client = mocker.patch("hopsworks_common.client.get_instance").return_value
+        mock_client._project_id = 50
+        mock_client._send_request.return_value = {
+            "type": "structQuery",
+            "leftFeatureGroup": None,
+            "leftFeatures": [],
+            "featureStoreName": "",
+            "featureStoreId": feature_store_id,
+        }
+        # Return a stub query the engine can walk: `_left_feature_group`
+        # is checked against SpineGroup; None passes that check trivially.
+        mocker.patch(
+            "hsfs.constructor.query.Query.from_response_json",
+            return_value=MagicMock(_left_feature_group=None),
+        )
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_query(
+            feature_view_obj=fv,
+            start_time=1000000000,
+            end_time=2000000000,
+            with_label=False,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_client._send_request.call_count == 1
+        args, kwargs = mock_client._send_request.call_args
+        # method + path
+        assert args[0] == "POST"
+        assert args[1][-2:] == ["query", "batch"]
+        # body: FilterLogicDTO wrapping the raw Filter as SINGLE/leftFilter
+        import json
+
+        body = json.loads(kwargs["data"])
+        assert body["type"] == "SINGLE"
+        assert body["leftFilter"]["feature"]["name"] == "test_feature"
+        assert body["leftFilter"]["condition"] == "EQUALS"
+        assert body["leftFilter"]["value"] == "test_value"
+        assert body.get("rightFilter") is None
+        assert body.get("leftLogic") is None
+        assert body.get("rightLogic") is None
+
     def test_get_batch_query_string(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -553,7 +664,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert "query" == result
+        assert result == "query"
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
         assert mock_qc_api.return_value.construct_query.call_count == 1
 
@@ -593,7 +704,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert "pit_query" == result
+        assert result == "pit_query"
         assert mock_fv_api.return_value.get_batch_query.call_count == 1
         assert mock_qc_api.return_value.construct_query.call_count == 1
 
@@ -688,7 +799,7 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -826,7 +937,9 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -895,7 +1008,7 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1032,7 +1145,9 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1382,7 +1497,7 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_compute_training_dataset.call_count == 1
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1506,7 +1621,9 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_compute_training_dataset.call_count == 1
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1617,7 +1734,10 @@ class TestFeatureViewEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_sc_read = mocker.patch("hsfs.storage_connector.StorageConnector.read")
+        mock_drop_helper_columns = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._drop_helper_columns"
+        )
+        mock_sc_read = mocker.patch("hsfs.storage_connector.HopsFSConnector.read")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -1651,6 +1771,7 @@ class TestFeatureViewEngine:
 
         # Assert
         assert mock_sc_read.call_count == 1
+        assert mock_drop_helper_columns.call_count == 3
 
     def test_read_dir_from_storage_connector_file_not_found(self, mocker):
         # Arrange
@@ -1658,7 +1779,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_sc_read = mocker.patch(
-            "hsfs.storage_connector.StorageConnector.read",
+            "hsfs.storage_connector.HopsFSConnector.read",
             side_effect=FileNotFoundError(),
         )
 
@@ -1791,7 +1912,7 @@ class TestFeatureViewEngine:
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
         assert len(td.schema) == len(fv.schema)
-        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema, strict=False):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -1919,7 +2040,9 @@ class TestFeatureViewEngine:
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
         assert len(expected_schema) == len(td.schema)
-        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+        for td_feature, expected_td_feature in zip(
+            td.schema, expected_schema, strict=False
+        ):
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
@@ -2402,7 +2525,16 @@ class TestFeatureViewEngine:
     def test_get_batch_data(self, mocker):
         # Arrange
         feature_store_id = 99
-        tf_value = "123"
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        tf_value = TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch(
@@ -2412,7 +2544,9 @@ class TestFeatureViewEngine:
         mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        tf_engine_patch = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
 
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
@@ -2424,21 +2558,61 @@ class TestFeatureViewEngine:
             start_time=None,
             end_time=None,
             training_dataset_version=None,
-            transformation_functions=tf_value,
+            transformation_functions=[tf_value],
             read_options=None,
         )
 
         # Assert
         assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_args[
-                0
-            ][0]
-            == tf_value
+            tf_engine_patch.apply_transformation_functions.call_args[1][
+                "transformation_functions"
+            ][0].hopsworks_udf.function_name
+            == tf_value.hopsworks_udf.function_name
         )
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
+        assert tf_engine_patch.apply_transformation_functions.call_count == 1
+
+    def test_get_batch_data_with_extra_filter(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
         )
+        mock_get_batch_query = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        from hsfs.constructor.filter import Filter
+
+        extra_filter = Filter(
+            feature=feature.Feature("test_feature"),
+            condition="EQUALS",
+            value="test_value",
+        )
+
+        # Act
+        fv_engine.get_batch_data(
+            feature_view_obj=None,
+            start_time=None,
+            end_time=None,
+            training_dataset_version=None,
+            transformation_functions=None,
+            read_options=None,
+            extra_filter=extra_filter,
+        )
+
+        # Assert
+        assert mock_get_batch_query.call_count == 1
+        call_kwargs = mock_get_batch_query.call_args
+        assert call_kwargs[1]["extra_filter"] is extra_filter
 
     def test_add_tag(self, mocker):
         # Arrange
@@ -2620,7 +2794,7 @@ class TestFeatureViewEngine:
         mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")
         connector = BigQueryConnector(0, "BigQueryConnector", 99)
         mock_external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=""
+            primary_key="", data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
         mock_constructor_query.featuregroups = [
@@ -2669,7 +2843,7 @@ class TestFeatureViewEngine:
 
         connector = FakeConnector()
         mock_external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=""
+            primary_key="", data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
         mock_constructor_query.featuregroups = [
@@ -2844,8 +3018,11 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert ["id", "feature1", "feature2", "predicted_label"] == [
-            feature.name for feature in dataframe_logging_features
+        assert [feature.name for feature in dataframe_logging_features] == [
+            "id",
+            "feature1",
+            "feature2",
+            "predicted_label",
         ]
 
     def test_get_feature_logging_data(self, mocker):
@@ -2998,14 +3175,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3241,14 +3418,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3514,14 +3691,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3729,14 +3906,14 @@ class TestFeatureViewEngine:
 
         # Verify the main arguments for list version
         assert call_args[1]["logging_data"] is logging_data
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -3908,14 +4085,14 @@ class TestFeatureViewEngine:
         assert (
             call_args[1]["logging_data"] is None
         )  # Should be None since all the data is in the metadata
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )
@@ -4143,14 +4320,14 @@ class TestFeatureViewEngine:
         assert (
             call_args[1]["logging_data"] is None
         )  # Should be None since all the data is in the metadata
-        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert len(call_args[1]["logging_feature_group_features"]) == len(fg.columns)
         assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
-            [feat.name for feat in fg.features]
+            [feat.name for feat in fg.columns]
         )
         assert sorted(call_args[1]["logging_features"]) == sorted(
             [
                 feat.name
-                for feat in fg.features
+                for feat in fg.columns
                 if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
             ]
         )

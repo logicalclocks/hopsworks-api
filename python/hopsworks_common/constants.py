@@ -28,7 +28,7 @@ class Default:
         return isinstance(other, Default)
 
 
-DEFAULT = Default()
+DEFAULT = Default()  # TODO: figure out what to do with it
 
 
 class JOBS:
@@ -143,7 +143,7 @@ class SSL_CONFIG:
 
 
 class HOSTS:
-    APP_HOST = "c.app.hopsworks.ai"
+    SAAS_HOST = "eu-west.cloud.hopsworks.ai"
 
 
 class MODEL:
@@ -155,6 +155,7 @@ class MODEL:
 
 
 class MODEL_REGISTRY:
+    HOPSFS_MOUNT_PREFIX_BASE = "/mnt/hopsfs"
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
     MODELS_DATASET = "Models"
     MODEL_FILES_DIR_NAME = "Files"
@@ -167,7 +168,6 @@ class MODEL_SERVING:
 
 
 class RESOURCES:
-    MIN_NUM_INSTANCES = 1  # disable scale-to-zero by default
     # default values, not hard limits
     MIN_CORES = 0.2
     MIN_MEMORY = 32
@@ -207,6 +207,9 @@ class PREDICTOR:
     # serving tool
     SERVING_TOOL_DEFAULT = "DEFAULT"
     SERVING_TOOL_KSERVE = "KSERVE"
+    # vLLM variant
+    VLLM_VARIANT_VLLM = "VLLM"
+    VLLM_VARIANT_OMNI = "VLLM_OMNI"
 
 
 class PREDICTOR_STATE:
@@ -280,3 +283,25 @@ class FEATURE_LOGGING:
         MODEL_VERSION_COLUMN_NAME,
         REQUEST_PARAMETERS_COLUMN_NAME,
     ]
+
+
+class SCALING_CONFIG:
+    MIN_NUM_INSTANCES = 1
+    DEFAULT_CONCURRENCY_TARGET = 100
+    SCALE_METRIC_CONCURRENCY = "CONCURRENCY"
+    DEFAULT_PANIC_WINDOW_PERCENTAGE = 10.0
+    DEFAULT_STABLE_WINDOW_SECONDS = 60
+    DEFAULT_PANIC_THRESHOLD_PERCENTAGE = 200.0
+    DEFAULT_SCALE_TO_ZERO_RETENTION_SECONDS = 0
+
+
+class CLIENT:
+    """Constants for Hopsworks client configuration."""
+
+    CERT_FOLDER_DEFAULT = "/tmp"
+
+
+class TRANSFORMATIONS:
+    """Constants for transformations."""
+
+    MISSING = "__MISSING__"

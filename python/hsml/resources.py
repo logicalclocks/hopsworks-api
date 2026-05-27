@@ -15,13 +15,16 @@
 from __future__ import annotations
 
 import json
+import warnings
 from abc import ABC, abstractmethod
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.constants import RESOURCES, Default
 
 
+@public(order=1)
 class Resources:
     """Resource configuration for a predictor or transformer.
 
@@ -29,9 +32,6 @@ class Resources:
         cores: Number of CPUs.
         memory: Memory (MB) resources.
         gpus: Number of GPUs.
-
-    Returns:
-        `Resources`. Resource configuration for a predictor or transformer.
     """
 
     def __init__(
@@ -45,6 +45,7 @@ class Resources:
         self._memory = memory
         self._gpus = gpus
 
+    @public
     def describe(self):
         """Print a JSON description of the resource configuration."""
         util.pretty_print(self)
@@ -72,6 +73,7 @@ class Resources:
     def to_dict(self):
         return {"cores": self._cores, "memory": self._memory, "gpus": self._gpus}
 
+    @public
     @property
     def cores(self):
         """Number of CPUs to be allocated per instance."""
@@ -81,6 +83,7 @@ class Resources:
     def cores(self, cores: int):
         self._cores = cores
 
+    @public
     @property
     def memory(self):
         """Memory resources to be allocated per instance."""
@@ -90,6 +93,7 @@ class Resources:
     def memory(self, memory: int):
         self._memory = memory
 
+    @public
     @property
     def gpus(self):
         """Number of GPUs to be allocated per instance."""
@@ -103,20 +107,19 @@ class Resources:
         return f"Resources(cores: {self._cores!r}, memory: {self._memory!r}, gpus: {self._gpus!r})"
 
 
+@public
 class ComponentResources(ABC):
     """Resource configuration for a predictor or transformer.
 
     Parameters:
-        num_instances: Number of instances.
+        num_instances: Deprecated. Use scaling configuration instead.
         requests: Minimum resources to allocate for a deployment
         limits: Maximum resources to allocate for a deployment
-    Returns:
-        `ComponentResource`. Resource configuration for a predictor or transformer.
     """
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | Default | None = None,
         limits: Resources | dict | Default | None = None,
     ):
@@ -140,6 +143,7 @@ class ComponentResources(ABC):
             self._requests.gpus,
         )
 
+    @public
     def describe(self):
         """Print a JSON description of the resource configuration."""
         util.pretty_print(self)
@@ -202,15 +206,27 @@ class ComponentResources(ABC):
     def to_dict(self):
         pass
 
+    @public
     @property
     def num_instances(self):
         """Number of instances."""
+        warnings.warn(
+            "The 'num_instances' property is deprecated and will be removed in a future release. Use scaling configuration instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._num_instances
 
     @num_instances.setter
     def num_instances(self, num_instances: int):
+        warnings.warn(
+            "The 'num_instances' property is deprecated and will be removed in a future release. Use scaling configuration instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._num_instances = num_instances
 
+    @public
     @property
     def requests(self):
         """Minimum resources to allocate."""
@@ -220,6 +236,7 @@ class ComponentResources(ABC):
     def requests(self, requests: Resources):
         self._resources = requests
 
+    @public
     @property
     def limits(self):
         """Maximum resources to allocate."""
@@ -233,13 +250,14 @@ class ComponentResources(ABC):
         return f"ComponentResources(num_instances: {self._num_instances!r}, requests: {self._requests is not None!r}, limits: {self._limits is not None!r})"
 
 
+@public
 class PredictorResources(ComponentResources):
     RESOURCES_CONFIG_KEY = "predictor_resources"
     NUM_INSTANCES_KEY = "requested_instances"
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
     ):
@@ -261,13 +279,14 @@ class PredictorResources(ComponentResources):
         }
 
 
+@public
 class TransformerResources(ComponentResources):
     RESOURCES_CONFIG_KEY = "transformer_resources"
     NUM_INSTANCES_KEY = "requested_transformer_instances"
 
     def __init__(
         self,
-        num_instances: int,
+        num_instances: int | None = None,
         requests: Resources | dict | None = None,
         limits: Resources | dict | None = None,
     ):

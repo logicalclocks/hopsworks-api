@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import getpass
+import importlib
 import logging
 import os
 import sys
@@ -24,41 +25,37 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
-from hopsworks import client, constants, project, version
-from hopsworks.client.exceptions import (
+# Lightweight imports happen eagerly. Heavy submodules (`hsfs`, `hsml`,
+# `hopsworks.connection`, …) are loaded on first attribute access via the
+# PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
+# entry points (the ``hops`` CLI, dependent libraries' import-time checks)
+# that don't need the full feature-store / model-registry surface area.
+from hopsworks.core import project_api, secret_api
+from hopsworks.decorators import NoHopsworksConnectionError
+from hopsworks_apigen import public
+from hopsworks_common import client, constants, project, usage, version
+from hopsworks_common.client.exceptions import (
     HopsworksSSLClientError,
     ProjectException,
     RestAPIError,
 )
-from hopsworks.connection import Connection
-from hopsworks.core import project_api, secret_api
-from hopsworks.decorators import NoHopsworksConnectionError
-from hopsworks_common import usage
+from hopsworks_common.constants import CLIENT
+from hopsworks_common.core import env_var_api
 from requests.exceptions import SSLError
 
 
-# Needs to run before import of hsml and hsfs
+# Needs to run before import of hsml and hsfs (consumed transitively by some
+# clients that explicitly do ``import hopsworks; hopsworks.hsfs``).
 warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
-
-import hsfs  # noqa: E402
-import hsml  # noqa: E402
-
-
-sys.modules["hopsworks.hsfs"] = hsfs
-sys.modules["hopsworks.hsml"] = hsml
 
 
 __version__ = version.__version__
 
-connection = Connection.connection
-
-_hw_connection = Connection.connection
 
 _connected_project = None
 _secrets_api = None
+_env_vars_api = None
 _project_api = None
-
-udf = hsfs.hopsworks_udf.udf
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
@@ -69,6 +66,124 @@ warnings.formatwarning = hw_formatwarning
 
 __all__ = ["connection", "udf"]
 
+
+# ─── Lazy attribute resolution ───────────────────────────────────────────────
+# Map name → factory. Factories are callables so we can side-effect
+# ``sys.modules`` for ``hopsworks.hsfs`` / ``hopsworks.hsml`` aliases on first
+# touch, matching the previous behaviour of the eager imports.
+
+
+def _load_hsfs():  # type: ignore[no-untyped-def]
+    mod = importlib.import_module("hsfs")
+    sys.modules.setdefault("hopsworks.hsfs", mod)
+    return mod
+
+
+def _load_hsml():  # type: ignore[no-untyped-def]
+    mod = importlib.import_module("hsml")
+    sys.modules.setdefault("hopsworks.hsml", mod)
+    return mod
+
+
+def _load_connection_class():  # type: ignore[no-untyped-def]
+    from hopsworks.connection import Connection
+
+    return Connection
+
+
+def _load_build_spark():  # type: ignore[no-untyped-def]
+    from hopsworks.spark import build_spark  # noqa: F401
+
+    return build_spark
+
+
+_LAZY = {
+    "hsfs": _load_hsfs,
+    "hsml": _load_hsml,
+    "Connection": _load_connection_class,
+    "build_spark": _load_build_spark,
+    "connection": lambda: _load_connection_class().connection,
+    # ``udf`` is the public entry point for hopsworks UDFs; pulling it through
+    # ``hsfs`` keeps the lazy-load path consistent.
+    "udf": lambda: _load_hsfs().hopsworks_udf.udf,
+}
+
+
+def __getattr__(name):  # type: ignore[no-untyped-def]
+    """PEP 562 lazy attribute access.
+
+    ``import hopsworks`` no longer triggers ``hsfs`` / ``hsml`` /
+    ``great_expectations``; the first time anyone reads
+    ``hopsworks.connection`` / ``hopsworks.udf`` / ``hopsworks.hsfs`` /
+    ``hopsworks.hsml``, the relevant module is imported and cached on the
+    package object so subsequent accesses are free.
+    """
+    factory = _LAZY.get(name)
+    if factory is None:
+        raise AttributeError(f"module 'hopsworks' has no attribute {name!r}")
+    value = factory()
+    # Cache so subsequent attribute lookups skip ``__getattr__`` entirely.
+    globals()[name] = value
+    return value
+
+
+# PEP 562 ``__getattr__`` only fires on attribute access, not when the import
+# machinery resolves a dotted module path. Without this finder,
+# ``from hopsworks.hsfs.builtin_transformations import X`` raises
+# ``ModuleNotFoundError: No module named 'hopsworks.hsfs'`` — the public
+# ``hopsworks.hsfs[.*]`` / ``hopsworks.hsml[.*]`` aliases have been supported
+# since #292 (Aug 2024) and downstream code (e.g. loadtest, customer notebooks)
+# depends on them. A meta-path finder restores the alias contract while keeping
+# the lazy goal: ``hsfs`` / ``hsml`` are only imported when something actually
+# references them, not on ``import hopsworks``.
+import importlib.util  # noqa: E402
+
+
+_ALIAS_TO_REAL = {"hopsworks.hsfs": "hsfs", "hopsworks.hsml": "hsml"}
+
+
+class _AliasLoader:
+    """No-op loader that hands back an already-executed module."""
+
+    def __init__(self, real_module):  # type: ignore[no-untyped-def]
+        self._real = real_module
+
+    def create_module(self, spec):  # type: ignore[no-untyped-def]
+        return self._real
+
+    def exec_module(self, module):  # type: ignore[no-untyped-def]
+        pass  # real module was already executed by importlib.import_module
+
+
+class _HsfsHsmlAliasFinder:
+    """Route ``hopsworks.hsfs[.*]`` and ``hopsworks.hsml[.*]`` to the real packages."""
+
+    def find_spec(self, fullname, path=None, target=None):  # type: ignore[no-untyped-def]
+        for alias, real in _ALIAS_TO_REAL.items():
+            if fullname == alias or fullname.startswith(alias + "."):
+                real_name = real + fullname[len(alias) :]
+                real_mod = importlib.import_module(real_name)
+                return importlib.util.spec_from_loader(fullname, _AliasLoader(real_mod))
+        return None
+
+
+# Append (not prepend) so the standard ``PathFinder`` and pytest's assertion
+# rewriter still run first for ordinary modules; our finder only fires for the
+# two alias namespaces, which no real on-disk subpackage shadows.
+if not any(isinstance(f, _HsfsHsmlAliasFinder) for f in sys.meta_path):
+    sys.meta_path.append(_HsfsHsmlAliasFinder())
+
+
+def _make_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
+    """Factory: create a new Connection via the lazy-loaded Connection class."""
+    return _load_connection_class().connection(*args, **kwargs)
+
+
+# Holds the active Connection instance after login(); points to _make_connection
+# when logged out so the login() flow can always call _hw_connection(...) to
+# create a fresh connection regardless of prior auth state.
+_hw_connection = _make_connection
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
@@ -76,6 +191,7 @@ logging.basicConfig(
 )
 
 
+@public(order=1)
 def login(
     host: str | None = None,
     port: int = 443,
@@ -84,12 +200,13 @@ def login(
     api_key_file: str | None = None,
     hostname_verification: bool = False,
     trust_store_path: str | None = None,
+    cert_folder: str | None = None,
     engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
     | None = None,
 ) -> project.Project:
-    """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
+    """Connect to [Hopsworks SaaS](https://run.hopsworks.ai/) by calling the `hopsworks.login()` function with no arguments.
 
-    Example: Connect to Serverless
+    Example: Connect to Hopsworks SaaS
         ```python
         import hopsworks
 
@@ -110,27 +227,33 @@ def login(
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH` and `HOPSWORKS_ENGINE`.
+    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH`, `HOPSWORKS_CERT_FOLDER` and `HOPSWORKS_ENGINE`.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
     Parameters:
         host: The hostname of the Hopsworks instance.
         port: The port on which the Hopsworks instance can be reached.
-        project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.
-        api_key_value: Value of the API Key
-        api_key_file: Path to file wih API Key
-        hostname_verification: Whether to verify Hopsworks' certificate
-        trust_store_path: Path on the file system containing the Hopsworks certificates
+        project:
+            Name of the project to access.
+            If used inside a Hopsworks environment it always gets the current project.
+            If not provided you will be prompted to enter it.
+        api_key_value: Value of the API Key.
+        api_key_file: Path to file wih API Key.
+        hostname_verification: Whether to verify Hopsworks' certificate.
+        trust_store_path: Path on the file system containing the Hopsworks certificates.
+        cert_folder:
+            The directory to store downloaded certificates.
+            Defaults to the system temp directory.
         engine:
             Specifies the engine to use.
             The default value is `None`, which automatically selects the engine based on the environment:
 
-            - `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
-            - `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
-            - `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
-            - `spark-no-metastore`: Functions like `spark` but does not rely on the Hive metastore.
-            - `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
+            * `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
+            * `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
+            * `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+            * `spark-no-metastore`: Functions like `spark` but does not rely on the Hive metastore.
+            * `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
 
     Returns:
         The Project object to perform operations on.
@@ -181,10 +304,10 @@ def login(
     # If host argument not defined, get HOPSWORKS_HOST environment variable
     if host is None and "HOPSWORKS_HOST" in os.environ:
         host = os.environ["HOPSWORKS_HOST"]
-    elif host is None:  # Always do a fallback to Serverless Hopsworks if not defined
-        host = constants.HOSTS.APP_HOST
+    elif host is None:  # Always do a fallback to Hopsworks SaaS if not defined
+        host = constants.HOSTS.SAAS_HOST
 
-    is_app = host == constants.HOSTS.APP_HOST
+    is_saas = host == constants.HOSTS.SAAS_HOST
 
     # If port same as default, get HOPSWORKS_HOST environment variable
     if port == 443 and "HOPSWORKS_PORT" in os.environ:
@@ -196,8 +319,12 @@ def login(
 
     trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH", trust_store_path)
 
-    # This .hw_api_key is created when a user logs into Serverless Hopsworks the first time.
-    # It is then used only for future login calls to Serverless. For other Hopsworks installations it's ignored.
+    # If cert_folder not provided, check environment variable, then fall back to default
+    if cert_folder is None:
+        cert_folder = os.getenv("HOPSWORKS_CERT_FOLDER", CLIENT.CERT_FOLDER_DEFAULT)
+
+    # This .hw_api_key is created when a user logs into Hopsworks SaaS the first time.
+    # It is then used only for future login calls to SaaS. For other Hopsworks installations it's ignored.
     api_key_path = _get_cached_api_key_path()
 
     # Conditions for getting the api_key
@@ -210,8 +337,8 @@ def login(
             api_key = Path(api_key_file).read_text()
         else:
             raise OSError(f"Could not find api key file on path: {api_key_file}")
-    # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
-    elif os.path.exists(api_key_path) and is_app:
+    # If user connected to Hopsworks SaaS, and the cached .hw_api_key exists, then use it.
+    elif os.path.exists(api_key_path) and is_saas:
         try:
             _hw_connection = _hw_connection(
                 host=host,
@@ -220,8 +347,9 @@ def login(
                 api_key_file=api_key_path,
                 hostname_verification=hostname_verification,
                 trust_store_path=trust_store_path,
+                cert_folder=cert_folder,
             )
-            _connected_project = _prompt_project(_hw_connection, project, is_app)
+            _connected_project = _prompt_project(_hw_connection, project, is_saas)
             if _connected_project:
                 _set_active_project(_connected_project)
             print(
@@ -238,10 +366,8 @@ def login(
             logout()
             _handle_ssl_errors(ssl_e)
 
-    if api_key is None and is_app:
-        print(
-            "Copy your API Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
-        )
+    if api_key is None and is_saas:
+        print("Copy your API Key (first register/login at https://run.hopsworks.ai)")
         api_key = getpass.getpass(prompt="\nPaste it here: ")
 
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
@@ -260,8 +386,9 @@ def login(
             api_key_value=api_key,
             hostname_verification=hostname_verification,
             trust_store_path=trust_store_path,
+            cert_folder=cert_folder,
         )
-        _connected_project = _prompt_project(_hw_connection, project, is_app)
+        _connected_project = _prompt_project(_hw_connection, project, is_saas)
         if _connected_project:
             _set_active_project(_connected_project)
     except RestAPIError as hw_e:
@@ -290,7 +417,7 @@ def _handle_ssl_errors(ssl_e):
 
 
 def _get_cached_api_key_path():
-    """This function is used to get an appropriate path to store the user supplied API Key for Serverless Hopsworks.
+    """This function is used to get an appropriate path to store the user supplied API Key for Hopsworks SaaS.
 
     First it will search for .hw_api_key in the current working directory, if it exists it will use it (this is default in 3.0 client)
     Otherwise, falls back to storing the API key in HOME
@@ -324,16 +451,11 @@ def _get_cached_api_key_path():
     return api_key_path
 
 
-def _prompt_project(valid_connection, project, is_app):
+def _prompt_project(valid_connection, project, is_saas):
     if project is None:
-        if is_app:
-            # On Serverless we filter out projects owned by other users to make sure automatic login
-            # without a prompt still happens when users add showcase projects created by other users
-            saas_projects = valid_connection._project_api._get_owned_projects()
-        else:
-            saas_projects = valid_connection._project_api._get_projects()
+        saas_projects = valid_connection._project_api._get_projects()
         if len(saas_projects) == 0:
-            if is_app:
+            if is_saas:
                 raise ProjectException("Could not find any project")
             return None
         if len(saas_projects) == 1:
@@ -376,6 +498,7 @@ def logout():
     global _hw_connection
     global _project_api
     global _secrets_api
+    global _env_vars_api
 
     if _is_connection_active():
         _hw_connection.close()
@@ -383,14 +506,16 @@ def logout():
     client.stop()
     _project_api = None
     _secrets_api = None
-    _hw_connection = Connection.connection
+    _env_vars_api = None
+    _hw_connection = _make_connection
 
 
 def _is_connection_active():
     global _hw_connection
-    return isinstance(_hw_connection, Connection)
+    return isinstance(_hw_connection, _load_connection_class())
 
 
+@public
 def get_current_project() -> project.Project:
     """Get a reference to the current logged in project.
 
@@ -415,17 +540,20 @@ def get_current_project() -> project.Project:
 def _initialize_module_apis():
     global _project_api
     global _secrets_api
+    global _env_vars_api
     _project_api = project_api.ProjectApi()
     _secrets_api = secret_api.SecretsApi()
+    _env_vars_api = env_var_api.EnvVarsApi()
 
 
+@public
 def create_project(
-    name: str, description: str | None = None, feature_store_topic: str | None = None
+    name: str,
+    description: str | None = None,
+    feature_store_topic: str | None = None,
+    namespace: str | None = None,
 ) -> project.Project | None:
     """Create a new project.
-
-    Warning: Not supported
-        The function does not work if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai).
 
     Example: Example for creating a new project
         ```python
@@ -440,6 +568,8 @@ def create_project(
         name: The name of the project.
         description: Description of the project.
         feature_store_topic: Feature store topic name.
+        namespace: Kubernetes namespace to use for the project. If ``None`` the
+            backend derives one from the project name.
 
     Returns:
         The Project object to perform operations on.
@@ -451,7 +581,7 @@ def create_project(
         raise NoHopsworksConnectionError
 
     new_project = _hw_connection._project_api._create_project(
-        name, description, feature_store_topic
+        name, description, feature_store_topic, namespace
     )
     if _connected_project is None:
         _connected_project = new_project
@@ -467,6 +597,7 @@ def create_project(
     return None
 
 
+@public
 def get_secrets_api() -> secret_api.SecretsApi:
     """Get the secrets api.
 
@@ -477,6 +608,19 @@ def get_secrets_api() -> secret_api.SecretsApi:
     if not _is_connection_active():
         raise NoHopsworksConnectionError
     return _secrets_api
+
+
+@public
+def get_env_vars_api() -> env_var_api.EnvVarsApi:
+    """Get the environment variables api.
+
+    Returns:
+        The environment variables API handle.
+    """
+    global _env_vars_api
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError
+    return _env_vars_api
 
 
 def _set_active_project(project):

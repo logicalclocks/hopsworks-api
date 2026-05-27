@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import math
@@ -43,6 +44,7 @@ from hsfs.core.type_systems import (
 
 if TYPE_CHECKING:
     import great_expectations
+    from hsfs.constructor.filter import Filter, Logic
     from hsfs.training_dataset import TrainingDataset
 
 import boto3
@@ -58,12 +60,11 @@ from hopsworks_common.core.type_systems import create_extended_type
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
-    engine,
     feature,
     feature_view,
-    transformation_function,
     util,
 )
+from hsfs import feature_group as fg_mod
 from hsfs import storage_connector as sc
 from hsfs.constructor import query
 from hsfs.constructor.fs_query import FsQuery
@@ -83,6 +84,7 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.core.constants import (
+    GE_MAJOR,
     HAS_AIOMYSQL,
     HAS_GREAT_EXPECTATIONS,
     HAS_NUMPY,
@@ -185,11 +187,21 @@ class Engine:
         primary_key: bool,
         request_parameters: pd.DataFrame | pl.DataFrame = None,
     ):
-        """Extracts the logging data from the passed dataframes and returns the expected batch dataframe with the logging metadata attached.
+        """Extract logging data and attach logging metadata to the returned dataframe.
 
         The logging metadata is created as a hidden attribute named `hopsworks_logging_metadata` of the returned dataframe.
 
         The return dataframe will only contain the features that the user requested (i.e. if the user requested to not include primary keys, event time or inference helpers, those features will be excluded).
+
+        Parameters:
+            untransformed_features: DataFrame containing the untransformed feature values.
+            transformed_features: DataFrame containing the transformed feature values.
+            feature_view: The feature view whose features are being logged.
+            transformed: Whether to include transformed features in the log.
+            inference_helpers: Whether to include inference helper columns.
+            event_time: Whether to include the event time column.
+            primary_key: Whether to include the primary key columns.
+            request_parameters: DataFrame containing request parameter values, if any.
         """
         # Get the fully qualified names for the event time and serving keys.
         # This required since the since Hopsworks returns primary keys and event time as fully qualified names, if they are not explicitly selected in the feature view query.
@@ -424,47 +436,60 @@ class Engine:
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
     ) -> list[pd.DataFrame | pl.DataFrame]:
-        total_count = 10000
-        offset = 0
         df_list = []
         if read_options is None:
             read_options = {}
 
-        while offset < total_count:
-            total_count, inode_list = self._dataset_api._list_dataset_path(
-                location, inode.Inode, offset=offset, limit=100
-            )
+        # Check if the location is a file or directory
+        path_metadata = self._dataset_api._get(location)
+        is_dir = path_metadata.get("attributes", {}).get("dir", False)
 
-            for inode_entry in inode_list:
-                if not self._is_metadata_file(inode_entry.path):
-                    from hsfs.core import arrow_flight_client
+        if is_dir:
+            # Location is a directory, list all files
+            total_count = 10000
+            offset = 0
+            while offset < total_count:
+                total_count, inode_list = self._dataset_api._list_dataset_path(
+                    location, inode.Inode, offset=offset, limit=100
+                )
 
-                    if arrow_flight_client.is_data_format_supported(
-                        data_format, read_options
-                    ):
-                        arrow_flight_config = read_options.get("arrow_flight_config")
-                        df = arrow_flight_client.get_instance().read_path(
-                            inode_entry.path,
-                            arrow_flight_config,
-                            dataframe_type=dataframe_type,
+                for inode_entry in inode_list:
+                    if not self._is_metadata_file(inode_entry.path):
+                        df = self._read_single_hopsfs_file(
+                            inode_entry.path, data_format, read_options, dataframe_type
                         )
-                    else:
-                        content_stream = self._dataset_api.read_content(
-                            inode_entry.path
-                        )
-                        if dataframe_type.lower() == "polars":
-                            df = self._read_polars(
-                                data_format, BytesIO(content_stream.content)
-                            )
-                        else:
-                            df = self._read_pandas(
-                                data_format, BytesIO(content_stream.content)
-                            )
-
-                    df_list.append(df)
-                offset += 1
+                        df_list.append(df)
+                offset += len(inode_list)
+        else:
+            # Location is a single file, read it directly
+            if not self._is_metadata_file(location):
+                df = self._read_single_hopsfs_file(
+                    location, data_format, read_options, dataframe_type
+                )
+                df_list.append(df)
 
         return df_list
+
+    def _read_single_hopsfs_file(
+        self,
+        path: str,
+        data_format: str,
+        read_options: dict[str, Any],
+        dataframe_type: str,
+    ) -> pd.DataFrame | pl.DataFrame:
+        from hsfs.core import arrow_flight_client
+
+        if arrow_flight_client.is_data_format_supported(data_format, read_options):
+            arrow_flight_config = read_options.get("arrow_flight_config")
+            return arrow_flight_client.get_instance().read_path(
+                path,
+                arrow_flight_config,
+                dataframe_type=dataframe_type,
+            )
+        content_stream = self._dataset_api.read_content(path)
+        if dataframe_type.lower() == "polars":
+            return self._read_polars(data_format, BytesIO(content_stream.content))
+        return self._read_pandas(data_format, BytesIO(content_stream.content))
 
     def _read_s3(
         self,
@@ -560,12 +585,13 @@ class Engine:
         feature_group: hsfs.feature_group.FeatureGroup,
         n: int = None,
         dataframe_type: str = "default",
+        filter: Filter | Logic = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[list[Any]]:
         dataframe_type = dataframe_type.lower()
         self._validate_dataframe_type(dataframe_type)
 
-        results = VectorDbClient.read_feature_group(feature_group, n)
-        feature_names = [f.name for f in feature_group.features]
+        results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
+        feature_names = [f.name for f in feature_group.columns]
         if dataframe_type == "polars":
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
@@ -667,13 +693,34 @@ class Engine:
                     )
                     df[field.name] = df[field.name].astype(str)
 
+        # complex columns — pandas describe() hangs on unhashable types; identify upfront
+        complex_cols = {
+            field.name
+            for field in arrow_schema
+            if (
+                pa.types.is_list(field.type)
+                or pa.types.is_large_list(field.type)
+                or pa.types.is_fixed_size_list(field.type)
+                or pa.types.is_struct(field.type)
+                or pa.types.is_map(field.type)
+            )
+        }
         if relevant_columns is None or len(relevant_columns) == 0:
-            stats = df.describe().to_dict()
             relevant_columns = df.columns
+            describe_cols = [col for col in relevant_columns if col not in complex_cols]
+            stats = df[describe_cols].describe().to_dict() if describe_cols else {}
         else:
-            target_cols = [col for col in df.columns if col in relevant_columns]
+            target_cols = [
+                col
+                for col in df.columns
+                if col in relevant_columns and col not in complex_cols
+            ]
             _logger.debug(f"Target columns for describe: {target_cols}")
-            stats = df[target_cols].describe().to_dict()
+            stats = df[target_cols].describe().to_dict() if target_cols else {}
+        # pre-populate empty stats for complex columns so describe() is never called on them
+        for col in complex_cols:
+            if col in relevant_columns:
+                stats[col] = {}
         _logger.debug(f"Column stats computed via describe for: {stats.keys()}")
         # df.describe() does not compute stats for all col types (e.g., string)
         # we need to compute stats for the rest of the cols iteratively
@@ -693,17 +740,26 @@ class Engine:
                 stats[col] = {}
         final_stats = []
         for col in relevant_columns:
+            # Polars 1.36+ ``DataFrame.describe().to_dict()`` returns each
+            # column as a ``pl.Series`` rather than a Python list. The old
+            # ``isinstance(stats[col], list)`` guard fell through for Series,
+            # leaving the raw Series in place; downstream code then evaluated
+            # ``"count" in stat`` which routes through ``pl.Series.__contains__``
+            # and raises ``InvalidOperationError``. Accept both shapes.
             if HAS_POLARS and (
                 isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+                and not isinstance(stats[col], dict)
             ):
-                stats[col] = dict(zip(stats["statistic"], stats[col]))
+                stats[col] = dict(zip(stats["statistic"], stats[col], strict=False))
             # set data type
             arrow_type = arrow_schema.field(col).type
             if (
                 pa.types.is_null(arrow_type)
                 or pa.types.is_list(arrow_type)
                 or pa.types.is_large_list(arrow_type)
+                or pa.types.is_fixed_size_list(arrow_type)
                 or pa.types.is_struct(arrow_type)
+                or pa.types.is_map(arrow_type)
                 or PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None)
                 in ["timestamp", "date", "binary", "string"]
             ):
@@ -807,6 +863,18 @@ class Engine:
             dataframe = dataframe.to_pandas()
         if ge_validate_kwargs is None:
             ge_validate_kwargs = {}
+        if GE_MAJOR == 1:
+            # GE 1.x removed from_pandas; use the get_context + dataframe asset chain.
+            context = great_expectations.get_context(mode="ephemeral")
+            data_source = context.data_sources.add_pandas("hopsworks_pandas")
+            asset = data_source.add_dataframe_asset("hopsworks_asset")
+            batch_definition = asset.add_batch_definition_whole_dataframe(
+                "hopsworks_batch"
+            )
+            batch = batch_definition.get_batch(
+                batch_parameters={"dataframe": dataframe}
+            )
+            return batch.validate(expectation_suite, **ge_validate_kwargs)
         return great_expectations.from_pandas(
             dataframe, expectation_suite=expectation_suite
         ).validate(**ge_validate_kwargs)
@@ -858,9 +926,18 @@ class Engine:
                     dataframe_copy[col].dtype, pd.core.dtypes.dtypes.DatetimeTZDtype
                 ):
                     dataframe_copy[col] = dataframe_copy[col].dt.tz_convert(None)
-                elif HAS_POLARS and isinstance(dataframe_copy[col].dtype, pl.Datetime):
+                elif (
+                    HAS_POLARS
+                    and isinstance(dataframe_copy[col].dtype, pl.Datetime)
+                    and dataframe_copy[col].dtype.time_zone is not None
+                ):
+                    # cast to tz-naive Datetime; this converts the wall-clock to UTC
+                    # first, mirroring pandas' dt.tz_convert(None). Plain
+                    # dt.replace_time_zone(None) would just drop the tz and leave
+                    # the wall-clock time, silently producing different values for
+                    # non-UTC zones than the pandas branch above.
                     dataframe_copy = dataframe_copy.with_columns(
-                        pl.col(col).dt.replace_time_zone(None)
+                        pl.col(col).cast(pl.Datetime(time_zone=None))
                     )
             return dataframe_copy
         if dataframe == "spine":
@@ -916,7 +993,7 @@ class Engine:
     def _to_arrow_table(self, dataframe: pd.DataFrame | pl.DataFrame):
         """Convert a pandas or polars DataFrame to a pyarrow.Table.
 
-        Args:
+        Parameters:
             dataframe: Union[pd.DataFrame, pl.DataFrame]
 
         Returns:
@@ -939,87 +1016,66 @@ class Engine:
             f"Unsupported dataframe type for arrow conversion: {type(dataframe)}"
         )
 
-    def _check_duplicate_records(self, dataset, feature_group_instance):
-        """Check for duplicate records within primary_key, event_time and partition_key columns.
+    def _mark_online_rows(
+        self,
+        feature_group: FeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+    ) -> list[bool]:
+        """Return a per-row boolean list indicating which rows should be written to online storage.
 
-        Raises FeatureStoreException if duplicates are found.
-
-        Parameters:
-        -----------
-        dataset : Union[pd.DataFrame, pl.DataFrame]
-            The dataset to check for duplicates
-        feature_group_instance : FeatureGroup
-            The feature group instance containing primary_key, event_time and partition_key
+        For TTL-enabled feature groups, rows whose event time has already expired
+        are marked False.
+        For non-TTL feature groups, only the last occurrence per primary key is
+        marked True; earlier duplicates are marked False.
         """
-        # Get the key columns to check (primary_key + partition_key)
-        key_columns = list(feature_group_instance.primary_key)
+        event_time = feature_group.event_time
+        pk_cols = feature_group.primary_key
 
-        if not key_columns:
-            # No keys to check, skip validation
-            return
+        if not pk_cols:
+            return [True] * len(dataframe)
 
-        if feature_group_instance.event_time:
-            key_columns.append(feature_group_instance.event_time)
-
-        if feature_group_instance.partition_key:
-            key_columns.extend(feature_group_instance.partition_key)
-
-        dataset = self._to_arrow_table(dataset)
-        # Verify all key columns exist
-        table_columns = dataset.column_names
-        missing_columns = [col for col in key_columns if col not in table_columns]
-        if missing_columns:
-            raise FeatureStoreException(
-                f"Key columns {missing_columns} are missing from the dataset. "
-                f"Available columns: {table_columns}"
+        if HAS_POLARS and isinstance(dataframe, pl.DataFrame):
+            if feature_group.ttl_enabled and feature_group.ttl:
+                if event_time:
+                    threshold = datetime.now(tz=timezone.utc) - timedelta(
+                        seconds=feature_group.ttl
+                    )
+                    # cast (rather than dt.replace_time_zone("UTC")) so that
+                    # tz-aware columns convert to the UTC instant; replace_time_zone
+                    # only relabels and would silently misclassify rows from non-UTC
+                    # zones. Naive datetimes are interpreted as UTC, mirroring the
+                    # pandas branch's pd.to_datetime(..., utc=True).
+                    return (
+                        dataframe[event_time]
+                        .cast(pl.Datetime(time_zone="UTC"))
+                        .gt(threshold)
+                        .to_list()
+                    )
+                return [True] * len(dataframe)
+            df = dataframe.with_row_index("__row_idx__")
+            order_col = event_time if event_time else "__row_idx__"
+            max_idx = df.group_by(pk_cols).agg(
+                pl.col("__row_idx__").sort_by(order_col).last().alias("__max_idx__")
             )
-
-        import pyarrow.compute as pc
-
-        # Check for duplicates using PyArrow group_by
-        # Group by key columns and count occurrences
-        grouped = dataset.group_by(key_columns).aggregate(
-            [
-                # The aggregation tuple structure: ([], function_name, FunctionOptions)
-                ([], "count_all", pc.CountOptions(mode="all"))
-            ]
-        )
-
-        # Filter groups with count > 1 (duplicates)
-        duplicate_groups = grouped.filter(pc.greater(grouped["count_all"], 1))
-
-        duplicate_count = len(duplicate_groups)
-
-        if duplicate_count > 0:
-            # Get total number of duplicate rows (sum of counts - 1 for each duplicate group)
-            # Since count includes the first occurrence, duplicates = count - 1 per group
-            total_duplicate_rows = (
-                sum(duplicate_groups["count_all"].to_pylist()) - duplicate_count
-            )
-
-            # Get sample duplicate records for error message
-            # Take first 10 duplicate groups and get their key values
-            sample_groups = duplicate_groups.slice(0, min(10, duplicate_count))
-
-            # Build sample string showing the duplicate key combinations
-            sample_rows = []
-            for i in range(len(sample_groups)):
-                row_dict = {}
-                for col in key_columns:
-                    row_dict[col] = sample_groups[col][i].as_py()
-                row_dict["count_all"] = sample_groups["count_all"][i].as_py()
-                sample_rows.append(str(row_dict))
-
-            sample_str = "\n".join(sample_rows)
-
-            raise FeatureStoreException(
-                FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
-                + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
-                f"primary_key ({feature_group_instance.primary_key}) and "
-                f"partition_key ({feature_group_instance.partition_key}). "
-                f"Found {duplicate_count} duplicate group(s). "
-                f"Sample duplicate key combinations:\n{sample_str}"
-            )
+            df = df.join(max_idx, on=pk_cols, how="left")
+            return (df["__row_idx__"] == df["__max_idx__"]).to_list()
+        if feature_group.ttl_enabled and feature_group.ttl:
+            if event_time:
+                threshold = datetime.now(tz=timezone.utc) - timedelta(
+                    seconds=feature_group.ttl
+                )
+                return (
+                    pd.to_datetime(dataframe[event_time], utc=True) > threshold
+                ).tolist()
+            return [True] * len(dataframe)
+        df = dataframe.reset_index(drop=True)
+        if event_time:
+            max_idx = df.groupby(pk_cols, sort=False)[event_time].idxmax()
+        else:
+            max_idx = df.groupby(pk_cols, sort=False).tail(1).index
+        flags = pd.Series(False, index=df.index)
+        flags.loc[max_idx] = True
+        return flags.tolist()
 
     def save_dataframe(
         self,
@@ -1033,35 +1089,45 @@ class Engine:
         validation_id: int | None = None,
     ) -> job.Job | None:
         if (
-            # Only `FeatureGroup` class has time_travel_format property
-            isinstance(feature_group, FeatureGroup)
+            not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+            and feature_group.stream
+        ):
+            # Streaming feature groups require the same data to be written on online and offline storage
+            return self._run_materialization_job(
+                feature_group,
+                dataframe,
+                offline_write_options,
+                None,  # doesnt support storage parameter
+            )
+
+        inserted = False
+        if (
+            storage in [None, "offline"]
+            and not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
             and feature_group.time_travel_format == "DELTA"
         ):
-            self._check_duplicate_records(dataframe, feature_group)
-            _logger.debug("No duplicate records found. Proceeding with Delta write.")
-
-        if (
-            hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
-            and feature_group.online_enabled
-        ) or feature_group.stream:
-            return self._write_dataframe_kafka(
-                feature_group, dataframe, offline_write_options
+            # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
+            delta_engine_instance = delta_engine.DeltaEngine(
+                feature_store_id=feature_group.feature_store_id,
+                feature_store_name=feature_group.feature_store_name,
+                feature_group=feature_group,
+                spark_context=None,
+                spark_session=None,
             )
-        if engine.get_type() == "python":
-            if feature_group.time_travel_format == "DELTA":
-                delta_engine_instance = delta_engine.DeltaEngine(
-                    feature_store_id=feature_group.feature_store_id,
-                    feature_store_name=feature_group.feature_store_name,
-                    feature_group=feature_group,
-                    spark_context=None,
-                    spark_session=None,
-                )
-                delta_engine_instance.save_delta_fg(
-                    dataframe,
-                    write_options=offline_write_options,
-                    validation_id=validation_id,
-                )
-        else:
+            delta_engine_instance.save_delta_fg(
+                dataframe,
+                write_options=offline_write_options,
+                validation_id=validation_id,
+                operation=operation,
+            )
+            inserted = True
+        if storage in [None, "online"] and feature_group.online_enabled:
+            self._write_dataframe_kafka(
+                feature_group, dataframe, offline_write_options, storage
+            )
+            inserted = True
+
+        if not inserted:
             # for backwards compatibility
             return self.legacy_save_dataframe(
                 feature_group,
@@ -1121,14 +1187,18 @@ class Engine:
         """Function that creates or retrieves already created the training dataset.
 
         Parameters:
-            training_dataset_obj `TrainingDataset`: The training dataset metadata object.
-            feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
-            query_obj `Query`: The query object that contains the query used to create the feature view.
-            read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
-            dataframe_type `str`: The type of dataframe returned.
-            training_dataset_version `int`: Version of training data to be retrieved.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            training_dataset_obj: The training dataset metadata object.
+            feature_view_obj: The feature view object for the which the training data is being created.
+            query_obj: The query object that contains the query used to create the feature view.
+            read_options: Dictionary that can be used to specify extra parameters for reading data.
+            dataframe_type: The type of dataframe returned.
+            training_dataset_version: Version of training data to be retrieved.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+
+        Returns:
+            The training data as a DataFrame.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1157,10 +1227,12 @@ class Engine:
         #    transformation_function_engine.TransformationFunctionEngine.get_and_set_feature_statistics(
         #        training_dataset_obj, feature_view_obj, training_dataset_version
         #    )
-        return self._apply_transformation_function(
-            feature_view_obj.transformation_functions,
-            df,
+        return transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            transformation_functions=feature_view_obj.transformation_functions,
+            data=df,
+            online=False,
             transformation_context=transformation_context,
+            request_parameters=None,
         )
 
     def split_labels(
@@ -1171,7 +1243,12 @@ class Engine:
     ) -> tuple[pd.DataFrame | pl.DataFrame, pd.DataFrame | pl.DataFrame | None]:
         if labels:
             labels_df = df[labels]
-            df_new = df.drop(columns=labels)
+            if HAS_POLARS and isinstance(
+                df, (pl.DataFrame, pl.dataframe.frame.DataFrame)
+            ):
+                df_new = df.drop(labels)
+            else:
+                df_new = df.drop(columns=labels)
             return (
                 self._return_dataframe_type(df_new, dataframe_type),
                 self._return_dataframe_type(labels_df, dataframe_type),
@@ -1181,6 +1258,10 @@ class Engine:
     def drop_columns(
         self, df: pd.DataFrame | pl.DataFrame, drop_cols: list[str]
     ) -> pd.DataFrame | pl.DataFrame:
+        if HAS_POLARS and (
+            isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        ):
+            return df.drop(*drop_cols)
         return df.drop(columns=drop_cols)
 
     def _prepare_transform_split_df(
@@ -1196,14 +1277,15 @@ class Engine:
         """Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split and values are split ratios.
 
         Parameters:
-            query_obj `Query`: The query object that contains the query used to create the feature view.
-            training_dataset_obj `TrainingDataset`: The training dataset metadata object.
-            feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
-            read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
-            dataframe_type `str`: The type of dataframe returned.
-            training_dataset_version `int`: Version of training data to be retrieved.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            query_obj: The query object that contains the query used to create the feature view.
+            training_dataset_obj: The training dataset metadata object.
+            feature_view_obj: The feature view object for the which the training data is being created.
+            read_options: Dictionary that can be used to specify extra parameters for reading data.
+            dataframe_type: The type of dataframe returned.
+            training_dataset_version: Version of training data to be retrieved.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1275,10 +1357,16 @@ class Engine:
         #    )
         # and the apply them
         for split_name in result_dfs:
-            result_dfs[split_name] = self._apply_transformation_function(
-                feature_view_obj.transformation_functions,
-                result_dfs.get(split_name),
-                transformation_context=transformation_context,
+            result_dfs[split_name] = (
+                transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                    transformation_functions=feature_view_obj.transformation_functions,
+                    data=result_dfs.get(split_name),
+                    online=False,
+                    transformation_context=transformation_context,
+                    request_parameters=None,
+                )
+                if feature_view_obj.transformation_functions
+                else result_dfs.get(split_name)
             )
 
         return result_dfs
@@ -1436,10 +1524,11 @@ class Engine:
         """Returns a dataframe of particular type.
 
         Parameters:
-            dataframe `Union[pd.DataFrame, pl.DataFrame]`: Input dataframe
-            dataframe_type `str`: Type of dataframe to be returned
+            dataframe: Input dataframe
+            dataframe_type: Type of dataframe to be returned
+
         Returns:
-            `Union[pd.DataFrame, pl.DataFrame, np.array, list]`: DataFrame of required type.
+            DataFrame of required type.
         """
         if dataframe_type.lower() in ["default", "pandas"]:
             return dataframe
@@ -1524,104 +1613,65 @@ class Engine:
                 f.write(bytesio_object.getbuffer())
         return local_file
 
-    def _apply_transformation_function(
-        self,
-        transformation_functions: list[transformation_function.TransformationFunction],
-        dataset: pd.DataFrame | pl.DataFrame,
-        online_inference: bool = False,
-        transformation_context: dict[str, Any] = None,
+    def shallow_copy_dataframe(
+        self, dataframe: pd.DataFrame | pl.DataFrame
     ) -> pd.DataFrame | pl.DataFrame:
-        """Apply transformation function to the dataframe.
+        if HAS_POLARS and (
+            isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        ):
+            return dataframe.clone()
+        if HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
+            return dataframe.copy(deep=False)
+        raise ValueError(
+            f"Dataframe type {type(dataframe)} not supported in the Python engine."
+        )
+
+    def apply_udf_on_dataframe(
+        self,
+        udf: HopsworksUdf,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        online: bool = False,
+    ) -> pd.DataFrame | pl.DataFrame:
+        """Apply a UDF to a dataframe.
 
         Parameters:
-            transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
-            dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
+            udf: The UDF to apply.
+            dataframe: The dataframe to apply the UDF to.
+            online: Whether the UDF is being applied in online serving context.
 
         Returns:
-            `DataFrame`: A pandas dataframe with the transformed data.
-
-        Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            The dataframe with the UDF applied.
         """
-        dropped_features = set()
-
-        # Shallow copy done prevent overwriting metadata in the dataframe like the columns in it.
-        if HAS_POLARS and (
-            isinstance(dataset, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        if (
+            udf.execution_mode.get_current_execution_mode(online=online)
+            == UDFExecutionMode.PANDAS
         ):
-            dataset = dataset.clone()
-        else:
-            dataset = dataset.copy()
-
-        if HAS_POLARS and (
-            isinstance(dataset, (pl.DataFrame, pl.dataframe.frame.DataFrame))
-        ):
-            # Converting polars dataframe to pandas because currently we support only pandas UDF's as transformation functions.
-            if HAS_PYARROW:
-                dataset = dataset.to_pandas(
-                    use_pyarrow_extension_array=True
-                )  # Zero copy if pyarrow extension can be used.
-            else:
-                dataset = dataset.to_pandas(use_pyarrow_extension_array=False)
-
-        for tf in transformation_functions:
-            hopsworks_udf = tf.hopsworks_udf
-
-            # Setting transformation function context variables.
-            hopsworks_udf.transformation_context = transformation_context
-
-            missing_features = set(hopsworks_udf.transformation_features) - set(
-                dataset.columns
+            return self._apply_pandas_udf(
+                hopsworks_udf=udf, dataframe=dataframe, online=online
             )
-            if missing_features:
-                if (
-                    tf.transformation_type
-                    == transformation_function.TransformationType.ON_DEMAND
-                ):
-                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
-                    raise FeatureStoreException(
-                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
-                        "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
-                    )
-                raise FeatureStoreException(
-                    f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
-                )
-            if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(tf.hopsworks_udf.dropped_features)
-
-            if (
-                hopsworks_udf.execution_mode.get_current_execution_mode(
-                    online=online_inference
-                )
-                == UDFExecutionMode.PANDAS
-            ):
-                dataset = self._apply_pandas_udf(
-                    hopsworks_udf=hopsworks_udf, dataframe=dataset
-                )
-            else:
-                dataset = self._apply_python_udf(
-                    hopsworks_udf=hopsworks_udf, dataframe=dataset
-                )
-        return dataset.drop(dropped_features, axis=1)
+        return self._apply_python_udf(
+            hopsworks_udf=udf, dataframe=dataframe, online=online
+        )
 
     def _apply_python_udf(
         self,
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
+        online: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a python udf to a dataframe.
 
         Parameters:
-            transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
-            dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
+            transformation_functions: List of transformation functions.
+            dataset: A pandas or polars dataframe.
 
         Returns:
-            `DataFrame`: A pandas dataframe with the transformed data.
+            A pandas dataframe with the transformed data.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        udf = hopsworks_udf.get_udf(online=False)
+        udf = hopsworks_udf.get_udf(online=online)
         if isinstance(dataframe, pd.DataFrame):
             if len(hopsworks_udf.return_types) > 1:
                 dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
@@ -1642,7 +1692,9 @@ class Engine:
                         cols.pop(cols.index(hopsworks_udf.output_column_names[0]))
                     )
                     dataframe = dataframe[cols]
-        else:
+        elif HAS_POLARS and (
+            isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        ):
             # Dynamically creating lambda function so that we do not need to loop though to extract features required for the udf.
             # This is done because polars 'map_rows' provides rows as tuples to the udf.
             transformation_features = ", ".join(
@@ -1661,6 +1713,7 @@ class Engine:
                         zip(
                             transformed_features.columns,
                             hopsworks_udf.output_column_names,
+                            strict=False,
                         )
                     )
                 )
@@ -1671,49 +1724,44 @@ class Engine:
         self,
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
+        online: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a pandas udf to a dataframe.
 
         Parameters:
-            transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
-            dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
+            transformation_functions: List of transformation functions.
+            dataset: A pandas or polars dataframe.
 
         Returns:
-            `DataFrame`: A pandas dataframe with the transformed data.
+            A pandas dataframe with the transformed data.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
+        # Cast to pandas if polars dataframe to avoid errors when applying the pandas UDF.
+        if HAS_POLARS and (
+            isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        ):
+            # Converting polars dataframe to pandas because currently we support only pandas UDF's as transformation functions.
+            if HAS_PYARROW:
+                dataframe = dataframe.to_pandas(
+                    use_pyarrow_extension_array=True
+                )  # Zero copy if pyarrow extension can be used.
+            else:
+                dataframe = dataframe.to_pandas(use_pyarrow_extension_array=False)
+
+        features = [dataframe[f] for f in hopsworks_udf.transformation_features]
+        # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
+        output = hopsworks_udf.get_udf(online=online)(*features)
+        output_names = hopsworks_udf.output_column_names
         if len(hopsworks_udf.return_types) > 1:
-            dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
-                online=False
-            )(
-                *(
-                    [
-                        dataframe[feature]
-                        for feature in hopsworks_udf.transformation_features
-                    ]
-                )
-            ).set_index(
-                dataframe.index
-            )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
+            dataframe[output_names] = output.set_index(dataframe.index)
         else:
-            dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
-                online=False
-            )(
-                *(
-                    [
-                        dataframe[feature]
-                        for feature in hopsworks_udf.transformation_features
-                    ]
-                )
-            ).set_axis(
-                dataframe.index
-            )  # Index is set to the input dataframe index so that pandas would merge the new column without reordering it.
-            if hopsworks_udf.output_column_names[0] in dataframe.columns:
+            dataframe[output_names[0]] = output.set_axis(dataframe.index)
+            if output_names[0] in dataframe.columns:
                 # Overwriting features also reordering dataframe to move overwritten column to the end of the dataframe
                 cols = dataframe.columns.tolist()
-                cols.append(cols.pop(cols.index(hopsworks_udf.output_column_names[0])))
+                cols.append(cols.pop(cols.index(output_names[0])))
                 dataframe = dataframe[cols]
         return dataframe
 
@@ -1728,25 +1776,39 @@ class Engine:
         feature_group: FeatureGroup | ExternalFeatureGroup,
         dataframe: pd.DataFrame | pl.DataFrame,
         offline_write_options: dict[str, Any],
-    ) -> job.Job | None:
-        initial_check_point = ""
+        storage: str | None,
+    ) -> None:
+        # Compute per-row online flags before building the Avro schema so the
+        # marker never enters the writer and avoids column name mangling.
+        online_flags = None
+        if (
+            feature_group.online_enabled
+            and storage in [None, "online"]
+            and offline_write_options.get("online_ingestion_options", {}).get(
+                "mark_online_rows", True
+            )
+        ):
+            online_flags = self._mark_online_rows(feature_group, dataframe)
+
+        if offline_write_options.get("online_ingestion_options", {}).get(
+            "disable_online_ingestion_count", False
+        ):
+            n_rows = None
+        elif online_flags is not None and storage == "online":
+            # we will only produce rows marked for online ingestion, so count those for accurate progress bar and Kafka producer configuration
+            n_rows = sum(online_flags)
+        else:
+            # if we are writing to offline or not marking online rows, all rows will be produced, so count the entire dataframe
+            n_rows = len(dataframe)
+
         producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
             feature_group,
             offline_write_options,
-            num_entries=len(dataframe),
+            num_entries=n_rows,
         )
 
-        if not feature_group._multi_part_insert:
-            # set initial_check_point to the current offset
-            initial_check_point = kafka_engine.kafka_get_offsets(
-                topic_name=feature_group._online_topic_name,
-                feature_store_id=feature_group.feature_store_id,
-                offline_write_options=offline_write_options,
-                high=True,
-            )
-
         acked, progress_bar = kafka_engine.build_ack_callback_and_optional_progress_bar(
-            n_rows=dataframe.shape[0],
+            n_rows=n_rows,
             is_multi_part_insert=feature_group._multi_part_insert,
             offline_write_options=offline_write_options,
         )
@@ -1757,11 +1819,27 @@ class Engine:
             row_iterator = dataframe.iter_rows(named=True)
 
         # loop over rows
-        for row in row_iterator:
+        for row, online_flag in zip(
+            row_iterator,
+            online_flags if online_flags is not None else itertools.repeat(None),
+            strict=False,
+        ):
             if isinstance(dataframe, pd.DataFrame):
-                # itertuples returns Python NamedTyple, to be able to serialize it using
-                # avro, create copy of row only by converting to dict, which preserves datatypes
+                # itertuples returns Python NamedTuple; convert to dict to serialize via Avro
                 row = row._asdict()
+
+            # Set per-row storage header based on the online flag when present.
+            row_headers = headers
+            if online_flag is not None:
+                if not online_flag and storage == "online":
+                    # Online-only write — skip rows not destined for online store.
+                    continue
+                # b"1" = ingest online, b"0" = offline only
+                row_headers = {
+                    **headers,
+                    "storage": b"1" if online_flag else b"0",
+                }
+
             encoded_row = kafka_engine.encode_row(feature_writers, writer, row)
 
             # assemble key
@@ -1772,7 +1850,7 @@ class Engine:
                 key=key,
                 encoded_row=encoded_row,
                 topic_name=feature_group._online_topic_name,
-                headers=headers,
+                headers=row_headers,
                 acked=acked,
                 debug_kafka=offline_write_options.get("debug_kafka", False),
             )
@@ -1782,6 +1860,36 @@ class Engine:
             producer.flush()
             del producer
             progress_bar.close()
+
+        # wait for online ingestion
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
+    def _run_materialization_job(
+        self,
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        offline_write_options: dict[str, Any],
+        storage: str | None,
+    ) -> job.Job | None:
+        initial_check_point = ""
+
+        if not feature_group._multi_part_insert:
+            # set initial_check_point to the current offset
+            initial_check_point = kafka_engine.kafka_get_offsets(
+                topic_name=feature_group._online_topic_name,
+                feature_store_id=feature_group.feature_store_id,
+                offline_write_options=offline_write_options,
+                high=True,
+            )
+
+        self._write_dataframe_kafka(
+            feature_group, dataframe, offline_write_options, storage
+        )
 
         # start materialization job if not an external feature group, otherwise return None
         if isinstance(feature_group, ExternalFeatureGroup):
@@ -1846,14 +1954,6 @@ class Engine:
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
 
-        # wait for online ingestion
-        if feature_group.online_enabled and offline_write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
-            )
-
         return feature_group.materialization_job
 
     @staticmethod
@@ -1903,11 +2003,11 @@ class Engine:
         If the feature_log is `None` and cols are provided an empty dataframe with the provided columns is returned.
 
         Parameters:
-            feature_log `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame, List[Dict[str, Any]], Dict[str, Any]]`: Feature log provided by the user.
-            cols `List[str]`: List of expected features in the logging dataframe.
+            feature_log: Feature log provided by the user.
+            cols: List of expected features in the logging dataframe.
 
         Returns:
-            `pd.DataFrame`: A pandas dataframe with the feature log that contains the expected features.
+            A pandas dataframe with the feature log that contains the expected features.
         """
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
@@ -1943,8 +2043,8 @@ class Engine:
         If the feature_log provided is a list then it is considered as a single feature (column).
 
         Parameters:
-            feature_log `Union[List[List[Any]], List[Any]]`: List of features/labels provided for logging.
-            cols `List[str]`: List of expected features in the logging dataframe.
+            feature_log: List of features/labels provided for logging.
+            cols: List of expected features in the logging dataframe.
         """
         if isinstance(feature_log[0], list) or (
             HAS_NUMPY and isinstance(feature_log[0], np.ndarray)
@@ -2098,35 +2198,32 @@ class Engine:
         training_dataset_version: int | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, list[str], list[str]]:
         """Function that combines all the logging components into a single pandas dataframe that can be logged to the feature store.
 
-        The function
-
         Parameters:
-            logging_data : Feature log provided by the user.
-            logging_feature_group_features : List of features in the logging feature group.
-            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
-            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
+            logging_data: Feature log provided by the user.
+            logging_feature_group_features: List of features in the logging feature group.
+            logging_feature_group_feature_names: The names of the logging feature group features.
+            logging_features: The names of the logging features, this excludes the names of all metadata columns.
             transformed_features: Tuple of transformed features to be logged, transformed feature names and a log component name (a constant named "transformed_features").
-            untransformed_features : Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
-            predictions : Tuple of predictions, prediction names and log component name (a constant named "predictions").
-            serving_keys : Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
-            helper_columns : Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
-            request_parameters : Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
-            event_time : Tuple of event time, event time column name and log component name (a constant named "event_time").
-            request_id : Tuple of request id, request id column name and log component name (a constant named "request_id").
-            extra_logging_features : Tuple of extra logging features, extra logging feature names and log component name (a constant named "extra_logging_features").
-            td_col_name : Name of the training dataset version column.
-            time_col_name : Name of the event time column.
-            model_col_name : Name of the model column.
-            training_dataset_version : Version of the training dataset.
-            hsml_model : Name of the model.
+            untransformed_features: Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
+            predictions: Tuple of predictions, prediction names and log component name (a constant named "predictions").
+            serving_keys: Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
+            helper_columns: Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
+            request_parameters: Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
+            event_time: Tuple of event time, event time column name and log component name (a constant named "event_time").
+            request_id: Tuple of request id, request id column name and log component name (a constant named "request_id").
+            extra_logging_features: Tuple of extra logging features, extra logging feature names and log component name (a constant named "extra_logging_features").
+            td_col_name: Name of the training dataset version column.
+            time_col_name: Name of the event time column.
+            model_col_name: Name of the model column.
+            training_dataset_version: Version of the training dataset.
+            model_name: Name of the model.
+            model_version: Version of the model.
 
         Returns:
-            `pd.DataFrame`: A pandas dataframe with all the logging components.
-            `List[str]`: Names of additional logging features passed in the Logging Dataframe.
-            `List[str]`: Names of missing logging features passed in the Logging Dataframe.
+            A tuple of (dataframe, additional_feature_names, missing_feature_names).
         """
         if logging_data is not None:
             try:
@@ -2410,28 +2507,28 @@ class Engine:
         """Function that combines all the logging components into a single list of dictionaries that can be logged to send to the inference logger side cart for writing to the feature store.
 
         Parameters:
-            logging_data : Feature log provided by the user.
-            logging_feature_group_features : List of features in the logging feature group.
-            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
-            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
+            logging_data: Feature log provided by the user.
+            logging_feature_group_features: List of features in the logging feature group.
+            logging_feature_group_feature_names: The names of the logging feature group features.
+            logging_features: The names of the logging features, this excludes the names of all metadata columns.
             transformed_features: Tuple of transformed features to be logged, transformed feature names and a log component name (a constant named "transformed_features").
-            untransformed_features : Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
-            predictions : Tuple of predictions, prediction names and log component name (a constant named "predictions").
-            serving_keys : Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
-            helper_columns : Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
-            request_parameters : Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
-            event_time : Tuple of event time, event time column name and log component name (a constant named "event_time").
-            request_id : Tuple of request id, request id column name and log component name (a constant named "request_id").
-            extra_logging_features : Tuple of extra logging features, extra logging feature names and log component name
-            td_col_name : Name of the training dataset version column.
-            time_col_name : Name of the event time column.
-            model_col_name : Name of the model column.
-            training_dataset_version : Version of the training dataset.
-            model_name : Name of the model.
-            model_version : Version of the model.
+            untransformed_features: Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
+            predictions: Tuple of predictions, prediction names and log component name (a constant named "predictions").
+            serving_keys: Tuple of serving keys, serving key names and log component name (a constant named "serving_keys").
+            helper_columns: Tuple of helper columns, helper column names and log component name (a constant named "helper_columns").
+            request_parameters: Tuple of request parameters, request parameter names and log component name (a constant named "request_parameters").
+            request_id: Tuple of request id, request id column name and log component name (a constant named "request_id").
+            event_time: Tuple of event time, event time column name and log component name (a constant named "event_time").
+            extra_logging_features: Tuple of extra logging features, extra logging feature names and log component name
+            td_col_name: Name of the training dataset version column.
+            time_col_name: Name of the event time column.
+            model_col_name: Name of the model column.
+            training_dataset_version: Version of the training dataset.
+            model_name: Name of the model.
+            model_version: Version of the model.
 
         Returns:
-            `List[Dict[str, Any]]`: A list of dictionaries with all the logging components
+            A list of dictionaries with all the logging components
         """
         _, label_columns, _ = predictions
         # If any of the logging components is a dataframe, we use the get_feature_logging_df function to get a dataframe and then convert it to a list of dictionaries.
@@ -2563,14 +2660,16 @@ class Engine:
 
             if log_vectors is None:
                 log_vectors = [
-                    dict(zip(feature_names, row)) if not isinstance(row, dict) else row
+                    dict(zip(feature_names, row, strict=False))
+                    if not isinstance(row, dict)
+                    else row
                     for row in data
                 ]
             # If one of the logging components has only one row and the other has multiple rows, we repeat the single row to match the length of the other component.
             elif len(data) == 1:
                 for log_vector in log_vectors:
                     log_vector.update(
-                        dict(zip(feature_names, data[0]))
+                        dict(zip(feature_names, data[0], strict=False))
                         if not isinstance(data[0], dict)
                         else data[0]
                     )
@@ -2580,9 +2679,9 @@ class Engine:
                         f"Length of `{log_component_name}` provided do not match other arguments. Please check the logging data to make sure that all arguments have the same length."
                     )
             else:
-                for log_vector, row in zip(log_vectors, data):
+                for log_vector, row in zip(log_vectors, data, strict=False):
                     log_vector.update(
-                        dict(zip(feature_names, row))
+                        dict(zip(feature_names, row, strict=False))
                         if not isinstance(row, dict)
                         else row
                     )
@@ -2603,7 +2702,7 @@ class Engine:
             # Get any request parameters that the user passed explicitly.
             if request_parameter_data is not None:
                 request_parameter_data = [
-                    dict(zip(request_parameter_names, row))
+                    dict(zip(request_parameter_names, row, strict=False))
                     if not isinstance(row, dict)
                     else row
                     for row in request_parameter_data
@@ -2612,7 +2711,9 @@ class Engine:
                 request_parameter_data = [{} for _ in range(len(log_vectors))]
 
             # Iterate through the log vectors and try to parse request parameters from the log vector if they are not explicitly passed by the user.
-            for log_vector, passed_rp_data in zip(log_vectors, request_parameter_data):
+            for log_vector, passed_rp_data in zip(
+                log_vectors, request_parameter_data, strict=False
+            ):
                 for col in request_parameter_names:
                     if col not in passed_rp_data and col in log_vector:
                         passed_rp_data[col] = log_vector[col]
@@ -2666,10 +2767,10 @@ class Engine:
         Both Pandas and Polars dataframes are supported in the Python Engine.
 
         Parameters:
-            dataframe `Any`: A dataframe to check.
+            dataframe: A dataframe to check.
 
         Returns:
-            `bool`: True if the dataframe is supported, False otherwise.
+            `True` if the dataframe is supported, `False` otherwise.
         """
         if (HAS_POLARS and isinstance(dataframe, pl.DataFrame)) or (
             HAS_PANDAS and isinstance(dataframe, pd.DataFrame)

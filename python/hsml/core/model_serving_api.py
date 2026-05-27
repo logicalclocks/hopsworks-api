@@ -29,13 +29,11 @@ class ModelServingApi:
         self._dataset_api = dataset_api.DatasetApi()
         self._serving_api = serving_api.ServingApi()
 
-    def get(self):
+    def get(self) -> ModelServing:
         """Get model serving for specific project.
 
-        :param project: project of the model registry
-        :type project: str
-        :return: the model serving metadata
-        :rtype: ModelServing.
+        Returns:
+            the model serving metadata
         """
         _client = client.get_instance()
 
@@ -97,23 +95,19 @@ class ModelServingApi:
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER
                 )
 
-                port = (
-                    endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
-                    if endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
-                    else endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP)
-                )
-
                 if endpoint is not None:
                     # if load balancer (external ip) available
+                    https_port = endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                    port = https_port or endpoint.get_port(
+                        INFERENCE_ENDPOINTS.PORT_NAME_HTTP
+                    )
                     _client = client.get_instance()
                     client.istio.init(
                         endpoint.get_any_host(),
                         port.number,
                         _client._project_name,
                         _client._auth._token,  # reuse hopsworks client token
-                        scheme="https"
-                        if endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
-                        else "http",
+                        scheme="https" if https_port else "http",
                     )
                     return
 

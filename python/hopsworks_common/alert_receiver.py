@@ -18,9 +18,11 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+@public("hopsworks.alert_receiver.EmailConfig")
 class EmailConfig:
     def __init__(
         self,
@@ -37,8 +39,12 @@ class EmailConfig:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self):
-        """Return the email config as a dictionary."""
+    def to_dict(self) -> dict:
+        """Return the email config as a dictionary.
+
+        Returns:
+            A dictionary representation of the alert.
+        """
         return {
             "to": self._to,
             "sendResolved": self._send_resolved,
@@ -84,6 +90,7 @@ class _EmailConfig:
         return f"EmailConfig({self._to!r})"
 
 
+@public("hopsworks.alert_receiver.SlackConfig")
 class SlackConfig:
     def __init__(
         self,
@@ -100,8 +107,12 @@ class SlackConfig:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self):
-        """Return the slack config as a dictionary."""
+    def to_dict(self) -> dict:
+        """Return the slack config as a dictionary.
+
+        Returns:
+            A dictionary representation of the alert.
+        """
         return {
             "channel": self._channel,
             "sendResolved": self._send_resolved,
@@ -147,6 +158,7 @@ class _SlackConfig:
         return f"SlackConfig({self._channel!r})"
 
 
+@public("hopsworks.alert_receiver.PagerDutyConfig")
 class PagerDutyConfig:
     def __init__(
         self,
@@ -223,6 +235,7 @@ class _PagerDutyConfig:
         return f"PagerDutyConfig({self._service_key!r}, {self._routing_key!r})"
 
 
+@public("hopsworks.alert_receiver.WebhookConfig")
 class WebhookConfig:
     def __init__(
         self,
@@ -286,6 +299,7 @@ class _WebhookConfig:
         return f"WebhookConfig({self._url!r})"
 
 
+@public("hopsworks.alert_receiver.AlertReceiver")
 class AlertReceiver:
     NOT_FOUND_ERROR_CODE = 390003
 

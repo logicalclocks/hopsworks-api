@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 if TYPE_CHECKING:
     import great_expectations
     from hsfs.constructor import hudi_feature_group_alias
+    from hsfs.constructor.filter import Filter, Logic
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame
 
@@ -49,13 +50,13 @@ try:
     import pyspark
     from pyspark import SparkFiles
     from pyspark.rdd import RDD
-    from pyspark.sql import DataFrame, SparkSession, SQLContext, Window
+    from pyspark.sql import DataFrame, SparkSession, Window
     from pyspark.sql.avro.functions import from_avro, to_avro
     from pyspark.sql.functions import (
         array,
         col,
         concat,
-        count,
+        current_timestamp,
         from_json,
         lit,
         monotonically_increasing_id,
@@ -95,6 +96,11 @@ import logging
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.spark_connect_utils import (
+    is_spark_connect_env,
+    is_spark_connect_session,
+    is_spark_dataframe,
+)
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
     feature,
@@ -112,7 +118,7 @@ from hsfs.core import (
     kafka_engine,
     transformation_function_engine,
 )
-from hsfs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_AVRO, HAS_GREAT_EXPECTATIONS
 from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.decorators import uses_great_expectations
 from hsfs.storage_connector import StorageConnector
@@ -135,17 +141,78 @@ class Engine:
     APPEND = "append"
     OVERWRITE = "overwrite"
 
+    def _create_spark_session(self):
+        """Create and return a SparkSession.
+
+        Subclasses can override to customize the session builder
+        (e.g. skip Hive support or add Delta extensions).
+        """
+        if is_spark_connect_env():
+            return SparkSession.builder.getOrCreate()
+        return SparkSession.builder.enableHiveSupport().getOrCreate()
+
     def __init__(self):
-        self._spark_session = SparkSession.builder.enableHiveSupport().getOrCreate()
-        self._spark_context = self._spark_session.sparkContext
-        # self._spark_context.setLogLevel("DEBUG")
-        self._jvm = self._spark_context._jvm
+        self._spark_session = self._create_spark_session()
+
+        self._is_connect = is_spark_connect_session(self._spark_session)
+
+        if self._is_connect:
+            self._spark_context = None
+            self._jvm = None
+        else:
+            self._spark_context = self._spark_session.sparkContext
+            self._jvm = self._spark_context._jvm
 
         self._spark_session.conf.set("hive.exec.dynamic.partition", "true")
         self._spark_session.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")
         self._spark_session.conf.set("spark.sql.hive.convertMetastoreParquet", "false")
         self._spark_session.conf.set("spark.sql.session.timeZone", "UTC")
         self._dataset_api = dataset_api.DatasetApi()
+
+        # Stage metrics: enabled by default in Connect mode, can be overridden
+        self._metrics = None
+        try:
+            metrics_override = self._spark_session.conf.get(
+                "hsfs.metrics.enabled", None
+            )
+        except Exception:
+            metrics_override = None
+        metrics_enabled = (
+            metrics_override.lower() in ("1", "true")
+            if metrics_override is not None
+            else self._is_connect
+        )
+        if metrics_enabled:
+            from hsfs.engine.spark_metrics import SparkStageMetrics
+
+            self._metrics = SparkStageMetrics(self._spark_session)
+
+    def _set_hadoop_conf(self, key, value):
+        """Set a Hadoop configuration property via the appropriate mechanism."""
+        if self._is_connect:
+            self._spark_session.conf.set(f"spark.hadoop.{key}", value)
+        else:
+            self._spark_context._jsc.hadoopConfiguration().set(key, value)
+
+    def _set_hadoop_conf_if_unset(self, key, value):
+        """Set a Hadoop configuration property only if not already set."""
+        if self._is_connect:
+            try:
+                existing = self._spark_session.conf.get(f"spark.hadoop.{key}")
+                if existing:
+                    return
+            except Exception:
+                pass
+            self._spark_session.conf.set(f"spark.hadoop.{key}", value)
+        else:
+            self._spark_context._jsc.hadoopConfiguration().setIfUnset(key, value)
+
+    def _unset_hadoop_conf(self, key):
+        """Unset a Hadoop configuration property."""
+        if self._is_connect:
+            self._spark_session.conf.unset(f"spark.hadoop.{key}")
+        else:
+            self._spark_context._jsc.hadoopConfiguration().unset(key)
 
     def sql(
         self,
@@ -156,20 +223,31 @@ class Engine:
         read_options,
         schema=None,
     ):
+        if self._metrics:
+            self._metrics.snapshot()
         if not connector:
             result_df = self._sql_offline(sql_query, feature_store)
         else:
             result_df = connector.read(sql_query, None, read_options, None)
 
         self.set_job_group("", "")
+        if self._metrics:
+            self._metrics.report("sql")
         return self._return_dataframe_type(result_df, dataframe_type)
 
     def is_flyingduck_query_supported(self, query, read_options=None):
         return False  # we do not support flyingduck on pyspark clients
 
     def _sql_offline(self, sql_query, feature_store):
-        # set feature store
-        self._spark_session.sql(f"USE {feature_store}")
+        # ``USE <feature_store>`` switches the active database in Spark's
+        # catalog. On Hopsworks the catalog is backed by Hive, so on the Spark
+        # Connect server (HopsFS-only, no Hive client provisioned) this call
+        # explodes with ``HiveException: Unable to instantiate
+        # SessionHiveMetaStoreClient``. Skip it in Connect mode — Delta and
+        # Hudi feature groups are already registered as session-global temp
+        # views by the query planner, which the SQL references unqualified.
+        if not self._is_connect:
+            self._spark_session.sql(f"USE {feature_store}")
         return self._spark_session.sql(sql_query)
 
     def show(self, sql_query, feature_store, n, online_conn, read_options=None):
@@ -182,29 +260,30 @@ class Engine:
         feature_group: fg_mod.FeatureGroup,
         n: int = None,
         dataframe_type: str = "default",
+        filter: Filter | Logic = None,
     ) -> pd.DataFrame | np.ndarray | list[list[Any]] | TypeVar("pyspark.sql.DataFrame"):
-        results = VectorDbClient.read_feature_group(feature_group, n)
-        feature_names = [f.name for f in feature_group.features]
+        results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
+        feature_names = [f.name for f in feature_group.columns]
         dataframe_type = dataframe_type.lower()
         if dataframe_type in ["default", "spark"]:
             if len(results) == 0:
-                return self._spark_session.createDataFrame(
-                    self._spark_session.sparkContext.emptyRDD(), StructType()
-                )
+                return self._spark_session.createDataFrame([], StructType())
             return self._spark_session.createDataFrame(results, feature_names)
         df = pd.DataFrame(results, columns=feature_names, index=None)
         return self._return_dataframe_type(df, dataframe_type)
 
     def set_job_group(self, group_id, description):
+        if self._is_connect:
+            return
         self._spark_session.sparkContext.setJobGroup(group_id, description)
 
     def register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
-            external_dataset = external_fg.storage_connector.read(
+            external_dataset = external_fg.data_source.storage_connector.read(
                 external_fg.data_source.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.storage_connector._get_path(
+                external_fg.data_source.storage_connector._get_path(
                     external_fg.data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
@@ -217,6 +296,12 @@ class Engine:
     def register_hudi_temporary_table(
         self, hudi_fg_alias, feature_store_id, feature_store_name, read_options
     ):
+        if self._is_connect:
+            raise FeatureStoreException(
+                "Hudi time-travel format is not supported in Spark Connect mode "
+                "because it requires JVM bridge access. "
+                "Use DELTA format or no time-travel format instead."
+            )
         hudi_engine_instance = hudi_engine.HudiEngine(
             feature_store_id,
             feature_store_name,
@@ -257,7 +342,7 @@ class Engine:
             return dataframe
 
         # Converting to pandas dataframe if return type is not spark
-        if isinstance(dataframe, DataFrame):
+        if is_spark_dataframe(dataframe):
             dataframe = dataframe.toPandas()
 
         if dataframe_type.lower() == "pandas":
@@ -272,6 +357,25 @@ class Engine:
         )
 
     def convert_to_default_dataframe(self, dataframe, column_names=None):
+        """Normalize ``dataframe`` to a Spark DataFrame ready for ingestion.
+
+        Accepts ``list``, ``numpy.ndarray``, ``pandas.DataFrame``, ``RDD``,
+        and Spark DataFrames. Both classic ``pyspark.sql.DataFrame`` and
+        Spark Connect ``pyspark.sql.connect.dataframe.DataFrame`` are
+        supported via ``is_spark_dataframe``; the all-nullable schema
+        rebuild uses ``DataFrame.to(schema)`` which works in both modes.
+
+        ``RDD`` inputs are rejected when running under Spark Connect — the
+        client has no JVM bridge to materialize them.
+
+        Parameters:
+            dataframe: The input dataframe to normalize.
+            column_names: Optional column names for list/ndarray inputs.
+
+        Returns:
+            A Spark DataFrame with lowercased, sanitized column names and an
+            all-nullable schema, or ``None`` for the spine sentinel.
+        """
         if isinstance(dataframe, list):
             dataframe = self.convert_list_to_spark_dataframe(dataframe, column_names)
         elif HAS_NUMPY and isinstance(dataframe, np.ndarray):
@@ -279,9 +383,14 @@ class Engine:
         elif HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
             dataframe = self.convert_pandas_to_spark_dataframe(dataframe)
         elif isinstance(dataframe, RDD):
+            if self._is_connect:
+                raise FeatureStoreException(
+                    "RDD input is not supported in Spark Connect mode. "
+                    "Convert to a DataFrame first."
+                )
             dataframe = dataframe.toDF()
 
-        if isinstance(dataframe, DataFrame):
+        if is_spark_dataframe(dataframe):
             upper_case_features = [
                 c for c in dataframe.columns if util.contains_uppercase(c)
             ]
@@ -311,9 +420,23 @@ class Engine:
                 nullable_schema = copy.deepcopy(lowercase_dataframe.schema)
                 for struct_field in nullable_schema:
                     struct_field.nullable = True
-                lowercase_dataframe = self._spark_session.createDataFrame(
-                    lowercase_dataframe.rdd, nullable_schema
+                # Relax every column to nullable=True without using ``.rdd``
+                # (Spark Connect has no ``.rdd`` accessor — see the dedicated
+                # regression test ``test_convert_to_default_dataframe_does_not_call_rdd``)
+                # and without using ``DataFrame.to(schema)`` alone (it only
+                # reconciles names/casts and keeps the source nullability when
+                # the column has no NULL rows, leaving ``nullable=False`` intact
+                # and breaking Hudi/Delta writers downstream).
+                #
+                # Trick: ``unionByName`` widens nullability — the result field
+                # is nullable iff either side is. Unioning the frame with an
+                # empty all-nullable frame of the same schema therefore
+                # rebuilds the plan with every column nullable=True, on both
+                # classic PySpark and Spark Connect.
+                empty_nullable = self._spark_session.createDataFrame(
+                    [], nullable_schema
                 )
+                lowercase_dataframe = empty_nullable.unionByName(lowercase_dataframe)
 
             return lowercase_dataframe
         if dataframe == "spine":
@@ -441,86 +564,6 @@ class Engine:
                 )
         return self._spark_session.createDataFrame(dataframe_copy)
 
-    def _check_duplicate_records(self, dataframe, feature_group):
-        """Check for duplicate records within primary_key, event_time and partition_key columns.
-
-        Raises FeatureStoreException if duplicates are found.
-
-        Parameters:
-        -----------
-        dataframe : pyspark.sql.DataFrame
-            The Spark DataFrame to check for duplicates
-        feature_group : FeatureGroup
-            The feature group instance containing primary_key, event_time and partition_key
-        """
-        # Get the key columns to check (primary_key + partition_key)
-        key_columns = list(feature_group.primary_key)
-
-        if not key_columns:
-            # No keys to check, skip validation
-            return
-
-        if feature_group.event_time:
-            key_columns.append(feature_group.event_time)
-
-        if feature_group.partition_key:
-            key_columns.extend(feature_group.partition_key)
-
-        # Verify all key columns exist in the dataset
-        dataframe_columns = dataframe.columns
-        missing_columns = [
-            col_name for col_name in key_columns if col_name not in dataframe_columns
-        ]
-        if missing_columns:
-            raise FeatureStoreException(
-                f"Key columns {missing_columns} are missing from the dataset. "
-                f"Available columns: {dataframe_columns}"
-            )
-
-        # Check for duplicates using Spark groupBy and count
-        # Group by key columns and count occurrences
-        grouped = dataframe.groupBy(*key_columns).agg(count("*").alias("count"))
-
-        # Filter groups with count > 1 (duplicates)
-        duplicate_groups = grouped.filter(col("count") > 1)
-
-        # Count the number of duplicate groups
-        duplicate_count = duplicate_groups.count()
-
-        if duplicate_count > 0:
-            # Get total number of duplicate rows (sum of counts - 1 for each duplicate group)
-            # Since count includes the first occurrence, duplicates = count - 1 per group
-            duplicate_rows_data = duplicate_groups.select(
-                col("count").cast("long")
-            ).collect()
-            total_duplicate_rows = (
-                sum(row["count"] for row in duplicate_rows_data) - duplicate_count
-            )
-
-            # Get sample duplicate records for error message
-            # Take first 10 duplicate groups and get their key values
-            sample_groups = duplicate_groups.limit(10).collect()
-
-            # Build sample string showing the duplicate key combinations
-            sample_rows = []
-            for row in sample_groups:
-                row_dict = {}
-                for col_name in key_columns:
-                    row_dict[col_name] = row[col_name]
-                row_dict["count"] = row["count"]
-                sample_rows.append(str(row_dict))
-
-            sample_str = "\n".join(sample_rows)
-
-            raise FeatureStoreException(
-                FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
-                + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
-                f"primary_key ({feature_group.primary_key}) and "
-                f"partition_key ({feature_group.partition_key}). "
-                f"Found {duplicate_count} duplicate group(s). "
-                f"Sample duplicate key combinations:\n{sample_str}"
-            )
-
     def save_dataframe(
         self,
         feature_group,
@@ -532,49 +575,31 @@ class Engine:
         online_write_options,
         validation_id=None,
     ):
+        if self._metrics:
+            self._metrics.snapshot()
         try:
-            if (
-                # Only `FeatureGroup class has time_travel_format property
-                isinstance(feature_group, fg_mod.FeatureGroup)
-                and feature_group.time_travel_format == "DELTA"
-            ):
-                self._check_duplicate_records(dataframe, feature_group)
-                _logger.debug(
-                    "No duplicate records found. Proceeding with Delta write."
+            # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
+            # FeatureGroups with stream=True use the same batch insert logic as non-stream
+            # feature groups in spark; streaming ingestion is handled by save_stream_dataframe.
+            if not isinstance(
+                feature_group, fg_mod.ExternalFeatureGroup
+            ) and storage in [None, "offline"]:
+                self._save_offline_dataframe(
+                    feature_group,
+                    dataframe,
+                    operation,
+                    offline_write_options,
+                    validation_id,
                 )
-
-            if (
-                isinstance(feature_group, fg_mod.ExternalFeatureGroup)
-                and feature_group.online_enabled
-            ) or feature_group.stream:
+            if (storage in [None, "online"]) and online_enabled:
                 self._save_online_dataframe(
                     feature_group, dataframe, online_write_options
                 )
-            else:
-                if storage == "offline" or not online_enabled:
-                    self._save_offline_dataframe(
-                        feature_group,
-                        dataframe,
-                        operation,
-                        offline_write_options,
-                        validation_id,
-                    )
-                elif storage == "online":
-                    self._save_online_dataframe(
-                        feature_group, dataframe, online_write_options
-                    )
-                elif online_enabled and storage is None:
-                    self._save_offline_dataframe(
-                        feature_group,
-                        dataframe,
-                        operation,
-                        offline_write_options,
-                    )
-                    self._save_online_dataframe(
-                        feature_group, dataframe, online_write_options
-                    )
         except Exception as e:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
+        finally:
+            if self._metrics:
+                self._metrics.report("save_dataframe")
 
     def save_stream_dataframe(
         self,
@@ -599,7 +624,9 @@ class Engine:
             )
 
         query = (
-            serialized_df.withColumn("headers", self._get_headers(feature_group))
+            serialized_df.withColumn(
+                "headers", self._get_headers(feature_group, options=write_options)
+            )
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
@@ -640,6 +667,12 @@ class Engine:
         validation_id=None,
     ):
         if feature_group.time_travel_format == "HUDI":
+            if self._is_connect:
+                raise FeatureStoreException(
+                    "Hudi time-travel format is not supported in Spark Connect mode "
+                    "because it requires JVM bridge access. "
+                    "Use DELTA format or no time-travel format instead."
+                )
             hudi_engine_instance = hudi_engine.HudiEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
@@ -657,9 +690,11 @@ class Engine:
                 feature_group.feature_store_name,
                 feature_group,
                 self._spark_session,
-                self._spark_context,
+                None if self._is_connect else self._spark_context,
             )
-            delta_engine_instance.save_delta_fg(dataframe, write_options, validation_id)
+            delta_engine_instance.save_delta_fg(
+                dataframe, write_options, validation_id, operation=operation
+            )
         else:
             dataframe.write.format(self.HIVE_FORMAT).mode(self.APPEND).options(
                 **write_options
@@ -667,16 +702,67 @@ class Engine:
                 feature_group.partition_key if feature_group.partition_key else []
             ).saveAsTable(feature_group._get_table_name())
 
+    def _filter_online_dataframe(self, feature_group, dataframe):
+        """Filter a dataframe before online ingestion to avoid overwriting newer data with older records.
+
+        For TTL-enabled feature groups, rows whose event time has already expired are dropped.
+        For non-TTL feature groups, only the last record per primary key is kept:
+        ordered by event time if configured, otherwise by insertion order.
+        """
+        event_time = feature_group.event_time
+
+        if feature_group.ttl_enabled and feature_group.ttl:
+            if event_time:
+                # Drop rows whose event time is older than the TTL window.
+                # event_time column is expected to be a timestamp; compare against current time minus TTL seconds.
+                ttl_threshold = current_timestamp().cast("long") - lit(
+                    feature_group.ttl
+                )
+                dataframe = dataframe.filter(
+                    col(event_time).cast("long") > ttl_threshold
+                )
+        else:
+            # Keep only the last record per primary key.
+            # Use event time as the ordering column when available, otherwise fall back to insertion order.
+            order_col = (
+                col(event_time).desc()
+                if event_time
+                else monotonically_increasing_id().desc()
+            )
+            window = Window.partitionBy(
+                *[col(k) for k in feature_group.primary_key]
+            ).orderBy(order_col)
+            dataframe = (
+                dataframe.withColumn("_rn", row_number().over(window))
+                .filter(col("_rn") == 1)
+                .drop("_rn")
+            )
+
+        return dataframe
+
     def _save_online_dataframe(self, feature_group, dataframe, write_options):
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
+        if write_options.get("online_ingestion_options", {}).get(
+            "mark_online_rows", True
+        ):
+            dataframe = self._filter_online_dataframe(feature_group, dataframe)
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         (
             serialized_df.withColumn(
-                "headers", self._get_headers(feature_group, dataframe.count())
+                "headers",
+                self._get_headers(
+                    feature_group,
+                    None
+                    if write_options.get("online_ingestion_options", {}).get(
+                        "disable_online_ingestion_count", False
+                    )
+                    else dataframe.count(),
+                    write_options,
+                ),
             )
             .write.format(self.KAFKA_FORMAT)
             .options(**write_options)
@@ -696,12 +782,13 @@ class Engine:
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         num_entries: int | None = None,
+        options: dict | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine.get_headers(
-                    feature_group, num_entries
+                    feature_group, num_entries, options
                 ).items()
             ]
         )
@@ -754,17 +841,17 @@ class Engine:
         self,
         feature_name: str,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
-    ):
+    ) -> str:
         """Function to generate a wrapper record avro schema for a struct feature.
 
         This is required to deserialize a union of null and a struct field in spark, since spark expects the top level avro schema to be a record in this case.
 
         Parameters:
-            feature_name: `str`: The name of the feature to generate the wrapper record avro schema for.
-            feature_group: `Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup]`: The feature group object.
+            feature_name: The name of the feature to generate the wrapper record avro schema for.
+            feature_group: The feature group object.
 
         Returns:
-            `str`: The wrapper record avro schema.
+            The wrapper record avro schema.
         """
         return (
             '{"type": "record", "name": "Wrapper", "fields": [{"name": "'
@@ -854,20 +941,22 @@ class Engine:
         query_obj: query.Query,
         read_options: dict[str, Any],
         dataframe_type: str,
-        training_dataset_version: int = None,
-        transformation_context: dict[str, Any] = None,
+        training_dataset_version: int | None = None,
+        transformation_context: dict[str, Any] | None = None,
     ):
         """Function that creates or retrieves already created the training dataset.
 
         Parameters:
-            training_dataset_obj `TrainingDataset`: The training dataset metadata object.
-            feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
-            query_obj `Query`: The query object that contains the query used to create the feature view.
-            read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
-            dataframe_type `str`: The type of dataframe returned.
-            training_dataset_version `int`: Version of training data to be retrieved.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            training_dataset: The training dataset metadata object.
+            feature_view_obj: The feature view object for the which the training data is being created.
+            query_obj: The query object that contains the query used to create the feature view.
+            read_options: Dictionary that can be used to specify extra parameters for reading data.
+            dataframe_type: The type of dataframe returned.
+            training_dataset_version: Version of training data to be retrieved.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+                If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -916,16 +1005,17 @@ class Engine:
         """Function that creates or retrieves already created the training dataset.
 
         Parameters:
-            training_dataset `TrainingDataset`: The training dataset metadata object.
-            query_obj `Query`: The query object that contains the query used to create the feature view.
-            user_write_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for writing data using spark.
-            save_mode `str`: Spark save mode to be used while writing data.
-            read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
-            feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
-            to_df `bool`: Return dataframe instead of writing the data.
-            training_dataset_version `Optional[int]`: Version of training data to be retrieved.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            training_dataset: The training dataset metadata object.
+            query_obj: The query object that contains the query used to create the feature view.
+            user_write_options: Dictionary that can be used to specify extra parameters for writing data using spark.
+            save_mode: Spark save mode to be used while writing data.
+            read_options: Dictionary that can be used to specify extra parameters for reading data.
+            feature_view_obj: The feature view object for the which the training data is being created.
+            to_df: Return dataframe instead of writing the data.
+            training_dataset_version: Version of training data to be retrieved.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -959,7 +1049,7 @@ class Engine:
             return self._write_training_dataset_single(
                 feature_view_obj.transformation_functions,
                 dataset,
-                training_dataset.storage_connector,
+                training_dataset.data_source.storage_connector,
                 training_dataset.data_format,
                 write_options,
                 save_mode,
@@ -1172,7 +1262,7 @@ class Engine:
             feature_dataframes[split_name] = self._write_training_dataset_single(
                 transformation_functions,
                 feature_dataframe,
-                training_dataset.storage_connector,
+                training_dataset.data_source.storage_connector,
                 training_dataset.data_format,
                 write_options,
                 save_mode,
@@ -1198,9 +1288,10 @@ class Engine:
         transformation_context: dict[str, Any] = None,
     ):
         # apply transformation functions (they are applied separately to each split)
-        feature_dataframe = self._apply_transformation_function(
-            transformation_functions,
-            dataset=feature_dataframe,
+        feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            transformation_functions=transformation_functions,
+            data=feature_dataframe,
+            online=False,
             transformation_context=transformation_context,
         )
         if to_df:
@@ -1327,9 +1418,9 @@ class Engine:
 
         # for external clients, download the file using the dataset API
         # also if the client is internal, but we only need the files on the driver
-        if client._is_external() or not distribute:
+        if client._is_external() or not distribute or self._is_connect:
             tmp_file = f"/tmp/{file_name}"
-            print("Reading key file from storage connector.")
+            _logger.info("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
 
             with open(tmp_file, "wb") as f:
@@ -1338,9 +1429,14 @@ class Engine:
             file = f"file://{tmp_file}"
 
         # If we need the files on the executors, then we should call addFile
-        if distribute:
+        if distribute and not self._is_connect:
             self._spark_context.addFile(file)
             return SparkFiles.get(file_name)
+        if distribute and self._is_connect:
+            _logger.warning(
+                "Spark Connect does not support distributing files to executors "
+                "via addFile(). The file is available on the driver only."
+            )
         # Remove the 'file://' prefix for local file paths
         return file[7:]
 
@@ -1352,7 +1448,33 @@ class Engine:
         histograms,
         exact_uniqueness=True,
     ):
-        """Profile a dataframe with Deequ."""
+        """Profile a dataframe with Deequ.
+
+        Falls back to pandas-based profiling in Spark Connect mode where the
+        JVM bridge is unavailable.
+
+        Parameters:
+            dataframe: The Spark DataFrame to profile.
+            relevant_columns: List of column names to include in profiling.
+            correlations: Whether to compute feature correlations.
+            histograms: Whether to compute feature value frequency histograms.
+            exact_uniqueness: Whether to compute exact uniqueness metrics.
+        """
+        if self._is_connect:
+            _logger.warning(
+                "Deequ-based profiling is not available in Spark Connect mode. "
+                "Falling back to pandas-based profiling."
+            )
+            from hsfs.engine.python import Engine as PythonEngine
+
+            if relevant_columns:
+                pdf = dataframe.select(*relevant_columns).toPandas()
+            else:
+                pdf = dataframe.toPandas()
+            python_engine = PythonEngine.__new__(PythonEngine)
+            return python_engine.profile(
+                pdf, relevant_columns, correlations, histograms, exact_uniqueness
+            )
         return self._jvm.com.logicalclocks.hsfs.spark.engine.SparkEngine.getInstance().profile(
             dataframe._jdf,
             relevant_columns,
@@ -1368,6 +1490,22 @@ class Engine:
         expectation_suite: great_expectations.core.ExpectationSuite,  # noqa: F821
         ge_validate_kwargs: dict | None,
     ):
+        if ge_validate_kwargs is None:
+            ge_validate_kwargs = {}
+        if GE_MAJOR == 1:
+            # GE 1.x removed BaseDataContext + RuntimeBatchRequest. The Spark
+            # validation path under 1.x uses get_context + spark dataframe assets.
+            context = great_expectations.get_context(mode="ephemeral")
+            data_source = context.data_sources.add_spark("hopsworks_spark")
+            asset = data_source.add_dataframe_asset("hopsworks_asset")
+            batch_definition = asset.add_batch_definition_whole_dataframe(
+                "hopsworks_batch"
+            )
+            batch = batch_definition.get_batch(
+                batch_parameters={"dataframe": dataframe}
+            )
+            return batch.validate(expectation_suite, **ge_validate_kwargs)
+
         # NOTE: InMemoryStoreBackendDefaults SHOULD NOT BE USED in normal settings. You
         # may experience data loss as it persists nothing. It is used here for testing.
         # Please refer to docs to learn how to instantiate your DataContext.
@@ -1489,7 +1627,56 @@ class Engine:
             return self._setup_adls_hadoop_conf(storage_connector, path)
         if storage_connector.type == StorageConnector.GCS:
             return self._setup_gcp_hadoop_conf(storage_connector, path)
+        if storage_connector.type == StorageConnector.MONGODB:
+            return self._setup_mongodb_spark_conf(storage_connector, path)
         return path
+
+    def _setup_mongodb_spark_conf(self, storage_connector, path):
+        """Configure the SparkConf for `spark.read.format("mongodb").load()`.
+
+        Sets `spark.mongodb.read.connection.uri` (and the matching `.write.`
+        prefix) plus optional database/collection defaults. The
+        `mongo-spark-connector` jar must already be on the cluster — it's
+        bundled in the Hopsworks Spark image, so production-equivalent
+        clusters resolve `spark.read.format("mongodb")` without the user
+        passing `--packages`. Returns `path` unchanged: MongoDB reads
+        identify a collection through Spark options, not a path.
+        """
+        uri = storage_connector._connection_uri()
+        self._set_spark_conf("spark.mongodb.read.connection.uri", uri)
+        # Write URI mirrors the read URI today — if/when we expose
+        # MongoDB as a write target we can split them out.
+        self._set_spark_conf("spark.mongodb.write.connection.uri", uri)
+        if getattr(storage_connector, "database", None):
+            self._set_spark_conf(
+                "spark.mongodb.read.database", storage_connector.database
+            )
+            self._set_spark_conf(
+                "spark.mongodb.write.database", storage_connector.database
+            )
+        if getattr(storage_connector, "collection", None):
+            self._set_spark_conf(
+                "spark.mongodb.read.collection", storage_connector.collection
+            )
+            self._set_spark_conf(
+                "spark.mongodb.write.collection", storage_connector.collection
+            )
+        return path
+
+    def _set_spark_conf(self, key, value):
+        """Set a SparkConf entry on the active session (no-op if not running)."""
+        if value is None:
+            return
+        try:
+            self._spark_session.conf.set(key, str(value))
+        except Exception:  # noqa: BLE001
+            # Older Spark may reject runtime updates of `spark.mongodb.*`;
+            # the user can pass these through `--conf` instead.
+            _logger.debug(
+                "Could not set Spark conf %s at runtime; "
+                "set it via --conf at session creation if reads fail",
+                key,
+            )
 
     def _setup_s3_hadoop_conf(self, storage_connector, path):
         FS_S3_GLOBAL_CONF = "fs.s3a.global-conf"
@@ -1508,35 +1695,31 @@ class Engine:
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:
-            self._spark_context._jsc.hadoopConfiguration().set(
-                f"{prefix}.access.key", storage_connector.access_key
-            )
+            self._set_hadoop_conf(f"{prefix}.access.key", storage_connector.access_key)
         if storage_connector.secret_key:
-            self._spark_context._jsc.hadoopConfiguration().set(
-                f"{prefix}.secret.key", storage_connector.secret_key
-            )
+            self._set_hadoop_conf(f"{prefix}.secret.key", storage_connector.secret_key)
         if storage_connector.server_encryption_algorithm:
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.server-side-encryption-algorithm",
                 storage_connector.server_encryption_algorithm,
             )
         if storage_connector.server_encryption_key:
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.server-side-encryption-key",
                 storage_connector.server_encryption_key,
             )
         if storage_connector.session_token:
-            print(f"session token set for {prefix}")
-            self._spark_context._jsc.hadoopConfiguration().set(
+            _logger.debug("Session token set for %s", prefix)
+            self._set_hadoop_conf(
                 f"{prefix}.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
             )
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.session.token",
                 storage_connector.session_token,
             )
         if storage_connector.region:
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.endpoint.region",
                 storage_connector.region,
             )
@@ -1551,19 +1734,32 @@ class Engine:
                 continue
             # Strip the leading 'fs.s3a.' so we can prefix with the connector specific prefix
             suffix = key.split("fs.s3a.", 1)[1]
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 f"{prefix}.{suffix}",
                 str(value),
             )
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):
         for k, v in storage_connector.spark_options().items():
-            self._spark_context._jsc.hadoopConfiguration().set(k, v)
+            self._set_hadoop_conf(k, v)
 
         return path
 
     def is_spark_dataframe(self, dataframe):
-        return bool(isinstance(dataframe, DataFrame))
+        """Return True for any Spark DataFrame, classic or Spark Connect.
+
+        Delegates to the shared predicate in
+        ``hopsworks_common.spark_connect_utils`` so a single rule decides
+        what counts as a Spark DataFrame across the codebase.
+
+        Parameters:
+            dataframe: The object to type-test.
+
+        Returns:
+            True for both ``pyspark.sql.DataFrame`` and
+            ``pyspark.sql.connect.dataframe.DataFrame``; False otherwise.
+        """
+        return is_spark_dataframe(dataframe)
 
     def update_table_schema(self, feature_group):
         if feature_group.time_travel_format == "DELTA":
@@ -1576,7 +1772,7 @@ class Engine:
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        for _feature in feature_group.features:
+        for _feature in feature_group.columns:
             if _feature.name not in dataframe.columns:
                 dataframe = dataframe.withColumn(
                     _feature.name, lit(None).cast(_feature.type)
@@ -1601,7 +1797,7 @@ class Engine:
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        for _feature in feature_group.features:
+        for _feature in feature_group.columns:
             if _feature.name not in dataframe.columns:
                 dataframe = dataframe.withColumn(
                     _feature.name, lit(None).cast(_feature.type)
@@ -1613,25 +1809,31 @@ class Engine:
             location
         )
 
+    def shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
+        return dataframe.copy(deep=False)
+
     def _apply_transformation_function(
         self,
         transformation_functions: list[transformation_function.TransformationFunction],
         dataset: DataFrame,
-        transformation_context: dict[str, Any] = None,
-    ):
+        transformation_context: dict[str, Any] | None = None,
+        expected_features: set[str] | None = None,
+    ) -> DataFrame:
         """Apply transformation function to the dataframe.
 
         Parameters:
-            transformation_functions `List[TransformationFunction]` : List of transformation functions.
-            dataset `Union[DataFrame]`: A spark dataframe.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            transformation_functions: List of transformation functions.
+            dataset: A spark dataframe.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
+                If no context variables are provided, this parameter defaults to `None`.
 
         Returns:
-            `DataFrame`: A spark dataframe with the transformed data.
+            A spark dataframe with the transformed data.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         dropped_features = set()
         transformations = []
@@ -1644,25 +1846,16 @@ class Engine:
             # Setting transformation function context variables.
             hopsworks_udf.transformation_context = transformation_context
 
-            missing_features = set(hopsworks_udf.transformation_features) - set(
-                dataset.columns
-            )
-
-            if missing_features:
-                if (
-                    tf.transformation_type
-                    == transformation_function.TransformationType.ON_DEMAND
-                ):
-                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
-                    raise FeatureStoreException(
-                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
-                        "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
-                    )
-                raise FeatureStoreException(
-                    f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
-                )
             if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(hopsworks_udf.dropped_features)
+                dropped_features.update(
+                    {
+                        f
+                        for f in hopsworks_udf.dropped_features
+                        if f not in expected_features
+                    }
+                    if expected_features
+                    else hopsworks_udf.dropped_features
+                )
 
             # Add to dropped features if the feature need to overwritten to avoid ambiguous columns.
             if len(hopsworks_udf.return_types) == 1 and (
@@ -1692,7 +1885,10 @@ class Engine:
             *[
                 fun(*feature).alias(output_col_name)
                 for fun, feature, output_col_name in zip(
-                    transformations, transformation_features, output_col_names
+                    transformations,
+                    transformation_features,
+                    output_col_names,
+                    strict=False,
                 )
             ],
         ).select(*untransformed_columns, *explode_name)
@@ -1713,6 +1909,16 @@ class Engine:
         The logging metadata is created as a hidden attribute named `hopsworks_logging_metadata` of the returned dataframe.
 
         The return dataframe will only contain the features that the user requested (i.e. if the user requested to not include primary keys, event time or inference helpers, those features will be excluded).
+
+        Parameters:
+            untransformed_features: DataFrame containing the untransformed feature values.
+            transformed_features: DataFrame containing the transformed feature values.
+            feature_view: The feature view whose features are being logged.
+            transformed: Whether to include transformed features in the log.
+            inference_helpers: Whether to include inference helper columns.
+            event_time: Whether to include the event time column.
+            primary_key: Whether to include the primary key columns.
+            request_parameters: DataFrame containing request parameter values, if any.
         """
         # Extract primary keys and event time from fully qualified names
         fully_qualified_root_fg_event_time = generate_fully_qualified_feature_name(
@@ -1809,57 +2015,39 @@ class Engine:
         PROPERTY_ACCT_KEY_ID = "fs.gs.auth.service.account.private.key.id"
         PROPERTY_ACCT_KEY = "fs.gs.auth.service.account.private.key"
         # The AbstractFileSystem for 'gs:' URIs
-        self._spark_context._jsc.hadoopConfiguration().setIfUnset(
-            PROPERTY_GCS_FS_KEY, PROPERTY_GCS_FS_VALUE
-        )
+        self._set_hadoop_conf_if_unset(PROPERTY_GCS_FS_KEY, PROPERTY_GCS_FS_VALUE)
         # Whether to use a service account for GCS authorization. Setting this
         # property to `false` will disable use of service accounts for authentication.
-        self._spark_context._jsc.hadoopConfiguration().setIfUnset(
-            PROPERTY_GCS_ACCOUNT_ENABLE, "true"
-        )
+        self._set_hadoop_conf_if_unset(PROPERTY_GCS_ACCOUNT_ENABLE, "true")
 
         # The JSON key file of the service account used for GCS
         # access when google.cloud.auth.service.account.enable is true.
         local_path = self.add_file(storage_connector.key_path)
         with open(local_path) as f_in:
             jsondata = json.load(f_in)
-        self._spark_context._jsc.hadoopConfiguration().set(
-            PROPERTY_ACCT_EMAIL, jsondata["client_email"]
-        )
-        self._spark_context._jsc.hadoopConfiguration().set(
-            PROPERTY_ACCT_KEY_ID, jsondata["private_key_id"]
-        )
-        self._spark_context._jsc.hadoopConfiguration().set(
-            PROPERTY_ACCT_KEY, jsondata["private_key"]
-        )
+        self._set_hadoop_conf(PROPERTY_ACCT_EMAIL, jsondata["client_email"])
+        self._set_hadoop_conf(PROPERTY_ACCT_KEY_ID, jsondata["private_key_id"])
+        self._set_hadoop_conf(PROPERTY_ACCT_KEY, jsondata["private_key"])
 
         if storage_connector.algorithm:
             # if encryption fields present
-            self._spark_context._jsc.hadoopConfiguration().set(
-                PROPERTY_ALGORITHM, storage_connector.algorithm
-            )
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(PROPERTY_ALGORITHM, storage_connector.algorithm)
+            self._set_hadoop_conf(
                 PROPERTY_ENCRYPTION_KEY, storage_connector.encryption_key
             )
-            self._spark_context._jsc.hadoopConfiguration().set(
+            self._set_hadoop_conf(
                 PROPERTY_ENCRYPTION_HASH, storage_connector.encryption_key_hash
             )
         else:
             # unset if already set
-            self._spark_context._jsc.hadoopConfiguration().unset(PROPERTY_ALGORITHM)
-            self._spark_context._jsc.hadoopConfiguration().unset(
-                PROPERTY_ENCRYPTION_HASH
-            )
-            self._spark_context._jsc.hadoopConfiguration().unset(
-                PROPERTY_ENCRYPTION_KEY
-            )
+            self._unset_hadoop_conf(PROPERTY_ALGORITHM)
+            self._unset_hadoop_conf(PROPERTY_ENCRYPTION_HASH)
+            self._unset_hadoop_conf(PROPERTY_ENCRYPTION_KEY)
 
         return path
 
     def create_empty_df(self, streaming_df):
-        return SQLContext(self._spark_context).createDataFrame(
-            self._spark_context.emptyRDD(), streaming_df.schema
-        )
+        return self._spark_session.createDataFrame([], streaming_df.schema)
 
     @staticmethod
     def get_unique_values(feature_dataframe, feature_name):
@@ -1951,8 +2139,8 @@ class Engine:
         If the feature_log provided is a list then it is considered as a single feature (column).
 
         Parameters:
-            feature_log `Union[List[List[Any]], List[Any]]`: List of features/labels provided for logging.
-            cols `List[str]`: List of expected features in the logging dataframe.
+            feature_log: List of features/labels provided for logging.
+            cols: List of expected features in the logging dataframe.
         """
         if isinstance(feature_log[0], list) or (
             HAS_NUMPY and isinstance(feature_log[0], np.ndarray)
@@ -2033,35 +2221,34 @@ class Engine:
         training_dataset_version: int | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
-    ) -> pyspark.sql.DataFrame:
+    ) -> tuple[pyspark.sql.DataFrame, list[str], list[str]]:
         """Function that combines all the logging data into a single dataframe that can be written to the logging feature group.
 
         The function takes care of renaming the prediction columns, creating a json column for the request parameters and adding the meta data columns.
 
         Parameters:
-            logging_data: `Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray]` : The data to be logged.
-            logging_feature_group_features: `List[feature.Feature]` : The features of the logging feature group.
-            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
-            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
-            transformed_features: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the transformed features and their feature names and a log component name (a constant named "transformed_features").
-            untransformed_features: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the untransformed features and their feature names and a log component name (a constant named "untransformed_features").
-            predictions: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the predictions and their feature names and a log component name (a constant named "predictions").
-            serving_keys: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the serving keys and    their feature names and a log component name (a constant named "serving_keys").
-            helper_columns: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the helper columns and their feature names and a log component name (a constant named "helper_columns").
-            request_parameters: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the request parameters and their feature names and a log component name (a constant named "request_parameters").
-            event_time: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the event time and their feature names and a log component name (a constant named "event_time").
-            extra_logging_features: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing extra logging features and their feature names and a log component name (a constant named "extra_logging_features").
-            request_id: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the request id and their feature names and a log component name (a constant named "request_id").
-            td_col_name: `Optional[str]` : The name of the training dataset version column.
-            time_col_name: `Optional[str]` : The name of the time column.
-            model_col_name: `Optional[str]` : The name of the model column.
-            training_dataset_version: `Optional[int]` : The version of the training dataset.
-            hsml_model: `str` : The name of the model.
+            logging_data: The data to be logged.
+            logging_feature_group_features: The features of the logging feature group.
+            logging_feature_group_feature_names: The names of the logging feature group features.
+            logging_features: The names of the logging features, this excludes the names of all metadata columns.
+            transformed_features: A tuple containing the transformed features and their feature names and a log component name (a constant named "transformed_features").
+            untransformed_features: A tuple containing the untransformed features and their feature names and a log component name (a constant named "untransformed_features").
+            predictions: A tuple containing the predictions and their feature names and a log component name (a constant named "predictions").
+            serving_keys: A tuple containing the serving keys and their feature names and a log component name (a constant named "serving_keys").
+            helper_columns: A tuple containing the helper columns and their feature names and a log component name (a constant named "helper_columns").
+            request_parameters: A tuple containing the request parameters and their feature names and a log component name (a constant named "request_parameters").
+            event_time: A tuple containing the event time and their feature names and a log component name (a constant named "event_time").
+            extra_logging_features: A tuple containing extra logging features and their feature names and a log component name (a constant named "extra_logging_features").
+            request_id: A tuple containing the request id and their feature names and a log component name (a constant named "request_id").
+            td_col_name: The name of the training dataset version column.
+            time_col_name: The name of the time column.
+            model_col_name: The name of the model column.
+            training_dataset_version: The version of the training dataset.
+            model_name: The name of the model.
+            model_version: The version of the model.
 
         Returns:
-            `DataFrame`: A spark dataframe with all the logging components.
-            `List[str]`: Names of additional logging features passed in the Logging Dataframe.
-            `List[str]`: Names of missing logging features passed in the Logging Dataframe.
+            A tuple of (dataframe, additional_feature_names, missing_feature_names).
         """
         TEMP_JOIN_KEY = "row_id"
 
@@ -2291,18 +2478,18 @@ class Engine:
     def get_spark_version(self):
         return self._spark_session.version
 
-    def check_supported_dataframe(self, dataframe: Any) -> bool:
+    def check_supported_dataframe(self, dataframe: Any) -> bool | None:
         """Check if a dataframe is supported by the engine.
 
         Both Pandas and Spark dataframes are supported in the Spark Engine.
 
         Parameters:
-            dataframe `Any`: A dataframe to check.
+            dataframe: A dataframe to check.
 
         Returns:
-            `bool`: True if the dataframe is supported, False otherwise.
+            `True` if the dataframe is supported, `False` otherwise.
         """
-        if isinstance(dataframe, (DataFrame, pd.DataFrame)):
+        if is_spark_dataframe(dataframe) or isinstance(dataframe, pd.DataFrame):
             return True
         return None
 

@@ -3,22 +3,46 @@ name: mkdocs-test
 on: pull_request
 
 jobs:
-  mkdocs:
+  test-docs-build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout the API repo
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@v21
+      - name: Checkout the docs repo
+        uses: actions/checkout@v4
         with:
-          globs: '**/*.md'
+          repository: logicalclocks/logicalclocks.github.io
+          ref: ${{ github.base_ref }}
+          fetch-depth: 0
+          path: logicalclocks.github.io
 
-      - name: set dev version
-        working-directory: java
-        run: echo "DEV_VERSION=$(mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version | grep -Ev 'Download|INFO|WARNING')" >> $GITHUB_ENV
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          activate-environment: true
+          working-directory: logicalclocks.github.io
+
+      - name: Install Python dependencies
+        working-directory: logicalclocks.github.io
+        run: uv sync --extra cli
+
+      - name: Install Hopsworks Python API
+        run: uv pip install ./python
+
+      - name: Install docs Ubuntu dependencies
+        run: sudo apt update && sudo apt-get install -y libxml2-dev libxslt-dev
+
+      - name: Check mkdocs warnings
+        working-directory: logicalclocks.github.io
+        run: hopsworks-docs check
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -36,20 +60,11 @@ jobs:
 
       - name: Build javadoc documentation
         working-directory: java
-        run: mvn clean install javadoc:javadoc javadoc:aggregate -DskipTests && cp -r target/site/apidocs ../docs/javadoc
+        run: mvn clean install javadoc:javadoc javadoc:aggregate -DskipTests -Dspark.version=3.5.5 -Dhudi.version=1.0.2 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          activate-environment: true
-          working-directory: python
-
-      - name: Install dependencies
-        run: uv sync --extra dev --group docs --project python
+      - name: Check for broken links
+        working-directory: logicalclocks.github.io
+        run: hopsworks-docs linkchecker
 
       - name: Setup git for mike
         run: |
@@ -57,4 +72,5 @@ jobs:
           git config --global user.email mike@docs.hopsworks.ai
 
       - name: Generate the docs with mike
-        run: mike deploy ${{ env.DEV_VERSION }} dev -u
+        working-directory: logicalclocks.github.io
+        run: mike deploy test-version

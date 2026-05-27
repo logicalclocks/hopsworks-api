@@ -24,6 +24,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
@@ -35,16 +36,19 @@ from hsml.schema import Schema
 
 
 if TYPE_CHECKING:
+    from hsfs import feature_view
     from hsml import deployment, tag
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.resources import PredictorResources
+    from hsml.scaling_config import PredictorScalingConfig
     from hsml.transformer import Transformer
 
 
 _logger = logging.getLogger(__name__)
 
 
+@public
 class Model:
     NOT_FOUND_ERROR_CODE = 360000
     """Metadata object representing a model in the Model Registry."""
@@ -103,14 +107,15 @@ class Model:
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
 
+    @public
     @usage.method_logger
     def save(
         self,
-        model_path,
-        await_registration=480,
-        keep_original_files=False,
+        model_path: str,
+        await_registration: int = 480,
+        keep_original_files: bool = False,
         upload_configuration: dict[str, Any] | None = None,
-    ):
+    ) -> Model:
         """Persist this model including model files and metadata to the model registry.
 
         Parameters:
@@ -125,7 +130,7 @@ class Model:
                 * key `max_chunk_retries`: number of times to retry the upload of a chunk in case of failure. Default 1.
 
         Returns:
-            `Model`: The model metadata object.
+            The model metadata object.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -171,8 +176,9 @@ class Model:
             upload_configuration=upload_configuration,
         )
 
+    @public
     @usage.method_logger
-    def download(self, local_path=None) -> str:
+    def download(self, local_path: str | None = None) -> str:
         """Download the model files.
 
         If local_path is not provided, the model is downloaded to a cache directory
@@ -184,13 +190,14 @@ class Model:
                 If None, downloads to cache directory (recommended for idempotent reuse).
 
         Returns:
-            `str`: Absolute path to local folder containing the model files.
+            Absolute path to local folder containing the model files.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._model_engine.download(model_instance=self, local_path=local_path)
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the model.
@@ -304,22 +311,28 @@ class Model:
 
         return removed_count
 
+    @public
     @usage.method_logger
     def deploy(
         self,
         name: str | None = None,
         description: str | None = None,
-        artifact_version: str
-        | None = None,  # deprecated, kept for backward compatibility
+        artifact_version: (
+            str | None
+        ) = None,  # deprecated, kept for backward compatibility
         serving_tool: str | None = None,
         script_file: str | None = None,
         config_file: str | None = None,
         resources: PredictorResources | dict | None = None,
         inference_logger: InferenceLogger | dict | None = None,
         inference_batcher: InferenceBatcher | dict | None = None,
+        scaling_configuration: PredictorScalingConfig | dict | None = None,
         transformer: Transformer | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         environment: str | None = None,
+        env_vars: dict | None = None,
+        vllm_variant: str | None = None,
+        vllm_image_tag: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -341,7 +354,7 @@ class Model:
         Parameters:
             name: Name of the deployment.
             description: Description of the deployment.
-            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
+            artifact_version: **Deprecated**. Version number of the model artifact to deploy, `CREATE` to create a new model artifact
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
@@ -351,12 +364,16 @@ class Model:
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
+            scaling_configuration: Scaling configuration for the predictor.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             environment: The inference environment to use.
+            env_vars: Environment variables to set on the predictor.
+            vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
 
         Returns:
-            `Deployment`: The deployment metadata object of a new or existing deployment.
+            The deployment metadata object of a new or existing deployment.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -374,13 +391,18 @@ class Model:
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
+            scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
+            env_vars=env_vars,
+            vllm_variant=vllm_variant,
+            vllm_image_tag=vllm_image_tag,
         )
 
         return predictor.deploy()
 
+    @public
     @usage.method_logger
     def add_tag(self, name: str, value: str | dict):
         """Attach a tag to a model.
@@ -397,9 +419,15 @@ class Model:
         """
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
+    @public
     @usage.method_logger
     def set_tag(self, name: str, value: str | dict):
-        """Deprecated: Use add_tag instead."""
+        """Deprecated: Use add_tag instead.
+
+        Parameters:
+            name: name of the tag
+            value: value of the tag
+        """
         warnings.warn(
             "The set_tag method is deprecated. Please use add_tag instead.",
             DeprecationWarning,
@@ -407,6 +435,7 @@ class Model:
         )
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
+    @public
     @usage.method_logger
     def delete_tag(self, name: str):
         """Delete a tag attached to a model.
@@ -419,6 +448,7 @@ class Model:
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
 
+    @public
     def get_tag(self, name: str) -> str | None:
         """Get the tags of a model.
 
@@ -433,17 +463,19 @@ class Model:
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
 
+    @public
     def get_tags(self) -> dict[str, tag.Tag]:
         """Retrieves all tags attached to a model.
 
         Returns:
-            `Dict[str, obj]` of tags.
+            Dictionary of tags.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         return self._model_engine.get_tags(model_instance=self)
 
+    @public
     def get_url(self):
         """Get url to the model in Hopsworks."""
         path = (
@@ -456,18 +488,21 @@ class Model:
         )
         return util.get_hostname_replaced_url(sub_path=path)
 
-    def get_feature_view(self, init: bool = True, online: bool = False):
+    @public
+    def get_feature_view(
+        self, init: bool = True, online: bool = False
+    ) -> feature_view.FeatureView | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
-         Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
-         For more details, call the base method - get_feature_view_provenance
+        Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
+        For more details, call the base method - get_feature_view_provenance
 
-         Parameters:
+        Parameters:
             init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
 
         Returns:
-            `FeatureView`: Feature View Object or `None` if it does not exist.
+            Feature View Object or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view.
@@ -491,6 +526,7 @@ class Model:
                 fv.init_batch_scoring(training_dataset_version=td.version)
         return fv
 
+    @public
     def get_feature_view_provenance(self) -> explicit_provenance.Links:
         """Get the parent feature view of this model, based on explicit provenance.
 
@@ -498,13 +534,14 @@ class Model:
         For deleted and inaccessible feature views, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view provenance.
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
 
+    @public
     def get_training_dataset_provenance(self) -> explicit_provenance.Links:
         """Get the parent training dataset of this model, based on explicit provenance.
 
@@ -512,7 +549,7 @@ class Model:
         For deleted and inaccessible training datasets, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the training dataset provenance.
@@ -558,6 +595,7 @@ class Model:
             "trainingDatasetVersion": self._training_dataset_version,
         }
 
+    @public
     @property
     def id(self):
         """Id of the model."""
@@ -567,6 +605,7 @@ class Model:
     def id(self, id):
         self._id = id
 
+    @public
     @property
     def name(self):
         """Name of the model."""
@@ -576,6 +615,7 @@ class Model:
     def name(self, name):
         self._name = name
 
+    @public
     @property
     def version(self):
         """Version of the model."""
@@ -585,6 +625,7 @@ class Model:
     def version(self, version):
         self._version = version
 
+    @public
     @property
     def description(self):
         """Description of the model."""
@@ -594,6 +635,7 @@ class Model:
     def description(self, description):
         self._description = description
 
+    @public
     @property
     def created(self):
         """Creation date of the model."""
@@ -603,6 +645,7 @@ class Model:
     def created(self, created):
         self._created = created
 
+    @public
     @property
     def creator(self):
         """Creator of the model."""
@@ -612,6 +655,7 @@ class Model:
     def creator(self, creator):
         self._creator = creator
 
+    @public
     @property
     def environment(self):
         """Input example of the model."""
@@ -625,6 +669,7 @@ class Model:
     def environment(self, environment):
         self._environment = environment
 
+    @public
     @property
     def training_metrics(self):
         """Training metrics of the model."""
@@ -634,6 +679,7 @@ class Model:
     def training_metrics(self, training_metrics):
         self._training_metrics = training_metrics
 
+    @public
     @property
     def program(self):
         """Executable used to export the model."""
@@ -647,6 +693,7 @@ class Model:
     def program(self, program):
         self._program = program
 
+    @public
     @property
     def user(self):
         """User of the model."""
@@ -656,6 +703,7 @@ class Model:
     def user(self, user_full_name):
         self._user_full_name = user_full_name
 
+    @public
     @property
     def input_example(self):
         """input_example of the model."""
@@ -667,6 +715,7 @@ class Model:
     def input_example(self, input_example):
         self._input_example = input_example
 
+    @public
     @property
     def framework(self):
         """Framework of the model."""
@@ -676,6 +725,7 @@ class Model:
     def framework(self, framework):
         self._framework = framework
 
+    @public
     @property
     def model_schema(self):
         """Model schema of the model."""
@@ -687,6 +737,7 @@ class Model:
     def model_schema(self, model_schema):
         self._model_schema = model_schema
 
+    @public
     @property
     def project_name(self):
         """project_name of the model."""
@@ -696,6 +747,7 @@ class Model:
     def project_name(self, project_name):
         self._project_name = project_name
 
+    @public
     @property
     def model_registry_id(self):
         """model_registry_id of the model."""
@@ -705,6 +757,7 @@ class Model:
     def model_registry_id(self, model_registry_id):
         self._model_registry_id = model_registry_id
 
+    @public
     @property
     def model_path(self):
         """Path of the model with version folder omitted.
@@ -713,6 +766,7 @@ class Model:
         """
         return f"/Projects/{self.project_name}/Models/{self.name}"
 
+    @public
     @property
     def version_path(self):
         """Path of the model including version folder.
@@ -721,6 +775,7 @@ class Model:
         """
         return f"{self.model_path}/{str(self.version)}"
 
+    @public
     @property
     def model_files_path(self):
         """Path of the model files including version and files folder.
@@ -729,6 +784,7 @@ class Model:
         """
         return f"{self.version_path}/{MODEL_REGISTRY.MODEL_FILES_DIR_NAME}"
 
+    @public
     @property
     def shared_registry_project_name(self):
         """shared_registry_project_name of the model."""
@@ -738,6 +794,7 @@ class Model:
     def shared_registry_project_name(self, shared_registry_project_name):
         self._shared_registry_project_name = shared_registry_project_name
 
+    @public
     @property
     def training_dataset_version(self) -> int:
         return self._training_dataset_version

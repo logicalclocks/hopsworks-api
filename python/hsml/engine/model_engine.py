@@ -13,11 +13,13 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 import os
 import tempfile
 import time
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client, constants, util
 from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIError
@@ -25,6 +27,10 @@ from hopsworks_common.core import dataset_api, inode
 from hsml.core import model_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
+
+
+if TYPE_CHECKING:
+    from hsml.core import explicit_provenance
 
 
 class ModelEngine:
@@ -137,6 +143,22 @@ class ModelEngine:
             n_files += 1
             update_upload_progress(n_dirs=n_dirs, n_files=n_files)
 
+    def _normalize_hopsfs_mount_path(self, model_path):
+        if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX):
+            return model_path.replace(
+                constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, "", 1
+            )
+        # /mnt/hopsfs/ is rooted at /Projects/, so the on-disk path is
+        # /mnt/hopsfs/<projectName>/<rest> — strip the project segment too
+        # so the result is project-relative, matching the /hopsfs/ branch.
+        base = constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE
+        if model_path.startswith(base + "/"):
+            rest = model_path[len(base) + 1 :]
+            first_slash = rest.find("/")
+            if first_slash != -1 and first_slash + 1 < len(rest):
+                return rest[first_slash + 1 :]
+        return None
+
     def _download_model_from_hopsfs_recursive(
         self,
         from_hdfs_model_path: str,
@@ -242,11 +264,10 @@ class ModelEngine:
     ):
         """Save model files from a local path. The local path can be on hopsfs mount."""
         # check hopsfs mount
-        if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX):
+        from_hdfs_model_path = self._normalize_hopsfs_mount_path(model_path)
+        if from_hdfs_model_path is not None:
             self._copy_or_move_hopsfs_model(
-                from_hdfs_model_path=model_path.replace(
-                    constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, ""
-                ),
+                from_hdfs_model_path=from_hdfs_model_path,
                 to_model_files_path=model_instance.model_files_path,
                 keep_original_files=keep_original_files,
                 update_upload_progress=update_upload_progress,
@@ -372,6 +393,7 @@ class ModelEngine:
             model_instance._project_name = _client._project_name
 
         util.validate_metrics(model_instance.training_metrics)
+        util.validate_model_name(model_instance._name)
 
         if not self._dataset_api.path_exists(dataset_models_root_path):
             raise AssertionError(
@@ -414,6 +436,11 @@ class ModelEngine:
                     self._engine.mkdir(model_instance.version_path)
                     self._engine.mkdir(model_instance.model_files_path)
                 if step["id"] == 1:
+                    if not keep_original_files:
+                        print(
+                            f"Moving model files from '{model_path}' to the model registry... "
+                            "This is the default behavior. Set keep_original_files=True to copy files instead."
+                        )
 
                     def update_upload_progress(n_dirs=0, n_files=0, step=step):
                         pbar.set_description(
@@ -635,22 +662,44 @@ class ModelEngine:
         self._engine.delete(model_instance)
 
     def set_tag(self, model_instance, name, value):
-        """Attach a name/value tag to a model."""
+        """Attach a name/value tag to a model.
+
+        Parameters:
+            model_instance: the model to tag
+            name: tag name
+            value: tag value
+        """
         self._model_api.set_tag(model_instance, name, value)
 
     def delete_tag(self, model_instance, name):
-        """Remove a tag from a model."""
+        """Remove a tag from a model.
+
+        Parameters:
+            model_instance: the model to remove the tag from
+            name: tag name to remove
+        """
         self._model_api.delete_tag(model_instance, name)
 
     def get_tag(self, model_instance, name):
-        """Get tag with a certain name."""
+        """Get tag with a certain name.
+
+        Parameters:
+            model_instance: the model to get the tag from
+            name: tag name
+        """
         return self._model_api.get_tag(model_instance, name)
 
     def get_tags(self, model_instance):
-        """Get all tags for a model."""
+        """Get all tags for a model.
+
+        Parameters:
+            model_instance: the model to get tags from
+        """
         return self._model_api.get_tags(model_instance)
 
-    def get_feature_view_provenance(self, model_instance):
+    def get_feature_view_provenance(
+        self, model_instance
+    ) -> explicit_provenance.Links | None:
         """Get the parent feature view of this model, based on explicit provenance.
 
         These feature views can be accessible, deleted or inaccessible.
@@ -661,11 +710,13 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         Returns:
-            `Links`:  the feature view used to generate this model
+            The feature view used to generate this model.
         """
         return self._model_api.get_feature_view_provenance(model_instance)
 
-    def get_training_dataset_provenance(self, model_instance):
+    def get_training_dataset_provenance(
+        self, model_instance
+    ) -> explicit_provenance.Links | None:
         """Get the parent training dataset of this model, based on explicit provenance.
 
         These training datasets can be accessible, deleted or inaccessible.
@@ -676,6 +727,6 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         Returns:
-            `Links`:  the training dataset used to generate this model
+            The training dataset used to generate this model.
         """
         return self._model_api.get_training_dataset_provenance(model_instance)

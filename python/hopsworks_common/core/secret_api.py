@@ -18,21 +18,30 @@ from __future__ import annotations
 import getpass
 import json
 
+from hopsworks_apigen import public
 from hopsworks_common import client, decorators, secret
 from hopsworks_common.core import project_api
 
 
+@public("hopsworks.core.secret_api.SecretsApi")
 class SecretsApi:
+    """API for managing secrets in Hopsworks.
+
+    You can get an instance of this class with [`hopsworks.get_secrets_api`][hopsworks.get_secrets_api].
+    """
+
     def __init__(
         self,
     ):
         self._project_api = project_api.ProjectApi()
 
+    @public
     def get_secrets(self) -> list[secret.Secret]:
         """Get all secrets.
 
         Returns:
-            `List[Secret]`: List of all accessible secrets
+            List of all accessible secrets.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
@@ -45,8 +54,9 @@ class SecretsApi:
             _client._send_request("GET", path_params)
         )
 
+    @public
     @decorators.catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
-    def get_secret(self, name: str, owner: str = None) -> secret.Secret | None:
+    def get_secret(self, name: str, owner: str | None = None) -> secret.Secret | None:
         """Get a secret.
 
         Parameters:
@@ -81,7 +91,8 @@ class SecretsApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )[0]
 
-    def get(self, name: str, owner: str = None) -> str:
+    @public
+    def get(self, name: str, owner: str | None = None) -> str:
         """Get the secret's value.
 
         If the secret does not exist, it prompts the user to create the secret if the application is running interactively.
@@ -104,8 +115,9 @@ class SecretsApi:
         )
         return self.create_secret(name, secret_input).value
 
+    @public
     def create_secret(
-        self, name: str, value: str, project: str = None
+        self, name: str, value: str, project: str | None = None
     ) -> secret.Secret:
         """Create a new secret.
 

@@ -31,7 +31,7 @@ from hsfs import (
     util,
 )
 from hsfs.client.exceptions import FeatureStoreException, RestAPIError
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python, spark
 from hsfs.transformation_function import TransformationType
 
@@ -71,6 +71,12 @@ test_feature_group = get_test_feature_group()
 
 
 class TestFeatureGroup:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
     def test_from_response_json(self, backend_fixtures):
         # Arrange
         json = backend_fixtures["feature_group"]["get"]["response"]
@@ -90,8 +96,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -127,8 +133,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -162,10 +168,10 @@ class TestFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert len(fg.features) == 2
+        assert len(fg.columns) == 2
         assert fg.location is None
         assert fg.online_enabled is False
-        assert fg.time_travel_format is None
+        assert fg.time_travel_format == "DELTA"
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg._online_topic_name is None
         assert fg.event_time is None
@@ -195,10 +201,10 @@ class TestFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert len(fg.features) == 2
+        assert len(fg.columns) == 2
         assert fg.location is None
         assert fg.online_enabled is False
-        assert fg.time_travel_format is None
+        assert fg.time_travel_format == "DELTA"
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg._online_topic_name is None
         assert fg.event_time is None
@@ -229,8 +235,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -266,8 +272,8 @@ class TestFeatureGroup:
         assert fg.created == "2022-08-01T11:07:55Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -301,10 +307,10 @@ class TestFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert len(fg.features) == 0
+        assert len(fg.columns) == 0
         assert fg.location is None
         assert fg.online_enabled is False
-        assert fg.time_travel_format is None
+        assert fg.time_travel_format == "DELTA"
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg._online_topic_name is None
         assert fg.event_time is None
@@ -461,6 +467,7 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "tt",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_online_disk_true(self, mocker):
@@ -486,6 +493,7 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": None,
             "tableSpace": "ts_1",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_online_disk_true_override_online_config(self, mocker):
@@ -515,6 +523,7 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "ts_1",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_online_disk_false(self, mocker):
@@ -537,7 +546,11 @@ class TestFeatureGroup:
 
         # Assert
         assert variable_api_mock.call_count == 0
-        assert fg._online_config.to_dict() == {"onlineComments": None, "tableSpace": ""}
+        assert fg._online_config.to_dict() == {
+            "onlineComments": None,
+            "tableSpace": "",
+            "primaryKeyIndexType": None,
+        }
 
     def test_feature_group_online_disk_false_override_online_config(self, mocker):
         # Arrange
@@ -566,12 +579,14 @@ class TestFeatureGroup:
         assert fg._online_config.to_dict() == {
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "",
+            "primaryKeyIndexType": None,
         }
 
     def test_feature_group_data_source_update_storage_connector(self, mocker):
         # Arrange
         data_source = mocker.Mock()
         sc = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=1)
+        data_source.storage_connector = sc
 
         # Act
         feature_group.FeatureGroup(
@@ -582,7 +597,6 @@ class TestFeatureGroup:
             foreign_key=[],
             partition_key=[],
             data_source=data_source,
-            storage_connector=sc,
         )
 
         # Assert
@@ -716,6 +730,7 @@ class TestFeatureGroup:
             name="test_fg",
             version=2,
             featurestore_id=99,
+            time_travel_format="DELTA",
             primary_key=[],
             foreign_key=[],
             partition_key=[],
@@ -742,6 +757,7 @@ class TestFeatureGroup:
             name="test_fg",
             version=2,
             featurestore_id=99,
+            time_travel_format="DELTA",
             features=features,
             primary_key=[],
             foreign_key=[],
@@ -925,8 +941,36 @@ class TestFeatureGroup:
     )
     def test_is_hopsfs_storage(self, sc, expected):
         fg = get_test_feature_group()
-        fg._storage_connector = sc
+        fg.storage_connector = sc
         assert fg._is_hopsfs_storage() is expected
+
+    def test_is_hopsfs_storage_uses_location_when_source_connector_is_external(
+        self,
+    ):
+        fg = get_test_feature_group()
+        fg._location = (
+            "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/fs.db/fg_1"
+        )
+        fg.storage_connector = storage_connector.RedshiftConnector(
+            id=1,
+            name="redshift",
+            featurestore_id=1,
+        )
+
+        assert fg._is_hopsfs_storage() is True
+
+    def test_is_hopsfs_storage_uses_single_slash_hopsfs_location(
+        self,
+    ):
+        fg = get_test_feature_group()
+        fg._location = "hopsfs:/apps/hive/warehouse/fs.db/fg_1"
+        fg.storage_connector = storage_connector.RedshiftConnector(
+            id=1,
+            name="redshift",
+            featurestore_id=1,
+        )
+
+        assert fg._is_hopsfs_storage() is True
 
     def test_init_time_travel_and_stream_uses_resolvers_python(
         self, mocker, monkeypatch
@@ -959,8 +1003,6 @@ class TestFeatureGroup:
         fg._init_time_travel_and_stream(
             stream=False,
             time_travel_format="None",
-            online_enabled=True,
-            is_hopsfs=False,
         )
 
         # Assert: _init uses resolvers' outputs
@@ -969,15 +1011,11 @@ class TestFeatureGroup:
         assert fmt_mock.call_count == 1
         assert fmt_mock.call_args.kwargs == {
             "time_travel_format": "None",
-            "online_enabled": True,
-            "is_hopsfs": False,
         }
         assert stream_mock.call_count == 1
         assert stream_mock.call_args.kwargs == {
             "stream": False,
             "time_travel_format": expected_fmt,
-            "is_hopsfs": False,
-            "online_enabled": True,
         }
 
     def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):
@@ -1009,8 +1047,6 @@ class TestFeatureGroup:
         fg._init_time_travel_and_stream(
             stream=False,
             time_travel_format="HUDI",
-            online_enabled=False,
-            is_hopsfs=False,
         )
 
         # Assert: format set via resolver, stream resolver not used, _stream unchanged
@@ -1020,94 +1056,58 @@ class TestFeatureGroup:
         assert fg._stream is False
 
     @pytest.mark.parametrize(
-        "time_travel_format,is_hopsfs,has_deltalake,online_enabled,expected",
+        "time_travel_format,has_deltalake,expected,expected_exception",
         [
-            # time_travel_format=None cases (resolved by flags)
-            (None, False, False, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
-            (None, False, False, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
-            (None, False, True, True, "DELTA"),  # Non-HopsFS & Online -> HUDI
-            (None, False, True, False, "DELTA"),  # Non-HopsFS & Offline -> HUDI
-            (None, True, False, True, "HUDI"),  # HopsFS & Online -> HUDI
-            (None, True, True, True, "DELTA"),  # HopsFS & Online -> HUDI
-            (
-                None,
-                True,
-                True,
-                False,
-                "DELTA",
-            ),  # HopsFS & Offline -> DELTA when available
-            (
-                None,
-                True,
-                False,
-                False,
-                "HUDI",
-            ),  # HopsFS & Offline -> HUDI when not available
-            # time_travel_format="HUDI" cases (passthrough)
-            ("HUDI", False, False, True, "HUDI"),
-            ("HUDI", False, True, False, "HUDI"),
-            ("HUDI", True, False, True, "HUDI"),
-            ("HUDI", True, True, False, "HUDI"),
-            # time_travel_format="DELTA" cases (passthrough)
-            ("DELTA", False, False, True, "DELTA"),
-            ("DELTA", False, True, False, "DELTA"),
-            ("DELTA", True, False, True, "DELTA"),
-            ("DELTA", True, True, False, "DELTA"),
+            (None, False, "NONE", None),
+            (None, True, "NONE", None),
+            ("NONE", False, "NONE", None),
+            ("NONE", True, "NONE", None),
+            ("HUDI", False, "HUDI", None),
+            ("HUDI", True, "HUDI", None),
+            ("DELTA", False, None, FeatureStoreException),
+            ("DELTA", True, "DELTA", None),
         ],
     )
     def test_resolve_time_travel_format(
         self,
         monkeypatch,
         time_travel_format,
-        online_enabled,
-        is_hopsfs,
         has_deltalake,
         expected,
+        expected_exception,
     ):
         monkeypatch.setattr(
             "hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake
         )
-        result = feature_group.FeatureGroup._resolve_time_travel_format(
-            time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
-        )
-        assert result == expected
+        if expected_exception:
+            with pytest.raises(expected_exception):
+                feature_group.FeatureGroup._resolve_time_travel_format(
+                    time_travel_format=time_travel_format,
+                )
+        else:
+            result = feature_group.FeatureGroup._resolve_time_travel_format(
+                time_travel_format=time_travel_format,
+            )
+            assert result == expected
 
     @pytest.mark.parametrize(
-        "time_travel_format,stream,is_hopsfs,online_enabled,expected",
+        "time_travel_format,stream,expect_stream",
         [
-            # DELTA not streams when not HopsFS and online enabled
-            ("DELTA", False, True, False, False),
-            ("DELTA", False, True, True, True),
-            ("DELTA", False, False, False, True),
-            ("DELTA", False, False, True, True),
+            # DELTA not streams
+            ("DELTA", False, False),
             # DELTA always streams when stream is True
-            ("DELTA", True, True, False, True),
-            ("DELTA", True, True, True, True),
-            ("DELTA", True, False, False, True),
-            ("DELTA", True, False, True, True),
+            ("DELTA", True, True),
             # HUDI always streams
-            ("HUDI", False, True, False, True),
-            ("HUDI", False, True, True, True),
-            ("HUDI", False, False, False, True),
-            ("HUDI", False, False, True, True),
-            ("HUDI", True, True, False, True),
-            ("HUDI", True, True, True, True),
-            ("HUDI", True, False, False, True),
-            ("HUDI", True, False, True, True),
+            ("HUDI", False, True),
+            ("HUDI", True, True),
         ],
     )
-    def test_resolve_stream_python(
-        self, time_travel_format, stream, is_hopsfs, online_enabled, expected
-    ):
+    def test_resolve_stream_python(self, time_travel_format, stream, expect_stream):
         result = feature_group.FeatureGroup._resolve_stream_python(
             stream=stream,
             time_travel_format=time_travel_format,
-            is_hopsfs=is_hopsfs,
-            online_enabled=online_enabled,
         )
-        assert result is expected
+        assert result is expect_stream
 
     def test_embedding_index_forces_online_enabled(self, mocker):
         # Arrange
@@ -1126,11 +1126,12 @@ class TestFeatureGroup:
                 features=[hsfs.embedding.EmbeddingFeature("emb_feat", 128)],
             ),
             online_enabled=False,
+            time_travel_format="DELTA",
         )
 
         # Assert
         assert fg.online_enabled is True
-        assert fg.stream is True
+        assert fg.stream is False
 
 
 class TestExternalFeatureGroup:
@@ -1142,7 +1143,9 @@ class TestExternalFeatureGroup:
         fg = feature_group.ExternalFeatureGroup.from_response_json(json)
 
         # Assert
-        assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
+        assert isinstance(
+            fg.data_source.storage_connector, storage_connector.StorageConnector
+        )
         assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
         assert fg.data_source.path == "test_path"
@@ -1156,8 +1159,8 @@ class TestExternalFeatureGroup:
         assert fg.created == "2022-08-16T07:19:12Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 14
-        assert len(fg.features) == 3
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 3
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/test_project_featurestore.db/external_fg_test_1"
@@ -1176,7 +1179,9 @@ class TestExternalFeatureGroup:
         # Assert
         assert len(fg_list) == 1
         fg = fg_list[0]
-        assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
+        assert isinstance(
+            fg.data_source.storage_connector, storage_connector.StorageConnector
+        )
         assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
         assert fg.data_source.path == "test_path"
@@ -1190,8 +1195,8 @@ class TestExternalFeatureGroup:
         assert fg.created == "2022-08-16T07:19:12Z"
         assert isinstance(fg.creator, user.User)
         assert fg.id == 14
-        assert len(fg.features) == 3
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 3
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://rpc.namenode.service.consul:8020/apps/hive/warehouse/test_project_featurestore.db/external_fg_test_1"
@@ -1208,7 +1213,9 @@ class TestExternalFeatureGroup:
         fg = feature_group.ExternalFeatureGroup.from_response_json(json)
 
         # Assert
-        assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
+        assert isinstance(
+            fg.data_source.storage_connector, storage_connector.StorageConnector
+        )
         assert fg.data_source.query is None
         assert fg.data_format is None
         assert fg.data_source.path is None
@@ -1222,7 +1229,7 @@ class TestExternalFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert fg.features == []
+        assert fg.columns == []
         assert fg.location is None
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg.event_time is None
@@ -1246,8 +1253,12 @@ class TestExternalFeatureGroup:
         assert fg.expectation_suite._feature_store_id == fg.feature_store_id
 
     @pytest.mark.skipif(
-        not HAS_GREAT_EXPECTATIONS,
-        reason="great_expectations not installed",
+        not HAS_GREAT_EXPECTATIONS or GE_MAJOR != 0,
+        reason=(
+            "Fixture uses placeholder expectation_type='1' which GE 1.x rejects "
+            "during ExpectationSuite construction. The save-from-Hopsworks-type "
+            "variant covers the same SDK code path on both versions."
+        ),
     )
     def test_feature_group_save_expectation_suite_from_ge_type(
         self, mocker, backend_fixtures
@@ -1365,8 +1376,8 @@ class TestExternalFeatureGroup:
         )
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
-        assert len(fg.features) == 2
-        assert isinstance(fg.features[0], feature.Feature)
+        assert len(fg.columns) == 2
+        assert isinstance(fg.columns[0], feature.Feature)
         assert (
             fg.location
             == "hopsfs://10.0.2.15:8020/apps/hive/warehouse/test_featurestore.db/fg_test_1"
@@ -1404,7 +1415,7 @@ class TestExternalFeatureGroup:
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(
+        fg._data_source._storage_connector = storage_connector.S3Connector(
             id=1, name="s3_conn", featurestore_id=fg.feature_store_id
         )
 
@@ -1426,7 +1437,7 @@ class TestExternalFeatureGroup:
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(
+        fg._data_source._storage_connector = storage_connector.S3Connector(
             id=1, name="s3_conn", featurestore_id=fg.feature_store_id
         )
 
@@ -1474,6 +1485,426 @@ class TestExternalFeatureGroup:
         # Assert
         assert new_fg.event_time == "event_time"
         assert new_fg.primary_key == ["primarykey"]
-        assert new_fg.features[0].name == "primarykey"
-        assert new_fg.features[1].name == "event_time"
-        assert new_fg.features[2].name == "feat"
+        assert new_fg.columns[0].name == "primarykey"
+        assert new_fg.columns[1].name == "event_time"
+        assert new_fg.columns[2].name == "feat"
+
+
+class TestFeatureGroupExecuteOdts:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
+    def test_execute_odts_with_transformations(self, mocker):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[odt("col1")],
+        )
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline)
+        df_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+        result_df = fg.execute_odts(data=df_test_data, online=False)
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=df_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online)
+        dict_test_data = {"col1": 1}
+        result_dict = fg.execute_odts(data=dict_test_data, online=True)
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_odts_with_transformation_context_and_request_parameters(
+        self, mocker
+    ):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int)
+        def add_context_value(feature, context):
+            return feature + context["value"]
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_context_value,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[odt("col1")],
+        )
+
+        context = {"value": 10}
+        request_params = {"param1": "value1"}
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Test with DataFrame (offline) and transformation_context
+        df_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+        result_df = fg.execute_odts(
+            data=df_test_data, online=False, transformation_context=context
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=df_test_data,
+            online=False,
+            transformation_context=context,
+            request_parameters=None,
+        )
+        pd.testing.assert_frame_equal(result_df, df_test_data)
+
+        # Test with dict (online) and request_parameters
+        dict_test_data = {"col1": 1}
+        result_dict = fg.execute_odts(
+            data=dict_test_data, online=True, request_parameters=request_params
+        )
+
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=dict_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=request_params,
+        )
+        assert result_dict == dict_test_data
+
+    def test_execute_odts_no_transformations(self, mocker, caplog):
+        import logging
+
+        import pandas as pd
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[],
+        )
+
+        test_data = pd.DataFrame({"col1": [1, 2, 3]})
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+        )
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = fg.execute_odts(data=test_data, online=False)
+
+        # Assert
+        mock_apply.assert_not_called()
+        assert (
+            "No on-demand transformation functions attached to the feature group"
+            in caplog.text
+        )
+        pd.testing.assert_frame_equal(result, test_data)
+
+    @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
+    def test_execute_odts_execution_modes(self, mocker, execution_mode):
+        import pandas as pd
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int, mode=execution_mode)
+        def add_one(feature):
+            return feature + 1
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk"],
+            foreign_key=[],
+            partition_key=[],
+            transformation_functions=[odt("col1")],
+        )
+
+        if execution_mode == "default":
+            online_test_data = {"col1": 1}
+            offline_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+        elif execution_mode == "python":
+            online_test_data = offline_test_data = {"col1": 1}
+        elif execution_mode == "pandas":
+            online_test_data = offline_test_data = pd.DataFrame({"col1": [1, 2, 3]})
+
+        mock_apply = mocker.patch.object(
+            fg._feature_group_engine,
+            "apply_on_demand_transformations",
+            side_effect=lambda **kwargs: kwargs["data"],
+        )
+
+        # Act - online
+        fg.execute_odts(data=online_test_data, online=True)
+
+        # Assert - online
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=online_test_data,
+            online=True,
+            transformation_context=None,
+            request_parameters=None,
+        )
+
+        # Act - offline
+        fg.execute_odts(data=offline_test_data, online=False)
+
+        # Assert - offline
+        mock_apply.assert_called_with(
+            transformation_functions=fg.transformation_functions,
+            data=offline_test_data,
+            online=False,
+            transformation_context=None,
+            request_parameters=None,
+        )
+
+
+class TestFeatureGroupRead:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
+    def test_read_with_start_time_no_event_time_raises(self):
+        # Arrange
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="no event_time column"):
+            fg.read(start_time="2024-01-01")
+
+    def test_read_with_end_time_no_event_time_raises(self):
+        # Arrange
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="no event_time column"):
+            fg.read(end_time="2024-01-31")
+
+    def test_read_wallclock_time_with_start_time_raises(self):
+        # Arrange
+        fg = get_test_feature_group()
+
+        # Act & Assert
+        with (
+            mock.patch("hsfs.engine.get_type", return_value="spark"),
+            pytest.raises(
+                FeatureStoreException, match="Cannot use wallclock_time together"
+            ),
+        ):
+            fg.read(wallclock_time="2024-01-01", start_time="2024-01-01")
+
+    def test_read_wallclock_time_with_end_time_raises(self):
+        # Arrange
+        fg = get_test_feature_group()
+
+        # Act & Assert
+        with (
+            mock.patch("hsfs.engine.get_type", return_value="spark"),
+            pytest.raises(
+                FeatureStoreException, match="Cannot use wallclock_time together"
+            ),
+        ):
+            fg.read(wallclock_time="2024-01-01", end_time="2024-01-31")
+
+    def test_read_no_event_time_ignores_scheduler_env_vars(self, mocker):
+        # The scheduler always injects HOPS_START_TIME / HOPS_END_TIME, including for jobs
+        # whose feature groups have no event_time column.
+        # Promoting those env vars into start/end args would then trip the no-event_time
+        # guard on a read() the caller invoked with no time args at all — which is what
+        # broke the fraud_online tutorial pipeline under the scheduler.
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+        fake_query = mock.MagicMock()
+        mocker.patch.object(fg, "select_all", return_value=fake_query)
+        mocker.patch("hsfs.engine.get_instance")
+        env = {
+            "HOPS_START_TIME": "2026-01-01T00:00:00Z",
+            "HOPS_END_TIME": "2026-02-01T00:00:00Z",
+        }
+
+        with mock.patch.dict("os.environ", env, clear=False):
+            fg.read()
+
+        # No filter() should have been applied — the env-injected window must not bleed in.
+        fake_query.filter.assert_not_called()
+        fake_query.read.assert_called_once()
+
+    def test_read_explicit_start_time_no_event_time_still_raises_under_scheduler(self):
+        # Even when scheduler env vars are set, an *explicit* time arg from the caller on
+        # a no-event_time FG is genuine user error and must still raise. Only the env-var
+        # fallback is silenced for no-event_time FGs.
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+            event_time=None,
+        )
+        env = {
+            "HOPS_START_TIME": "2026-01-01T00:00:00Z",
+            "HOPS_END_TIME": "2026-02-01T00:00:00Z",
+        }
+        with (
+            mock.patch.dict("os.environ", env, clear=False),
+            pytest.raises(FeatureStoreException, match="no event_time column"),
+        ):
+            fg.read(start_time="2024-01-01")
+
+
+class TestExternalFeatureGroupRead:
+    def test_read_with_start_time_no_event_time_raises(self, backend_fixtures):
+        # Arrange
+        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+            json = backend_fixtures["external_feature_group"]["get"]["response"]
+            fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+            fg._event_time = None
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                fg.read(start_time="2024-01-01")
+
+    def test_read_with_end_time_no_event_time_raises(self, backend_fixtures):
+        # Arrange
+        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+            json = backend_fixtures["external_feature_group"]["get"]["response"]
+            fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+            fg._event_time = None
+
+            # Act & Assert
+            with pytest.raises(FeatureStoreException, match="no event_time column"):
+                fg.read(end_time="2024-01-31")
+
+    def test_read_no_event_time_ignores_scheduler_env_vars(
+        self, mocker, backend_fixtures
+    ):
+        # Same scheduler-injection issue as for FeatureGroup: env-injected HOPS_* vars
+        # must not be promoted into args on no-event_time FGs.
+        json = backend_fixtures["external_feature_group"]["get"]["response"]
+        fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+        fg._event_time = None
+        fake_query = mock.MagicMock()
+        mocker.patch.object(fg, "select_all", return_value=fake_query)
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine.get_instance")
+        env = {
+            "HOPS_START_TIME": "2026-01-01T00:00:00Z",
+            "HOPS_END_TIME": "2026-02-01T00:00:00Z",
+        }
+
+        with mock.patch.dict("os.environ", env, clear=False):
+            fg.read()
+
+        fake_query.filter.assert_not_called()
+        fake_query.read.assert_called_once()

@@ -23,6 +23,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client.exceptions import JobExecutionException, RestAPIError
 from hopsworks_common.core import dataset_api, execution_api
 
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from hopsworks_common.execution import Execution
 
 
+@also_available_as("hopsworks.engine.execution_engine.ExecutionEngine")
 class ExecutionEngine:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()
@@ -43,14 +45,14 @@ class ExecutionEngine:
         """Download execution logs to current directory.
 
         Parameters:
-            execution: execution to download logs for
-            path: path to download the logs
+            execution: Execution to download logs for.
+            path: Path to download the logs.
 
         Returns:
-            downloaded stdout and stderr log path
+            Downloaded stdout and stderr log path.
 
         Raises:
-            JobExecutionException: if path is provided but does not exist.
+            hopsworks.client.exceptions.JobExecutionException: If path is provided but does not exist.
         """
         if path is not None and not os.path.exists(path):
             raise JobExecutionException(f"Path {path} does not exist")
@@ -99,6 +101,48 @@ class ExecutionEngine:
                     raise e
         return download_path
 
+    def wait_for_running(self, job, execution, timeout: float = 120) -> Execution:
+        """Wait until a Python App execution reaches RUNNING state.
+
+        Parameters:
+            job: Job of the execution.
+            execution: Execution to monitor.
+            timeout: Maximum waiting time in seconds (default 120).
+
+        Returns:
+            The updated execution once it reaches RUNNING, a final state, or when the timeout is exceeded.
+            On timeout the execution may still be in an intermediate state.
+
+        Raises:
+            hopsworks.client.exceptions.JobExecutionException: If the execution reaches an error state before RUNNING.
+        """
+        from hopsworks_common import constants
+
+        start_time = datetime.now()
+        MAX_LAG = 3.0
+        updated_execution = self._execution_api._get(job, execution.id)
+        while (
+            updated_execution.state not in ["RUNNING"]
+            and updated_execution.state not in constants.JOBS.ERROR_STATES
+            and updated_execution.state not in constants.JOBS.SUCCESS_STATES
+        ):
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed + MAX_LAG >= timeout:
+                self._log.info("Timed out waiting for app to reach RUNNING state.")
+                return updated_execution
+            time.sleep(MAX_LAG)
+            updated_execution = self._execution_api._get(job, execution.id)
+            self._log.info(
+                f"Waiting for Python App to start. Current state: {updated_execution.state}"
+            )
+
+        if updated_execution.state in constants.JOBS.ERROR_STATES:
+            raise JobExecutionException(
+                f"Python App failed to start. State: {updated_execution.state}"
+            )
+
+        return updated_execution
+
     def wait_until_finished(
         self, job, execution, timeout: float | None = None
     ) -> Execution | None:
@@ -116,6 +160,7 @@ class ExecutionEngine:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.JobExecutionException: If the execution finished with a failure status.
         """
         start_time = datetime.now()
 
@@ -172,15 +217,27 @@ class ExecutionEngine:
         ):
             time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
-        if is_yarn_job and not updated_execution.success:
+        if updated_execution.success is False:
+            if is_yarn_job:
+                status = updated_execution.final_status
+            else:
+                status = updated_execution.state
             self._log.error(
-                f"Execution failed with status: {updated_execution.final_status}. See the logs for more information."
+                f"Execution failed with status: {status}. See the logs for more information."
             )
-        elif not is_yarn_job and not updated_execution.success:
-            self._log.error(
-                f"Execution failed with status: {updated_execution.state}. See the logs for more information."
+            if status == "KILLED":
+                raise JobExecutionException("The Hopsworks Job was stopped")
+            if status == "FAILED":
+                raise JobExecutionException(
+                    "The Hopsworks Job failed, use the Hopsworks UI to access the job logs"
+                )
+            if status == "FRAMEWORK_FAILURE":
+                raise JobExecutionException(
+                    "The Hopsworks Job monitoring failed, could not determine the final status"
+                )
+            raise JobExecutionException(
+                f"Execution failed with status: {status}. See the logs for more information."
             )
-        else:
-            self._log.info("Execution finished successfully.")
+        self._log.info("Execution finished successfully.")
 
         return updated_execution

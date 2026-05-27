@@ -20,6 +20,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
 from hsfs import util
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     import builtins
     from datetime import date, datetime
 
+    from hopsworks_common.job import Job
     from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 
 
@@ -78,6 +80,7 @@ class FeatureMonitoringType(str, Enum):
         return self.value
 
 
+@public
 class FeatureMonitoringConfig:
     # TODO: Add docstring
     NOT_FOUND_ERROR_CODE = 270233
@@ -220,6 +223,7 @@ class FeatureMonitoringConfig:
     def __repr__(self):
         return f"FeatureMonitoringConfig({self._name!r}, {self._feature_monitoring_type!r})"
 
+    @public
     def with_detection_window(
         self,
         time_offset: str | None = None,
@@ -259,7 +263,7 @@ class FeatureMonitoringConfig:
             row_percentage: The fraction of rows to use when computing the statistics [0, 1.0].
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
         self.detection_window_config = {
@@ -275,6 +279,7 @@ class FeatureMonitoringConfig:
 
         return self
 
+    @public
     def with_reference_window(
         self,
         time_offset: str | None = None,
@@ -307,7 +312,7 @@ class FeatureMonitoringConfig:
             row_percentage: The percentage of rows to use when computing the statistics. Defaults to 20%.
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation and build monitoring window config object.
         if self.detection_window_config is None:
@@ -323,6 +328,7 @@ class FeatureMonitoringConfig:
 
         return self
 
+    @public
     def with_reference_value(
         self,
         value: float | None = None,
@@ -350,7 +356,7 @@ class FeatureMonitoringConfig:
             value: A float value to use as reference.
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
             "specific_value": value,
@@ -358,6 +364,7 @@ class FeatureMonitoringConfig:
 
         return self
 
+    @public
     def with_reference_training_dataset(
         self,
         training_dataset_version: int | None = None,
@@ -386,7 +393,7 @@ class FeatureMonitoringConfig:
             training_dataset_version: The version of the training dataset to use as reference.
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
             "training_dataset_version": training_dataset_version,
@@ -394,6 +401,7 @@ class FeatureMonitoringConfig:
 
         return self
 
+    @public
     def compare_on(
         self,
         metric: str | None,
@@ -430,7 +438,7 @@ class FeatureMonitoringConfig:
             relative: Whether to use a relative comparison (e.g. relative mean) or an absolute comparison (e.g. absolute mean).
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
         self.statistics_comparison_config = {
@@ -442,7 +450,8 @@ class FeatureMonitoringConfig:
 
         return self
 
-    def save(self):
+    @public
+    def save(self) -> FeatureMonitoringConfig:
         """Saves the feature monitoring configuration.
 
         Example:
@@ -456,7 +465,7 @@ class FeatureMonitoringConfig:
             ```
 
         Returns:
-            `FeatureMonitoringConfig`. The saved FeatureMonitoringConfig object.
+            The saved FeatureMonitoringConfig object.
         """
         registered_config = self._feature_monitoring_config_engine.save(self)
         self.detection_window_config = registered_config._detection_window_config
@@ -475,7 +484,8 @@ class FeatureMonitoringConfig:
         self._id = registered_config._id
         return self
 
-    def update(self):
+    @public
+    def update(self) -> FeatureMonitoringConfig:
         """Updates allowed fields of the saved feature monitoring configuration.
 
         Example:
@@ -490,11 +500,12 @@ class FeatureMonitoringConfig:
             ```
 
         Returns:
-            `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
+            The updated FeatureMonitoringConfig object.
         """
         return self._feature_monitoring_config_engine.update(self)
 
-    def run_job(self):
+    @public
+    def run_job(self) -> Job:
         """Trigger the feature monitoring job which computes and compares statistics on the detection and reference windows.
 
         Example:
@@ -512,10 +523,10 @@ class FeatureMonitoringConfig:
             Calling this method does not affect the ongoing schedule.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
 
         Returns:
-            `Job`. A handle for the job computing the statistics.
+            A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
             raise FeatureStoreException(
@@ -526,7 +537,8 @@ class FeatureMonitoringConfig:
             job_name=self.job_name
         )
 
-    def get_job(self):
+    @public
+    def get_job(self) -> Job:
         """Get the feature monitoring job which computes and compares statistics on the detection and reference windows.
 
         Example:
@@ -539,10 +551,10 @@ class FeatureMonitoringConfig:
             job.executions
             ```
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
 
         Returns:
-            `Job`. A handle for the job computing the statistics.
+            A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
             raise FeatureStoreException(
@@ -554,6 +566,7 @@ class FeatureMonitoringConfig:
             job_name=self.job_name
         )
 
+    @public
     def delete(self):
         """Deletes the feature monitoring configuration.
 
@@ -568,7 +581,7 @@ class FeatureMonitoringConfig:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -577,6 +590,7 @@ class FeatureMonitoringConfig:
 
         self._feature_monitoring_config_engine.delete(config_id=self._id)
 
+    @public
     def disable(self):
         """Disables the schedule of the feature monitoring job.
 
@@ -591,10 +605,11 @@ class FeatureMonitoringConfig:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=False)
 
+    @public
     def enable(self):
         """Enables the schedule of the feature monitoring job.
 
@@ -611,7 +626,7 @@ class FeatureMonitoringConfig:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=True)
 
@@ -630,6 +645,7 @@ class FeatureMonitoringConfig:
         )
         return self._job_schedule
 
+    @public
     def get_history(
         self,
         start_time: datetime | date | str | int | None = None,
@@ -656,8 +672,11 @@ class FeatureMonitoringConfig:
             end_time: The end time of the time range to fetch the history for.
             with_statistics: Whether to include the computed statistics in the results.
 
+        Returns:
+            A list of FeatureMonitoringResult objects containing the history of the computed statistics and comparison results for this configuration.
+
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature monitoring config has not been saved.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -671,31 +690,37 @@ class FeatureMonitoringConfig:
             with_statistics=with_statistics,
         )
 
+    @public
     @property
     def id(self) -> int | None:
         """Id of the feature monitoring configuration."""
         return self._id
 
+    @public
     @property
     def feature_store_id(self) -> int:
         """Id of the Feature Store."""
         return self._feature_store_id
 
+    @public
     @property
     def feature_group_id(self) -> int | None:
         """Id of the Feature Group to which this feature monitoring configuration is attached."""
         return self._feature_group_id
 
+    @public
     @property
     def feature_view_name(self) -> str | None:
         """Name of the Feature View to which this feature monitoring configuration is attached."""
         return self._feature_view_name
 
+    @public
     @property
     def feature_view_version(self) -> int | None:
         """Version of the Feature View to which this feature monitoring configuration is attached."""
         return self._feature_view_version
 
+    @public
     @property
     def feature_name(self) -> str | None:
         """The name of the feature to monitor.
@@ -708,6 +733,7 @@ class FeatureMonitoringConfig:
         """
         return self._feature_name
 
+    @public
     @property
     def name(self) -> str:
         """The name of the feature monitoring config.
@@ -732,6 +758,7 @@ class FeatureMonitoringConfig:
             )
         self._name = name
 
+    @public
     @property
     def description(self) -> str | None:
         """Description of the feature monitoring configuration."""
@@ -747,11 +774,13 @@ class FeatureMonitoringConfig:
             )
         self._description = description
 
+    @public
     @property
     def job_name(self) -> str | None:
         """Name of the feature monitoring job."""
         return self._job_name
 
+    @public
     @property
     def enabled(self) -> bool:
         """Controls whether or not this config is spawning new feature monitoring jobs.
@@ -762,12 +791,9 @@ class FeatureMonitoringConfig:
 
     @enabled.setter
     def enabled(self, enabled: bool):
-        """Controls whether or not this config is spawning new feature monitoring jobs.
-
-        This field belongs to the scheduler configuration but is made transparent to the user for convenience.
-        """
         self.job_schedule.enabled = enabled
 
+    @public
     @property
     def feature_monitoring_type(self) -> str | None:
         """The type of feature monitoring to perform. Used for internal validation.
@@ -781,6 +807,7 @@ class FeatureMonitoringConfig:
         """
         return self._feature_monitoring_type
 
+    @public
     @property
     def job_schedule(self) -> JobSchedule:
         """Schedule of the feature monitoring job.
@@ -798,6 +825,7 @@ class FeatureMonitoringConfig:
         else:
             raise TypeError("job_schedule must be of type JobScheduler, dict or None")
 
+    @public
     @property
     def detection_window_config(self) -> mwc.MonitoringWindowConfig:
         """Configuration for the detection window."""
@@ -823,6 +851,7 @@ class FeatureMonitoringConfig:
                 "detection_window_config must be of type MonitoringWindowConfig, dict or None"
             )
 
+    @public
     @property
     def reference_window_config(self) -> mwc.MonitoringWindowConfig:
         """Configuration for the reference window."""
@@ -835,7 +864,11 @@ class FeatureMonitoringConfig:
         | dict[str, Any]
         | None = None,
     ):
-        """Sets the reference window for monitoring."""
+        """Sets the reference window for monitoring.
+
+        Parameters:
+            reference_window_config: The configuration for the reference window.
+        """
         # TODO: improve setter documentation
         if (
             self._feature_monitoring_type
@@ -861,6 +894,7 @@ class FeatureMonitoringConfig:
                 "reference_window_config must be of type MonitoringWindowConfig, dict or None"
             )
 
+    @public
     @property
     def statistics_comparison_config(
         self,

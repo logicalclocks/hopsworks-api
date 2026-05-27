@@ -17,10 +17,12 @@
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.core import kafka_api
 
 
+@public("hopsworks.kafka_schema.KafkaSchema")
 class KafkaSchema:
     def __init__(
         self,
@@ -52,26 +54,31 @@ class KafkaSchema:
         self.__init__(**json_decamelized)
         return self
 
+    @public
     @property
     def id(self):
         """Id of the kafka schema."""
         return self._id
 
+    @public
     @property
     def subject(self):
         """Name of the subject for the schema."""
         return self._subject
 
+    @public
     @property
     def version(self):
         """Version of the schema."""
         return self._version
 
+    @public
     @property
     def schema(self):
         """Schema definition."""
         return self._schema
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the schema.

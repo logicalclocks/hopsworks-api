@@ -19,9 +19,11 @@ import json
 from enum import Enum
 
 import humps
+from hopsworks_apigen import public
 from hsfs import feature_group, feature_view, storage_connector, training_dataset, util
 
 
+@public
 class Artifact:
     class MetaType(Enum):
         DELETED = 1
@@ -60,16 +62,19 @@ class Artifact:
         self._href = href
         self._exception_cause = exception_cause
 
+    @public
     @property
     def feature_store_name(self):
         """Name of the feature store in which the artifact is located."""
         return self._feature_store_name
 
+    @public
     @property
     def name(self):
         """Name of the artifact."""
         return self._name
 
+    @public
     @property
     def version(self):
         """Version of the artifact."""
@@ -126,6 +131,7 @@ class Artifact:
         )
 
 
+@public
 class Links:
     def __init__(self):
         self._accessible = []
@@ -133,35 +139,45 @@ class Links:
         self._inaccessible = []
         self._faulty = []
 
+    @public
     @property
-    def deleted(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+    def deleted(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
 
         These entities have been removed from the feature store/model registry.
         """
         return self._deleted
 
+    @public
     @property
-    def inaccessible(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+    def inaccessible(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
 
         These entities exist in the feature store/model registry, however the user
         does not have access to them anymore.
         """
         return self._inaccessible
 
+    @public
     @property
-    def accessible(self):
-        """List of [StorageConnectors|FeatureGroups|FeatureViews|Models] objects which are part of the provenance graph requested.
+    def accessible(
+        self,
+    ) -> list[
+        storage_connector.StorageConnector
+        | feature_group.FeatureGroup
+        | feature_view.FeatureView
+    ]:
+        """List of objects which are part of the provenance graph requested.
 
         These entities
         exist in the feature store/model registry and the user has access to them.
         """
         return self._accessible
 
+    @public
     @property
-    def faulty(self):
-        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+    def faulty(self) -> list[Artifact]:
+        """List of objects which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
 
         These entities exist in the feature store/model registry, however they are corrupted.
         """
@@ -184,6 +200,7 @@ class Links:
         FEATURE_VIEW = 2
         MODEL = 3
         STORAGE_CONNECTOR = 4
+        TRAINING_DATASET = 5
 
     def __str__(self, indent=None):
         return json.dumps(self, cls=ProvenanceEncoder, indent=indent)
@@ -252,6 +269,27 @@ class Links:
                 elif bool(link_json["node"]["accessible"]):
                     links.accessible.append(
                         feature_view.FeatureView.from_response_json(
+                            link_json["node"]["artifact"]
+                        )
+                    )
+                elif bool(link_json["node"]["deleted"]):
+                    links.deleted.append(Artifact.from_response_json(link_json["node"]))
+                else:
+                    links.inaccessible.append(
+                        Artifact.from_response_json(link_json["node"])
+                    )
+        return links
+
+    @staticmethod
+    def __parse_training_datasets(links_json: dict, artifacts: set[str]):
+        links = Links()
+        for link_json in links_json:
+            if link_json["node"]["artifact_type"] in artifacts:
+                if link_json["node"].get("exception_cause") is not None:
+                    links._faulty.append(Artifact.from_response_json(link_json["node"]))
+                elif bool(link_json["node"]["accessible"]):
+                    links.accessible.append(
+                        training_dataset.TrainingDataset.from_response_json(
                             link_json["node"]["artifact"]
                         )
                     )
@@ -386,8 +424,13 @@ class Links:
                 return Links.__parse_feature_views(
                     links_json["downstream"], {"FEATURE_VIEW"}
                 )
+            if artifact == Links.Type.TRAINING_DATASET:
+                return Links.__parse_training_datasets(
+                    links_json["downstream"], {"TRAINING_DATASET"}
+                )
             return Links()
-        return None
+
+        return Links()
 
 
 class ProvenanceEncoder(json.JSONEncoder):

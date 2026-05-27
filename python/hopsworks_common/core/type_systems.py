@@ -91,17 +91,17 @@ else:
 
 if HAS_PYARROW:
 
-    def convert_offline_type_to_pyarrow_type(offline_type: str):
+    def convert_offline_type_to_pyarrow_type(offline_type: str) -> pa.DataType:
         """Convert an offline type string to a PyArrow type.
 
         Supports simple types (int, bigint, string, etc.), array types (array<type>),
         and struct types (struct<field1:type1,field2:type2>).
 
-        # Arguments
-            offline_type: `str`. The offline type string to convert.
+        Parameters:
+            offline_type: The offline type string to convert.
 
-        # Returns
-            `pa.DataType`. The corresponding PyArrow type.
+        Returns:
+            The corresponding PyArrow type.
         """
         offline_type = offline_type.strip().lower()
 
@@ -251,8 +251,11 @@ if HAS_PANDAS:
 def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
     """This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
 
-    Args:
-        base_type : The base class to extend
+    Parameters:
+        base_type: The base class to extend.
+
+    Returns:
+        A new class that extends the base_type class with a new attribute `hopsworks_logging_metadata`.
     """
 
     class HopsworksLoggingMetadataType(base_type):
@@ -273,6 +276,7 @@ def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
     return HopsworksLoggingMetadataType
 
 
+# TODO: Rework whatever is going on here
 HopsworksLoggingMetadataType = NewType(
     "HopsworksLoggingMetadataType", create_extended_type(type)
 )  # Adding new type for type hinting and static analysis.
@@ -325,15 +329,17 @@ def cast_pandas_column_to_offline_type(
         return pd.to_datetime(feature_column, utc=True).dt.date
     if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
         return feature_column.apply(
-            lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (
-                x is not None
-                and (
-                    isinstance(x, (list, dict, np.ndarray))
-                    or (not pd.isnull(x) and x != "")
+            lambda x: (
+                (ast.literal_eval(x) if isinstance(x, str) else x)
+                if (
+                    x is not None
+                    and (
+                        isinstance(x, (list, dict, np.ndarray))
+                        or (not pd.isnull(x) and x != "")
+                    )
                 )
+                else None
             )
-            else None
         )
     if offline_type == "string":
         return feature_column.apply(lambda x: str(x) if x is not None else None)
@@ -357,11 +363,18 @@ def cast_polars_column_to_offline_type(
     if offline_type == "date":
         return feature_column.cast(pl.Date)
     if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
-        return feature_column.map_elements(
-            lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (x is not None and x != "")
-            else None
-        )
+        # Mirrors the pandas branch: pass already-parsed list/dict values through,
+        # parse strings via literal_eval, and treat None / "" as null. Without the
+        # list/dict short-circuit, a column that already has pl.List/pl.Struct
+        # dtype confuses map_elements' return-dtype inference.
+        def _parse_or_passthrough(x):
+            if x is None:
+                return None
+            if isinstance(x, str):
+                return ast.literal_eval(x) if x else None
+            return x
+
+        return feature_column.map_elements(_parse_or_passthrough)
     if offline_type == "string":
         return feature_column.map_elements(lambda x: str(x) if x is not None else None)
     if offline_type.startswith("decimal"):
@@ -396,9 +409,11 @@ def cast_column_to_online_type(
         return feature_column.apply(lambda x: str(x) if x is not None else None)
     if online_type == "boolean":
         return feature_column.apply(
-            lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (x is not None and x != "")
-            else None
+            lambda x: (
+                (ast.literal_eval(x) if isinstance(x, str) else x)
+                if (x is not None and x != "")
+                else None
+            )
         )
     if online_type.startswith("decimal"):
         return feature_column.apply(
@@ -410,6 +425,20 @@ def cast_column_to_online_type(
 
 
 def convert_simple_pandas_dtype_to_offline_type(arrow_type: str) -> str:
+    # Decimal types are parameterised by (precision, scale), so they can't live
+    # in the static PYARROW_HOPSWORKS_DTYPE_MAPPING table — render the Hive
+    # `decimal(p,s)` string from the Arrow type's own precision/scale. Covers
+    # both decimal128 and decimal256 source widths; the offline type carries
+    # no width distinction so they share one branch. `pa.types.is_decimal`
+    # dereferences `.id` on its argument and will AttributeError on a bare
+    # string, so guard with isinstance first — callers may pass legacy
+    # plain-string dtypes that still need to fall through to the table.
+    if (
+        HAS_PYARROW
+        and isinstance(arrow_type, pa.DataType)
+        and pa.types.is_decimal(arrow_type)
+    ):
+        return f"decimal({arrow_type.precision},{arrow_type.scale})"
     try:
         return PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type]
     except KeyError as err:

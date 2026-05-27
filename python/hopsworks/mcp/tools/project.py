@@ -19,22 +19,27 @@ import asyncio
 from typing import TYPE_CHECKING
 
 import hopsworks
+from fastmcp import (
+    Context,  # noqa: TC002
+)
 from hopsworks.mcp.models.project import Project, Projects
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
 
 
 if TYPE_CHECKING:
-    from fastmcp import Context
+    from fastmcp import (
+        FastMCP,
+    )
 
 
 class ProjectTools:
     """Tools for Hopsworks projects."""
 
-    def __init__(self, mcp):
+    def __init__(self, mcp: FastMCP):
         """Initialize project tools.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
@@ -63,7 +68,7 @@ class ProjectTools:
 
         Parameters:
             name: The name of the project to use.
-            context: The MCP context, provided automatically.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             Project: The project details or an error message.
@@ -101,6 +106,7 @@ class ProjectTools:
         Parameters:
             name: The name of the project.
             description: A description of the project.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             Project: The newly created project details or an error message.
@@ -136,6 +142,9 @@ class ProjectTools:
     async def list_projects(self, ctx: Context = None) -> Projects:
         """List all projects.
 
+        Parameters:
+            ctx: The MCP context, provided automatically.
+
         Returns:
             Projects: A list of projects accessible by the user or an error message.
         """
@@ -161,6 +170,9 @@ class ProjectTools:
     async def get_current_project_details(self, ctx: Context | None = None) -> Project:
         """Get details of the current project.
 
+        Parameters:
+            ctx: The MCP context, provided automatically.
+
         Returns:
             Project: The current project details or an error message.
         """
@@ -183,7 +195,7 @@ class ProjectTools:
 
         Parameters:
             name: The name of the project.
-            context: The MCP context, provided automatically.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             Project: The project details or an error message.

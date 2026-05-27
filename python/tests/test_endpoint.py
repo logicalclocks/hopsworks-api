@@ -20,6 +20,7 @@ import pytest
 from hsml import resources
 from hsml.constants import PREDICTOR
 from hsml.python.endpoint import Endpoint
+from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -66,6 +67,12 @@ class TestEndpoint:
         assert mock_validate_resources.call_count == 1
         mock_validate_script_file.assert_called_once()
 
+        assert e.scaling_configuration is not None
+        assert isinstance(e.scaling_configuration, PredictorScalingConfig)
+        assert (
+            e.scaling_configuration.scale_metric.value == "CONCURRENCY"
+        )  # the default
+
     def test_constructor_with_all_parameters(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -100,12 +107,16 @@ class TestEndpoint:
             transformer={
                 "script_file": p_json["transformer"],
                 "resources": copy.deepcopy(p_json["transformer_resources"]),
+                "scaling_configuration": copy.deepcopy(
+                    p_json["transformer_scaling_config"]
+                ),
             },
             inference_logger={
                 "mode": p_json["inference_logging"],
                 "kafka_topic": copy.deepcopy(p_json["kafka_topic_dto"]),
             },
             inference_batcher=copy.deepcopy(p_json["batching_configuration"]),
+            scaling_configuration=copy.deepcopy(p_json["predictor_scaling_config"]),
         )
 
         # Assert
@@ -122,6 +133,21 @@ class TestEndpoint:
         mock_validate_serving_tool.assert_called_once_with(p_json["serving_tool"])
         assert mock_validate_resources.call_count == 1
         mock_validate_script_file.assert_called_once()
+
+        # predictor scaling config
+        assert e.scaling_configuration is not None
+        assert isinstance(e.scaling_configuration, PredictorScalingConfig)
+        assert (
+            e.scaling_configuration.scale_metric.value
+            == p_json["predictor_scaling_config"]["scale_metric"]
+        )
+        # transformer scaling config
+        assert e.transformer is not None
+        assert isinstance(e.transformer.scaling_configuration, TransformerScalingConfig)
+        assert (
+            e.transformer.scaling_configuration.scale_metric.value
+            == p_json["transformer_scaling_config"]["scale_metric"]
+        )
 
     def test_constructor_name_none(self, mocker):
         # Arrange

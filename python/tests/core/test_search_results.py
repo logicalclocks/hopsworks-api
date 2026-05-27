@@ -22,336 +22,172 @@ class TestSearchResults:
         json_dict = {
             "featuregroups": [
                 {
-                    "name": "test",
-                    "version": "1.0",
+                    "name": "test_fg",
+                    "version": 1,
                     "description": "test description",
-                    "featurestore_id": "test_id",
-                    "created": "2025-01-01T00:00:00Z",
-                    "parent_project_id": "parent_id",
-                    "parent_project_name": "parent_name",
-                    "access_projects": ["project1", "project2"],
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
                     "highlights": {
                         "description": "<em>Transaction</em> data",
                         "tags": [],
-                        "other_xattrs": None,
                     },
-                    "creator": {
-                        "username": "test_user",
-                        "firstname": "Test",
-                        "lastname": "User",
-                        "email": "test@example.com",
-                    },
-                    "elastic_id": "elastic_id",
                 },
             ],
-            "feature_views": [
+            "featureViews": [
                 {
-                    "name": "test",
-                    "version": "1.0",
+                    "name": "test_fv",
+                    "version": 1,
                     "description": "test description",
-                    "featurestore_id": "test_id",
-                    "created": "2025-01-01T00:00:00Z",
-                    "parent_project_id": "parent_id",
-                    "parent_project_name": "parent_name",
-                    "access_projects": ["project1", "project2"],
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
                     "highlights": {
                         "description": "<em>Transaction</em> data",
                         "tags": [],
-                        "other_xattrs": None,
                     },
-                    "creator": {
-                        "username": "test_user",
-                        "firstname": "Test",
-                        "lastname": "User",
-                        "email": "test@example.com",
-                    },
-                    "elastic_id": "elastic_id",
                 }
             ],
             "trainingdatasets": [
                 {
-                    "name": "test",
-                    "version": "1.0",
+                    "name": "test_td",
+                    "version": 1,
                     "description": "test description",
-                    "featurestore_id": "test_id",
-                    "created": "2025-01-01T00:00:00Z",
-                    "parent_project_id": "parent_id",
-                    "parent_project_name": "parent_name",
-                    "access_projects": ["project1", "project2"],
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
                     "highlights": {
                         "description": "<em>Transaction</em> data",
                         "tags": [],
-                        "other_xattrs": None,
                     },
-                    "creator": {
-                        "username": "test_user",
-                        "firstname": "Test",
-                        "lastname": "User",
-                        "email": "test@example.com",
-                    },
-                    "elastic_id": "elastic_id",
                 },
             ],
             "features": [
                 {
-                    "name": "test",
-                    "version": "1.0",
+                    "name": "test_feature",
+                    "version": 1,
                     "description": "test description",
-                    "featurestore_id": "test_id",
-                    "created": "2025-01-01T00:00:00Z",
-                    "parent_project_id": "parent_id",
-                    "parent_project_name": "parent_name",
-                    "access_projects": ["project1", "project2"],
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
                     "highlights": {
                         "description": "<em>Transaction</em> data",
                         "tags": [],
-                        "other_xattrs": None,
                     },
-                    "creator": {
-                        "username": "test_user",
-                        "firstname": "Test",
-                        "lastname": "User",
-                        "email": "test@example.com",
-                    },
-                    "featuregroup": "test_fg",
                 },
             ],
-            "featuregroups_from": 0,
-            "featuregroups_total": 1,
-            "feature_views_from": 0,
-            "feature_views_total": 1,
-            "trainingdatasets_from": 0,
-            "trainingdatasets_total": 1,
-            "features_from": 0,
-            "features_total": 1,
+            "featuregroupsFrom": 0,
+            "featuregroupsTotal": 1,
+            "featureViewsFrom": 0,
+            "featureViewsTotal": 1,
+            "trainingdatasetsFrom": 0,
+            "trainingdatasetsTotal": 1,
+            "featuresFrom": 0,
+            "featuresTotal": 1,
         }
 
-        search_result_by_tag = (
-            search_results.FeaturestoreSearchResultByTag.from_response_json(json_dict)
-        )
+        result = search_results.FeaturestoreSearchResult(json_dict)
 
-        assert len(search_result_by_tag.featuregroups) == 0
-        assert len(search_result_by_tag.feature_views) == 0
-        assert len(search_result_by_tag.trainingdatasets) == 0
-        assert len(search_result_by_tag.features) == 0
+        assert len(result.feature_groups) == 1
+        assert len(result.feature_views) == 1
+        assert len(result.training_datasets) == 1
+        assert len(result.features) == 1
 
-        search_result_by_tag_name = (
-            search_results.FeaturestoreSearchResultByTagName.from_response_json(
-                json_dict
-            )
-        )
+        assert result.feature_groups[0].name == "test_fg"
+        assert result.feature_views[0].name == "test_fv"
+        assert result.training_datasets[0].name == "test_td"
+        assert result.features[0].name == "test_feature"
 
-        assert len(search_result_by_tag_name.featuregroups) == 0
-        assert len(search_result_by_tag_name.feature_views) == 0
-        assert len(search_result_by_tag_name.trainingdatasets) == 0
-        assert len(search_result_by_tag_name.features) == 0
+        assert result.feature_groups_total == 1
+        assert result.feature_views_total == 1
+        assert result.training_datasets_total == 1
+        assert result.features_total == 1
 
-        search_result_by_tag_key = (
-            search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-                json_dict
-            )
-        )
+    def test_search_result_with_empty_response(self):
+        json_dict = {
+            "featuregroups": [],
+            "featureViews": [],
+            "trainingdatasets": [],
+            "features": [],
+            "featuregroupsFrom": 0,
+            "featuregroupsTotal": 0,
+            "featureViewsFrom": 0,
+            "featureViewsTotal": 0,
+            "trainingdatasetsFrom": 0,
+            "trainingdatasetsTotal": 0,
+            "featuresFrom": 0,
+            "featuresTotal": 0,
+        }
 
-        assert len(search_result_by_tag_key.featuregroups) == 0
-        assert len(search_result_by_tag_key.feature_views) == 0
-        assert len(search_result_by_tag_key.trainingdatasets) == 0
-        assert len(search_result_by_tag_key.features) == 0
+        result = search_results.FeaturestoreSearchResult(json_dict)
 
-        search_result_by_tag_value = (
-            search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-                json_dict
-            )
-        )
+        assert len(result.feature_groups) == 0
+        assert len(result.feature_views) == 0
+        assert len(result.training_datasets) == 0
+        assert len(result.features) == 0
 
-        assert len(search_result_by_tag_value.featuregroups) == 0
-        assert len(search_result_by_tag_value.feature_views) == 0
-        assert len(search_result_by_tag_value.trainingdatasets) == 0
-        assert len(search_result_by_tag_value.features) == 0
+    def test_search_result_with_highlights(self):
+        json_dict = {
+            "featuregroups": [
+                {
+                    "name": "test_fg",
+                    "version": 1,
+                    "description": "test description",
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
+                    "highlights": {
+                        "name": "<em>test</em>_fg",
+                        "description": "<em>Transaction</em> data",
+                        "tags": [{"key": "tag1", "value": "value1"}],
+                        "keywords": ["<em>keyword1</em>"],
+                    },
+                },
+            ],
+            "featureViews": [],
+            "trainingdatasets": [],
+            "features": [],
+            "featuregroupsFrom": 0,
+            "featuregroupsTotal": 1,
+            "featureViewsFrom": 0,
+            "featureViewsTotal": 0,
+            "trainingdatasetsFrom": 0,
+            "trainingdatasetsTotal": 0,
+            "featuresFrom": 0,
+            "featuresTotal": 0,
+        }
 
-        json_dict["featuregroups"][0]["highlights"]["tags"] = [
-            {"key": "<em>tag1</em>", "value": None},
-        ]
+        result = search_results.FeaturestoreSearchResult(json_dict)
 
-        search_result_by_tag = (
-            search_results.FeaturestoreSearchResultByTag.from_response_json(json_dict)
-        )
+        assert len(result.feature_groups) == 1
+        fg = result.feature_groups[0]
+        assert fg.highlights.name == "<em>test</em>_fg"
+        assert fg.highlights.description == "<em>Transaction</em> data"
+        assert fg.highlights.tags == [{"key": "tag1", "value": "value1"}]
+        assert fg.highlights.keywords == ["<em>keyword1</em>"]
+        assert fg.highlights.has_highlights()
 
-        assert len(search_result_by_tag.featuregroups) == 1
-        assert len(search_result_by_tag.feature_views) == 0
-        assert len(search_result_by_tag.trainingdatasets) == 0
-        assert len(search_result_by_tag.features) == 0
+    def test_search_result_project_info(self):
+        json_dict = {
+            "featuregroups": [
+                {
+                    "name": "test_fg",
+                    "version": 1,
+                    "parentProjectId": 123,
+                    "parentProjectName": "my_project",
+                    "highlights": {},
+                },
+            ],
+            "featureViews": [],
+            "trainingdatasets": [],
+            "features": [],
+            "featuregroupsFrom": 0,
+            "featuregroupsTotal": 1,
+            "featureViewsFrom": 0,
+            "featureViewsTotal": 0,
+            "trainingdatasetsFrom": 0,
+            "trainingdatasetsTotal": 0,
+            "featuresFrom": 0,
+            "featuresTotal": 0,
+        }
 
-        search_result_by_tag_name = (
-            search_results.FeaturestoreSearchResultByTagName.from_response_json(
-                json_dict
-            )
-        )
+        result = search_results.FeaturestoreSearchResult(json_dict)
 
-        assert len(search_result_by_tag_name.featuregroups) == 1
-        assert len(search_result_by_tag_name.feature_views) == 0
-        assert len(search_result_by_tag_name.trainingdatasets) == 0
-        assert len(search_result_by_tag_name.features) == 0
-
-        search_result_by_tag_key = (
-            search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_key.featuregroups) == 0
-        assert len(search_result_by_tag_key.feature_views) == 0
-        assert len(search_result_by_tag_key.trainingdatasets) == 0
-        assert len(search_result_by_tag_key.features) == 0
-
-        search_result_by_tag_value = (
-            search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_value.featuregroups) == 0
-        assert len(search_result_by_tag_value.feature_views) == 0
-        assert len(search_result_by_tag_value.trainingdatasets) == 0
-        assert len(search_result_by_tag_value.features) == 0
-
-        json_dict["featuregroups"][0]["highlights"]["tags"] = []
-        json_dict["feature_views"][0]["highlights"]["tags"] = [
-            {"key": None, "value": '{"<em>tag1</em>": "value1"}'},
-        ]
-
-        search_result_by_tag = (
-            search_results.FeaturestoreSearchResultByTag.from_response_json(json_dict)
-        )
-
-        assert len(search_result_by_tag.featuregroups) == 0
-        assert len(search_result_by_tag.feature_views) == 1
-        assert len(search_result_by_tag.trainingdatasets) == 0
-        assert len(search_result_by_tag.features) == 0
-
-        search_result_by_tag_name = (
-            search_results.FeaturestoreSearchResultByTagName.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_name.featuregroups) == 0
-        assert len(search_result_by_tag_name.feature_views) == 0
-        assert len(search_result_by_tag_name.trainingdatasets) == 0
-        assert len(search_result_by_tag_name.features) == 0
-
-        search_result_by_tag_key = (
-            search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_key.featuregroups) == 0
-        assert len(search_result_by_tag_key.feature_views) == 1
-        assert len(search_result_by_tag_key.trainingdatasets) == 0
-        assert len(search_result_by_tag_key.features) == 0
-
-        search_result_by_tag_value = (
-            search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_value.featuregroups) == 0
-        assert len(search_result_by_tag_value.feature_views) == 0
-        assert len(search_result_by_tag_value.trainingdatasets) == 0
-        assert len(search_result_by_tag_value.features) == 0
-
-        json_dict["feature_views"][0]["highlights"]["tags"] = []
-        json_dict["trainingdatasets"][0]["highlights"]["tags"] = [
-            {"value": '{"tag1": "<em>value1</em>"}'},
-        ]
-
-        search_result_by_tag = (
-            search_results.FeaturestoreSearchResultByTag.from_response_json(json_dict)
-        )
-
-        assert len(search_result_by_tag.featuregroups) == 0
-        assert len(search_result_by_tag.feature_views) == 0
-        assert len(search_result_by_tag.trainingdatasets) == 1
-        assert len(search_result_by_tag.features) == 0
-
-        search_result_by_tag_name = (
-            search_results.FeaturestoreSearchResultByTagName.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_name.featuregroups) == 0
-        assert len(search_result_by_tag_name.feature_views) == 0
-        assert len(search_result_by_tag_name.trainingdatasets) == 0
-        assert len(search_result_by_tag_name.features) == 0
-
-        search_result_by_tag_key = (
-            search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_key.featuregroups) == 0
-        assert len(search_result_by_tag_key.feature_views) == 0
-        assert len(search_result_by_tag_key.trainingdatasets) == 0
-        assert len(search_result_by_tag_key.features) == 0
-
-        search_result_by_tag_value = (
-            search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_value.featuregroups) == 0
-        assert len(search_result_by_tag_value.feature_views) == 0
-        assert len(search_result_by_tag_value.trainingdatasets) == 1
-        assert len(search_result_by_tag_value.features) == 0
-
-        json_dict["trainingdatasets"][0]["highlights"]["tags"] = [
-            {"key": "<em>tag1</em>", "value": '{"tag1": "value1"}'},
-            {"key": None, "value": '{"tag1": "<em>value1</em>"}'},
-            {"value": '{"<em>tag1</em>": "value1"}'},
-        ]
-
-        search_result_by_tag = (
-            search_results.FeaturestoreSearchResultByTag.from_response_json(json_dict)
-        )
-
-        assert len(search_result_by_tag.featuregroups) == 0
-        assert len(search_result_by_tag.feature_views) == 0
-        assert len(search_result_by_tag.trainingdatasets) == 1
-        assert len(search_result_by_tag.features) == 0
-
-        search_result_by_tag_name = (
-            search_results.FeaturestoreSearchResultByTagName.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_name.featuregroups) == 0
-        assert len(search_result_by_tag_name.feature_views) == 0
-        assert len(search_result_by_tag_name.trainingdatasets) == 1
-        assert len(search_result_by_tag_name.features) == 0
-
-        search_result_by_tag_key = (
-            search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_key.featuregroups) == 0
-        assert len(search_result_by_tag_key.feature_views) == 0
-        assert len(search_result_by_tag_key.trainingdatasets) == 1
-        assert len(search_result_by_tag_key.features) == 0
-
-        search_result_by_tag_value = (
-            search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-                json_dict
-            )
-        )
-
-        assert len(search_result_by_tag_value.featuregroups) == 0
-        assert len(search_result_by_tag_value.feature_views) == 0
-        assert len(search_result_by_tag_value.trainingdatasets) == 1
-        assert len(search_result_by_tag_value.features) == 0
+        fg = result.feature_groups[0]
+        assert fg.project.id == 123
+        assert fg.project.name == "my_project"

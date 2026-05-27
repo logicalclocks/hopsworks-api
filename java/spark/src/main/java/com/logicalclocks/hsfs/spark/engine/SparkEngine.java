@@ -214,10 +214,10 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row> registerOnDemandTemporaryTable(ExternalFeatureGroup onDemandFeatureGroup, String alias)
       throws FeatureStoreException, IOException {
     DataSource dataSource = onDemandFeatureGroup.getDataSource();
-    dataSource.setPath(onDemandFeatureGroup.getStorageConnector().getPath(
-        onDemandFeatureGroup.getDataSource().getPath()));
+    dataSource.setPath(dataSource.getStorageConnector().getPath(
+        dataSource.getPath()));
 
-    Dataset<Row> dataset = storageConnectorUtils.read(onDemandFeatureGroup.getStorageConnector(),
+    Dataset<Row> dataset = storageConnectorUtils.read(dataSource.getStorageConnector(),
         dataSource,
         onDemandFeatureGroup.getDataFormat() != null ? onDemandFeatureGroup.getDataFormat().toString() : null,
         getOnDemandOptions(onDemandFeatureGroup));
@@ -279,7 +279,7 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row>[] write(TrainingDataset trainingDataset, Query query, Map<String, String> queryReadOptions,
                               Map<String, String> writeOptions, SaveMode saveMode)
       throws FeatureStoreException, IOException {
-    setupConnectorHadoopConf(trainingDataset.getStorageConnector());
+    setupConnectorHadoopConf(trainingDataset.getDataSource().getStorageConnector());
 
     if (trainingDataset.getSplits() == null || trainingDataset.getSplits().isEmpty()) {
       // Write a single dataset
@@ -530,19 +530,26 @@ public class SparkEngine extends EngineBase {
    *
    * @param featureGroupBase
    * @param dataset
-   * @param writeOptions
+   * @param writeOptions options map; supported keys under {@code "online_ingestion_options.*"} include
+   *     {@code "online_ingestion_options.disable_online_ingestion_count"} (boolean string),
+   *     and {@code "online_ingestion_options.upsert_if_newer"} (boolean string, only updates a row
+   *     if the new value is newer than the existing one)
    * @throws FeatureStoreException
    * @throws IOException
    */
-  public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset, String onlineTopicName,
+  public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
+    Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
+    Long numEntries = Boolean.parseBoolean(
+        writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
+        ? null : dataset.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", getHeader(featureGroupBase, dataset.count()))
+        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions))
         .write()
         .format(Constants.KAFKA_FORMAT)
-        .options(writeOptions)
-        .option("topic", onlineTopicName)
+        .options(kafkaConfig)
+        .option("topic", featureGroupBase.getOnlineTopicName())
         .save();
   }
 
@@ -554,7 +561,7 @@ public class SparkEngine extends EngineBase {
     queryName = makeQueryName(queryName, featureGroupBase);
     DataStreamWriter<Row> writer =
         onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-            .withColumn("headers", getHeader(featureGroupBase, null))
+            .withColumn("headers", getHeader(featureGroupBase, null, writeOptions))
             .writeStream()
             .format(Constants.KAFKA_FORMAT)
             .outputMode(outputMode)
@@ -573,9 +580,10 @@ public class SparkEngine extends EngineBase {
     return query;
   }
 
-  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries) throws FeatureStoreException, IOException {
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options)
+      throws FeatureStoreException, IOException {
     return array(
-      FeatureGroupUtils.getHeaders(featureGroup, numEntries).entrySet().stream()
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options).entrySet().stream()
       .map(entry -> struct(
         lit(entry.getKey()).as("key"),
         lit(entry.getValue()).as("value")

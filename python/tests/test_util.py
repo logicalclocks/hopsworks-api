@@ -927,6 +927,32 @@ class TestUtil:
         hopsworks_common.util.validate_embedding_feature_type(embedding_index, schema)
         # No exception should be raised
 
+    def test_extract_zip(self, tmp_path):
+        import zipfile
+
+        archive = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(archive), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+            zf.writestr("tnsnames.ora", "fake")
+
+        result = util.extract_zip(str(archive))
+
+        expected_dir = str(tmp_path / "wallet")
+        assert result == expected_dir
+        assert os.path.isfile(os.path.join(expected_dir, "cwallet.sso"))
+        assert os.path.isfile(os.path.join(expected_dir, "tnsnames.ora"))
+
+    def test_extract_zip_idempotent(self, tmp_path):
+        import zipfile
+
+        archive = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(archive), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+
+        result1 = util.extract_zip(str(archive))
+        result2 = util.extract_zip(str(archive))
+        assert result1 == result2
+
     @pytest.mark.skipif(
         not HAS_SQLALCHEMY or not HAS_AIOMYSQL,
         reason="SQLAlchemy or aiomysql is not installed",

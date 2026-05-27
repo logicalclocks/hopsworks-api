@@ -18,10 +18,12 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hsfs import util
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 
+@public
 class SplitStatistics:
     # TODO: Add docstring
     def __init__(
@@ -62,11 +64,13 @@ class SplitStatistics:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def name(self):
         """Name of the training dataset split."""
         return self._name
 
+    @public
     @property
     def feature_descriptive_statistics(self):
         """List of feature descriptive statistics."""

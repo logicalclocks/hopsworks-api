@@ -20,6 +20,7 @@ import pytest
 from hsfs import feature_group, feature_view, storage_connector, training_dataset
 from hsfs.constructor import fs_query
 from hsfs.core import arrow_flight_client
+from hsfs.core import data_source as ds
 from hsfs.engine import python
 from hsfs.feature_store import FeatureStore
 from hsfs.storage_connector import HopsFSConnector, StorageConnector
@@ -78,7 +79,9 @@ class TestArrowFlightClient:
             "hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query",
             return_value=fg.select_all(),
         )
-        mocker.patch("hsfs.engine.python.Engine._apply_transformation_function")
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
+        )
 
         # required for batch query
         batch_scoring_server = mocker.MagicMock()
@@ -94,7 +97,9 @@ class TestArrowFlightClient:
         json_td = backend_fixtures["training_dataset"]["get_basic_info"]["response"]
         td_hopsfs = training_dataset.TrainingDataset.from_response_json(json_td)[0]
         td_hopsfs.training_dataset_type = "HOPSFS_TRAINING_DATASET"
-        td_hopsfs.storage_connector = HopsFSConnector(0, "", "")
+        td_hopsfs.data_source.storage_connector = HopsFSConnector(
+            0, "", 0, hopsfs_path="/path"
+        )
         td_hopsfs.data_format = data_format
         mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata",
@@ -186,7 +191,7 @@ class TestArrowFlightClient:
         # Arrange
         connector = storage_connector.BigQueryConnector(0, "BigQueryConnector", 99)
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=[""]
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
         )
 
         # Act
@@ -202,10 +207,37 @@ class TestArrowFlightClient:
         def spark_options(self):
             pass
 
+    def test_supports_mongodb(self):
+        # Arrange
+        connector = storage_connector.MongoDBConnector(0, "MongoDBConnector", 99)
+        external_feature_group = feature_group.ExternalFeatureGroup(
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
+        )
+
+        # Act
+        supported = arrow_flight_client.supports([external_feature_group])
+
+        # Assert
+        assert supported
+
+    def test_supports_s3(self):
+        # Arrange
+        connector = storage_connector.S3Connector(0, "S3Connector", 99)
+        external_feature_group = feature_group.ExternalFeatureGroup(
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
+        )
+
+        # Act
+        supported = arrow_flight_client.supports([external_feature_group])
+
+        # Assert
+        assert supported
+
     def test_supports_unsupported(self):
         # Arrange
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=self.FakeConnector(), primary_key=[""]
+            primary_key=[""],
+            data_source=ds.DataSource(storage_connector=self.FakeConnector()),
         )
 
         # Act
@@ -218,7 +250,7 @@ class TestArrowFlightClient:
         # Arrange
         connector = storage_connector.BigQueryConnector(0, "BigQueryConnector", 99)
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=[""]
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
 
@@ -233,7 +265,8 @@ class TestArrowFlightClient:
     def test_supports_mixed_featuregroups_unsupported(self):
         # Arrange
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=self.FakeConnector(), primary_key=[""]
+            primary_key=[""],
+            data_source=ds.DataSource(storage_connector=self.FakeConnector()),
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
 

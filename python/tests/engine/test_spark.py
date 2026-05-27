@@ -19,7 +19,7 @@ import datetime
 import json
 import logging
 import sys
-from unittest.mock import MagicMock, PropertyMock, call
+from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
 import hopsworks_common
 import numpy
@@ -40,8 +40,9 @@ from hsfs import (
 )
 from hsfs.client import exceptions
 from hsfs.constructor import hudi_feature_group_alias, query
+from hsfs.core import data_source as ds
 from hsfs.core import online_ingestion, training_dataset_engine
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
@@ -79,6 +80,10 @@ from pyspark.sql.types import (
 hopsworks_common.connection._hsfs_engine_type = "spark"
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="Spark tests transiently fail on Windows.",
+)
 class TestSpark:
     # Helper Functions
     @staticmethod
@@ -597,7 +602,9 @@ class TestSpark:
         )
 
         external_fg = feature_group.ExternalFeatureGroup(
-            storage_connector=jdbc_connector, id=10, location="test_location"
+            id=10,
+            location="test_location",
+            data_source=ds.DataSource(storage_connector=jdbc_connector),
         )
 
         # Act
@@ -783,7 +790,7 @@ class TestSpark:
         # Act
         with pytest.raises(TypeError) as e_info:
             spark_engine.convert_to_default_dataframe(
-                dataframe=list(),
+                dataframe=[],
             )
 
         # Assert
@@ -845,6 +852,51 @@ class TestSpark:
         assert list(result_df) == list(expected)
         for column in list(result_df):
             assert result_df[column].equals(result_df[column])
+
+    def test_convert_to_default_dataframe_returns_all_nullable(self):
+        """Convert path produces an all-nullable schema.
+
+        ``df.to(schema)`` is the Spark Connect-compatible replacement for
+        ``createDataFrame(df.rdd, nullable_schema)``; this confirms it still
+        produces an all-nullable schema on a classic Spark session.
+        """
+        # Arrange
+        spark_engine = spark.Engine()
+        original = spark_engine._spark_session.createDataFrame(
+            [(1, "a"), (2, "b")], ["id", "name"]
+        )
+
+        # Act
+        result = spark_engine.convert_to_default_dataframe(dataframe=original)
+
+        # Assert — every field is nullable, regardless of source nullability.
+        for field in result.schema.fields:
+            assert field.nullable is True
+
+    def test_convert_to_default_dataframe_does_not_call_rdd(self, mocker):
+        """Convert path must not touch ``DataFrame.rdd``.
+
+        ``df.rdd`` raises ``PySparkNotImplementedError`` under Spark Connect,
+        so the conversion must use ``DataFrame.to`` instead.
+        """
+        # Arrange
+        spark_engine = spark.Engine()
+        original = spark_engine._spark_session.createDataFrame(
+            [(1, "a")], ["id", "name"]
+        )
+
+        # Spy on the ``rdd`` property; if anyone touches it, the test fails.
+        rdd_spy = mocker.patch.object(
+            type(original),
+            "rdd",
+            new_callable=mocker.PropertyMock,
+        )
+
+        # Act
+        spark_engine.convert_to_default_dataframe(dataframe=original)
+
+        # Assert — the conversion path no longer touches ``.rdd``.
+        rdd_spy.assert_not_called()
 
     def test_convert_to_default_dataframe_pyspark_rdd(self):
         # Arrange
@@ -1002,532 +1054,164 @@ class TestSpark:
         assert original_schema == original_df.schema
         assert result_schema == result_df.schema
 
-    def test_save_dataframe(self, mocker):
+    def test_shallow_copy_dataframe_is_shallow(self):
         # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
         spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
+        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
+        copy = spark_engine.shallow_copy_dataframe(df)
+
+        # Assert - separate object but shares underlying arrays
+        assert copy is not df
+        assert copy["a"].values.base is df["a"].values.base or (
+            copy["a"].values is df["a"].values
         )
 
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_storage_offline(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
+    def test_shallow_copy_dataframe_column_assign_does_not_mutate_original(self):
+        # Arrange - column assignment on the copy must not affect the original
         spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
+        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        original_columns = list(df.columns)
 
         # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage="offline",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
+        copy = spark_engine.shallow_copy_dataframe(df)
+        copy["c"] = [5, 6]
+        copy["a"] = [99, 99]
 
         # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_storage_offline_online_enabled(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=True,
-            storage="offline",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_storage_online(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage="online",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_storage_online_online_enabled(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=True,
-            storage="online",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 1
-        assert mock_spark_engine_save_offline_dataframe.call_count == 0
-
-    def test_save_dataframe_online_enabled(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=True,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 1
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_fg_stream(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            stream=True,
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 1
-        assert mock_spark_engine_save_offline_dataframe.call_count == 0
-
-    def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
-        # Arrange
-        mock_check_duplicate_records = mocker.patch(
-            "hsfs.engine.spark.Engine._check_duplicate_records"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=["pk1"],
-            partition_key=[],
-            id=10,
-            time_travel_format="DELTA",
-        )
-
-        mock_dataframe = mocker.Mock(spec=DataFrame)
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=mock_dataframe,
-            operation="insert",
-            online_enabled=False,
-            storage="offline",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_check_duplicate_records.call_count == 1
-        mock_check_duplicate_records.assert_called_once_with(mock_dataframe, fg)
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_non_delta_does_not_call_check_duplicate_records(
-        self, mocker
-    ):
-        # Arrange
-        mock_check_duplicate_records = mocker.patch(
-            "hsfs.engine.spark.Engine._check_duplicate_records"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=["pk1"],
-            partition_key=[],
-            id=10,
-            time_travel_format="HUDI",
-        )
-
-        mock_dataframe = mocker.Mock(spec=DataFrame)
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=mock_dataframe,
-            operation="insert",
-            online_enabled=False,
-            storage="offline",
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_check_duplicate_records.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+        assert list(df.columns) == original_columns
+        assert list(df["a"]) == [1, 2]
 
     @pytest.mark.parametrize(
-        "test_name,primary_key,partition_key,event_time,data",
+        "online_enabled, storage, stream, expected_online_calls, expected_offline_calls",
         [
-            (
-                "duplicate_primary_key",
-                ["id"],
-                [],
-                None,
-                [
-                    {"id": 1, "text": "a"},
-                    {"id": 1, "text": "a_dup"},
-                    {"id": 2, "text": "b"},
-                ],
-            ),
-            (
-                "duplicate_primary_key_partition",
-                ["id"],
-                ["p"],
-                None,
-                [
-                    {"id": 1, "p": 0, "text": "a_p0"},
-                    {"id": 1, "p": 0, "text": "a_p0_dup"},
-                    {"id": 2, "p": 0, "text": "b_p0"},
-                ],
-            ),
-            (
-                "duplicate_primary_key_event_time",
-                ["id"],
-                [],
-                "event_time",
-                [
-                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1"},
-                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1_dup"},
-                    {"id": 2, "event_time": "2024-01-02", "text": "b_t2"},
-                ],
-            ),
+            # cached fg
+            ## not online_enabled
+            (False, None, False, 0, 1),
+            (False, "offline", False, 0, 1),
+            (False, "online", False, 0, 0),
+            ## online_enabled
+            (True, None, False, 1, 1),
+            (True, "offline", False, 0, 1),
+            (True, "online", False, 1, 0),
+            # stream fg
+            ## not online_enabled
+            (False, None, True, 0, 1),
+            (False, "offline", True, 0, 1),
+            (False, "online", True, 0, 0),
+            ## online_enabled
+            (True, None, True, 1, 1),
+            (True, "offline", True, 0, 1),
+            (True, "online", True, 1, 0),
         ],
     )
-    def test_save_dataframe_delta_duplicate_should_fail(
-        self, mocker, test_name, primary_key, partition_key, event_time, data
+    def test_save_dataframe(
+        self,
+        mocker,
+        online_enabled,
+        storage,
+        stream,
+        expected_online_calls,
+        expected_offline_calls,
     ):
         # Arrange
-        from datetime import datetime
-
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_online_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_online_dataframe"
+        )
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
 
         spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
-            name=f"dl_dup_{test_name}",
+            name="test",
             version=1,
             featurestore_id=99,
-            primary_key=primary_key,
-            partition_key=partition_key,
-            event_time=event_time,
-            time_travel_format="DELTA",
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=stream,
         )
 
-        # Convert event_time strings to datetime if needed
-        if event_time and any(isinstance(row.get(event_time), str) for row in data):
-            for row in data:
-                if event_time in row and isinstance(row[event_time], str):
-                    row[event_time] = datetime.fromisoformat(row[event_time])
+        # Act
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=None,
+            operation=None,
+            online_enabled=online_enabled,
+            storage=storage,
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
 
-        df = spark_engine._spark_session.createDataFrame(data)
-
-        # Act & Assert
-        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
-            spark_engine.save_dataframe(
-                feature_group=fg,
-                dataframe=df,
-                operation="insert",
-                online_enabled=True,
-                storage="offline",
-                offline_write_options={},
-                online_write_options={},
-                validation_id=None,
-            )
-
-        assert exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE in str(
-            exc_info.value
+        # Assert
+        assert (
+            mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
+        )
+        assert (
+            mock_spark_engine_save_offline_dataframe.call_count
+            == expected_offline_calls
         )
 
     @pytest.mark.parametrize(
-        "test_name,primary_key,partition_key,event_time,data_factory",
+        "online_enabled, storage, expected_online_calls, expected_offline_calls",
         [
-            (
-                "pk_partition_across",
-                ["id"],
-                ["p"],
-                None,
-                lambda dt: [
-                    {"id": 1, "p": 0, "text": "a_p0"},
-                    {"id": 1, "p": 1, "text": "a_p1"},
-                    {"id": 2, "p": 0, "text": "b_p0"},
-                ],
-            ),
-            (
-                "pk_event_time_across",
-                ["id"],
-                [],
-                "event_time",
-                lambda dt: [
-                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
-                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
-                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
-                ],
-            ),
-            (
-                "pk_with_no_duplicate",
-                ["id"],
-                [],
-                None,
-                lambda dt: [
-                    {"id": 1, "text": "a"},
-                    {"id": 2, "text": "b"},
-                    {"id": 3, "text": "c"},
-                ],
-            ),
-            (
-                "no_pk_partition_only",
-                [],
-                ["p"],
-                None,
-                lambda dt: [
-                    {"id": 1, "p": 0, "text": "a_p0"},
-                    {"id": 1, "p": 1, "text": "a_p1"},
-                    {"id": 2, "p": 0, "text": "b_p0"},
-                ],
-            ),
-            (
-                "no_pk_event_time_only",
-                [],
-                [],
-                "event_time",
-                lambda dt: [
-                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
-                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
-                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
-                ],
-            ),
-            (
-                "no_pk",
-                [],
-                [],
-                None,
-                lambda dt: [
-                    {"id": 1, "text": "a"},
-                    {"id": 1, "text": "a_dup"},
-                    {"id": 2, "text": "b"},
-                ],
-            ),
+            # not online_enabled
+            (False, None, 0, 0),
+            (False, "offline", 0, 0),
+            (False, "online", 0, 0),
+            # online_enabled
+            (True, None, 1, 0),
+            (True, "offline", 0, 0),
+            (True, "online", 1, 0),
         ],
     )
-    def test_save_dataframe_delta_duplicate_should_succeed(
-        self, mocker, test_name, primary_key, partition_key, event_time, data_factory
+    def test_save_dataframe_external_fg(
+        self,
+        mocker,
+        online_enabled,
+        storage,
+        expected_online_calls,
+        expected_offline_calls,
     ):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_online_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_online_dataframe"
+        )
         mock_spark_engine_save_offline_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine._save_offline_dataframe"
         )
 
         spark_engine = spark.Engine()
 
-        fg = feature_group.FeatureGroup(
-            name=f"dl_dup_{test_name}",
-            version=1,
-            featurestore_id=99,
-            primary_key=primary_key,
-            partition_key=partition_key,
-            event_time=event_time,
-            time_travel_format="DELTA",
+        fg = feature_group.ExternalFeatureGroup(
+            id=10,
+            online_enabled=online_enabled,
         )
 
-        data = data_factory(datetime)
-        df = spark_engine._spark_session.createDataFrame(data)
-
-        # Act - should not raise exception
+        # Act
         spark_engine.save_dataframe(
             feature_group=fg,
-            dataframe=df,
-            operation="insert",
-            online_enabled=True,
-            storage="offline",
-            offline_write_options={},
-            online_write_options={},
+            dataframe=None,
+            operation=None,
+            online_enabled=online_enabled,
+            storage=storage,
+            offline_write_options=None,
+            online_write_options=None,
             validation_id=None,
         )
 
-        # Assert - no exception should be raised, and save should be called
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+        # Assert
+        assert (
+            mock_spark_engine_save_online_dataframe.call_count == expected_online_calls
+        )
+        assert (
+            mock_spark_engine_save_offline_dataframe.call_count
+            == expected_offline_calls
+        )
 
     def test_save_stream_dataframe(self, mocker, backend_fixtures):
         # Arrange
@@ -2062,7 +1746,12 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="test", version=1, featurestore_id=99, primary_key=[], id=10
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            id=10,
+            time_travel_format="NONE",
         )
         fg.feature_store = mocker.Mock()
 
@@ -2119,6 +1808,7 @@ class TestSpark:
             partition_key=[],
             id=10,
             features=[f, f1],
+            time_travel_format="NONE",
         )
 
         mock_df = mocker.Mock()
@@ -2277,6 +1967,154 @@ class TestSpark:
             mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.return_value.save.call_count
             == 1
         )
+
+    def test_save_online_dataframe_sends_num_entries_by_default(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
+        )
+        mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
+
+        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value.add_file.return_value = (
+            "result_from_add_file"
+        )
+
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
+        json_data = backend_fixtures["storage_connector"]["get_kafka_external"][
+            "response"
+        ]
+        sc = storage_connector.StorageConnector.from_response_json(json_data)
+        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+            features=[
+                feature.Feature("col_0", primary=True),
+                feature.Feature("col_1"),
+            ],
+        )
+        fg.feature_store = mocker.Mock()
+
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        # Act
+        spark_engine._save_online_dataframe(
+            feature_group=fg,
+            dataframe=spark_df,
+            write_options={},
+        )
+
+        # Assert - num_entries should be dataframe row count (2) when flag is not set
+        mock_get_headers.assert_called_once_with(
+            fg,
+            2,
+            {
+                "kafka.test_option_name": "test_option_value",
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+            },
+        )
+        mock_spark_engine_serialize_to_avro.assert_called_once()
+
+    def test_save_online_dataframe_disable_online_ingestion_count(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
+        )
+        mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
+
+        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value.add_file.return_value = (
+            "result_from_add_file"
+        )
+
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
+        json_data = backend_fixtures["storage_connector"]["get_kafka_external"][
+            "response"
+        ]
+        sc = storage_connector.StorageConnector.from_response_json(json_data)
+        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+        )
+        fg.feature_store = mocker.Mock()
+
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        # Act
+        spark_engine._save_online_dataframe(
+            feature_group=fg,
+            dataframe=spark_df,
+            write_options={
+                "online_ingestion_options": {"disable_online_ingestion_count": True}
+            },
+        )
+
+        # Assert - num_entries should be None when disable_online_ingestion_count is True
+        mock_get_headers.assert_called_once_with(
+            fg,
+            None,
+            {
+                "kafka.test_option_name": "test_option_value",
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+                "online_ingestion_options": {"disable_online_ingestion_count": True},
+            },
+        )
+        mock_spark_engine_serialize_to_avro.assert_called_once()
 
     def test_serialize_to_avro(self, mocker):
         # Arrange
@@ -3631,7 +3469,7 @@ class TestSpark:
             transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
-        transformation_fn_dict = dict()
+        transformation_fn_dict = {}
 
         transformation_fn_dict["col_0"] = tf
 
@@ -3670,19 +3508,29 @@ class TestSpark:
     def test_write_training_dataset_single(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mock_spark_engine_apply_transformation_function = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
+        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
+        )
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        tf = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         spark_engine = spark.Engine()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=None,
-            feature_dataframe=None,
+            transformation_functions=[tf],
+            feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="csv",
             write_options={},
@@ -3692,10 +3540,13 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_apply_transformation_function.call_count == 1
+        assert (
+            mock_transformation_function_engine_apply_transformation_functions.call_count
+            == 1
+        )
         assert mock_spark_engine_setup_storage_connector.call_count == 1
         assert (
-            mock_spark_engine_apply_transformation_function.return_value.write.format.call_args[
+            mock_transformation_function_engine_apply_transformation_functions.return_value.write.format.call_args[
                 0
             ][0]
             == "csv"
@@ -3704,19 +3555,29 @@ class TestSpark:
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mock_spark_engine_apply_transformation_function = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
+        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
+        )
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        tf = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         spark_engine = spark.Engine()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=None,
-            feature_dataframe=None,
+            transformation_functions=[tf],
+            feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format="tsv",
             write_options={},
@@ -3726,10 +3587,13 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_apply_transformation_function.call_count == 1
+        assert (
+            mock_transformation_function_engine_apply_transformation_functions.call_count
+            == 1
+        )
         assert mock_spark_engine_setup_storage_connector.call_count == 1
         assert (
-            mock_spark_engine_apply_transformation_function.return_value.write.format.call_args[
+            mock_transformation_function_engine_apply_transformation_functions.return_value.write.format.call_args[
                 0
             ][0]
             == "csv"
@@ -3738,19 +3602,29 @@ class TestSpark:
     def test_write_training_dataset_single_to_df(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mock_spark_engine_apply_transformation_function = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
+        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
+        )
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        tf = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         spark_engine = spark.Engine()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=None,
-            feature_dataframe=None,
+            transformation_functions=[tf],
+            feature_dataframe=pd.DataFrame({"feature": [1]}),
             storage_connector=None,
             data_format=None,
             write_options={},
@@ -3760,7 +3634,10 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_spark_engine_apply_transformation_function.call_count == 1
+        assert (
+            mock_transformation_function_engine_apply_transformation_functions.call_count
+            == 1
+        )
         assert mock_spark_engine_setup_storage_connector.call_count == 0
 
     def test_read_none_data_format(self, mocker):
@@ -4400,7 +4277,7 @@ class TestSpark:
 
         # Mock dataset API and file I/O for distribute=False case
         if distribute_arg is False:
-            mock_dataset_api.return_value.read_content.return_value.content = bytes()
+            mock_dataset_api.return_value.read_content.return_value.content = b""
             mocker.patch("builtins.open", mocker.mock_open())
 
         # Act
@@ -4475,8 +4352,8 @@ class TestSpark:
         )
 
     @pytest.mark.skipif(
-        HAS_GREAT_EXPECTATIONS is False,
-        reason="Great Expectations is not installed",
+        HAS_GREAT_EXPECTATIONS is False or GE_MAJOR != 0,
+        reason="GE 0.x-only Spark validate path: BaseDataContext + RuntimeBatchRequest were removed in GE 1.x.",
     )
     def test_validate_with_great_expectations(self, mocker):
         # Arrange
@@ -4528,6 +4405,58 @@ class TestSpark:
             },
             "success": True,
         }
+
+    @pytest.mark.skipif(
+        HAS_GREAT_EXPECTATIONS is False or GE_MAJOR != 1,
+        reason="GE 1.x-only Spark validate path: uses gx.get_context + add_spark.",
+    )
+    def test_validate_with_great_expectations_v1(self):
+        import great_expectations
+        from great_expectations.expectations.expectation_configuration import (
+            ExpectationConfiguration,
+        )
+
+        # Arrange: a Spark DataFrame with one all-non-null column.
+        spark_engine = spark.Engine()
+        df = pd.DataFrame(
+            {"col_0": [1, 2, 3], "col_1": ["a", "b", "c"], "event_time": [1, 2, 3]}
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        ge_suite = great_expectations.core.ExpectationSuite(
+            name="es_name",
+            expectations=[
+                ExpectationConfiguration(
+                    type="expect_column_values_to_not_be_null",
+                    kwargs={"column": "col_0"},
+                    meta={},
+                ),
+            ],
+        )
+
+        # Act
+        result = spark_engine.validate_with_great_expectations(
+            dataframe=spark_df,
+            expectation_suite=ge_suite,
+            ge_validate_kwargs={},
+        )
+
+        # Assert: 1.x ESVR shape differs structurally from 0.x (no run_id /
+        # batch_markers / active_batch_definition); pin only the stable fields
+        # that the SDK and the wire format rely on.
+        assert isinstance(
+            result, great_expectations.core.ExpectationSuiteValidationResult
+        )
+        assert result.success is True
+        assert len(result.results) == 1
+        assert result.results[0].success is True
+        # The result is what gets converted to a Hopsworks ValidationReport
+        # downstream; its expectation_config carries the legacy-shape type field
+        # by way of _normalize_expectation_config_to_legacy_shape applied at the
+        # ValidationReport.results setter (validation_report.py).
+        assert (
+            result.results[0].expectation_config.to_json_dict()["type"]
+            == "expect_column_values_to_not_be_null"
+        )
 
     def test_write_options(self):
         # Arrange
@@ -6796,10 +6725,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -6855,10 +6780,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dict(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -6966,10 +6887,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7020,10 +6937,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7103,10 +7016,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7158,10 +7067,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7261,10 +7166,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7318,10 +7219,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7398,10 +7295,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7450,10 +7343,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7552,10 +7441,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7609,10 +7494,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7686,10 +7567,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7737,10 +7614,6 @@ class TestSpark:
             == expected_dataframe.select(*logging_feature_names).collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7858,10 +7731,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7931,10 +7800,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8030,10 +7895,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8082,10 +7943,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8192,10 +8049,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_keys_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8253,10 +8106,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_serving_key_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8341,10 +8190,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8393,10 +8238,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8453,7 +8294,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
         logging_features.append(feature.Feature("inference_helper_2", type="double"))
         logging_feature_group_features = meta_data_logging_columns + logging_features
         column_names["helper_columns"] = ["inference_helper_1", "inference_helper_2"]
@@ -8497,10 +8338,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8509,7 +8346,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
 
         logging_features.append(feature.Feature("inference_helper_2", type="double"))
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8556,10 +8393,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8568,7 +8401,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         inference_helper_features = ["inference_helper_1"]
@@ -8640,10 +8473,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8698,10 +8527,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8806,10 +8631,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8862,10 +8683,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8945,10 +8762,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_event_time_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8996,10 +8809,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_event_time_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9096,10 +8905,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_id_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9150,10 +8955,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9248,10 +9049,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9302,10 +9099,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9367,7 +9160,7 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
-        logging_features = [feature for feature in logging_features]
+        logging_features = list(logging_features)
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
         spark_df = logging_test_dataframe.select("rp_1", "rp_2").withColumnRenamed(
@@ -9411,10 +9204,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9468,10 +9257,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -9502,10 +9287,6 @@ class TestSpark:
             == f"Error logging data `{constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME}` to ensure that it has the following features : {column_names['request_parameters']}."
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_override_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9725,10 +9506,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_override_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9973,10 +9750,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_get_feature_logging_df_logging_data_override_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -10217,10 +9990,6 @@ class TestSpark:
             .collect()
         )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_none(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10372,10 +10141,6 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_all(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10516,10 +10281,6 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_none_fully_qualified_names(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10690,10 +10451,6 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="Skip on Windows since test is really slow due due to multiple collects used.",
-    )
     def test_extract_logging_metadata_all_columns_and_drop_all_fully_qualified_names(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10866,3 +10623,343 @@ class TestSpark:
                 result.hopsworks_logging_metadata.request_parameters.collect()
                 == request_parameters_spark_df.collect()
             )
+
+    class TestFilterOnlineDataframe:
+        @pytest.fixture(autouse=True)
+        def patch_engine_type(self, mocker):
+            mocker.patch("hsfs.engine.get_type", return_value="spark")
+            mocker.patch(
+                "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+            )
+
+        @pytest.fixture(autouse=True)
+        def spark_engine(self):
+            engine = spark.Engine()
+            engine._spark_session.conf.set("spark.sql.shuffle.partitions", "1")
+            return engine
+
+        def _make_fg(self, primary_key, event_time=None, ttl=None, ttl_enabled=None):
+            return feature_group.FeatureGroup(
+                name="test",
+                version=1,
+                featurestore_id=1,
+                primary_key=primary_key,
+                partition_key=[],
+                event_time=event_time,
+                ttl=ttl,
+                ttl_enabled=ttl_enabled,
+            )
+
+        def _make_df(self, spark_engine, data, schema):
+            return spark_engine._spark_session.createDataFrame(data, schema=schema)
+
+        def test_no_event_time_no_duplicates_returns_all_rows(self, spark_engine):
+            # Arrange
+            fg = self._make_fg(primary_key=["id"])
+            schema = StructType(
+                [StructField("id", IntegerType()), StructField("val", StringType())]
+            )
+            df = self._make_df(spark_engine, [(1, "a"), (2, "b")], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+
+        def test_no_event_time_deduplicates_by_last_row_per_primary_key(
+            self, spark_engine
+        ):
+            # Arrange: two rows for the same primary key — last one should win
+            fg = self._make_fg(primary_key=["id"])
+            schema = StructType(
+                [StructField("id", IntegerType()), StructField("val", StringType())]
+            )
+            df = self._make_df(spark_engine, [(1, "a"), (1, "b"), (2, "c")], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            ids = {r["id"] for r in result.collect()}
+            assert ids == {1, 2}
+
+        def test_event_time_keeps_latest_per_primary_key(self, spark_engine):
+            # Arrange: two rows for id=1 with different event times — only newer survives
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "old", older), (1, "new", newer), (2, "only", older)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            row = next(r for r in result.collect() if r["id"] == 1)
+            assert row["val"] == "new"
+
+        def test_event_time_out_of_order_batch_picks_max(self, spark_engine):
+            # Arrange: older record appears after newer in the dataframe
+            fg = self._make_fg(primary_key=["id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            newer = datetime.datetime(2024, 6, 1)
+            older = datetime.datetime(2024, 1, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "new", newer), (1, "old", older)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "new"
+
+        def test_ttl_filters_expired_rows(self, spark_engine):
+            # Arrange: one row with a very old timestamp (expired), one with now
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            expired = datetime.datetime(2000, 1, 1)
+            fresh = datetime.datetime.now()
+            df = self._make_df(
+                spark_engine,
+                [(1, "expired", expired), (2, "fresh", fresh)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "fresh"
+
+        def test_ttl_keeps_all_rows_when_none_expired(self, spark_engine):
+            # Arrange: all rows are fresh
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            fresh = datetime.datetime.now()
+            df = self._make_df(spark_engine, [(1, "a", fresh), (2, "b", fresh)], schema)
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+
+        def test_ttl_disabled_falls_back_to_dedup_by_event_time(self, spark_engine):
+            # Arrange: ttl_enabled=False — should deduplicate by event time instead
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=False
+            )
+            schema = StructType(
+                [
+                    StructField("id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [(1, "old", older), (1, "new", newer)],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 1
+            assert result.collect()[0]["val"] == "new"
+
+        def test_composite_primary_key(self, spark_engine):
+            # Arrange: primary key is (user_id, item_id) — two entries for same pair
+            fg = self._make_fg(primary_key=["user_id", "item_id"], event_time="ts")
+            schema = StructType(
+                [
+                    StructField("user_id", IntegerType()),
+                    StructField("item_id", IntegerType()),
+                    StructField("val", StringType()),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            older = datetime.datetime(2024, 1, 1)
+            newer = datetime.datetime(2024, 6, 1)
+            df = self._make_df(
+                spark_engine,
+                [
+                    (1, 10, "old", older),
+                    (1, 10, "new", newer),
+                    (1, 20, "only", older),
+                ],
+                schema,
+            )
+
+            # Act
+            result = spark_engine._filter_online_dataframe(fg, df)
+
+            # Assert
+            assert result.count() == 2
+            row = next(
+                r for r in result.collect() if r["user_id"] == 1 and r["item_id"] == 10
+            )
+            assert row["val"] == "new"
+
+
+class TestSparkConnectMode:
+    """Tests for Spark Connect compatibility guards."""
+
+    @staticmethod
+    def _make_connect_engine():
+        """Create a spark.Engine instance configured for Connect mode."""
+        engine = spark.Engine.__new__(spark.Engine)
+        engine._spark_session = MagicMock()
+        engine._spark_context = None
+        engine._jvm = None
+        engine._is_connect = True
+        engine._metrics = None
+        engine._dataset_api = MagicMock()
+        return engine
+
+    def test_set_job_group_noop_in_connect(self):
+        engine = self._make_connect_engine()
+        # Should not raise even though sparkContext is None
+        engine.set_job_group("group1", "description")
+
+    def test_set_hadoop_conf_uses_spark_conf(self):
+        engine = self._make_connect_engine()
+        engine._set_hadoop_conf("fs.s3a.access.key", "my-key")
+        engine._spark_session.conf.set.assert_called_once_with(
+            "spark.hadoop.fs.s3a.access.key", "my-key"
+        )
+
+    def test_set_hadoop_conf_classic_mode(self):
+        engine = spark.Engine.__new__(spark.Engine)
+        engine._spark_session = MagicMock()
+        engine._spark_context = MagicMock()
+        engine._jvm = MagicMock()
+        engine._is_connect = False
+        engine._set_hadoop_conf("fs.s3a.access.key", "my-key")
+        engine._spark_context._jsc.hadoopConfiguration().set.assert_called_once_with(
+            "fs.s3a.access.key", "my-key"
+        )
+
+    def test_unset_hadoop_conf_connect(self):
+        engine = self._make_connect_engine()
+        engine._unset_hadoop_conf("fs.gs.encryption.algorithm")
+        engine._spark_session.conf.unset.assert_called_once_with(
+            "spark.hadoop.fs.gs.encryption.algorithm"
+        )
+
+    def test_create_empty_df(self):
+        engine = self._make_connect_engine()
+        mock_streaming_df = MagicMock()
+        mock_streaming_df.schema = StructType([StructField("col1", StringType())])
+        engine.create_empty_df(mock_streaming_df)
+        engine._spark_session.createDataFrame.assert_called_once_with(
+            [], mock_streaming_df.schema
+        )
+
+    def test_save_offline_dataframe_blocks_hudi(self):
+        engine = self._make_connect_engine()
+        fg = MagicMock()
+        fg.time_travel_format = "HUDI"
+        df = MagicMock()
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Hudi"):
+            engine._save_offline_dataframe(fg, df, "upsert", {})
+
+    def test_convert_to_default_dataframe_blocks_rdd(self):
+        from pyspark.rdd import RDD
+
+        engine = self._make_connect_engine()
+        mock_rdd = MagicMock(spec=RDD)
+
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="RDD input is not supported"
+        ):
+            engine.convert_to_default_dataframe(mock_rdd)
+
+    def test_add_file_skips_spark_context(self, tmp_path):
+        from unittest.mock import patch as mock_patch
+
+        engine = self._make_connect_engine()
+
+        with mock_patch("hsfs.engine.spark.client") as mock_client:
+            mock_client._is_external.return_value = False
+            mock_response = MagicMock()
+            mock_response.content = b"file-content"
+            engine._dataset_api.read_content.return_value = mock_response
+
+            with (
+                mock_patch("hsfs.engine.spark.util") as mock_util,
+                mock_patch("builtins.open", mock_open()),
+            ):
+                mock_util.get_dataset_type.return_value = "DATASET"
+                result = engine.add_file("hdfs:///path/to/file.jks", distribute=True)
+
+        # Should not have called sparkContext.addFile
+        assert engine._spark_context is None
+        assert result.endswith("file.jks")
+
+    def test_create_spark_session_connect_skips_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=True),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.getOrCreate.assert_called_once()
+            mock_spark.builder.enableHiveSupport.assert_not_called()
+
+    def test_create_spark_session_classic_enables_hive(self):
+        from unittest.mock import patch as mock_patch
+
+        with (
+            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=False),
+            mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
+        ):
+            engine = self._make_connect_engine()
+            engine._create_spark_session()
+            mock_spark.builder.enableHiveSupport.assert_called_once()

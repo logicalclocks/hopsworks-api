@@ -1,0 +1,7 @@
+[run]
+source = hopsworks, hsfs, hsml, hopsworks_common
+relative_files = True
+omit = */tests/*
+
+[report]
+show_missing = True

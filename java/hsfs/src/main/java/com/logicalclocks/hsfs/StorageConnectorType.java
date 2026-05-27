@@ -27,5 +27,7 @@ public enum StorageConnectorType {
   KAFKA,
   GCS,
   BIGQUERY,
-  RDS
+  SQL,
+  SAP_HANA,
+  MONGODB
 }

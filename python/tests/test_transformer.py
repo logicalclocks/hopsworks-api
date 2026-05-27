@@ -17,6 +17,7 @@
 import copy
 
 import pytest
+from hopsworks_common.constants import SCALING_CONFIG
 from hsml import resources, transformer
 from hsml.constants import RESOURCES
 
@@ -54,6 +55,21 @@ class TestTransformer:
         assert t.resources.limits.memory == tr_resources["limits"]["memory"]
         assert t.resources.limits.gpus == tr_resources["limits"]["gpus"]
 
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert (
+            t.scaling_configuration.min_instances
+            == json["transformer_scaling_config"]["min_instances"]
+        )
+        assert (
+            t.scaling_configuration.scale_metric.value
+            == json["transformer_scaling_config"]["scale_metric"]
+        )
+        assert (
+            t.scaling_configuration.target
+            == json["transformer_scaling_config"]["target"]
+        )
+
     def test_from_response_json_with_script_file_field(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -76,6 +92,21 @@ class TestTransformer:
         assert t.resources.limits.cores == tr_resources["limits"]["cores"]
         assert t.resources.limits.memory == tr_resources["limits"]["memory"]
         assert t.resources.limits.gpus == tr_resources["limits"]["gpus"]
+
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert (
+            t.scaling_configuration.min_instances
+            == json["transformer_scaling_config"]["min_instances"]
+        )
+        assert (
+            t.scaling_configuration.scale_metric.value
+            == json["transformer_scaling_config"]["scale_metric"]
+        )
+        assert (
+            t.scaling_configuration.target
+            == json["transformer_scaling_config"]["target"]
+        )
 
     def test_from_response_json_empty(self, mocker, backend_fixtures):
         # Arrange
@@ -106,7 +137,7 @@ class TestTransformer:
         assert isinstance(t, transformer.Transformer)
         assert t.script_file == json["script_file"]
 
-        assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert t.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
         assert t.resources.requests.gpus == RESOURCES.GPUS
@@ -131,7 +162,7 @@ class TestTransformer:
         # Assert
         assert t.script_file == json["script_file"]
 
-        assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert t.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
         assert t.resources.requests.gpus == RESOURCES.GPUS
@@ -225,7 +256,7 @@ class TestTransformer:
         num_instances = transformer.Transformer._get_default_num_instances()
 
         # Assert
-        assert num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_num_instances_with_scale_to_zero(self, mocker):
         # Arrange
@@ -252,7 +283,7 @@ class TestTransformer:
 
         # Assert
         assert isinstance(res, resources.TransformerResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_with_scale_to_zero(self, mocker):
         # Arrange
@@ -268,7 +299,6 @@ class TestTransformer:
         assert res.num_instances == 0
 
     # extract fields from json
-
     def test_extract_fields_from_json(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -278,7 +308,10 @@ class TestTransformer:
         json_copy = copy.deepcopy(json)
 
         # Act
-        sf, rc = transformer.Transformer.extract_fields_from_json(json_copy)
+        sf, rc, sc, ev = transformer.Transformer.extract_fields_from_json(json_copy)
+
+        # env_vars not present in this fixture
+        assert ev is None
 
         # Assert
         assert sf == json["transformer"]
@@ -293,8 +326,191 @@ class TestTransformer:
         assert rc.limits.memory == tr_resources["limits"]["memory"]
         assert rc.limits.gpus == tr_resources["limits"]["gpus"]
 
-    # auxiliary methods
+        assert isinstance(sc, transformer.TransformerScalingConfig)
+        assert sc.min_instances == json["transformer_scaling_config"]["min_instances"]
+        assert (
+            sc.scale_metric.value == json["transformer_scaling_config"]["scale_metric"]
+        )
+        assert sc.target == json["transformer_scaling_config"]["target"]
 
+    def test_constructor_scaling_configuration_none(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+
+        script_file = "transformer_file_name"
+
+        # Act
+        t = transformer.Transformer(
+            script_file=script_file,
+            resources=None,
+            scaling_configuration=None,
+        )
+
+        # Assert
+        assert t.script_file == script_file
+
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert t.scaling_configuration.min_instances == 0
+        assert (
+            t.scaling_configuration.scale_metric.value
+            == SCALING_CONFIG.SCALE_METRIC_CONCURRENCY
+        )
+
+    # env vars
+
+    def test_constructor_env_vars(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+
+        # Act
+        t = transformer.Transformer(
+            script_file="t.py", resources=None, env_vars={"A": "1"}
+        )
+
+        # Assert
+        assert t.env_vars == {"A": "1"}
+
+    def test_env_vars_setter(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(script_file="t.py", resources=None)
+        assert t.env_vars is None
+
+        # Act
+        t.env_vars = {"A": "1"}
+
+        # Assert
+        assert t.env_vars == {"A": "1"}
+
+    def test_to_dict_env_vars_serialises_to_transformer_env_vars_list(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(
+            script_file="t.py",
+            resources=None,
+            env_vars={"FOO": "bar", "BAZ": "qux"},
+        )
+
+        # Act
+        d = t.to_dict()
+
+        # Assert
+        assert "transformerEnvVars" in d
+        assert sorted(d["transformerEnvVars"]) == ["BAZ=qux", "FOO=bar"]
+
+    def test_to_dict_env_vars_none_omits_key(self, mocker):
+        # Arrange
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(script_file="t.py", resources=None)
+
+        # Act
+        d = t.to_dict()
+
+        # Assert
+        assert "transformerEnvVars" not in d
+
+    def test_extract_fields_from_json_env_vars(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["transformer"]["get_deployment_with_transformer"][
+                "response"
+            ]
+        )
+        json["transformer_env_vars"] = ["FOO=bar"]
+
+        # Act
+        sf, rc, sc, ev = transformer.Transformer.extract_fields_from_json(json)
+
+        # Assert
+        assert ev == {"FOO": "bar"}
+        # Key consumed (popped) on the way out
+        assert "transformer_env_vars" not in json
+
+    def test_from_response_json_with_env_vars(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["transformer"]["get_deployment_with_transformer"][
+                "response"
+            ]
+        )
+        json["transformer_env_vars"] = ["FOO=bar"]
+
+        # Act
+        t = transformer.Transformer.from_response_json(json)
+
+        # Assert
+        assert t.env_vars == {"FOO": "bar"}
+
+    def test_env_vars_lifecycle_add_change_remove(self, mocker):
+        # Mirrors the loadtest scenario for the transformer side: set on construct,
+        # override, clear with None, re-set, clear with {}. Each transition both
+        # holds in memory and round-trips through to_dict.
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=False
+        )
+        t = transformer.Transformer(
+            script_file="t.py",
+            resources=None,
+            env_vars={"TR_FOO": "bar", "TR_BAZ": "qux"},
+        )
+        assert t.env_vars == {"TR_FOO": "bar", "TR_BAZ": "qux"}
+        assert sorted(t.to_dict()["transformerEnvVars"]) == ["TR_BAZ=qux", "TR_FOO=bar"]
+
+        # Override
+        t.env_vars = {"TR_NEW": "1"}
+        assert t.env_vars == {"TR_NEW": "1"}
+        assert t.to_dict()["transformerEnvVars"] == ["TR_NEW=1"]
+
+        # Clear with None — to_dict omits the key so the backend stores null.
+        t.env_vars = None
+        assert t.env_vars is None
+        assert "transformerEnvVars" not in t.to_dict()
+
+        # Re-set then clear with {} — same wire output as None.
+        t.env_vars = {"TR_AGAIN": "2"}
+        assert t.to_dict()["transformerEnvVars"] == ["TR_AGAIN=2"]
+        t.env_vars = {}
+        assert t.env_vars == {}
+        assert "transformerEnvVars" not in t.to_dict()
+
+    def test_env_vars_wire_round_trip(self, mocker, backend_fixtures):
+        # SDK → to_dict → decamelize → extract_fields_from_json must preserve
+        # env_vars. Guards against any drift between serialiser and parser.
+        import humps
+
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        t = transformer.Transformer(
+            script_file="t.py",
+            resources=None,
+            env_vars={"TR_FOO": "bar", "TR_K": "V=with=eq"},
+        )
+        wire = copy.deepcopy(
+            backend_fixtures["transformer"]["get_deployment_with_transformer"][
+                "response"
+            ]
+        )
+        wire["transformer_env_vars"] = humps.decamelize(t.to_dict())[
+            "transformer_env_vars"
+        ]
+
+        _, _, _, ev = transformer.Transformer.extract_fields_from_json(wire)
+
+        assert ev == {"TR_FOO": "bar", "TR_K": "V=with=eq"}
+
+    # auxiliary methods
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):
         mocker.patch(
             "hopsworks_common.client.get_serving_num_instances_limits",

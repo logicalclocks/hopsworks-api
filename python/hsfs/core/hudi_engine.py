@@ -167,8 +167,14 @@ class HudiEngine:
             else self._feature_group.primary_key[0]
         )
 
-        # dont enable hive sync when using managed FG
-        hive_sync = self._feature_group.storage_connector is None
+        # only enable hive sync when using a Spark engine with a metastore and no storage connector,
+        # as the storage connector means data is saved in an external storage
+        from hsfs.engine import get_type
+
+        hive_sync = (
+            self._feature_group.data_source.storage_connector is None
+            and get_type() == "spark"
+        )
 
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
@@ -288,6 +294,7 @@ class HudiEngine:
         commit_metadata = spark_context._jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata(
             latest_commit, commit_timeline
         )
+        oldest_commit = commit_timeline.firstInstant().get()
 
         table_size = spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine.getInstance().getHudiTableSize(
             spark_context._jsc, base_path
@@ -302,7 +309,7 @@ class HudiEngine:
             rows_updated=commit_metadata.fetchTotalUpdateRecordsWritten(),
             rows_deleted=commit_metadata.getTotalRecordsDeleted(),
             last_active_commit_time=util.get_timestamp_from_date_string(
-                latest_commit.getCompletionTime()
+                oldest_commit.getCompletionTime()
             ),
             table_size=table_size,
         )

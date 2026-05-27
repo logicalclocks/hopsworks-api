@@ -24,14 +24,21 @@ import os
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
 
 
+if TYPE_CHECKING:
+    import pandas as pd
+    from hsfs.feature_group import FeatureGroup
+
+
+@also_available_as("hopsworks.core.dataset_api.Chunk", "hsml.core.dataset_api.Chunk")
 class Chunk:
     def __init__(self, content, number, status):
         self.content = content
@@ -40,6 +47,11 @@ class Chunk:
         self.retries = 0
 
 
+@public(
+    "hopsworks.core.dataset_api.DatasetApi",
+    "hsfs.core.dataset_api.DatasetApi",
+    "hsml.core.dataset_api.DatasetApi",
+)
 class DatasetApi:
     def __init__(self):
         self._log = logging.getLogger(__name__)
@@ -52,9 +64,13 @@ class DatasetApi:
     DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE = 1024 * 1024
     FLOW_PERMANENT_ERRORS = [404, 413, 415, 500, 501]
 
+    # Backend error code for DatasetErrorCode.UPLOAD_DISK_SPACE_ERROR (110000 + 55)
+    DATASET_ERROR_CODE_UPLOAD_DISK_SPACE = 110055
+
     # alias for backwards-compatibility:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
 
+    @public
     @usage.method_logger
     def download(
         self,
@@ -151,6 +167,7 @@ class DatasetApi:
 
         return local_path
 
+    @public
     @usage.method_logger
     def upload(
         self,
@@ -184,8 +201,8 @@ class DatasetApi:
             upload_path: Path to directory where to upload the file in Hopsworks Filesystem.
             overwrite: Overwrite file or directory if exists.
             chunk_size: Upload chunk size in bytes, defaults to 10 MB.
-            simultaneous_chunks: Number of simultaneous chunks to upload for each file upload.
             simultaneous_uploads: Number of simultaneous files to be uploaded for directories.
+            simultaneous_chunks: Number of simultaneous chunks to upload for each file upload.
             max_chunk_retries: Maximum retry for a chunk.
             chunk_retry_interval: Chunk retry interval in seconds.
 
@@ -193,6 +210,7 @@ class DatasetApi:
             The path to the uploaded file or directory.
 
         Raises:
+            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`, or if the upload fails because the HopsFS storage quota is exhausted.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # local path could be absolute or relative,
@@ -375,6 +393,11 @@ class DatasetApi:
                     or chunk.retries > max_chunk_retries
                 ):
                     chunk.status = "failed"
+                    if re.error_code == DatasetApi.DATASET_ERROR_CODE_UPLOAD_DISK_SPACE:
+                        raise DatasetException(
+                            "Upload failed: HopsFS storage is full. "
+                            "Please contact your administrator to free up disk space."
+                        ) from re
                     raise re
                 time.sleep(chunk_retry_interval)
                 continue
@@ -431,6 +454,7 @@ class DatasetApi:
         """
         return self._get(path)
 
+    @public
     def exists(self, path: str) -> bool:
         """Check if a file exists in the Hopsworks Filesystem.
 
@@ -459,6 +483,7 @@ class DatasetApi:
         """
         return self.exists(remote_path)
 
+    @public
     @usage.method_logger
     def remove(self, path: str):
         """Remove a path in the Hopsworks Filesystem.
@@ -486,6 +511,124 @@ class DatasetApi:
         """
         return self.remove(remote_path)
 
+    @public
+    @usage.method_logger
+    def share(
+        self,
+        path: str,
+        target_project: str,
+        permission: Literal[
+            "READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"
+        ] = "READ_ONLY",
+    ) -> None:
+        """Share a dataset from the active project with another project.
+
+        The caller must have the ``Data owner`` role in the active project; the
+        backend rejects the share otherwise.
+        Feature-store datasets can only be shared as ``READ_ONLY``.
+
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        dataset_api.share("Resources/my_dir", target_project="other_project")
+        ```
+
+        Parameters:
+            path: Dataset path in the active project (e.g. ``Resources/my_dir``).
+            target_project: Name of the project to share with.
+            permission: One of ``READ_ONLY`` (default), ``EDITABLE``,
+                ``EDITABLE_BY_OWNERS``. The target project's data owners
+                still have to accept the share before its members see it.
+
+        Raises:
+            PermissionError: If the caller lacks the Data Owner role in the
+                source project (HTTP 403 from the backend).
+            hopsworks.client.exceptions.RestAPIError: If the dataset doesn't
+                exist, the target project doesn't exist, or a feature-store
+                dataset is shared with a permission other than ``READ_ONLY``.
+            ValueError: If ``permission`` is not one of the allowed values
+                or ``target_project`` is empty.
+        """
+        if permission not in ("READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"):
+            raise ValueError(
+                f"permission must be one of READ_ONLY, EDITABLE, "
+                f"EDITABLE_BY_OWNERS; got {permission!r}"
+            )
+        if not target_project:
+            raise ValueError("target_project must be a non-empty project name")
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "dataset", path]
+        query_params = {
+            "action": "SHARE",
+            "target_project": target_project,
+            "permission": permission,
+        }
+        try:
+            _client._send_request("POST", path_params, query_params=query_params)
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(
+                    f"Sharing dataset '{path}' with project '{target_project}' "
+                    f"requires the Data Owner role in the source project "
+                    f"'{_client._project_name}'. Ask a data owner of "
+                    f"'{_client._project_name}' to run this, or be granted that role."
+                ) from e
+            raise
+
+    @public
+    @usage.method_logger
+    def unshare(self, path: str, target_project: str) -> None:
+        """Revoke a previously-granted dataset share with another project.
+
+        Like :meth:`share`, requires Data Owner role in the active (source) project.
+
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        dataset_api.unshare("Resources/my_dir", target_project="other_project")
+        ```
+
+        Parameters:
+            path: Dataset path in the active project.
+            target_project: Name of the project to revoke the share from.
+
+        Raises:
+            PermissionError: If the caller lacks the Data Owner role in the
+                source project (HTTP 403 from the backend).
+            hopsworks.client.exceptions.RestAPIError: If the dataset isn't
+                shared with that project, the target project doesn't exist,
+                or the backend otherwise rejects the request.
+            ValueError: If ``target_project`` is empty.
+        """
+        if not target_project:
+            raise ValueError("target_project must be a non-empty project name")
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "dataset", path]
+        query_params = {
+            "action": "UNSHARE",
+            "target_project": target_project,
+        }
+        try:
+            _client._send_request("POST", path_params, query_params=query_params)
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(
+                    f"Unsharing dataset '{path}' from project '{target_project}' "
+                    f"requires the Data Owner role in the source project "
+                    f"'{_client._project_name}'. Ask a data owner of "
+                    f"'{_client._project_name}' to run this, or be granted that role."
+                ) from e
+            raise
+
+    @public
     @usage.method_logger
     def mkdir(self, path: str) -> str:
         """Create a directory in the Hopsworks Filesystem.
@@ -522,6 +665,7 @@ class DatasetApi:
             "POST", path_params, headers=headers, query_params=query_params
         )["attributes"]["path"]
 
+    @public
     @usage.method_logger
     def copy(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Copy a file or directory in the Hopsworks Filesystem.
@@ -565,6 +709,7 @@ class DatasetApi:
         }
         _client._send_request("POST", path_params, query_params=query_params)
 
+    @public
     @usage.method_logger
     def move(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Move a file or directory in the Hopsworks Filesystem.
@@ -608,12 +753,20 @@ class DatasetApi:
         }
         _client._send_request("POST", path_params, query_params=query_params)
 
+    @public
     @usage.method_logger
-    def upload_feature_group(self, feature_group, path, dataframe):
+    def upload_feature_group(
+        self, feature_group: FeatureGroup, path: str, dataframe: pd.DataFrame
+    ):
         """Upload a dataframe to a path in Parquet format using a feature group metadata.
 
-        !!! Note
+        Warning:
             This method is a legacy method kept for backwards-compatibility; do not use it in new code.
+
+        Parameters:
+            feature_group: The feature group metadata to use for the upload.
+            path: The path to upload the dataframe to.
+            dataframe: The dataframe to upload.
         """
         # Convert the dataframe into PARQUET for upload
         df_parquet = dataframe.to_parquet(index=False)
@@ -641,6 +794,7 @@ class DatasetApi:
 
             chunk_number += 1
 
+    @public
     @usage.method_logger
     def list(self, path: str, offset: int = 0, limit: int = 1000) -> list[str]:
         """List the files and directories from a path in the Hopsworks Filesystem.
@@ -729,8 +883,9 @@ class DatasetApi:
 
         return items["count"], cls.from_response_json(items)
 
+    @public
     @usage.method_logger
-    def read_content(self, path: str, dataset_type: str = "DATASET"):
+    def read_content(self, path: str, dataset_type: str = "DATASET") -> dict | None:
         """Read the content of a file.
 
         Parameters:
@@ -759,6 +914,7 @@ class DatasetApi:
 
         return _client._send_request("GET", path_params, query_params, stream=True)
 
+    @public
     def chmod(self, remote_path: str, permissions: str) -> dict:
         """Change permissions of a file or a directory in the Hopsworks Filesystem.
 
@@ -859,13 +1015,16 @@ class DatasetApi:
                 )
                 return False
 
-    def unzip(self, remote_path: str, block: bool = False, timeout: int | None = 120):
+    @public
+    def unzip(
+        self, remote_path: str, block: bool = False, timeout: int | None = 120
+    ) -> bool:
         """Unzip an archive in the dataset.
 
         Parameters:
-            remote_path: path to file or directory to unzip.
-            block: if the operation should be blocking until complete.
-            timeout: timeout in seconds for the blocking, defaults to 120; if `None`, the blocking is unbounded.
+            remote_path: Path to file or directory to unzip.
+            block: Whether the operation should be blocking until complete.
+            timeout: Timeout in seconds for the blocking, defaults to 120; if `None`, the blocking is unbounded.
 
         Returns:
             Whether the operation completed in the specified timeout; if non-blocking, always returns `True`.
@@ -875,6 +1034,7 @@ class DatasetApi:
         """
         return self._archive(remote_path, block=block, timeout=timeout, action="unzip")
 
+    @public
     def zip(
         self,
         remote_path: str,

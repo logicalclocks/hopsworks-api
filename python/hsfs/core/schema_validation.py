@@ -3,6 +3,7 @@ import re
 
 import pandas as pd
 from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks_common.spark_connect_utils import is_spark_dataframe
 
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,11 @@ class DataFrameValidator:
 
     @staticmethod
     def get_validator(df):
-        """Method to get the appropriate implementation of validator for the DataFrame type."""
+        """Get the appropriate validator implementation for the DataFrame type.
+
+        Parameters:
+            df: The DataFrame to validate.
+        """
         if isinstance(df, pd.DataFrame):
             return PandasValidator()
 
@@ -23,13 +28,8 @@ class DataFrameValidator:
             if isinstance(df, pl.DataFrame):
                 return PolarsValidator()
 
-        try:
-            from pyspark.sql import DataFrame as SparkDataFrame
-
-            if isinstance(df, SparkDataFrame):
-                return PySparkValidator()
-        except ImportError:
-            pass
+        if is_spark_dataframe(df):
+            return PySparkValidator()
 
         return None
 
@@ -59,7 +59,13 @@ class DataFrameValidator:
         raise ValueError(f"{base_message}{formatted_errors}")
 
     def validate_schema(self, feature_group, df, df_features):
-        """Common validation rules."""
+        """Apply common schema validation rules to the DataFrame.
+
+        Parameters:
+            feature_group: The feature group whose schema is validated against.
+            df: The DataFrame to validate.
+            df_features: The list of feature metadata objects for the feature group.
+        """
         validator = self.get_validator(df)
         if validator is None:
             # If no validator is found for this type, skip validation and return df_features
@@ -82,7 +88,7 @@ class DataFrameValidator:
 
         # Handle errors
         if is_pk_null or (
-            is_string_length_exceeded and (feature_group.id or feature_group.features)
+            is_string_length_exceeded and (feature_group.id or feature_group.columns)
         ):
             self._raise_validation_error(errors)
         elif is_string_length_exceeded:
@@ -178,9 +184,9 @@ class PandasValidator(DataFrameValidator):
             currentmax = df[col].str.len().max()
             col_max_len = (
                 self.get_online_varchar_length(
-                    self.get_feature_from_list(col, feature_group.features)
+                    self.get_feature_from_list(col, feature_group.columns)
                 )
-                if feature_group.features
+                if feature_group.columns
                 else 100
             )
 
@@ -215,9 +221,9 @@ class PolarsValidator(DataFrameValidator):
             currentmax = df[col].str.len_chars().max()
             col_max_len = (
                 self.get_online_varchar_length(
-                    self.get_feature_from_list(col, feature_group.features)
+                    self.get_feature_from_list(col, feature_group.columns)
                 )
-                if feature_group.features
+                if feature_group.columns
                 else 100
             )
 
@@ -283,9 +289,9 @@ class PySparkValidator(DataFrameValidator):
 
             col_max_len = (
                 self.get_online_varchar_length(
-                    self.get_feature_from_list(col, feature_group.features)
+                    self.get_feature_from_list(col, feature_group.columns)
                 )
-                if feature_group.features
+                if feature_group.columns
                 else 100
             )
 

@@ -16,6 +16,8 @@
 import pytest
 from hsfs import feature, feature_group, storage_connector
 from hsfs.client import exceptions
+from hsfs.core import data_source as ds
+from hsfs.core import data_source_data as dsd
 from hsfs.core import external_feature_group_engine
 from hsfs.engine import python
 
@@ -41,7 +43,6 @@ class TestExternalFeatureGroupEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             id=10,
-            storage_connector=mocker.patch("hsfs.storage_connector.JdbcConnector"),
         )
 
         mock_engine_get_instance.return_value.parse_schema_feature_group.return_value = [
@@ -53,8 +54,108 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert not mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
+
+    def test_save_arrowflight(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        f = feature.Feature(name="f", type="str")
+
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            id=10,
+            data_source=ds.DataSource(database="test", group="test", table="test"),
+        )
+
+        mock_get_data.return_value = dsd.DataSourceData(features=[f])
+
+        # Act
+        external_fg_engine.save(feature_group=fg)
+
+        # Assert
+        assert mock_fg_api.return_value.save.call_count == 1
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
+
+    def test_save_arrowflight_query(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        f = feature.Feature(name="f", type="str")
+
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            id=10,
+            data_source=ds.DataSource(query="test"),
+        )
+
+        mock_get_data.return_value = dsd.DataSourceData(features=[f])
+
+        # Act
+        external_fg_engine.save(feature_group=fg)
+
+        # Assert
+        assert mock_fg_api.return_value.save.call_count == 1
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
+
+    def test_save_path_infers_schema(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        f = feature.Feature(name="f", type="str")
+
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            id=10,
+            data_source=ds.DataSource(path="s3://bucket/path"),
+        )
+
+        mock_get_data.return_value = dsd.DataSourceData(features=[f])
+
+        # Act
+        external_fg_engine.save(feature_group=fg)
+
+        # Assert
+        assert mock_get_data.call_count == 1
+        assert mock_fg_api.return_value.save.call_count == 1
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_save_primary_key(self, mocker):
         # Arrange
@@ -87,8 +188,8 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_save_features(self, mocker):
         # Arrange
@@ -119,8 +220,8 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 1
-        assert not mock_fg_api.return_value.save.call_args[0][0].features[0].primary
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
     def test_update_features_metadata(self, mocker):
         # Arrange
@@ -145,7 +246,7 @@ class TestExternalFeatureGroupEngine:
         features = [f]
 
         external_fg = feature_group.ExternalFeatureGroup(
-            storage_connector=jdbc_connector, id=10
+            id=10, data_source=ds.DataSource(storage_connector=jdbc_connector)
         )
 
         # Act
@@ -158,16 +259,15 @@ class TestExternalFeatureGroupEngine:
         assert (
             mock_fg_api.return_value.update_metadata.call_args[0][
                 1
-            ].storage_connector.id
-            == external_fg.storage_connector.id
+            ].data_source.storage_connector.id
+            == external_fg.data_source.storage_connector.id
         )
         assert (
             mock_fg_api.return_value.update_metadata.call_args[0][1].id
             == external_fg.id
         )
         assert (
-            mock_fg_api.return_value.update_metadata.call_args[0][1].features
-            == features
+            mock_fg_api.return_value.update_metadata.call_args[0][1].columns == features
         )
 
     def test_update_features(self, mocker):
@@ -379,10 +479,10 @@ class TestExternalFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
-        assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 2
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 2
         assert (
-            mock_fg_api.return_value.save.call_args[0][0].storage_connector
-            == fg.storage_connector
+            mock_fg_api.return_value.save.call_args[0][0].data_source.storage_connector
+            == fg.data_source.storage_connector
         )
-        assert mock_fg_api.return_value.save.call_args[0][0].features == features
+        assert mock_fg_api.return_value.save.call_args[0][0].columns == features
         assert mock_fg_api.return_value.save.call_args[0][0].id == fg.id

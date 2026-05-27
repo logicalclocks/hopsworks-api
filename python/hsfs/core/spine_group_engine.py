@@ -21,7 +21,7 @@ from hsfs.core import feature_group_base_engine
 
 class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def save(self, feature_group):
-        if feature_group.features is None or len(feature_group.features) == 0:
+        if feature_group.columns is None or len(feature_group.columns) == 0:
             # if python engine user should pass features as we do not parse it in this case
             if feature_group.dataframe is None:
                 raise FeatureStoreException(
@@ -37,7 +37,7 @@ class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # set primary, foreign and partition key columns
         # we should move this to the backend
         util.verify_attribute_key_names(feature_group, True)
-        for feat in feature_group.features:
+        for feat in feature_group.columns:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
 

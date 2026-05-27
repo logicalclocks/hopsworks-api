@@ -135,6 +135,114 @@
         },
         "headers": null
     },
+    "get_unity_catalog": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "description": "Unity Catalog connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog",
+            "storageConnectorType": "UNITY_CATALOG",
+            "workspace_url": "https://test.cloud.databricks.com",
+            "authMethod": "PAT",
+            "hasAccessToken": true,
+            "default_catalog": "test_catalog",
+            "aws_region": "us-west-2",
+            "arguments": [{"name": "arg1", "value": "val1"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_unity_catalog_basic_info": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog",
+            "storageConnectorType": "UNITY_CATALOG"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_unity_catalog_oauth_workspace": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_unity_catalog_oauth",
+            "storageConnectorType": "UNITY_CATALOG",
+            "workspace_url": "https://test.cloud.databricks.com",
+            "authMethod": "OAUTH_M2M",
+            "oauthEndpoint": "WORKSPACE",
+            "clientId": "test-sp-client-id",
+            "hasClientSecret": true,
+            "default_catalog": "test_catalog"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog_oauth"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_unity_catalog_oauth_account": {
+        "response": {
+            "type": "featurestoreUnityCatalogConnectorDTO",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "test_unity_catalog_account",
+            "storageConnectorType": "UNITY_CATALOG",
+            "workspace_url": "https://test.cloud.databricks.com",
+            "authMethod": "OAUTH_M2M",
+            "oauthEndpoint": "ACCOUNT",
+            "clientId": "test-sp-client-id",
+            "hasClientSecret": true,
+            "accountId": "12345678-1234-1234-1234-1234567890ab",
+            "accountHost": "accounts.cloud.databricks.com"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_unity_catalog_account"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
     "get_redshift_basic_info": {
         "response": {
             "type": "featurestoreRedshiftConnectorDTO",
@@ -261,6 +369,60 @@
             67,
             "storageconnectors",
             "test_snowflake"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_sap_hana": {
+        "response": {
+            "type": "featureStoreSapHanaConnectorDTO",
+            "description": "SAP HANA connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sap_hana",
+            "storageConnectorType": "SAP_HANA",
+            "host": "hana.example.com",
+            "port": 39015,
+            "database": "HXE",
+            "schema": "SYSTEM",
+            "table": "TBL",
+            "user": "SYSTEM",
+            "password": "test_password",
+            "application": "hopsworks",
+            "arguments": [{"name": "fetchsize", "value": "1000"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sap_hana"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_sap_hana_basic_info": {
+        "response": {
+            "type": "featureStoreSapHanaConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sap_hana",
+            "storageConnectorType": "SAP_HANA"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sap_hana"
         ],
         "query_params": {
             "temporaryCredentials": true
@@ -569,6 +731,114 @@
             67,
             "storageconnectors",
             "test_big_query"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_oracle": {
+        "response": {
+            "type": "featurestoreSqlConnectorDTO",
+            "description": "Oracle connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_oracle",
+            "storageConnectorType": "SQL",
+            "databaseType": "ORACLE",
+            "host": "test_host",
+            "port": 1521,
+            "database": "test_database",
+            "user": "test_user",
+            "password": "test_password",
+            "walletPath": "/Projects/test_project/Resources/wallet.zip",
+            "walletPassword": "test_wallet_password",
+            "arguments": [{"name": "test_name", "value": "test_value"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_oracle"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_oracle_basic_info": {
+        "response": {
+            "type": "featurestoreSqlConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_oracle",
+            "storageConnectorType": "SQL",
+            "databaseType": "ORACLE"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_oracle"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_mongodb": {
+        "response": {
+            "type": "featurestoreMongoConnectorDTO",
+            "description": "MongoDB connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_mongodb",
+            "storageConnectorType": "MONGODB",
+            "connection_string": "mongodb+srv://hopsworks.example.mongodb.net",
+            "database": "sample_mflix",
+            "collection": "comments",
+            "user": "test_user",
+            "password": "test_password",
+            "auth_source": "admin",
+            "auth_mechanism": "SCRAM-SHA-256",
+            "options": [{"name": "maxPoolSize", "value": "10"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_mongodb"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_mongodb_basic_info": {
+        "response": {
+            "type": "featurestoreMongoConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_mongodb",
+            "storageConnectorType": "MONGODB"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_mongodb"
         ],
         "query_params": {
             "temporaryCredentials": true

@@ -18,8 +18,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TypeVar
 
+from hopsworks_apigen import public
 
+
+@public
 class FeatureLogger(ABC):
+    @public
     @abstractmethod
     def log(
         self,
@@ -28,6 +32,7 @@ class FeatureLogger(ABC):
     ):
         pass
 
+    @public
     @abstractmethod
     def init(self, feature_view: TypeVar("hsfs.feature_view.FeatureView")) -> None:
         pass

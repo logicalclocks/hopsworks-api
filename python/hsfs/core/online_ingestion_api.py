@@ -43,8 +43,8 @@ class OnlineIngestionApi:
         for the specified feature group.
 
         Parameters:
-            feature_group_instance (FeatureGroup): The feature group for which to create the ingestion.
-            online_ingestion_instance (OnlineIngestion): The OnlineIngestion object containing ingestion details.
+            feature_group_instance: The feature group for which to create the ingestion.
+            online_ingestion_instance: The OnlineIngestion object containing ingestion details.
 
         Returns:
             OnlineIngestion: The created OnlineIngestion object with metadata from the backend.
@@ -83,8 +83,8 @@ class OnlineIngestionApi:
         or a job by its ID.
 
         Parameters:
-            feature_group_instance (FeatureGroup): The feature group for which to retrieve ingestion jobs.
-            query_params (Optional[Dict[str, str]]): Optional query parameters for filtering results,
+            feature_group_instance: The feature group for which to retrieve ingestion jobs.
+            query_params: Optional query parameters for filtering results,
                 e.g., {"filter_by": "LATEST"} or {"filter_by": "ID:123"}.
 
         Returns:

@@ -23,15 +23,24 @@ if TYPE_CHECKING:
     import great_expectations
 
 import humps
+from hopsworks_apigen import public
+from hopsworks_common.decorators import uses_great_expectations
 from hsfs import util
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
-from hsfs.decorators import uses_great_expectations
+from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
 
+    if GE_MAJOR == 1:
+        from great_expectations.expectations.expectation_configuration import (
+            ExpectationConfiguration as _ExpectationConfiguration,
+        )
+    else:
+        _ExpectationConfiguration = great_expectations.core.ExpectationConfiguration
 
+
+@public
 class GeExpectation:
     """Metadata object representing an feature validation expectation in the Feature Store."""
 
@@ -70,11 +79,22 @@ class GeExpectation:
             ]
         return cls(**json_decamelized)
 
+    @public
     @classmethod
     def from_ge_type(
         cls, ge_expectation: great_expectations.core.ExpectationConfiguration
     ):
-        return cls(**ge_expectation.to_json_dict())
+        """Create a GeExpectation object from a Great Expectations ExpectationConfiguration object.
+
+        Parameters:
+            ge_expectation: The ExpectationConfiguration object to convert.
+        """
+        json_dict = ge_expectation.to_json_dict()
+        # GE 1.x renamed expectation_type to type and adds severity; normalize to legacy shape.
+        if "type" in json_dict and "expectation_type" not in json_dict:
+            json_dict["expectation_type"] = json_dict.pop("type")
+        json_dict.pop("severity", None)
+        return cls(**json_dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -109,13 +129,23 @@ class GeExpectation:
             f"kwargs={self._kwargs}, meta={self._meta})"
         )
 
+    @public
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationConfiguration:
-        """Convert to Great Expectations ExpectationConfiguration type."""
-        return great_expectations.core.ExpectationConfiguration(
+        """Convert to Great Expectations ExpectationConfiguration type.
+
+        Returns:
+            The expectation as a Great Expectations object.
+        """
+        if GE_MAJOR == 1:
+            return _ExpectationConfiguration(
+                type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
+            )
+        return _ExpectationConfiguration(
             expectation_type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
         )
 
+    @public
     @property
     def id(self) -> int | None:
         """Id of the expectation, set by backend."""
@@ -130,6 +160,7 @@ class GeExpectation:
         elif isinstance(id, str):
             self._id = int(id)
 
+    @public
     @property
     def expectation_type(self) -> str:
         """Type of the expectation."""
@@ -139,6 +170,7 @@ class GeExpectation:
     def expectation_type(self, expectation_type):
         self._expectation_type = expectation_type
 
+    @public
     @property
     def kwargs(self) -> dict[str, Any]:
         """Kwargs to run the expectation."""
@@ -153,6 +185,7 @@ class GeExpectation:
         else:
             raise ValueError("Kwargs field must be stringified json or dict.")
 
+    @public
     @property
     def meta(self) -> dict[str, Any]:
         """Meta field of the expectation to store additional information."""

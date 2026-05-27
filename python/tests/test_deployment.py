@@ -224,6 +224,53 @@ class TestDeployment:
         # Assert
         mock_serving_engine_start.assert_called_once_with(d, await_status=await_stopped)
 
+    # restart
+
+    def test_restart_when_running(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hsml.deployment.Deployment.is_stopped", return_value=False)
+        mock_stop = mocker.patch("hsml.deployment.Deployment.stop")
+        mock_start = mocker.patch("hsml.deployment.Deployment.start")
+
+        # Act
+        d.restart()
+
+        # Assert
+        mock_stop.assert_called_once_with(await_stopped=600)
+        mock_start.assert_called_once_with(await_running=600)
+
+    def test_restart_when_stopped_starts_in_place(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hsml.deployment.Deployment.is_stopped", return_value=True)
+        mock_stop = mocker.patch("hsml.deployment.Deployment.stop")
+        mock_start = mocker.patch("hsml.deployment.Deployment.start")
+
+        # Act
+        d.restart()
+
+        # Assert
+        mock_stop.assert_not_called()
+        mock_start.assert_called_once_with(await_running=600)
+
+    def test_restart_passes_custom_awaits(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hsml.deployment.Deployment.is_stopped", return_value=False)
+        mock_stop = mocker.patch("hsml.deployment.Deployment.stop")
+        mock_start = mocker.patch("hsml.deployment.Deployment.start")
+
+        # Act
+        d.restart(await_stopped=42, await_running=137)
+
+        # Assert
+        mock_stop.assert_called_once_with(await_stopped=42)
+        mock_start.assert_called_once_with(await_running=137)
+
     # delete
 
     def test_delete_default(self, mocker, backend_fixtures):
@@ -746,6 +793,207 @@ class TestDeployment:
         mock_serving_get_logs.assert_called_once_with(d, "predictor", 10)
         assert mock_print.call_count == 0
 
+    # read_logs / tail_logs (programmatic, never print)
+
+    def _make_chunk(
+        self, instance_name="i-0", content="line\n", timestamp=None, doc_id=None
+    ):
+        # Pure Python stand-in for DeployableComponentLogs — only the
+        # attributes the engine touches are needed.
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            instance_name=instance_name,
+            content=content,
+            timestamp=timestamp,
+            doc_id=doc_id,
+        )
+
+    def test_read_logs_returns_string_no_capsys_output(
+        self, mocker, backend_fixtures, capsys
+    ):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        chunks = [
+            self._make_chunk(content="hello\n"),
+            self._make_chunk(content="world"),
+        ]
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi.get_logs", return_value=chunks
+        )
+
+        # Act
+        out = d.read_logs(tail=50)
+        captured = capsys.readouterr()
+
+        # Assert
+        assert isinstance(out, str)
+        assert "hello\n" in out and "world\n" in out  # trailing \n auto-added
+        assert captured.out == "" and captured.err == ""
+        mock_api.assert_called_once()
+
+    def test_read_logs_forwards_source_and_time_window_to_api(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi.get_logs", return_value=[]
+        )
+
+        d.read_logs(
+            tail=200,
+            source="opensearch",
+            since="2026-05-08T00:00:00Z",
+            until="2026-05-08T01:00:00Z",
+            pod="my-pod-0",
+        )
+
+        # All optional params land in the API call as kwargs.
+        kwargs = mock_api.call_args.kwargs
+        assert kwargs["source"] == "opensearch"
+        assert kwargs["since"] == "2026-05-08T00:00:00Z"
+        assert kwargs["until"] == "2026-05-08T01:00:00Z"
+        assert kwargs["pod"] == "my-pod-0"
+        # tail goes through positionally per ServingApi.get_logs signature.
+        assert mock_api.call_args.args[2] == 200
+
+    def test_read_logs_multiple_instances_get_block_headers(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi.get_logs",
+            return_value=[
+                self._make_chunk(instance_name="pod-A", content="a1\n"),
+                self._make_chunk(instance_name="pod-B", content="b1\n"),
+            ],
+        )
+
+        out = d.read_logs()
+
+        # Block headers separate the two instances; single-instance reads
+        # would not include any header.
+        assert "==> pod-A <==" in out and "==> pod-B <==" in out
+
+    def test_tail_logs_yields_only_new_chunks_dedup_doc_id(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        # First poll: two new entries. Second poll: doc_id "x1" already
+        # seen, doc_id "x3" is new → only "x3" should be yielded.
+        first = [
+            self._make_chunk(
+                content="a\n", timestamp="2026-05-08T00:00:01Z", doc_id="x1"
+            ),
+            self._make_chunk(
+                content="b\n", timestamp="2026-05-08T00:00:02Z", doc_id="x2"
+            ),
+        ]
+        second = [
+            self._make_chunk(
+                content="a\n", timestamp="2026-05-08T00:00:01Z", doc_id="x1"
+            ),
+            self._make_chunk(
+                content="c\n", timestamp="2026-05-08T00:00:03Z", doc_id="x3"
+            ),
+        ]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi.get_logs",
+            side_effect=[first, second, []],
+        )
+        # No real sleeps in the test.
+        mocker.patch("time.sleep")
+        # Stop after a short wall clock so the test is deterministic.
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 0.5, 1.0, 99.0, 99.0]
+
+        gen = d.tail_logs(timeout=10.0, since=None)
+        first_chunk = next(gen)
+        second_chunk = next(gen)
+        # third call to get_logs returns [] → generator should exit on
+        # timeout (monot side_effect drives it past the deadline).
+        with pytest.raises(StopIteration):
+            next(gen)
+
+        assert "a\n" in first_chunk and "b\n" in first_chunk
+        # On the second poll only the new entry (x3) appears.
+        assert second_chunk.strip() == "c"
+
+    def test_tail_logs_dedup_hash_for_kubernetes_source(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        # No timestamp / doc_id → engine falls back to (instance, content) hash.
+        first = [self._make_chunk(content="boot\n")]
+        second = [
+            self._make_chunk(content="boot\n"),
+            self._make_chunk(content="ready\n"),
+        ]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi.get_logs",
+            side_effect=[first, second],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 0.5, 99.0, 99.0]
+
+        gen = d.tail_logs(source="kubernetes", timeout=10.0, since=None)
+        first_chunk = next(gen)
+        second_chunk = next(gen)
+
+        assert first_chunk == "boot\n"
+        # First poll already cached "boot"; second poll only yields "ready".
+        assert second_chunk == "ready\n"
+
+    def test_tail_logs_stops_on_status(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hsml.core.serving_api.ServingApi.get_logs", return_value=[])
+        # First state probe returns Running, second returns Stopped → loop exits.
+        states = [
+            mocker.MagicMock(status="Running"),
+            mocker.MagicMock(status="Stopped"),
+        ]
+        mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine.get_state",
+            side_effect=states,
+        )
+        mocker.patch("time.sleep")
+        # No timeout: the only exit path is stop_on_status.
+        chunks = list(d.tail_logs(stop_on_status="Stopped", since=None))
+        assert chunks == []
+
+    def test_get_logs_legacy_still_prints(self, mocker, backend_fixtures, capsys):
+        # Belt-and-braces: confirm the legacy method is still side-effect-y so
+        # users who depend on its print behaviour are not silently broken.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+
+        class MockLog:
+            def __repr__(self):
+                return "[mock log line]"
+
+        mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine.get_logs",
+            return_value=[MockLog()],
+        )
+
+        ret = d.get_logs()
+        captured = capsys.readouterr()
+
+        assert ret is None
+        assert "[mock log line]" in captured.out
+
     # get url
 
     def test_get_url(self, mocker, backend_fixtures):
@@ -773,6 +1021,113 @@ class TestDeployment:
         assert url == "url"
         mock_util_get_hostname_replaced_url.assert_called_once_with(path)
         mock_client_get_instance.assert_called_once()
+
+    # get endpoint url
+
+    def test_get_endpoint_url_delegates_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_predictor_get_endpoint_url = mocker.patch.object(
+            p, "get_endpoint_url", return_value="https://example.com/v1/project/name"
+        )
+
+        # Act
+        url = d.get_endpoint_url()
+
+        # Assert
+        assert url == "https://example.com/v1/project/name"
+        mock_predictor_get_endpoint_url.assert_called_once()
+
+    # get openai url
+
+    def test_get_openai_url_delegates_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_predictor_get_openai_url = mocker.patch.object(
+            p,
+            "get_openai_url",
+            return_value="https://example.com/v1/project/name/v1",
+        )
+
+        # Act
+        url = d.get_openai_url()
+
+        # Assert
+        assert url == "https://example.com/v1/project/name/v1"
+        mock_predictor_get_openai_url.assert_called_once()
+
+    # get inference url
+
+    def test_get_inference_url_delegates_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_predictor_get_inference_url = mocker.patch.object(
+            p,
+            "get_inference_url",
+            return_value="https://example.com/v1/project/name/v1/models/name:predict",
+        )
+
+        # Act
+        url = d.get_inference_url()
+
+        # Assert
+        assert url == "https://example.com/v1/project/name/v1/models/name:predict"
+        mock_predictor_get_inference_url.assert_called_once()
+
+    # env vars
+
+    def test_env_vars_proxies_to_predictor(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        assert d.env_vars is None
+
+        # Act
+        d.env_vars = {"FOO": "bar"}
+
+        # Assert
+        assert d.env_vars == {"FOO": "bar"}
+        assert p.env_vars == {"FOO": "bar"}
+
+    def test_env_vars_reflects_predictor_value(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        p.env_vars = {"A": "1"}
+
+        # Act
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.env_vars == {"A": "1"}
+
+    def test_env_vars_lifecycle_add_change_remove(self, mocker, backend_fixtures):
+        # Lifecycle on the Deployment proxy: every assignment must land on the
+        # underlying predictor (so save() sends it) and the read-back must
+        # mirror it. Mirrors the loadtest's add → override → clear (None) →
+        # re-set → clear ({}) sequence.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+
+        d.env_vars = {"FOO": "bar"}
+        assert d.env_vars == {"FOO": "bar"}
+        assert p.env_vars == {"FOO": "bar"}
+
+        d.env_vars = {"NEW": "1"}
+        assert d.env_vars == {"NEW": "1"}
+        assert p.env_vars == {"NEW": "1"}
+
+        d.env_vars = None
+        assert d.env_vars is None
+        assert p.env_vars is None
+
+        d.env_vars = {"AGAIN": "2"}
+        assert d.env_vars == {"AGAIN": "2"}
+        d.env_vars = {}
+        assert d.env_vars == {}
+        assert p.env_vars == {}
 
     # auxiliary methods
 

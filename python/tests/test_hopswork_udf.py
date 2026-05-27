@@ -25,6 +25,7 @@ from hsfs.hopsworks_udf import (
     UDFExecutionMode,
     udf,
 )
+from hsfs.transformation_statistics import TransformationStatistics
 
 
 class TestHopsworksUdf:
@@ -1512,3 +1513,67 @@ def test_function():
             value in scope
             for value in {"_output_col_names", "context", "statistics", "test"}
         )
+
+    @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
+    def test_execute(self, mocker, execution_mode):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(int, mode=execution_mode)
+        def add_one(feature):
+            return feature + 1
+
+        if execution_mode == "default":
+            online_test_data = 1
+            offline_test_data = pd.Series(data=[1, 2, 3])
+        elif execution_mode == "python":
+            online_test_data = offline_test_data = 1
+        elif execution_mode == "pandas":
+            online_test_data = offline_test_data = pd.Series(data=[1, 2, 3])
+
+        expected_online_value = online_test_data + 1
+        offline_expected_data = offline_test_data + 1
+
+        if isinstance(online_test_data, pd.Series):
+            assert (
+                add_one.executor(online=True).execute(online_test_data).values.tolist()
+                == expected_online_value.values.tolist()
+            )
+        else:
+            assert (
+                add_one.executor(online=True).execute(online_test_data)
+                == expected_online_value
+            )
+
+        if isinstance(offline_test_data, pd.Series):
+            assert (
+                add_one.execute(offline_test_data).values.tolist()
+                == offline_expected_data.values.tolist()
+            )
+        else:
+            assert add_one.execute(offline_test_data) == expected_online_value
+
+        # Post execution checks to ensure the state is maintained after execution.
+        assert add_one.transformation_statistics is None
+        assert add_one.transformation_context == {}
+        assert add_one.output_column_names == []
+
+    def test_execute_statistics_and_context(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        stats = TransformationStatistics("feature")
+
+        @udf(int, mode="pandas")
+        def add_statistics_data(feature, context, statistics=stats):
+            return feature + statistics.feature.mean + context["test_value"]
+
+        data = pd.Series([1, 2, 3])
+
+        statistics = TransformationStatistics("feature")
+        statistics.set_statistics("feature", {"feature_name": "feature", "mean": 10})
+
+        assert add_statistics_data.executor(
+            statistics=statistics, context={"test_value": 10}
+        ).execute(data).values.tolist() == [21, 22, 23]
+
+        assert add_statistics_data.executor(
+            statistics={"feature": {"mean": 100}}, context={"test_value": 10}
+        ).execute(data).values.tolist() == [111, 112, 113]

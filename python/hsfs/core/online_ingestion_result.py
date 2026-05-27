@@ -19,9 +19,11 @@ import json
 from typing import Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+@public
 class OnlineIngestionResult:
     """Metadata object used to provide Online Ingestion Batch Result information.
 
@@ -39,23 +41,25 @@ class OnlineIngestionResult:
         """Initialize an OnlineIngestionResult object.
 
         Parameters:
-            online_ingestion_id (int, optional): The unique identifier for the online ingestion batch.
-            status (str, optional): The status of the ingestion batch (e.g., "UPSERTED", "FAILED").
-            rows (int, optional): The number of rows processed in this batch.
+            online_ingestion_id: The unique identifier for the online ingestion batch.
+            status: The status of the ingestion batch (e.g., "UPSERTED", "FAILED").
+            rows: The number of rows processed in this batch.
         """
         self._online_ingestion_id = online_ingestion_id
         self._status = status
         self._rows = rows
 
     @classmethod
-    def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineIngestionResult:
+    def from_response_json(
+        cls, json_dict: dict[str, Any]
+    ) -> OnlineIngestionResult | list[OnlineIngestionResult] | None:
         """Create an OnlineIngestionResult object (or list of objects) from a JSON response.
 
         Parameters:
-            json_dict (Dict[str, Any]): The JSON dictionary from the API response.
+            json_dict: The JSON dictionary from the API response.
 
         Returns:
-            OnlineIngestionResult or List[OnlineIngestionResult] or None: The created object(s), or None if input is None.
+            The created object(s), or `None` if input is `None`.
         """
         if json_dict is None:
             return None
@@ -90,29 +94,20 @@ class OnlineIngestionResult:
         """
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def online_ingestion_id(self) -> int:
-        """Get the unique identifier for the online ingestion batch.
-
-        Returns:
-            int: The online ingestion batch ID.
-        """
+        """Get the unique identifier for the online ingestion batch."""
         return self._online_ingestion_id
 
+    @public
     @property
     def status(self) -> str:
-        """Get the status of the ingestion batch.
-
-        Returns:
-            str: The status of the batch (e.g., "UPSERTED", "FAILED").
-        """
+        """Get the status of the ingestion batch (e.g., "UPSERTED", "FAILED")."""
         return self._status
 
+    @public
     @property
     def rows(self) -> int:
-        """Get the number of rows processed in this batch.
-
-        Returns:
-            int: The number of rows.
-        """
+        """Get the number of rows processed in this batch."""
         return self._rows

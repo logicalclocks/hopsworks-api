@@ -15,13 +15,131 @@
 #
 
 import pytest
+from hopsworks_common.core import sink_job_configuration
 from hsfs import feature, feature_group, feature_group_commit, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
+from hsfs.core.data_source import DataSource
 from hsfs.hopsworks_udf import udf
+from hsfs.storage_connector import (
+    BigQueryConnector,
+    CRMAndAnalyticsConnector,
+    CRMSource,
+    RedshiftConnector,
+    RestConnector,
+    SnowflakeConnector,
+    SqlConnector,
+)
 
 
 class TestFeatureGroupEngine:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
+    @pytest.mark.parametrize(
+        "connector,sink_enabled,expected_sink_enabled",
+        [
+            (
+                CRMAndAnalyticsConnector(
+                    id=1, name="crm", featurestore_id=1, crm_type=CRMSource.HUBSPOT
+                ),
+                False,
+                True,
+            ),
+            (RestConnector(id=1, name="rest", featurestore_id=1), False, True),
+            (
+                SnowflakeConnector(id=1, name="snowflake", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                RedshiftConnector(id=1, name="redshift", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                BigQueryConnector(id=1, name="bigquery", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="mysql",
+                    featurestore_id=1,
+                    database_type=SqlConnector.MYSQL,
+                ),
+                True,
+                True,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="postgres",
+                    featurestore_id=1,
+                    database_type=SqlConnector.POSTGRESQL,
+                ),
+                True,
+                True,
+            ),
+            (
+                SnowflakeConnector(id=1, name="snowflake", featurestore_id=1),
+                False,
+                False,
+            ),
+            (
+                RedshiftConnector(id=1, name="redshift", featurestore_id=1),
+                False,
+                False,
+            ),
+            (
+                BigQueryConnector(id=1, name="bigquery", featurestore_id=1),
+                False,
+                False,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="oracle",
+                    featurestore_id=1,
+                    database_type=SqlConnector.ORACLE,
+                ),
+                True,
+                True,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="mysql",
+                    featurestore_id=1,
+                    database_type=SqlConnector.MYSQL,
+                ),
+                False,
+                False,
+            ),
+        ],
+    )
+    def test_sink_enabled_resolution_for_supported_connectors(
+        self, mocker, connector, sink_enabled, expected_sink_enabled
+    ):
+        mocker.patch("hsfs.engine.get_type")
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=sink_enabled,
+            data_source=DataSource(storage_connector=connector),
+        )
+
+        assert fg.sink_enabled is expected_sink_enabled
+
     def test_save(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -61,10 +179,17 @@ class TestFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        transformation_engine = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
         )
         mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
 
@@ -96,10 +221,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
-        )
+        assert transformation_engine.apply_transformation_functions.call_count == 1
 
     def test_save_ge_report(self, mocker):
         # Arrange
@@ -333,6 +455,9 @@ class TestFeatureGroupEngine:
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
+        tf_engine_patch = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
         mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
@@ -367,10 +492,7 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
-        )
+        assert tf_engine_patch.apply_transformation_functions.call_count == 1
 
     def test_insert_id(self, mocker):
         # Arrange
@@ -564,6 +686,7 @@ class TestFeatureGroupEngine:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="NONE",
         )
 
         # Act
@@ -695,7 +818,15 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mock_engine = mocker.MagicMock()
+        mock_engine._spark_session = mocker.MagicMock()
+        mock_engine._spark_context = mocker.MagicMock()
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine"
+            "._get_spark_session_and_context",
+            return_value=(mock_engine._spark_session, mock_engine._spark_context),
+        )
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
@@ -710,6 +841,7 @@ class TestFeatureGroupEngine:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="HUDI",
         )
 
         # Act
@@ -717,6 +849,36 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_hudi_engine.return_value.delete_record.call_count == 1
+
+    def test_commit_delete_blocks_hudi_in_connect_mode(self, mocker):
+        """Hudi deletes require JVM; Connect mode must raise early."""
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mock_engine = mocker.MagicMock()
+        mock_engine._spark_session = mocker.MagicMock()
+        mock_engine._spark_context = None
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            time_travel_format="HUDI",
+        )
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Hudi"):
+            fg_engine.commit_delete(
+                feature_group=fg, delete_df=None, write_options=None
+            )
 
     def test_clean_delta(self, mocker):
         # Arrange
@@ -1118,6 +1280,9 @@ class TestFeatureGroupEngine:
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
         )
+        tf_engine_patch = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
@@ -1158,10 +1323,7 @@ class TestFeatureGroupEngine:
         assert (
             mock_engine_get_instance.return_value.save_stream_dataframe.call_count == 1
         )
-        assert (
-            mock_engine_get_instance.return_value._apply_transformation_function.call_count
-            == 1
-        )
+        assert tf_engine_patch.apply_transformation_functions.call_count == 1
 
     def test_insert_stream_online_enabled_id(self, mocker):
         # Arrange
@@ -1405,12 +1567,262 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
+
+    def test_save_feature_group_metadata_creates_sink_job(self, mocker):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+        mock_job_api.create.return_value = mocker.Mock(name="sink_job")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            sink_job_conf={"name": "custom_sink_job"},
+            data_source=DataSource(storage_connector=storage_connector),
+        )
+
+        dataframe_feature = feature.Feature(name="f", type="str")
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[dataframe_feature], write_options=None
+        )
+
+        # Assert
+        mock_job_api.create.assert_called_once()
+        job_name, job_conf = mock_job_api.create.call_args[0]
+        assert job_name == "custom_sink_job"
+        assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
+        assert job_conf.to_dict()["columnMappings"] == [
+            {"sourceColumn": "f", "featureName": "f"}
+        ]
+
+    def test_save_feature_group_metadata_creates_default_sink_column_mappings(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+        mock_job_api.create.return_value = mocker.Mock(name="sink_job")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            data_source=DataSource(storage_connector=storage_connector),
+        )
+
+        dataframe_features = [
+            feature.Feature(name="First Name", type="str"),
+            feature.Feature(name="Age", type="int"),
+        ]
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg,
+            dataframe_features=dataframe_features,
+            write_options=None,
+        )
+
+        # Assert
+        _, job_conf = mock_job_api.create.call_args[0]
+        assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
+        assert job_conf.to_dict()["columnMappings"] == [
+            {"sourceColumn": "First Name", "featureName": "first_name"},
+            {"sourceColumn": "Age", "featureName": "age"},
+        ]
+
+    def test_save_feature_group_metadata_preserves_user_sink_column_mappings(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+        mock_job_api.create.return_value = mocker.Mock(name="sink_job")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            sink_job_conf={
+                "name": "custom_sink_job",
+                "environment_name": "custom-dlt-env",
+                "transform_script_path": "/Projects/demo/Resources/transform.py",
+                "column_mappings": [
+                    {
+                        "source_column": "Custom Source",
+                        "feature_name": "First Name",
+                    }
+                ],
+            },
+            data_source=DataSource(storage_connector=storage_connector),
+        )
+
+        dataframe_features = [
+            feature.Feature(name="First Name", type="str"),
+            feature.Feature(name="Age", type="int"),
+        ]
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg,
+            dataframe_features=dataframe_features,
+            write_options=None,
+        )
+
+        # Assert
+        job_name, job_conf = mock_job_api.create.call_args[0]
+        assert job_name == "custom_sink_job"
+        assert isinstance(job_conf, sink_job_configuration.SinkJobConfiguration)
+        assert job_conf.to_dict()["environmentName"] == "custom-dlt-env"
+        assert (
+            job_conf.to_dict()["transformScriptPath"]
+            == "/Projects/demo/Resources/transform.py"
+        )
+        assert job_conf.to_dict()["columnMappings"] == [
+            {"sourceColumn": "Custom Source", "featureName": "first_name"},
+            {"sourceColumn": "Age", "featureName": "age"},
+        ]
+
+    def test_save_feature_group_metadata_skips_sink_job_when_disabled(self, mocker):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value.save.side_effect = _save_side_effect
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=False,
+        )
+
+        dataframe_feature = feature.Feature(name="f", type="str")
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[dataframe_feature], write_options=None
+        )
+
+        # Assert
+        mock_job_api.create.assert_not_called()
 
     def test_save_feature_group_metadata_features(self, mocker):
         # Arrange
@@ -1459,10 +1871,9 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
@@ -1501,6 +1912,7 @@ class TestFeatureGroupEngine:
             hudi_precombine_key="f",
             time_travel_format="HUDI",
         )
+        mock_fg_api.return_value.save.return_value = fg
 
         # Act
         fg_engine.save_feature_group_metadata(
@@ -1513,10 +1925,9 @@ class TestFeatureGroupEngine:
         assert f.partition is True
         assert f.hudi_precombine_key is True
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1664,6 +2075,7 @@ class TestFeatureGroupEngine:
             partition_key=[],
             features=[],
         )
+        mock_fg_api.return_value.save.return_value = fg
 
         # Act
         fg_engine.save_feature_group_metadata(
@@ -1675,10 +2087,9 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
 
@@ -1730,12 +2141,66 @@ class TestFeatureGroupEngine:
         assert f.partition is False
         assert f.hudi_precombine_key is False
         assert mock_print.call_count == 1
-        assert mock_print.call_args[0][
-            0
-        ] == "Feature Group created successfully, explore it at \n{}".format(
-            feature_group_url
+        assert (
+            mock_print.call_args[0][0]
+            == f"Feature Group created successfully, explore it at \n{feature_group_url}"
         )
         mock_save_empty_table.assert_not_called()
+
+    def test_save_feature_group_metadata_client_only_options(self, mocker):
+        # Arrange
+        feature_store_id = 99
+        feature_group_url = "test_url"
+        write_options = {
+            "kafka_producer_config": {"bootstrap.servers": "localhost:9092"},
+            "online_ingestion_options": {"timeout": 120, "period": 2},
+            "some_server_option": "value",
+        }
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table"
+        )
+        mocker.patch(
+            "hsfs.util.get_feature_group_url",
+            return_value=feature_group_url,
+        )
+        mocker.patch("builtins.print")
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        f = feature.Feature(name="f", type="str")
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            stream=True,
+            id=10,
+        )
+
+        # Act
+        fg_engine.save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[f], write_options=write_options
+        )
+
+        # Assert
+        assert mock_fg_api.return_value.save.call_count == 1
+        job_conf = fg._deltastreamer_jobconf
+        write_opts = job_conf._options
+        option_names = [opt["name"] for opt in write_opts]
+        assert "kafka_producer_config" not in option_names
+        assert "online_ingestion_options" not in option_names
+        assert "some_server_option" in option_names
 
     def test_update_feature_group_schema_on_demand_transformations(self, mocker):
         # Arrange
@@ -1821,3 +2286,97 @@ class TestFeatureGroupEngine:
         assert len(result) == 2
         assert result[0].name == "col1"
         assert result[1].name == "test"
+
+    def test_update_feature_group_schema_on_demand_transformations_duplicate_feature_name(
+        self, mocker
+    ):
+        """Test that transformation output columns with the same name as existing features are not added."""
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        @udf(int)
+        def col2(col1):
+            return col1 + 1
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            transformation_functions=[col2("col1")],
+        )
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="int")
+
+        # Act
+        result = fg_engine._update_feature_group_schema_on_demand_transformations(
+            feature_group=fg, features=[f, f1]
+        )
+
+        # Assert
+        assert len(result) == 2
+        assert result[0].name == "col1"
+        assert result[1].name == "col2"
+        assert result[1].on_demand is False
+
+    def test_update_feature_group_schema_on_demand_transformations_partial_duplicate(
+        self, mocker
+    ):
+        """Test transformation with multiple outputs where some match existing feature names."""
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        @udf([int, int])
+        def multi_output(col1):
+            return col1 + 1, col1 + 2
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            transformation_functions=[multi_output("col1")],
+        )
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="multi_output_0", type="int")
+
+        # Act
+        result = fg_engine._update_feature_group_schema_on_demand_transformations(
+            feature_group=fg, features=[f, f1]
+        )
+
+        # Assert
+        assert len(result) == 3
+        assert result[0].name == "col1"
+        assert result[1].name == "multi_output_0"
+        assert result[1].on_demand is False
+        assert result[2].name == "multi_output_1"
+        assert result[2].on_demand is True

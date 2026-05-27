@@ -24,11 +24,10 @@ class InferenceEndpointPort:
     """Port of an inference endpoint.
 
     Parameters:
-        name: Name of the port. It typically defines the purpose of the port (e.g., HTTP, HTTPS, STATUS-PORT, TLS)
+        name:
+            Name of the port.
+            It typically defines the purpose of the port (e.g., HTTP, HTTPS, STATUS-PORT, TLS)
         number: Port number.
-
-    Returns:
-        `InferenceEndpointPort`. Port of an inference endpoint.
     """
 
     def __init__(self, name: str, number: int, **kwargs):
@@ -75,9 +74,6 @@ class InferenceEndpoint:
         type: Type of inference endpoint (e.g., NODE, KUBE_CLUSTER, LOAD_BALANCER).
         hosts: List of hosts of the inference endpoint.
         ports: List of ports of the inference endpoint.
-
-    Returns:
-        `InferenceEndpoint`. Inference endpoint.
     """
 
     def __init__(
@@ -95,7 +91,11 @@ class InferenceEndpoint:
         return random.choice(self._hosts) if self._hosts is not None else None
 
     def get_port(self, name):
-        """Get port by name."""
+        """Get port by name.
+
+        Parameters:
+            name: name of the port to retrieve
+        """
         if self._ports is not None:
             for port in self._ports:
                 if port.name == name:

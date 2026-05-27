@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.spark.engine.hudi;
 
+import com.google.common.base.Strings;
 import org.apache.hudi.client.common.HoodieSparkEngineContext;
 import org.apache.hudi.common.model.HoodieFailedWritesCleaningPolicy;
 import org.apache.hudi.common.model.WriteOperationType;
@@ -35,6 +36,8 @@ import org.apache.hudi.table.upgrade.UpgradeDowngrade;
 import org.apache.spark.api.java.JavaSparkContext;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Logger;
@@ -65,6 +68,7 @@ public class TableMigrateUtils {
       } else if (metaClient.getTableConfig().getTableVersion().greaterThan(HoodieTableVersion.EIGHT)) {
         return;
       }
+      migratePartitionFields(metaClient);
       metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_VERSION,
           String.valueOf(HoodieTableVersion.EIGHT.versionCode()));
       new UpgradeDowngrade(metaClient, getUpdatedWriteConfig(writeOptions, metaClient),
@@ -72,6 +76,45 @@ public class TableMigrateUtils {
           SparkUpgradeDowngradeHelper.getInstance()).run(HoodieTableVersion.EIGHT, null);
       LOG.info("Migration to version 8 completed");
     }
+  }
+
+  // Hudi 1.x stores partition fields with a ":<KEYGEN_TYPE>" suffix (e.g. "country:SIMPLE").
+  // Tables created with older Hudi versions stored bare column names, which conflicts with the
+  // partition fields the writer now passes in and breaks subsequent writes.
+  void migratePartitionFields(HoodieTableMetaClient metaClient) {
+    String partitionFields = metaClient.getTableConfig().getString(HoodieTableConfig.PARTITION_FIELDS);
+    if (Strings.isNullOrEmpty(partitionFields)) {
+      return;
+    }
+
+    String[] partitions = partitionFields.split(",");
+
+    List<String> migratedPartitionScheme = new ArrayList<>(partitions.length);
+    boolean requireMigration = false;
+    for (String partition : partitions) {
+      String trimmedPartition = partition.trim();
+      if (trimmedPartition.isEmpty()) {
+        continue;
+      }
+
+      if (trimmedPartition.contains(":")) {
+        migratedPartitionScheme.add(trimmedPartition);
+      } else {
+        migratedPartitionScheme.add(trimmedPartition + ":SIMPLE");
+        requireMigration = true;
+      }
+    }
+
+    if (!requireMigration) {
+      return;
+    }
+
+    Properties properties = new Properties();
+    String migratedProperty = String.join(",", migratedPartitionScheme);
+    properties.setProperty(HoodieTableConfig.PARTITION_FIELDS.key(), migratedProperty);
+    HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(), properties);
+    LOG.info("Migrated " + HoodieTableConfig.PARTITION_FIELDS.key() + " from '"
+        + partitionFields + "' to '" + migratedProperty + "'");
   }
   
   private void migrateToVersionSix(Map<String, String> writeOptions, HoodieTableMetaClient metaClient,

@@ -34,10 +34,19 @@ if TYPE_CHECKING:
     from hopsworks_common.core import (
         ingestion_job_conf,
         job_configuration,
+        sink_job_configuration,
     )
 
+from hopsworks_apigen import public
 
+
+@public(
+    "hopsworks.core.job_api.JobApi",
+    "hopsworks.core.job_api.JobsApi",
+    "hsfs.core.job_api.JobApi",
+)
 class JobApi:
+    @public
     @usage.method_logger
     def create_job(self, name: str, config: dict) -> job.Job:
         """Create a new job or update an existing one.
@@ -81,6 +90,7 @@ class JobApi:
         print(f"Job created successfully, explore it at {created_job.get_url()}")
         return created_job
 
+    @public
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.job.Job", fallback_return=None)
     def get_job(self, name: str) -> job.Job | None:
@@ -107,6 +117,7 @@ class JobApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
+    @public
     @usage.method_logger
     def get_jobs(self) -> list[job.Job]:
         """Get all jobs.
@@ -144,9 +155,11 @@ class JobApi:
         job = self.get_job(name)
         return job is not None
 
+    @public
     @usage.method_logger
     def get_configuration(
-        self, type: Literal["SPARK", "PYSPARK", "PYTHON", "DOCKER", "FLINK"]
+        self,
+        type: Literal["SPARK", "PYSPARK", "PYTHON", "PYTHON_APP", "DOCKER", "FLINK"],
     ) -> dict:
         """Get configuration for the specific job type.
 
@@ -235,8 +248,11 @@ class JobApi:
     def create(
         self,
         name: str,
-        job_conf: job_configuration.JobConfiguration
-        | ingestion_job_conf.IngestionJobConf,
+        job_conf: (
+            job_configuration.JobConfiguration
+            | ingestion_job_conf.IngestionJobConf
+            | sink_job_configuration.SinkJobConfiguration
+        ),
     ) -> job.Job:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name]
@@ -253,7 +269,11 @@ class JobApi:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "executions"]
 
-        _client._send_request("POST", path_params, data=args)
+        # The backend has two @POST handlers on this path (text/plain for legacy
+        # args and application/json for logical-time params); without an explicit
+        # Content-Type Jersey can't dispatch and returns 415.
+        headers = {"content-type": "text/plain"}
+        _client._send_request("POST", path_params, headers=headers, data=args)
 
     @usage.method_logger
     def get(self, name: str) -> job.Job:

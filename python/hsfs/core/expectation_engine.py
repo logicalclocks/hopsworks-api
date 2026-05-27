@@ -30,12 +30,10 @@ class ExpectationEngine:
     ):
         """Expectation engine.
 
-        :param feature_store_id: id of the respective Feature Store
-        :type feature_store_id: int
-        :param feature_group_id: id of the respective Feature Group
-        :type feature_group_id: int
-        :param expectation_suite_id: id of the respective Expectation Suite
-        :type expectation_suite_id: int
+        Parameters:
+            feature_store_id: id of the respective Feature Store
+            feature_group_id: id of the respective Feature Group
+            expectation_suite_id: id of the respective Expectation Suite
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id

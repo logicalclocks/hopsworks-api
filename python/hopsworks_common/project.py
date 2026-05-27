@@ -16,12 +16,16 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import alert, client, util
 from hopsworks_common.core import (
     alerts_api,
+    app_api,
+    chart_api,
+    dashboard_api,
     dataset_api,
     environment_api,
     flink_cluster_api,
@@ -30,10 +34,26 @@ from hopsworks_common.core import (
     kafka_api,
     opensearch_api,
     search_api,
+    superset_api,
+    trino_api,
 )
 
 
+if TYPE_CHECKING:
+    from hsfs.feature_store import FeatureStore
+    from hsml.model_registry import ModelRegistry
+    from hsml.model_serving import ModelServing
+
+
+@public("hopsworks.project.Project")
 class Project:
+    """Class representing a Hopsworks project.
+
+    Use [`hopsworks.login`][hopsworks.login] to get the current project after logging in.
+
+    Use [`hopsworks.create_project`][hopsworks.create_project] to create a new project and get the project object.
+    """
+
     def __init__(
         self,
         archived=None,
@@ -62,6 +82,7 @@ class Project:
         self._description = description
         self._created = created
 
+        self._app_api = app_api.AppApi()
         self._opensearch_api = opensearch_api.OpenSearchApi()
         self._kafka_api = kafka_api.KafkaApi()
         self._job_api = job_api.JobApi()
@@ -73,6 +94,10 @@ class Project:
         self._alerts_api = alerts_api.AlertsApi()
         self._search_api = search_api.SearchApi()
         self._project_namespace = project_namespace
+        self._trino_api = None
+        self._superset_api = None
+        self._chart_api = None
+        self._dashboard_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -81,37 +106,61 @@ class Project:
             return cls(**json_decamelized)
         return None
 
+    @public
     @property
     def id(self):
         """Id of the project."""
         return self._id
 
+    @public
     @property
     def name(self):
         """Name of the project."""
         return self._name
 
+    @public
     @property
     def owner(self):
         """Owner of the project."""
         return self._owner
 
+    @public
     @property
     def description(self):
         """Description of the project."""
         return self._description
 
+    @public
     @property
     def created(self):
         """Timestamp when the project was created."""
         return self._created
 
+    @public
     @property
     def project_namespace(self):
         """Kubernetes namespace used by project."""
         return self._project_namespace
 
-    def get_feature_store(self, name: str | None = None):
+    @public
+    @property
+    def home_path(self) -> str:
+        """Path to the current user's home directory within this project.
+
+        The home directory is located at `/Projects/<project_name>/Users/<username>`
+        and is created automatically when a user joins a project.
+        """
+        _client = client.get_instance()
+        if hasattr(_client, "_username") and _client._username:
+            # External client stores the username directly
+            username = _client._username
+        else:
+            # Internal client: HDFS user is formatted as <project_name>__<username>
+            username = _client._project_user().split("__", 1)[1]
+        return f"/Projects/{self._name}/Users/{username}"
+
+    @public
+    def get_feature_store(self, name: str | None = None) -> FeatureStore:
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a
@@ -130,14 +179,15 @@ class Project:
             name: Project name of the feature store.
 
         Returns:
-            hsfs.feature_store.FeatureStore: The Feature Store API.
+            The Feature Store API.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return client.get_connection().get_feature_store(name)
 
-    def get_model_registry(self):
+    @public
+    def get_model_registry(self) -> ModelRegistry:
         """Connect to Project's Model Registry API.
 
         Example: Example for getting the Model Registry API of a project
@@ -150,14 +200,15 @@ class Project:
             ```
 
         Returns:
-            hsml.model_registry.ModelRegistry: The Model Registry API.
+            The Model Registry API.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return client.get_connection().get_model_registry()
 
-    def get_model_serving(self):
+    @public
+    def get_model_serving(self) -> ModelServing:
         """Connect to Project's Model Serving API.
 
         Example: Example for getting the Model Serving API of a project
@@ -170,13 +221,14 @@ class Project:
             ```
 
         Returns:
-            hsml.model_serving.ModelServing: The Model Serving API.
+            The Model Serving API.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return client.get_connection().get_model_serving()
 
+    @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:
         """Get the kafka api for the project.
 
@@ -188,6 +240,7 @@ class Project:
             _client.download_certs()
         return self._kafka_api
 
+    @public
     def get_opensearch_api(self) -> opensearch_api.OpenSearchApi:
         """Get the opensearch api for the project.
 
@@ -199,6 +252,7 @@ class Project:
             _client.download_certs()
         return self._opensearch_api
 
+    @public
     def get_job_api(self) -> job_api.JobApi:
         """Get the job API for the project.
 
@@ -207,10 +261,29 @@ class Project:
         """
         return self._job_api
 
+    @public
+    def get_app_api(self) -> app_api.AppApi:
+        """Get the app API for the project.
+
+        Use this to manage Streamlit apps.
+
+        Example:
+            ```python
+            apps = project.get_app_api()
+            for app in apps.get_apps():
+                print(f"{app.name}: {app.state}")
+            ```
+
+        Returns:
+            The App Api handle.
+        """
+        return self._app_api
+
     def get_jobs_api(self):
         """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage."""
         return self.get_job_api()
 
+    @public
     def get_flink_cluster_api(self) -> flink_cluster_api.FlinkClusterApi:
         """Get the flink cluster API for the project.
 
@@ -219,6 +292,7 @@ class Project:
         """
         return self._flink_cluster_api
 
+    @public
     def get_git_api(self) -> git_api.GitApi:
         """Get the git repository api for the project.
 
@@ -227,6 +301,7 @@ class Project:
         """
         return self._git_api
 
+    @public
     def get_dataset_api(self) -> dataset_api.DatasetApi:
         """Get the dataset api for the project.
 
@@ -235,6 +310,7 @@ class Project:
         """
         return self._dataset_api
 
+    @public
     def get_environment_api(self) -> environment_api.EnvironmentApi:
         """Get the Python environment API for the project.
 
@@ -243,6 +319,7 @@ class Project:
         """
         return self._environment_api
 
+    @public
     def get_alerts_api(self) -> alerts_api.AlertsApi:
         """Get the alerts api for the project.
 
@@ -251,6 +328,7 @@ class Project:
         """
         return self._alerts_api
 
+    @public
     def get_search_api(self) -> search_api.SearchApi:
         """Get the search api for the project.
 
@@ -259,6 +337,51 @@ class Project:
         """
         return self._search_api
 
+    @public
+    def get_trino_api(self) -> trino_api.TrinoApi:
+        """Get the Trino API for the project.
+
+        Returns:
+            The Trino API handle.
+        """
+        if self._trino_api is None:
+            self._trino_api = trino_api.TrinoApi(project=self)
+        return self._trino_api
+
+    @public
+    def get_superset_api(self) -> superset_api.SupersetApi:
+        """Get the Superset API for the project.
+
+        Returns:
+            The Superset API handle.
+        """
+        if self._superset_api is None:
+            self._superset_api = superset_api.SupersetApi(project=self)
+        return self._superset_api
+
+    @public
+    def get_chart_api(self) -> chart_api.ChartApi:
+        """Get the chart API for the project.
+
+        Returns:
+            The chart API handle, lazily constructed on first call.
+        """
+        if self._chart_api is None:
+            self._chart_api = chart_api.ChartApi()
+        return self._chart_api
+
+    @public
+    def get_dashboard_api(self) -> dashboard_api.DashboardApi:
+        """Get the dashboard API for the project.
+
+        Returns:
+            The dashboard API handle, lazily constructed on first call.
+        """
+        if self._dashboard_api is None:
+            self._dashboard_api = dashboard_api.DashboardApi()
+        return self._dashboard_api
+
+    @public
     def get_alerts(self) -> list[alert.ProjectAlert]:
         """Get all alerts for the project.
 
@@ -270,6 +393,7 @@ class Project:
         """
         return self._alerts_api.get_alerts()
 
+    @public
     def get_alert(self, alert_id: int) -> alert.ProjectAlert | None:
         """Get an alert for the project by ID.
 
@@ -281,6 +405,7 @@ class Project:
         """
         return self._alerts_api.get_alert(alert_id)
 
+    @public
     def create_job_alert(
         self,
         receiver: str,
@@ -310,6 +435,7 @@ class Project:
         """
         return self._alerts_api.create_project_alert(receiver, status, severity, "Jobs")
 
+    @public
     def create_featurestore_alert(
         self,
         receiver: str,
@@ -358,6 +484,7 @@ class Project:
             return f"Project({self._name!r}, {self._owner!r}, {self._description!r})"
         return f"Project({self._name!r}, {self._owner!r})"
 
+    @public
     def get_url(self):
         """Get url to the project in Hopsworks."""
         path = "/p/" + str(self.id)

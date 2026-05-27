@@ -141,16 +141,18 @@ def _is_query_supported_rec(query: query.Query):
     )
     supported_connector = (
         isinstance(query._left_feature_group, feature_group.ExternalFeatureGroup)
-        and query._left_feature_group.storage_connector.type
+        and query._left_feature_group.data_source.storage_connector.type
         in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
     )
     delta_data_sources = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
         and query._left_feature_group.time_travel_format == "DELTA"
-        and query._left_feature_group.storage_connector
+        and query._left_feature_group.data_source.storage_connector
         and (
-            query._left_feature_group.storage_connector.type == StorageConnector.S3
-            or query._left_feature_group.storage_connector.type == StorageConnector.GCS
+            query._left_feature_group.data_source.storage_connector.type
+            == StorageConnector.S3
+            or query._left_feature_group.data_source.storage_connector.type
+            == StorageConnector.GCS
         )
     )
 
@@ -176,9 +178,16 @@ class ArrowFlightClient:
         StorageConnector.SNOWFLAKE,
         StorageConnector.BIGQUERY,
         StorageConnector.REDSHIFT,
-        StorageConnector.RDS,
+        StorageConnector.SQL,
         StorageConnector.GCS,
+        StorageConnector.UNITY_CATALOG,
+        StorageConnector.SAP_HANA,
+        StorageConnector.MONGODB,
+        StorageConnector.S3,
     ]
+    # Oracle rides on StorageConnector.SQL above — it's distinguished on the
+    # backend by sqlConnector.databaseType == "ORACLE". Keep that routing in
+    # sync if this list is ever refactored to key on databaseType.
     READ_ERROR = "Could not read data using Hopsworks Query Service."
     WRITE_ERROR = 'Could not write data using Hopsworks Query Service. If the issue persists, use write_options={"use_spark": True} instead.'
     DEFAULTING_TO_DIFFERENT_SERVICE_WARNING = (
@@ -500,14 +509,16 @@ class ArrowFlightClient:
                 if arrow_flight_config
                 else self.timeout
             ),
-            headers=[
-                (
-                    b"hopsworks-signature",
-                    query_object.hqs_payload_signature.encode("ascii"),
-                )
-            ]
-            if query_object.hqs_payload_signature
-            else None,
+            headers=(
+                [
+                    (
+                        b"hopsworks-signature",
+                        query_object.hqs_payload_signature.encode("ascii"),
+                    )
+                ]
+                if query_object.hqs_payload_signature
+                else None
+            ),
             dataframe_type=dataframe_type,
         )
 
@@ -517,9 +528,11 @@ class ArrowFlightClient:
         descriptor = pyarrow.flight.FlightDescriptor.for_path(path)
         return self._get_dataset(
             descriptor,
-            timeout=arrow_flight_config.get("timeout", self.timeout)
-            if arrow_flight_config
-            else self.timeout,
+            timeout=(
+                arrow_flight_config.get("timeout", self.timeout)
+                if arrow_flight_config
+                else self.timeout
+            ),
             dataframe_type=dataframe_type,
         )
 
@@ -623,7 +636,7 @@ def supports(featuregroups):
         lambda fg: isinstance(fg, feature_group.ExternalFeatureGroup), featuregroups
     ):
         if (
-            fg.storage_connector.type
+            fg.data_source.storage_connector.type
             not in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
         ):
             return False

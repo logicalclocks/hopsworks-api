@@ -25,6 +25,7 @@ from typing import (
 )
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, util
 from hsfs.core import online_ingestion_result
 from hsfs.core.opensearch import OpenSearchClientSingleton
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from hsfs import feature_group as fg_mod
 
 
+@public
 class OnlineIngestion:
     """Metadata object used to provide Online Ingestion information for a feature group.
 
@@ -54,11 +56,11 @@ class OnlineIngestion:
         """Initialize an OnlineIngestion object.
 
         Parameters:
-            id (Optional[int]): The unique identifier for the ingestion operation.
-            num_entries (Optional[int]): The total number of entries to ingest.
-            results (Union[List[OnlineIngestionResult], List[Dict[str, Any]]], optional):
+            id: The unique identifier for the ingestion operation.
+            num_entries: The total number of entries to ingest.
+            results:
                 List of ingestion results or their JSON representations.
-            feature_group (FeatureGroup, optional): The feature group associated with this ingestion.
+            feature_group: The feature group associated with this ingestion.
         """
         self._id = id
         self._num_entries = num_entries  # specified when inserting (optional since might not be specified when using streaming)
@@ -85,8 +87,8 @@ class OnlineIngestion:
         """Create an OnlineIngestion object from a JSON response.
 
         Parameters:
-            json_dict (Dict[str, Any]): The JSON dictionary from the API response.
-            feature_group (FeatureGroup, optional): The feature group associated with this ingestion.
+            json_dict: The JSON dictionary from the API response.
+            feature_group: The feature group associated with this ingestion.
 
         Returns:
             OnlineIngestion: The created OnlineIngestion object, or a list of them if multiple items are present.
@@ -107,6 +109,7 @@ class OnlineIngestion:
             ]
         return None
 
+    @public
     def refresh(self):
         """Refresh the state of this OnlineIngestion object from the backend."""
         online_ingestion = self.feature_group.get_online_ingestion(self._id)
@@ -128,22 +131,16 @@ class OnlineIngestion:
         """
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def id(self) -> int | None:
-        """Get the unique identifier for the ingestion operation.
-
-        Returns:
-            Optional[int]: The ingestion ID.
-        """
+        """Get the unique identifier for the ingestion operation."""
         return self._id
 
+    @public
     @property
     def num_entries(self) -> int | None:
-        """Get the total number of entries to ingest.
-
-        Returns:
-            Optional[int]: The number of entries.
-        """
+        """Get the total number of entries to ingest."""
         return self._num_entries
 
     @num_entries.setter
@@ -151,35 +148,30 @@ class OnlineIngestion:
         """Set the total number of entries to ingest.
 
         Parameters:
-            num_entries (int): The number of entries.
+            num_entries: The number of entries.
         """
         self._num_entries = num_entries
 
+    @public
     @property
     def results(
         self,
     ) -> list[online_ingestion_result.OnlineIngestionResult]:
-        """Get the list of ingestion results.
-
-        Returns:
-            List[OnlineIngestionResult]: List of ingestion result objects.
-        """
+        """Get the list of ingestion results."""
         return self._results
 
+    @public
     @property
     def feature_group(self) -> fg_mod.FeatureGroup:
-        """Get the feature group associated with this ingestion.
-
-        Returns:
-            FeatureGroup: The associated feature group.
-        """
+        """Get the feature group associated with this ingestion."""
         return self._feature_group
 
+    @public
     def wait_for_completion(self, options: dict[str, Any] = None):
         """Wait for the online ingestion operation to complete, displaying a progress bar.
 
         Parameters:
-            options (Dict[str, Any], optional): Options for waiting.
+            options: Options for waiting.
                 - "timeout" (int): Maximum time to wait in seconds (default: 60).
                 - "period" (int): Polling period in seconds (default: 1).
 
@@ -226,12 +218,13 @@ class OnlineIngestion:
 
                 self.refresh()
 
+    @public
     def print_logs(self, priority: str = "error", size: int = 20):
         """Print logs related to the online ingestion operation from OpenSearch.
 
         Parameters:
-            priority (str, optional): Log priority to filter by (default: "error").
-            size (int, optional): Number of log entries to retrieve (default: 20).
+            priority: Log priority to filter by (default: "error").
+            size: Number of log entries to retrieve (default: 20).
         """
         open_search_client = OpenSearchClientSingleton()
 

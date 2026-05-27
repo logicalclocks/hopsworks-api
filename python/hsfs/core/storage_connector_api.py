@@ -15,10 +15,14 @@
 #
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common import client
 from hsfs import decorators, storage_connector
+
+
+if TYPE_CHECKING:
+    from hsfs.core.explicit_provenance import Links
 
 
 class StorageConnectorApi:
@@ -45,12 +49,12 @@ class StorageConnectorApi:
     ) -> storage_connector.StorageConnector:
         """Get storage connector with name.
 
-        :param feature_store_id: feature store id
-        :type feature_store_id: int
-        :param name: name of the storage connector
-        :type name: str
-        :return: the storage connector
-        :rtype: StorageConnector
+        Parameters:
+            feature_store_id: feature store id
+            name: name of the storage connector
+
+        Returns:
+            the storage connector
         """
         storage_connector_json = self._get(feature_store_id, name)
         if storage_connector_json:
@@ -62,13 +66,52 @@ class StorageConnectorApi:
     def refetch(
         self, storage_connector_instance: storage_connector.StorageConnector
     ) -> storage_connector.StorageConnector:
-        """Refetches the storage connector from Hopsworks, in order to update temporary credentials."""
+        """Refetch the storage connector from Hopsworks, updating temporary credentials.
+
+        Parameters:
+            storage_connector_instance: The storage connector to refetch.
+
+        Returns:
+            The updated storage connector instance.
+        """
         return storage_connector_instance.update_from_response_json(
             self._get(
                 storage_connector_instance._featurestore_id,
                 storage_connector_instance.name,
             )
         )
+
+    def get_uc_bearer(
+        self,
+        feature_store_id: int,
+        name: str,
+    ) -> dict[str, Any]:
+        """Vend a Databricks Unity Catalog bearer for the SDK Spark read path.
+
+        EE provides only the bearer; the SDK takes it from here and calls
+        Databricks directly for vended S3 temp-credentials, then drives the
+        Delta read.
+        Response carries the bearer in clear and the EE side sets
+        Cache-Control: no-store.
+
+        Parameters:
+            feature_store_id: Numeric id of the feature store containing the connector.
+            name: Name of the Unity Catalog storage connector.
+
+        Returns:
+            Dict with keys ``access_token`` and ``expires_in_seconds``.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_store_id,
+            "storageconnectors",
+            name,
+            "uc_bearer",
+        ]
+        return _client._send_request("GET", path_params)
 
     def get_online_connector(
         self, feature_store_id: int
@@ -106,7 +149,7 @@ class StorageConnectorApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def get_feature_groups_provenance(self, storage_connector_instance):
+    def get_feature_groups_provenance(self, storage_connector_instance) -> Links:
         """Get the generated feature groups using this storage connector, based on explicit provenance.
 
         These feature groups can be accessible or inaccessible. Explicit
@@ -118,8 +161,7 @@ class StorageConnectorApi:
             storage_connector_instance: Metadata object of storage connector.
 
         Returns:
-            `ExplicitProvenance.Links`: the feature groups generated using this
-            storage connector
+            The feature groups generated using this storage connector.
         """
         _client = client.get_instance()
         path_params = [
@@ -138,10 +180,50 @@ class StorageConnectorApi:
             "downstreamLvls": 1,
         }
         links_json = _client._send_request("GET", path_params, query_params)
+
         from hsfs.core import explicit_provenance
 
         return explicit_provenance.Links.from_response_json(
             links_json,
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.FEATURE_GROUP,
+        )
+
+    def get_training_datasets_provenance(self, storage_connector_instance) -> Links:
+        """Get the generated training datasets using this storage connector, based on explicit provenance.
+
+        These training datasets can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated training dataset links, so deleted will always be empty.
+        For inaccessible training datasets, only a minimal information is returned.
+
+        Parameters:
+            storage_connector_instance: Metadata object of storage connector.
+
+        Returns:
+            The training datasets generated using this storage connector.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector_instance._featurestore_id,
+            "storageconnectors",
+            storage_connector_instance.name,
+            "provenance",
+            "links",
+        ]
+        query_params = {
+            "expand": "provenance_artifacts",
+            "upstreamLvls": 0,
+            "downstreamLvls": 1,
+        }
+        links_json = _client._send_request("GET", path_params, query_params)
+
+        from hsfs.core import explicit_provenance
+
+        return explicit_provenance.Links.from_response_json(
+            links_json,
+            explicit_provenance.Links.Direction.DOWNSTREAM,
+            explicit_provenance.Links.Type.TRAINING_DATASET,
         )

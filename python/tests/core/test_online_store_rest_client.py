@@ -27,7 +27,7 @@ class TestOnlineStoreRestClient:
         mocker.patch("hopsworks_common.client.get_instance")
         variable_api_mock = mocker.patch(
             "hopsworks_common.core.variable_api.VariableApi.get_loadbalancer_external_domain",
-            return_value="app.hopsworks.ai",
+            return_value="eu-west.cloud.hopsworks.ai",
         )
         ping_rdrs_mock = mocker.patch(
             "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
@@ -41,12 +41,12 @@ class TestOnlineStoreRestClient:
         variable_api_mock.assert_called_once()
         assert (
             online_store_rest_client_instance._current_config["host"]
-            == "app.hopsworks.ai"
+            == "eu-west.cloud.hopsworks.ai"
         )
         assert online_store_rest_client_instance._current_config["port"] == 4406
         assert online_store_rest_client_instance._current_config["verify_certs"] is True
         assert online_store_rest_client_instance._base_url == furl(
-            "https://app.hopsworks.ai:4406/0.1.0"
+            "https://eu-west.cloud.hopsworks.ai:4406/0.1.0"
         )
         assert ping_rdrs_mock.call_count == 1
 

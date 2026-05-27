@@ -108,3 +108,44 @@ class TestDeployableComponentLogs:
         assert (dcl.created_at >= now) and (
             dcl.created_at < (now + datetime.timedelta(seconds=1))
         )
+        # Defaults for the new OpenSearch metadata fields.
+        assert dcl.timestamp is None
+        assert dcl.doc_id is None
+
+    # OpenSearch source: timestamp + doc_id round-trip via from_response_json
+
+    def test_from_response_json_carries_timestamp_and_doc_id(self):
+        # Arrange — what the backend returns when the OpenSearch source is
+        # used. Camel-case ``docId`` matches the Java DTO; humps decamelizes
+        # to ``doc_id`` on the way in.
+        payload = [
+            {
+                "instanceName": "pred-0",
+                "content": "ready",
+                "timestamp": "2026-05-08T07:00:00Z",
+                "docId": "ZGVjLTAx",
+            }
+        ]
+
+        # Act
+        dc_logs = deployable_component_logs.DeployableComponentLogs.from_response_json(
+            payload
+        )
+
+        # Assert
+        assert len(dc_logs) == 1
+        assert dc_logs[0].timestamp == "2026-05-08T07:00:00Z"
+        assert dc_logs[0].doc_id == "ZGVjLTAx"
+
+    def test_from_response_json_kubernetes_source_leaves_metadata_none(self):
+        # Legacy Kubernetes-source response carries no timestamp / doc_id.
+        # The DTO must still parse — agents that mix sources rely on this.
+        payload = [{"instanceName": "pred-0", "content": "ready"}]
+
+        dc_logs = deployable_component_logs.DeployableComponentLogs.from_response_json(
+            payload
+        )
+
+        assert len(dc_logs) == 1
+        assert dc_logs[0].timestamp is None
+        assert dc_logs[0].doc_id is None

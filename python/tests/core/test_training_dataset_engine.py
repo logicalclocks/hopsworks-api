@@ -87,7 +87,7 @@ class TestTrainingDatasetEngine:
         fg = feature_group.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
         )
-        q = query.Query(left_feature_group=fg, left_features=fg.features)
+        q = query.Query(left_feature_group=fg, left_features=fg.columns)
 
         # Act
         td_engine.save(training_dataset=td, features=q, user_write_options=None)
@@ -199,7 +199,7 @@ class TestTrainingDatasetEngine:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_instance")
         mock_storage_connector_read = mocker.patch(
-            "hsfs.storage_connector.StorageConnector.read"
+            "hsfs.storage_connector.HopsFSConnector.read"
         )
 
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
@@ -228,7 +228,7 @@ class TestTrainingDatasetEngine:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_instance")
         mock_storage_connector_read = mocker.patch(
-            "hsfs.storage_connector.StorageConnector.read"
+            "hsfs.storage_connector.HopsFSConnector.read"
         )
 
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)

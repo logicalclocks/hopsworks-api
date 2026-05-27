@@ -36,10 +36,9 @@ class ValidationReportEngine:
     def __init__(self, feature_store_id: int, feature_group_id: int):
         """Validation Report engine.
 
-        :param feature_store_id: id of the respective featurestore
-        :type feature_store_id: int
-        :param feature_group_id: id of the featuregroup it is attached to
-        :type feature_group_id: int
+        Parameters:
+            feature_store_id: id of the respective featurestore
+            feature_group_id: id of the featuregroup it is attached to
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
@@ -66,7 +65,14 @@ class ValidationReportEngine:
         | great_expectations.core.ExpectationSuiteValidationResult
         | None
     ):
-        """Get the most recent Validation Report of a Feature Group."""
+        """Get the most recent Validation Report of a Feature Group.
+
+        Parameters:
+            ge_type: Whether to return a native Great Expectations type.
+
+        Returns:
+            The most recent validation report, or None if none exist.
+        """
         url = self._get_validation_report_url()
         print(
             f"""Long reports can be truncated when fetching from Hopsworks.
@@ -85,7 +91,14 @@ class ValidationReportEngine:
         list[ValidationReport]
         | list[great_expectations.core.ExpectationSuiteValidationResult]
     ):
-        """Get all Validation Report of a Feature Group."""
+        """Get all Validation Reports of a Feature Group.
+
+        Parameters:
+            ge_type: Whether to return native Great Expectations types.
+
+        Returns:
+            A list of validation reports.
+        """
         url = self._get_validation_report_url()
         print(
             f"""Long reports can be truncated when fetching from Hopsworks.

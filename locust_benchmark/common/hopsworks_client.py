@@ -43,7 +43,7 @@ class HopsworksClient:
             primary_key=["ip"],
             online_enabled=True,
             stream=True,
-            online_config={'table_space': self.tablespace} if self.tablespace else None
+            online_config={"table_space": self.tablespace} if self.tablespace else None,
         )
         return locust_fg
 

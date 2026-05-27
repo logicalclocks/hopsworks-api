@@ -4,12 +4,18 @@
       "on_demand_feature_group": {
         "type": "onDemandFeaturegroupDTO",
         "id": 15,
-        "storageConnector": {
-          "type": "featurestoreJdbcConnectorDTO",
-          "featurestoreId": 67,
-          "id": 2,
-          "name": "test_project_featurestore",
-          "storageConnectorType": "JDBC"
+        "dataSource": {
+          "query": "select * from Customer",
+          "database": "test_database",
+          "group": "test_schema",
+          "path": "",
+          "storageConnector": {
+            "type": "featurestoreJdbcConnectorDTO",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "test_project_featurestore",
+            "storageConnectorType": "JDBC"
+          }
         },
         "spine": false
       },

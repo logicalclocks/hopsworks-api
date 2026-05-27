@@ -19,11 +19,16 @@ from __future__ import annotations
 from typing import Any
 
 from furl import furl
+from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, usage
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.variable_api import VariableApi
 
 
+@also_available_as(
+    "hopsworks.core.opensearch_api.OPENSEARCH_CONFIG",
+    "hsfs.core.opensearch_api.OPENSEARCH_CONFIG",
+)
 class OPENSEARCH_CONFIG:
     ELASTIC_ENDPOINT_ENV_VAR = "ELASTIC_ENDPOINT"
     SSL_CONFIG = "es.net.ssl"
@@ -45,6 +50,10 @@ class OPENSEARCH_CONFIG:
     HTTP_AUTH = "http_auth"
 
 
+@public(
+    "hopsworks.core.opensearch_api.OpenSearchApi",
+    "hsfs.core.opensearch_api.OpenSearchApi",
+)
 class OpenSearchApi:
     def __init__(self) -> None:
         self._variable_api: VariableApi = VariableApi()
@@ -63,6 +72,7 @@ class OpenSearchApi:
             )
         return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 
+    @public
     @usage.method_logger
     def get_project_index(self, index: str) -> str:
         """This helper method prefixes the supplied index name with the project name to avoid index name clashes.
@@ -76,8 +86,11 @@ class OpenSearchApi:
         _client = client.get_instance()
         return (_client._project_name + "_" + index).lower()
 
+    @public
     @usage.method_logger
-    def get_default_py_config(self, feature_store_id: int = None) -> dict[str, Any]:
+    def get_default_py_config(
+        self, feature_store_id: int | None = None
+    ) -> dict[str, Any]:
         """Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
 
         ```python
@@ -90,6 +103,9 @@ class OpenSearchApi:
 
         client = OpenSearch(**opensearch_api.get_default_py_config())
         ```
+
+        Parameters:
+            feature_store_id: The id of the feature store to get the configuration for.
 
         Returns:
             A dictionary with required configuration.
@@ -107,11 +123,12 @@ class OpenSearchApi:
             OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(),
         }
 
-    def _get_authorization_token(self, feature_store_id: int = None) -> str:
-        """Get opensearch jwt token.
+    def _get_authorization_token(self, feature_store_id: int | None = None) -> str:
+        """Get OpenSearch JWT token.
 
         Returns:
-            `str`: OpenSearch jwt token
+            OpenSearch JWT token.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """

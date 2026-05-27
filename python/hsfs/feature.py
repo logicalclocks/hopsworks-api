@@ -16,11 +16,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import hsfs
 import humps
+from hopsworks_apigen import deprecated, public
 from hsfs import util
 from hsfs.constructor import filter
 from hsfs.decorators import typechecked
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
     from hsfs.feature_group import FeatureGroup
 
 
+@public
 @typechecked
 class Feature:
     """Metadata object representing a feature in a feature group in the Feature Store.
@@ -60,6 +62,7 @@ class Feature:
         use_fully_qualified_name=False,
         **kwargs,
     ) -> None:
+        self._original_name = name
         self._name = util.autofix_feature_name(name, warn=True)
         self._type = type
         self._description = description
@@ -90,6 +93,9 @@ class Feature:
             selected_feature = fg.get_feature("min_temp")
             selected_feature.to_dict()
             ```
+
+        Returns:
+            A dictionary representation of the feature.
         """
         return {
             "name": self._name,
@@ -116,8 +122,8 @@ class Feature:
         - If neither condition applies, it returns the feature's original name.
 
         Parameters:
-            feature_group (FeatureGroup, optional): The feature group context in which the name is being used.
-            prefix (str, optional): A prefix to prepend to the feature name if applicable.
+            feature_group: The feature group context in which the name is being used.
+            prefix: A prefix to prepend to the feature name if applicable.
 
         Returns:
             str: The fully qualified feature name.
@@ -130,6 +136,7 @@ class Feature:
             return prefix + self._name
         return self._name
 
+    @public
     @property
     def use_fully_qualified_name(self) -> bool:
         """Use fully qualified name for the feature when generating dataframes for training/batch data."""
@@ -150,6 +157,7 @@ class Feature:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
+    @public
     def is_complex(self) -> bool:
         """Returns true if the feature has a complex type.
 
@@ -164,9 +172,19 @@ class Feature:
             selected_feature = fg.get_feature("min_temp")
             selected_feature.is_complex()
             ```
+
+        Returns:
+            True if the feature type is a complex type, False otherwise.
         """
         return any(map(self._type.upper().startswith, self.COMPLEX_TYPES))
 
+    @public
+    @property
+    def original_name(self) -> str:
+        """Original feature name before client-side sanitization."""
+        return self._original_name
+
+    @public
     @property
     def name(self) -> str:
         """Name of the feature."""
@@ -176,6 +194,7 @@ class Feature:
     def name(self, name: str) -> None:
         self._name = name
 
+    @public
     @property
     def description(self) -> str | None:
         """Description of the feature."""
@@ -185,6 +204,7 @@ class Feature:
     def description(self, description: str | None) -> None:
         self._description = description
 
+    @public
     @property
     def type(self) -> str | None:
         """Data type of the feature in the offline feature store.
@@ -200,6 +220,7 @@ class Feature:
     def type(self, type: str | None) -> None:
         self._type = type
 
+    @public
     @property
     def online_type(self) -> str | None:
         """Data type of the feature in the online feature store."""
@@ -209,6 +230,7 @@ class Feature:
     def online_type(self, online_type: str | None) -> None:
         self._online_type = online_type
 
+    @public
     @property
     def primary(self) -> bool:
         """Whether the feature is part of the primary key of the feature group."""
@@ -218,6 +240,7 @@ class Feature:
     def primary(self, primary: bool) -> None:
         self._primary = primary
 
+    @public
     @property
     def foreign(self) -> bool:
         """Whether the feature is part of the foreign key of the feature group."""
@@ -227,6 +250,7 @@ class Feature:
     def foreign(self, foreign: bool) -> None:
         self._foreign = foreign
 
+    @public
     @property
     def partition(self) -> bool:
         """Whether the feature is part of the partition key of the feature group."""
@@ -236,6 +260,7 @@ class Feature:
     def partition(self, partition: bool) -> None:
         self._partition = partition
 
+    @public
     @property
     def hudi_precombine_key(self) -> bool:
         """Whether the feature is part of the hudi precombine key of the feature group."""
@@ -245,6 +270,7 @@ class Feature:
     def hudi_precombine_key(self, hudi_precombine_key: bool) -> None:
         self._hudi_precombine_key = hudi_precombine_key
 
+    @public
     @property
     def default_value(self) -> str | None:
         """Default value of the feature as string, if the feature was appended to the feature group."""
@@ -254,11 +280,13 @@ class Feature:
     def default_value(self, default_value: str | None) -> None:
         self._default_value = default_value
 
+    @public
     @property
     def feature_group_id(self) -> int | None:
         """ID of the feature group to which this feature belongs."""
         return self._feature_group_id
 
+    @public
     @property
     def on_demand(self) -> bool:
         """Whether the feature is a on-demand feature computed using on-demand transformation functions."""
@@ -271,7 +299,7 @@ class Feature:
     def _get_filter_value(self, value: Any) -> Any:
         if self.type == "timestamp":
             return datetime.fromtimestamp(
-                util.convert_event_time_to_timestamp(value) / 1000
+                util.convert_event_time_to_timestamp(value) / 1000, tz=timezone.utc
             ).strftime("%Y-%m-%d %H:%M:%S")
         return value
 
@@ -293,12 +321,10 @@ class Feature:
     def __gt__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
 
+    @deprecated("hsfs.feature.Feature.isin")
+    @public
     def contains(self, other: str | list[Any]) -> filter.Filter:
         """Construct a filter similar to SQL's `IN` operator.
-
-        Warning: Deprecated
-            `contains` method is deprecated.
-            Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
 
         Parameters:
             other: A single feature value or a list of feature values.
@@ -308,12 +334,28 @@ class Feature:
         """
         return self.isin(other)
 
+    @public
     def isin(self, other: str | list[Any]) -> filter.Filter:
-        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause."""
+        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause.
+
+        Parameters:
+            other: A single feature value or a list of feature values to match against.
+
+        Returns:
+            A filter that keeps only rows where the feature value is in `other`.
+        """
         return filter.Filter(self, filter.Filter.IN, json.dumps(other))
 
+    @public
     def like(self, other: Any) -> filter.Filter:
-        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause."""
+        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause.
+
+        Parameters:
+            other: The pattern to match against.
+
+        Returns:
+            A filter that keeps only rows where the feature value matches `other`.
+        """
         return filter.Filter(self, filter.Filter.LK, other)
 
     def __str__(self) -> str:

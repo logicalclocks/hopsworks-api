@@ -19,12 +19,13 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, constants, usage, util
-from hopsworks_common.client.exceptions import JobExecutionException
 from hopsworks_common.core import execution_api
 from hopsworks_common.engine import execution_engine
 
 
+@public("hopsworks.execution.Execution", "hsfs.core.execution.Execution")
 class Execution:
     def __init__(
         self,
@@ -80,21 +81,25 @@ class Execution:
         self.__init__(**json_decamelized)
         return self
 
+    @public
     @property
     def id(self):
         """Id of the execution."""
         return self._id
 
+    @public
     @property
     def job_name(self):
         """Name of the job the execution belongs to."""
         return self._job.name
 
+    @public
     @property
     def job_type(self):
         """Type of the job the execution belongs to."""
         return self._job.job_type
 
+    @public
     @property
     def state(self):
         """Current state of the execution.
@@ -106,63 +111,70 @@ class Execution:
         """
         return self._state
 
+    @public
     @property
     def final_status(self):
         """Final status of the execution. Can be UNDEFINED, SUCCEEDED, FAILED or KILLED."""
         return self._final_status
 
+    @public
     @property
     def submission_time(self):
         """Timestamp when the execution was submitted."""
         return self._submission_time
 
+    @public
     @property
     def stdout_path(self):
         """Path in Hopsworks Filesystem to stdout log file."""
         return self._stdout_path
 
+    @public
     @property
     def stderr_path(self):
         """Path in Hopsworks Filesystem to stderr log file."""
         return self._stderr_path
 
+    @public
     @property
     def app_id(self):
         """Application id for the execution."""
         return self._app_id
 
+    @public
     @property
     def hdfs_user(self):
         """Filesystem user for the execution."""
         return self._hdfs_user
 
+    @public
     @property
     def args(self):
         """Arguments set for the execution."""
         return self._args
 
+    @public
     @property
     def progress(self):
         """Progress of the execution."""
         return self._progress
 
+    @public
     @property
     def user(self):
         """User that submitted the execution."""
         return self._user
 
+    @public
     @property
     def duration(self):
         """Duration in milliseconds the execution ran."""
         return self._duration
 
+    @public
     @property
-    def success(self):
-        """Boolean to indicate if execution ran successfully or failed.
-
-        Returns:
-            `bool`. True if execution ran successfully. False if execution failed or was killed.
-        """
+    def success(self) -> bool | None:
+        """Boolean to indicate if execution ran successfully or failed."""
         is_yarn_job = (
             self.job_type.lower() == "spark"
             or self.job_type.lower() == "pyspark"
@@ -180,6 +192,29 @@ class Execution:
             return True
         return None
 
+    @public
+    @property
+    def app_url(self) -> str | None:
+        """URL to the Python App UI (Streamlit) if the execution is running.
+
+        Returns the full URL to access the Streamlit application through the Hopsworks proxy,
+        or None if the execution is not running or the app URL is not available.
+        """
+        if (
+            self._state == "RUNNING"
+            and self._monitoring
+            and isinstance(self._monitoring, dict)
+            and self._monitoring.get("appUrl")
+        ):
+            _client = client.get_instance()
+            return (
+                _client._base_url.rstrip("/")
+                + "/hopsworks-api/"
+                + self._monitoring["appUrl"]
+            )
+        return None
+
+    @public
     def download_logs(self, path: str | None = None) -> tuple[str | None, str | None]:
         """Download stdout and stderr logs for the execution.
 
@@ -196,7 +231,7 @@ class Execution:
             ```
 
         Parameters:
-            path: path to download the logs.
+            path: Path to download the logs.
 
         Returns:
             stdout: Path to downloaded log for stdout.
@@ -204,6 +239,7 @@ class Execution:
         """
         return self._execution_engine.download_logs(self, path)
 
+    @public
     @usage.method_logger
     def delete(self):
         """Delete the execution.
@@ -216,6 +252,7 @@ class Execution:
         """
         self._execution_api._delete(self._job.name, self.id)
 
+    @public
     @usage.method_logger
     def stop(self):
         """Stop the execution.
@@ -228,6 +265,7 @@ class Execution:
         """
         self._execution_api._stop(self.job_name, self.id)
 
+    @public
     def await_termination(self, timeout: float | None = None):
         """Wait until execution terminates.
 
@@ -239,18 +277,9 @@ class Execution:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.JobExecutionException: If the execution finished with a failure status.
         """
-        x = self._execution_engine.wait_until_finished(self._job, self, timeout)
-        if x.final_status == "KILLED":
-            raise JobExecutionException("The Hopsworks Job was stopped")
-        if x.final_status == "FAILED":
-            raise JobExecutionException(
-                "The Hopsworks Job failed, use the Hopsworks UI to access the job logs"
-            )
-        if x.final_status == "FRAMEWORK_FAILURE":
-            raise JobExecutionException(
-                "The Hopsworks Job monitoring failed, could not determine the final status"
-            )
+        self._execution_engine.wait_until_finished(self._job, self, timeout)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -261,6 +290,7 @@ class Execution:
     def __repr__(self):
         return f"Execution({self._final_status!r}, {self._state!r}, {self._submission_time!r}, {self._args!r})"
 
+    @public
     def get_url(self):
         """Get url to view execution details in Hopsworks UI."""
         _client = client.get_instance()

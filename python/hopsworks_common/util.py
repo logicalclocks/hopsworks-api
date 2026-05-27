@@ -29,12 +29,17 @@ import threading
 import time
 import warnings
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urljoin, urlparse
 
 import humps
+from hopsworks_apigen import also_available_as
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException, JobException
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    JobException,
+    ModelRegistryException,
+)
 from hopsworks_common.constants import MODEL, PREDICTOR, Default
 from hopsworks_common.core.constants import HAS_PANDAS
 from hopsworks_common.git_file_status import GitFileStatus
@@ -49,9 +54,12 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs import feature_group
 
 
+@also_available_as("hopsworks.util.Encoder", "hsml.util.Encoder")
 class Encoder(json.JSONEncoder):
     def default(self, o: Any) -> dict[str, Any]:
         try:
@@ -60,6 +68,7 @@ class Encoder(json.JSONEncoder):
             return super().default(o)
 
 
+@also_available_as("hsml.util.NumpyEncoder")
 class NumpyEncoder(json.JSONEncoder):
     """Special json encoder for numpy types.
 
@@ -76,7 +85,7 @@ class NumpyEncoder(json.JSONEncoder):
             return base64.encodebytes(x).decode("ascii")
 
         if isinstance(obj, np.ndarray):
-            if obj.dtype == np.object:
+            if obj.dtype == np.object_:
                 return [self.convert(x)[0] for x in obj.tolist()]
             if obj.dtype == np.bytes_:
                 return np.vectorize(encode_binary)(obj), True
@@ -107,6 +116,7 @@ VALID_EMBEDDING_TYPE = {
 }
 
 
+@also_available_as("hopsworks.util.validate_embedding_feature_type")
 def validate_embedding_feature_type(embedding_index, schema):
     if not embedding_index or not schema:
         return
@@ -120,6 +130,7 @@ def validate_embedding_feature_type(embedding_index, schema):
             )
 
 
+@also_available_as("hopsworks.util.autofix_feature_name")
 def autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
     if warn and contains_uppercase(name):
@@ -145,12 +156,14 @@ def contains_whitespace(name: str) -> bool:
     return " " in name
 
 
+@also_available_as("hopsworks.util.feature_group_name")
 def feature_group_name(
     feature_group,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
 ) -> str:
     return feature_group.name + "_" + str(feature_group.version)
 
 
+@also_available_as("hopsworks.util.append_feature_store_suffix")
 def append_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
@@ -158,6 +171,7 @@ def append_feature_store_suffix(name: str) -> str:
     return name + FEATURE_STORE_NAME_SUFFIX
 
 
+@also_available_as("hopsworks.util.strip_feature_store_suffix")
 def strip_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
@@ -165,12 +179,37 @@ def strip_feature_store_suffix(name: str) -> str:
     return name
 
 
+@also_available_as("hopsworks.util.get_dataset_type")
 def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     if re.match(r"^(?:hdfs://|)/apps/hive/warehouse/*", path):
         return "HIVEDB"
     return "DATASET"
 
 
+def extract_zip(zip_path: str) -> str:
+    """Extract a zip file into a sibling directory and return the directory path.
+
+    The zip is extracted to a directory with the ``.zip`` suffix removed.
+    The operation is idempotent — if the directory already exists, extraction
+    is skipped.
+
+    Parameters:
+        zip_path: Path to the zip file to extract.
+
+    Returns:
+        The path to the directory containing the extracted contents.
+    """
+    import zipfile
+
+    extract_dir = zip_path.rsplit(".", 1)[0]
+    if not os.path.isdir(extract_dir):
+        os.makedirs(extract_dir, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(extract_dir)
+    return extract_dir
+
+
+@also_available_as("hopsworks.util.check_timestamp_format_from_date_string")
 def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     date_format_patterns = {
         r"^([0-9]{4})([0-9]{2})([0-9]{2})$": "%Y%m%d",
@@ -203,6 +242,7 @@ def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     return normalized_date, date_format
 
 
+@also_available_as("hopsworks.util.get_timestamp_from_date_string")
 def get_timestamp_from_date_string(input_date: str) -> int:
     norm_input_date, date_format = check_timestamp_format_from_date_string(input_date)
     try:
@@ -222,12 +262,14 @@ def get_timestamp_from_date_string(input_date: str) -> int:
     return int(float(date_time.timestamp()) * 1000)
 
 
+@also_available_as("hopsworks.util.get_hudi_datestr_from_timestamp")
 def get_hudi_datestr_from_timestamp(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime(
         "%Y%m%d%H%M%S%f"
     )[:-3]
 
 
+@also_available_as("hopsworks.util.get_delta_datestr_from_timestamp")
 def get_delta_datestr_from_timestamp(timestamp: int) -> str:
     # It does not work to add the Z in the strftime function
     return (
@@ -238,6 +280,7 @@ def get_delta_datestr_from_timestamp(timestamp: int) -> str:
     )
 
 
+@also_available_as("hopsworks.util.convert_event_time_to_timestamp")
 def convert_event_time_to_timestamp(
     event_time: str
     | pd._libs.tslibs.timestamps.Timestamp
@@ -281,6 +324,7 @@ def convert_event_time_to_timestamp(
     )
 
 
+@also_available_as("hopsworks.util.get_hostname_replaced_url")
 def get_hostname_replaced_url(sub_path: str) -> str:
     """Construct and return an url with public hopsworks hostname and sub path.
 
@@ -295,11 +339,12 @@ def get_hostname_replaced_url(sub_path: str) -> str:
     return url_parsed.geturl()
 
 
+@also_available_as("hopsworks.util.verify_attribute_key_names")
 def verify_attribute_key_names(
     feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
 ) -> None:
-    feature_names = {feat.name for feat in feature_group_obj.features}
+    feature_names = {feat.name for feat in feature_group_obj.columns}
     if feature_group_obj.primary_key:
         diff = set(feature_group_obj.primary_key) - feature_names
         if diff:
@@ -333,11 +378,15 @@ def verify_attribute_key_names(
             )
 
 
+@also_available_as("hopsworks.util.get_job_url")
 def get_job_url(href: str) -> str:
     """Use the endpoint returned by the API to construct the UI url for jobs.
 
     Parameters:
-        href: the endpoint returned by the API
+        href: The endpoint returned by the API.
+
+    Returns:
+        The UI url for the job.
     """
     url = urlparse(href)
     url_splits = url.path.split("/")
@@ -348,6 +397,7 @@ def get_job_url(href: str) -> str:
     return ui_url.geturl()
 
 
+@also_available_as("hopsworks.util._loading_animation")
 def _loading_animation(message: str, stop_event: threading.Event) -> None:
     for char in itertools.cycle([".", "..", "...", ""]):
         if stop_event.is_set():
@@ -356,6 +406,7 @@ def _loading_animation(message: str, stop_event: threading.Event) -> None:
         time.sleep(0.5)
 
 
+@also_available_as("hopsworks.util.run_with_loading_animation")
 def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) -> Any:
     stop_event = threading.Event()
     t = threading.Thread(
@@ -384,6 +435,7 @@ def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) ->
             print(f"\rFinished: {message} ({(end - start):.2f}s) ", end="\n")
 
 
+@also_available_as("hopsworks.util.get_feature_group_url")
 def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     sub_path = (
         "/p/"
@@ -396,38 +448,47 @@ def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     return get_hostname_replaced_url(sub_path)
 
 
+@also_available_as("hopsworks.util.is_runtime_notebook")
 def is_runtime_notebook():
     return "ipykernel" in sys.modules
 
 
+@also_available_as("hopsworks.util.VersionWarning", "hsml.util.VersionWarning")
 class VersionWarning(Warning):
     pass
 
 
+@also_available_as("hsml.util.ProvenanceWarning")
 class ProvenanceWarning(Warning):
     pass
 
 
+@also_available_as("hopsworks.util.JobWarning")
 class JobWarning(Warning):
     pass
 
 
+@also_available_as("hopsworks.util.StorageWarning")
 class StorageWarning(Warning):
     pass
 
 
+@also_available_as("hopsworks.util.StatisticsWarning")
 class StatisticsWarning(Warning):
     pass
 
 
+@also_available_as("hopsworks.util.ValidationWarning")
 class ValidationWarning(Warning):
     pass
 
 
+@also_available_as("hopsworks.util.FeatureGroupWarning")
 class FeatureGroupWarning(Warning):
     pass
 
 
+@also_available_as("hopsworks.util.convert_to_abs")
 def convert_to_abs(path, current_proj_name):
     abs_project_prefix = f"/Projects/{current_proj_name}"
     if not path.startswith(abs_project_prefix):
@@ -442,11 +503,13 @@ def convert_to_project_rel_path(path, current_proj_name):
     return path
 
 
+@also_available_as("hopsworks.util.validate_job_conf")
 def validate_job_conf(config, project_name):
     # User is required to set the appPath programmatically after getting the configuration
     if (
         config["type"] != "dockerJobConfiguration"
         and config["type"] != "flinkJobConfiguration"
+        and config["type"] != "ingestionJobConfiguration"
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
@@ -463,6 +526,7 @@ def validate_job_conf(config, project_name):
     return config
 
 
+@also_available_as("hopsworks.util.convert_git_status_to_files")
 def convert_git_status_to_files(files):
     # Convert GitFileStatus to list of file paths
     if isinstance(files[0], GitFileStatus):
@@ -474,6 +538,7 @@ def convert_git_status_to_files(files):
     return files
 
 
+@also_available_as("hopsworks.util.is_interactive")
 def is_interactive():
     import __main__ as main
 
@@ -485,6 +550,7 @@ def is_interactive():
 # - schema and types
 
 
+@also_available_as("hsml.util.set_model_class")
 def set_model_class(model):
     from hsml.llm.model import Model as LLMModel
     from hsml.model import Model as BaseModel
@@ -517,6 +583,7 @@ def set_model_class(model):
     raise ValueError(f"framework {str(framework)} is not a supported framework")
 
 
+@also_available_as("hsml.util.input_example_to_json")
 def input_example_to_json(input_example):
     import numpy as np
 
@@ -531,10 +598,12 @@ def input_example_to_json(input_example):
     return _handle_dataframe_input(input_example)
 
 
+@also_available_as("hsml.util._handle_tensor_input")
 def _handle_tensor_input(input_tensor):
     return input_tensor.tolist()
 
 
+@also_available_as("hsml.util._handle_dataframe_input")
 def _handle_dataframe_input(input_ex):
     if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
@@ -551,6 +620,7 @@ def _handle_dataframe_input(input_ex):
     raise TypeError(f"{type(input_ex)} is not a supported input example type")
 
 
+@also_available_as("hsml.util._handle_dict_input")
 def _handle_dict_input(input_ex):
     return input_ex
 
@@ -558,6 +628,7 @@ def _handle_dict_input(input_ex):
 # - artifacts
 
 
+@also_available_as("hsml.util.compress")
 def compress(archive_out_path, archive_name, path_to_archive):
     if os.path.isdir(path_to_archive):
         return shutil.make_archive(
@@ -571,6 +642,7 @@ def compress(archive_out_path, archive_name, path_to_archive):
     )
 
 
+@also_available_as("hsml.util.decompress")
 def decompress(archive_file_path, extract_dir=None):
     return shutil.unpack_archive(archive_file_path, extract_dir=extract_dir)
 
@@ -578,6 +650,7 @@ def decompress(archive_file_path, extract_dir=None):
 # - export models
 
 
+@also_available_as("hsml.util.validate_metrics")
 def validate_metrics(metrics):
     if metrics is not None:
         if not isinstance(metrics, dict):
@@ -600,9 +673,26 @@ def validate_metrics(metrics):
                 ) from err
 
 
+def validate_model_name(name: str):
+    """Validate model name contains only alphanumeric characters and underscores.
+
+    Parameters:
+        name: The model name to validate.
+
+    Raises:
+        ModelRegistryException: If the model name contains invalid characters.
+    """
+    if not re.fullmatch(r"[a-zA-Z0-9_]+", name):
+        raise ModelRegistryException(
+            f"Invalid model name '{name}'. Model name must contain only alphanumeric characters "
+            "and underscores (regex: [a-zA-Z0-9_]+)."
+        )
+
+
 # Model serving
 
 
+@also_available_as("hsml.util.get_predictor_for_model")
 def get_predictor_for_model(model, **kwargs):
     from hsml.llm.model import Model as LLMModel
     from hsml.llm.predictor import Predictor as vLLMPredictor
@@ -652,6 +742,7 @@ def get_predictor_for_server(name: str, script_file: str, **kwargs):
 # General
 
 
+@also_available_as("hsml.util.pretty_print")
 def pretty_print(obj):
     if isinstance(obj, list):
         for logs in obj:
@@ -661,6 +752,7 @@ def pretty_print(obj):
         print(json.dumps(json_decamelized, indent=4, sort_keys=True))
 
 
+@also_available_as("hsml.util.get_members")
 def get_members(cls, prefix=None):
     for m in inspect.getmembers(cls, lambda m: not (inspect.isroutine(m))):
         n = m[0]  # name
@@ -694,6 +786,7 @@ def extract_field_from_json(obj, fields, default=None, as_instance_of=None):
     return value
 
 
+@also_available_as("hsml.util.get_obj_from_json")
 def get_obj_from_json(obj, cls):
     if obj is not None:
         if isinstance(obj, cls):
@@ -708,6 +801,7 @@ def get_obj_from_json(obj, cls):
     return obj
 
 
+@also_available_as("hsml.util.feature_view_to_json")
 def feature_view_to_json(obj):
     if obj is None:
         return None
@@ -727,34 +821,38 @@ def feature_view_to_json(obj):
 
 def generate_fully_qualified_feature_name(
     feature_group: feature_group.FeatureGroup, feature_name: str
-):
+) -> str:
     """Generate the fully qualified feature name for a feature.
 
     The fully qualified name is created by concatenating the project name, feature group name, feature group version and feature name.
+
+    Parameters:
+        feature_group: The feature group object the feature belongs to.
+        feature_name: The name of the feature.
+
+    Returns:
+        The fully qualified feature name.
     """
     return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
 
 class AsyncTask:
-    """Generic class to represent an async task.
-
-    Args:
-        func (Callable): The function to run asynchronously.
-        requires_connection_pool (bool): Whether the task requires a connection pool.
-        **kwargs: Key word arguments to be passed to the functions.
-
-    Properties:
-        result (Any): The result of the async task.
-        event (threading.Event): The event that will be set when the async task is finished.
-    """
+    """Generic class to represent an async task."""
 
     def __init__(
         self,
         task_function: Callable,
         task_args: tuple = (),
-        requires_connection_pool=None,
+        requires_connection_pool: bool = False,
         **kwargs,
     ):
+        """Construct an AsyncTask.
+
+        Parameters:
+            task_function: The function to run asynchronously.
+            task_args: Arguments to be passed to the function.
+            requires_connection_pool: Whether the task requires a connection pool.
+        """
         self.task_function = task_function
         self.task_args = task_args
         self.task_kwargs = kwargs
@@ -792,31 +890,31 @@ class AsyncTaskThread(threading.Thread):
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.
-
-    Parameters:
-        connection_pool_initializer (Callable): A function that initializes a connection pool.
-        connection_pool_params (Tuple): The parameters to pass to the connection pool initializer.
-        *thread_args: Arguments to be passed to the thread.
-        **thread_kwargs: Key word arguments to be passed to the thread.
-        event_loop (asyncio.AbstractEventLoop): The event loop used by the thread.
-        task_queue (queue.Queue[AsyncTask]): The queue used to submit tasks to the thread.
-        connection_pool: The connection pool used
     """
 
     def __init__(
         self,
-        connection_pool_initializer: Callable = None,
-        connection_test: Callable = None,
+        connection_pool_initializer: Callable | None = None,
+        connection_test: Callable | None = None,
         connection_pool_params: tuple = (),
         *thread_args,
         **thread_kwargs,
     ):
+        """Construct an AsyncTaskThread.
+
+        Parameters:
+            connection_pool_initializer: A function that initializes a connection pool.
+            connection_test: A function that tests the connection to mysql, it should raise an exception if the connection is not healthy.
+            connection_pool_params: The parameters to pass to the connection pool initializer.
+            *thread_args: Arguments to be passed to the thread.
+            **thread_kwargs: Key word arguments to be passed to the thread.
+        """
         super().__init__(*thread_args, **thread_kwargs)
         self._task_queue: queue.Queue[AsyncTask] = queue.Queue()
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
-        self._connection_pool_initializer: Callable = connection_pool_initializer
-        self._connection_test_function: Callable = connection_test
+        self._connection_pool_initializer: Callable | None = connection_pool_initializer
+        self._connection_test_function: Callable | None = connection_test
         self._connection_pool_params: tuple = connection_pool_params
         self._connection_pool = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
@@ -880,8 +978,15 @@ class AsyncTaskThread(threading.Thread):
         finally:
             self._event_loop.close()
 
-    def submit(self, task: AsyncTask):
-        """Submit a async task to the thread and block until the execution of the function is completed."""
+    def submit(self, task: AsyncTask) -> Any:
+        """Submit a async task to the thread and block until the execution of the function is completed.
+
+        Parameters:
+            task: The async task to be executed in the thread.
+
+        Returns:
+            The result of the async task.
+        """
         # Submit a task to the queue.
         self.task_queue.put(task)
         # Block the execution until the task is finished.

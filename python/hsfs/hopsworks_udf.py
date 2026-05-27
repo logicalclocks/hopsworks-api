@@ -19,14 +19,17 @@ import ast
 import copy
 import inspect
 import json
+import logging
 import re
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
@@ -37,7 +40,10 @@ from packaging.version import Version
 
 
 if TYPE_CHECKING:
+    import pandas as pd
     from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+
+_logger = logging.getLogger(__name__)
 
 
 class UDFExecutionMode(Enum):
@@ -71,6 +77,7 @@ class UDFKeyWords(Enum):
     CONTEXT = "context"
 
 
+@public
 def udf(
     return_type: list[type] | type,
     drop: str | list[str] | None = None,
@@ -116,6 +123,7 @@ def udf(
     return wrapper
 
 
+@public
 @dataclass
 class TransformationFeature:
     """Mapping of feature names to their corresponding statistics argument names in the code.
@@ -137,6 +145,7 @@ class TransformationFeature:
         }
 
 
+@public
 @typechecked
 class HopsworksUdf:
     """Meta data for user defined functions.
@@ -524,15 +533,15 @@ class HopsworksUdf:
         scope = __import__("__main__").__dict__.copy()
 
         # Adding variables required to be injected into the scope.
-        vaariable_to_inject = {
+        variables_to_inject = {
             UDFKeyWords.STATISTICS.value: self.transformation_statistics,
             UDFKeyWords.CONTEXT.value: self.transformation_context,
             "_output_col_names": self.output_column_names,
         }
-        vaariable_to_inject.update(**kwargs)
+        variables_to_inject.update(**kwargs)
 
         # Injecting variables that have a value into scope.
-        scope.update({k: v for k, v in vaariable_to_inject.items() if v is not None})
+        scope.update({k: v for k, v in variables_to_inject.items() if v is not None})
 
         return scope
 
@@ -543,6 +552,11 @@ class HopsworksUdf:
 
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a spark udf.
         The wrapper function would be available in the main scope of the program.
+
+        Parameters:
+            rename_outputs:
+                Whether to rename the output columns to the names specified in `output_column_names`.
+                This should be set to `True` when the udf is executed in spark engine.
 
         Returns:
             A wrapper function that renames outputs of the User defined function into specified output column names.
@@ -678,7 +692,6 @@ def renaming_wrapper(*args):
             _date_time_output_columns=date_time_output_columns
         )
 
-        # executing code
         exec(code, scope)
 
         # returning executed function object
@@ -726,14 +739,19 @@ def renaming_wrapper(*args):
                 new_feature_name, transformation_feature.statistic_argument_name
             )
             for transformation_feature, new_feature_name in zip(
-                self._transformation_features, features
+                self._transformation_features, features, strict=False
             )
         ]
         udf.dropped_features = updated_dropped_features
         return udf
 
+    @public
     def alias(self, *args: str):
-        """Set the names of the transformed features output by the UDF."""
+        """Set the names of the transformed features output by the UDF.
+
+        Parameters:
+            args: Name of the output features after transformation. Can be passed as individual string arguments or as a list of strings. The number of output feature names provided must match the number of features returned by the transformation function.
+        """
         if len(args) == 1 and isinstance(args[0], list):
             # If a single list is passed, use it directly
             output_col_names = args[0]
@@ -808,7 +826,7 @@ def renaming_wrapper(*args):
         - In the `python` engine: Always returns a python udf.
 
         Parameters:
-            inference: Specify if udf required for online inference.
+            online: Specify if udf required for online inference.
 
         Returns:
             Pandas UDF in the spark engine otherwise returns a python function for the UDF.
@@ -842,6 +860,197 @@ def renaming_wrapper(*args):
             f"Invalid execution mode '{self.execution_mode}' for UDF '{self.function_name}'."
         )
 
+    @public
+    def executor(
+        self,
+        statistics: TransformationStatistics
+        | list[FeatureDescriptiveStatistics]
+        | dict[str, dict[str, Any]] = None,
+        context: dict[str, Any] = None,
+        online: bool = False,
+    ) -> Any:
+        """Create an executable transformation with optional statistics and context for unit testing.
+
+        This method returns a callable object that can execute the UDF with the specified
+        configuration. It is designed for unit testing transformation functions locally.
+
+        The executor allows you to:
+        - Inject mock statistics for testing model-dependent transformations
+        - Provide transformation context for testing transformation functions using
+        - Switch between online (single-value) and offline (batch) execution modes
+
+        !!! example "Testing UDF with pandas execution mode"
+            ```python
+            @udf(return_type=float, mode="pandas")
+            def add_one(value):
+                return value + 1
+
+            # Create executor and test
+            executor = add_one.executor()
+            result = executor.execute(pd.Series([1.0, 2.0, 3.0]))
+            assert result.tolist() == [2.0, 3.0, 4.0]
+            ```
+
+        !!! example "Testing UDF with python execution mode"
+            ```python
+            @udf(return_type=float, mode="python")
+            def add_one(value):
+                return value + 1
+
+            # Create executor and test
+            executor = add_one.executor()
+            result = executor.execute(1.0)
+            assert result == 2.0
+            ```
+
+        !!! example "Testing UDF with default execution mode"
+            ```python
+            # In the default execution mode, Hopsworks executes the transformation function as pandas UDF for batch processing and as python function for online processing to get optimal.
+            # Hence, the function should should be able to handle both online and offline execution modes and unit-test musts be written for both these use-cases.
+            # In the offline mode, Hopsworks would pass a pandas Series to the function.
+            # In the online mode, Hopsworks would pass a single value to the function.
+
+            @udf(return_type=float)
+            def double_value(value):
+                return value * 2
+
+            # Offline mode (batch processing with pandas Series)
+            offline_executor = double_value.executor(online=False)
+            batch_result = offline_executor.execute(pd.Series([1.0, 2.0, 3.0]))
+
+            # Online mode (single value processing)
+            online_executor = double_value.executor(online=True)
+            single_result = online_executor.execute(5.0)
+            assert single_result == 10.0
+            ```
+
+        !!! example "Unit test with mocked statistics"
+            ```python
+            from hsfs.transformation_statistics import TransformationStatistics
+
+            @udf(return_type=float)
+            def normalize(value, statistics=TransformationStatistics("value")):
+                return (value - statistics.value.mean) / statistics.value.std_dev
+
+            # Test with mock statistics
+            executor = normalize.executor(statistics={"value": {"mean": 100.0, "std_dev": 25.0}})
+            result = executor.execute(pd.Series([100.0, 125.0, 150.0]))
+            assert result.tolist() == [0.0, 1.0, 2.0]
+            ```
+
+
+        !!! example "Unit test with transformation context"
+            ```python
+            @udf(return_type=float)
+            def apply_discount(price, context):
+                return price * (1 - context["discount_rate"])
+
+            executor = apply_discount.executor(context={"discount_rate": 0.1})
+            result = executor.execute(pd.Series([100.0, 200.0]))
+            assert result.tolist() == [90.0, 180.0]
+            ```
+
+        !!! example "Testing online vs offline execution modes"
+            ```python
+            # For transformation functions using the default execution mode `default`.
+            # The function should should be able to handle both online and offline execution modes.
+            # In the offline mode, Hopsworks would pass a pandas Series to the function.
+            # In the online mode, Hopsworks would pass a single value to the function.
+            @udf(return_type=float, mode="default")
+            def double_value(value):
+                return value * 2
+
+            # Offline mode (batch processing with pandas Series)
+            offline_executor = double_value.executor(online=False)
+            batch_result = offline_executor.execute(pd.Series([1.0, 2.0, 3.0]))
+
+            # Online mode (single value processing)
+            online_executor = double_value.executor(online=True)
+            single_result = online_executor.execute(5.0)
+            assert single_result == 10.0
+            ```
+
+        Parameters:
+            statistics: Statistics for model-dependent transformations.
+                Can be provided as:
+
+                - `TransformationStatistics`: Pre-built statistics object
+                - `dict[str, dict[str, Any]]`: Dictionary mapping feature names to their statistics (e.g., `{"amount": {"mean": 100.0, "std_dev": 25.0}}`)
+                - `list[FeatureDescriptiveStatistics]`: List of statistics objects from Hopsworks
+            context: A dictionary mapping variable names to values that provide contextual
+                information to the transformation function at runtime.
+                The keys must match parameter names defined in the UDF.
+            online: Whether to execute in online mode (single values) or offline mode (batch/vectorized).
+                Only applicable when the UDF uses `mode="default"`.
+
+        Returns:
+            A callable object with an `execute(*args)` method to run the transformation.
+        """
+        # Fetch existing stateful information in the UDF.
+        udf = copy.deepcopy(self)
+
+        udf.transformation_context = context if context else udf.transformation_context
+        if statistics:
+            udf.transformation_statistics = statistics
+        udf.output_column_names = (
+            udf.output_column_names
+            if udf.output_column_names
+            else [f"col_{i}" for i in range(len(udf.return_types))]
+        )
+
+        executable = udf.get_udf(online=online)
+
+        executable.execute = executable.__call__
+
+        return executable
+
+    @public
+    def execute(
+        self, *args: Any
+    ) -> (
+        pd.Series
+        | pd.DataFrame
+        | int
+        | float
+        | str
+        | bool
+        | datetime
+        | time
+        | date
+        | tuple[int | float | str | bool | datetime | time | date, ...]
+    ):
+        """Execute the UDF directly with the provided arguments.
+
+        This is a convenience method for quick testing of simple UDFs that don't require
+        statistics or transformation context. It executes the UDF in offline mode (batch processing).
+
+        !!! example "Quick UDF testing"
+            ```python
+            @udf(return_type=float)
+            def add_one(value):
+                return value + 1
+
+            # Direct execution for simple tests
+            result = add_one.execute(pd.Series([1.0, 2.0, 3.0]))
+            assert result.tolist() == [2.0, 3.0, 4.0]
+            ```
+
+        !!! note
+            For UDFs that require statistics or transformation context or need to be executed in online mode, use [`executor()`][hsfs.hopsworks_udf.HopsworksUdf.executor] instead:
+            ```python
+            result = my_udf.executor(statistics=stats, context=ctx).execute(data)
+            ```
+
+        Parameters:
+            *args:
+                Input arguments matching the UDF's parameter signature.
+                For batch processing, pass pandas Series or DataFrames.
+
+        Returns:
+            The transformed values.
+        """
+        return self.executor().execute(*args)
+
     def to_dict(self) -> dict[str, Any]:
         """Convert class into a dictionary.
 
@@ -869,6 +1078,7 @@ def renaming_wrapper(*args):
             ),  # This check is added for backward compatibility with older versions of Hopsworks. The "outputColumnNames" field was added in Hopsworks 4.1.6 and versions below do not support unknown fields in the backend.
         }
 
+    @public
     def json(self) -> str:
         """Convert class into its json serialized form.
 
@@ -877,6 +1087,7 @@ def renaming_wrapper(*args):
         """
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @classmethod
     def from_response_json(
         cls: HopsworksUdf, json_dict: dict[str, Any]
@@ -983,6 +1194,7 @@ def renaming_wrapper(*args):
         # Set transformation features if already set.
         return hopsworks_udf
 
+    @public
     @property
     def return_types(self) -> list[str]:
         """Get the output types of the UDF."""
@@ -991,16 +1203,19 @@ def renaming_wrapper(*args):
             self.update_return_type_one_hot()
         return self._return_types
 
+    @public
     @property
     def function_name(self) -> str:
         """Get the function name of the UDF."""
         return self._function_name
 
+    @public
     @property
     def statistics_required(self) -> bool:
         """Get if statistics for any feature is required by the UDF."""
         return bool(self.statistics_features)
 
+    @public
     @property
     def transformation_statistics(
         self,
@@ -1008,6 +1223,7 @@ def renaming_wrapper(*args):
         """Feature statistics required for the defined UDF."""
         return self._statistics
 
+    @public
     @property
     def output_column_names(self) -> list[str]:
         """Output columns names of the transformation function."""
@@ -1018,6 +1234,7 @@ def renaming_wrapper(*args):
             ]
         return self._output_column_names
 
+    @public
     @property
     def transformation_features(self) -> list[str]:
         """List of feature names to be used in the User Defined Function."""
@@ -1032,6 +1249,7 @@ def renaming_wrapper(*args):
             for transformation_feature in self._transformation_features
         ]
 
+    @public
     @property
     def unprefixed_transformation_features(self) -> list[str]:
         """List of feature name used in the transformation function without the feature name prefix."""
@@ -1040,11 +1258,13 @@ def renaming_wrapper(*args):
             for transformation_feature in self._transformation_features
         ]
 
+    @public
     @property
     def feature_name_prefix(self) -> str | None:
         """The feature name prefix that needs to be added to the feature names."""
         return self._feature_name_prefix
 
+    @public
     @property
     def statistics_features(self) -> list[str]:
         """List of feature names that require statistics."""
@@ -1071,6 +1291,7 @@ def renaming_wrapper(*args):
             if transformation_feature.statistic_argument_name is not None
         ]
 
+    @public
     @property
     def dropped_features(self) -> list[str]:
         """List of features that will be dropped after the UDF is applied."""
@@ -1081,10 +1302,12 @@ def renaming_wrapper(*args):
             ]
         return self._dropped_features
 
+    @public
     @property
     def execution_mode(self) -> UDFExecutionMode:
         return self._execution_mode
 
+    @public
     @property
     def transformation_context(self) -> dict[str, Any]:
         """Dictionary that contains the context variables required for the UDF.
@@ -1109,14 +1332,27 @@ def renaming_wrapper(*args):
 
     @transformation_statistics.setter
     def transformation_statistics(
-        self, statistics: list[FeatureDescriptiveStatistics]
+        self,
+        statistics: list[FeatureDescriptiveStatistics]
+        | dict[str, dict[str, Any]]
+        | TransformationStatistics,
     ) -> None:
-        self._statistics = TransformationStatistics(*self._statistics_argument_names)
-        for stat in statistics:
-            if stat.feature_name in self._statistics_argument_mapping:
-                self._statistics.set_statistics(
-                    self._statistics_argument_mapping[stat.feature_name], stat.to_dict()
-                )
+        if isinstance(statistics, TransformationStatistics):
+            self._statistics = statistics
+        elif isinstance(statistics, dict):
+            self._statistics = TransformationStatistics(*statistics.keys())
+            for key, value in statistics.items():
+                self._statistics.set_statistics(key, {"feature_name": key, **value})
+        else:
+            self._statistics = TransformationStatistics(
+                *self._statistics_argument_names
+            )
+            for stat in statistics:
+                if stat.feature_name in self._statistics_argument_mapping:
+                    self._statistics.set_statistics(
+                        self._statistics_argument_mapping[stat.feature_name],
+                        stat.to_dict(),
+                    )
 
     @output_column_names.setter
     def output_column_names(self, output_col_names: str | list[str]) -> None:

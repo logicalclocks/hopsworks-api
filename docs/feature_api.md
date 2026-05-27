@@ -1,3 +1,0 @@
-# Feature
-
-::: hsfs.feature.Feature

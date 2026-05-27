@@ -36,6 +36,21 @@ from hsml.engine import local_engine
 from tqdm.auto import tqdm
 
 
+def _render_chunk(chunk) -> str:
+    r"""Render a single log chunk's content with a trailing newline.
+
+    Adding a newline here (rather than relying on the upstream pipeline) lets
+    ``read_logs(...)`` produce output you can pipe straight to ``grep`` or
+    ``awk`` without each block getting glued to the next one. We only add the
+    separator when content does not already end in ``\n`` so we never
+    double-space lines that already carry their own terminator.
+    """
+    content = chunk.content or ""
+    if content and not content.endswith("\n"):
+        content += "\n"
+    return content
+
+
 class ServingEngine:
     START_STEPS = [
         PREDICTOR_STATE.CONDITION_TYPE_STOPPED,
@@ -145,7 +160,12 @@ class ServingEngine:
                 raise re
 
         if state.status == PREDICTOR_STATE.STATUS_RUNNING:
-            print("Start making predictions by using `.predict()`")
+            if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
+                print("Start prompting using any OpenAI API-compatible client.")
+            elif not deployment_instance.has_model:
+                print("Start sending requests with your HTTP client of preference.")
+            else:
+                print("Start making predictions by using `.predict()`")
 
     def stop(self, deployment_instance, await_status: int) -> bool:
         (done, state) = self._check_status(
@@ -441,7 +461,7 @@ class ServingEngine:
                     )
                     raise_err = False
                 else:  # otherwise, raise an exception
-                    print(", but it is serving a different model version.")
+                    print(msg + ", but it is serving a different model version.")
                     print("Please, choose a different name.")
 
             if raise_err:
@@ -561,6 +581,184 @@ class ServingEngine:
         )
 
         return self._serving_api.get_logs(deployment_instance, component, tail)
+
+    # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
+    # These never print and never short-circuit on deployment state. The
+    # OpenSearch source returns logs even when the deployment is stopped, so
+    # the legacy "deployment is stopping → return None" guard would just hide
+    # data that is in fact retrievable.
+
+    def read_logs(
+        self,
+        deployment_instance,
+        component: str = "predictor",
+        tail: int = 100,
+        source: str = "opensearch",
+        since: str | None = None,
+        until: str | None = None,
+        pod: str | None = None,
+    ) -> str:
+        """Return deployment logs as a single plain-text string.
+
+        Programmatic counterpart to :py:meth:`get_logs`. Never prints; the
+        caller decides what to do with the returned value.
+
+        Parameters:
+            deployment_instance: The deployment whose logs to read.
+            component: Which deployment component to read (``predictor``, ``transformer``).
+            tail: Maximum number of recent log entries to fetch.
+            source: Log source (``opensearch`` or ``kubernetes``).
+            since: ISO-8601 lower bound for log timestamps, if any.
+            until: ISO-8601 upper bound for log timestamps, if any.
+            pod: Specific pod name to read logs for, if any.
+
+        Returns:
+            All matching log chunks concatenated into a single string.
+        """
+        chunks = self._serving_api.get_logs(
+            deployment_instance,
+            component,
+            tail,
+            source=source,
+            since=since,
+            until=until,
+            pod=pod,
+        )
+        return self._format_log_chunks(chunks or [])
+
+    def tail_logs(
+        self,
+        deployment_instance,
+        component: str = "predictor",
+        interval: float = 2.0,
+        source: str = "opensearch",
+        since: str | None = "now",
+        timeout: float | None = None,
+        stop_on_status=None,
+    ):
+        """Yield only newly observed log chunks as plain text.
+
+        v1 streaming is client-side polling: each tick calls
+        :py:meth:`read_logs` with a moving ``since`` cursor and yields the
+        portion not already seen. Deduplication is by (timestamp, doc_id)
+        on the OpenSearch path and by content hash for the Kubernetes path
+        (which has neither field). The generator stops when:
+
+        - ``timeout`` (seconds, optional) elapses,
+        - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
+        - the caller breaks out of the loop / closes the generator.
+
+        Parameters:
+            deployment_instance: The deployment whose logs to tail.
+            component: Which deployment component to tail (``predictor``, ``transformer``).
+            interval: Seconds between successive polls.
+            source: Log source (``opensearch`` or ``kubernetes``).
+            since: ISO-8601 starting cursor, or ``"now"`` for new-only.
+            timeout: Stop after this many seconds, if set.
+            stop_on_status: Stop when the deployment status matches this value.
+
+        Yields:
+            Log text observed since the previous yield.
+        """
+        # OpenSearch documents are uniquely identified by ``doc_id`` and
+        # ordered by ``timestamp``; this state suffices to dedupe across
+        # successive overlapping windows.
+        seen_doc_ids: set[str] = set()
+        last_timestamp: str | None = since if (since and since != "now") else None
+        # Kubernetes path has no doc id / timestamp, so dedupe by content
+        # hash instead. Bound the set so a chatty deployment doesn't keep
+        # the dedupe state growing forever.
+        seen_hashes: set[int] = set()
+        seen_hashes_cap = 4096
+
+        # ``since="now"`` is a UX shorthand: start streaming brand-new lines
+        # only. Resolved here on the first call to a real ISO-8601 timestamp
+        # so subsequent polls are time-bounded the same way.
+        if since == "now":
+            from datetime import datetime, timezone
+
+            last_timestamp = datetime.now(tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S.%fZ"
+            )
+
+        deadline = (time.monotonic() + timeout) if timeout else None
+
+        while True:
+            chunks = (
+                self._serving_api.get_logs(
+                    deployment_instance,
+                    component,
+                    # Bounded per-poll fetch. Larger values just mean more work
+                    # for the dedupe pass; the SDK still yields only what's new.
+                    tail=200,
+                    source=source,
+                    since=last_timestamp,
+                    until=None,
+                    pod=None,
+                )
+                or []
+            )
+
+            new_chunks = []
+            for chunk in chunks:
+                if chunk.doc_id is not None:
+                    if chunk.doc_id in seen_doc_ids:
+                        continue
+                    seen_doc_ids.add(chunk.doc_id)
+                else:
+                    key = hash((chunk.instance_name, chunk.content))
+                    if key in seen_hashes:
+                        continue
+                    if len(seen_hashes) >= seen_hashes_cap:
+                        # Drop the oldest half — set has no ordering, so we
+                        # just clear and start fresh; worst case we re-yield
+                        # at most ``seen_hashes_cap / 2`` already-seen lines
+                        # once before steady state is restored.
+                        seen_hashes = set()
+                    seen_hashes.add(key)
+                new_chunks.append(chunk)
+                if chunk.timestamp is not None and (
+                    last_timestamp is None or chunk.timestamp > last_timestamp
+                ):
+                    last_timestamp = chunk.timestamp
+
+            if new_chunks:
+                yield self._format_log_chunks(new_chunks)
+
+            if stop_on_status is not None:
+                state = self.get_state(deployment_instance)
+                if state is not None and state.status == stop_on_status:
+                    return
+
+            if deadline is not None and time.monotonic() >= deadline:
+                return
+
+            time.sleep(interval)
+
+    @staticmethod
+    def _format_log_chunks(chunks) -> str:
+        r"""Merge a list of ``DeployableComponentLogs`` into one plain string.
+
+        When more than one distinct ``instance_name`` is present, prefix each
+        block with ``==> <instance> <==\n`` (tail-style). Single-instance
+        responses join contents directly so ``read_logs(...)`` round-trips
+        cleanly through grep/awk.
+        """
+        if not chunks:
+            return ""
+        instance_names = {c.instance_name for c in chunks if c.instance_name}
+        if len(instance_names) <= 1:
+            return "".join(_render_chunk(c) for c in chunks)
+        # Group chronologically per instance, then concatenate.
+        by_instance: dict[str, list] = {}
+        for c in chunks:
+            by_instance.setdefault(c.instance_name or "", []).append(c)
+        parts = []
+        for instance, items in by_instance.items():
+            parts.append(f"==> {instance} <==\n")
+            for c in items:
+                parts.append(_render_chunk(c))
+        return "".join(parts)
 
     # Model inference
 
@@ -751,7 +949,7 @@ class ServingEngine:
                         data = {"instances": [inputs]}
                         break
         else:  # gRPC protocol
-            if isinstance(inputs, dict):  # Dict
+            if isinstance(inputs, dict):  # dict
                 data = InferInput(
                     name=inputs["name"],
                     shape=inputs["shape"],
@@ -760,10 +958,10 @@ class ServingEngine:
                     parameters=(inputs.get("parameters", None)),
                 )
                 if not recursive_call:
-                    # if inputs is of type Dict, return a singleton
+                    # if inputs is of type dict, return a singleton
                     data = [data]
 
-            else:  # List[Dict]
+            else:  # list[dict]
                 data = inputs
                 for index, inputs_item in enumerate(inputs):
                     data[index] = self._parse_inference_inputs(

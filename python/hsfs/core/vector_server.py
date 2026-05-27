@@ -25,7 +25,6 @@ from io import BytesIO
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Literal,
 )
 
@@ -67,6 +66,8 @@ if HAS_POLARS:
     import polars as pl
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsfs import (
         feature_view,
         training_dataset,
@@ -149,9 +150,6 @@ class VectorServer:
         self._serving_keys = serving_keys or []
         self._required_serving_keys = []
 
-        self._transformation_function_engine = (
-            tf_engine_mod.TransformationFunctionEngine(feature_store_id)
-        )
         self._model_dependent_transformation_functions: list[
             transformation_function.TransformationFunction
         ] = []
@@ -174,6 +172,7 @@ class VectorServer:
         self.__all_feature_groups_online: bool | None = None
         self._feature_view_logging_enabled: bool = False
         self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
+        self._fetch_inference_helpers_for_transformations: bool = False
 
     def init_serving(
         self,
@@ -294,6 +293,33 @@ class VectorServer:
             if feature.on_demand_transformation_function
         ]
 
+        self._fetch_inference_helpers_for_transformations = (
+            self._requires_inference_helpers_for_transformations()
+        )
+
+    def _requires_inference_helpers_for_transformations(self) -> bool:
+        """Check if any on-demand transformation requires inference helper columns.
+
+        Returns True if on-demand transformation functions exist and any of them
+        use features that are marked as inference helper columns.
+        """
+        if (
+            not self._on_demand_transformation_functions
+            or not self._inference_helper_col_name
+        ):
+            return False
+
+        inference_helper_set = set(self._inference_helper_col_name)
+
+        for tf in self._on_demand_transformation_functions:
+            prefix = tf.hopsworks_udf.feature_name_prefix or ""
+            for feature in tf.hopsworks_udf.unprefixed_transformation_features:
+                # Check both prefixed and unprefixed names
+                prefixed = prefix + feature
+                if prefixed in inference_helper_set or feature in inference_helper_set:
+                    return True
+        return False
+
     def setup_sql_client(
         self,
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
@@ -313,6 +339,7 @@ class VectorServer:
             entity,
             inference_helper_columns,
             with_logging_meta_data=self._feature_view_logging_enabled,
+            feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
         )
         self.sql_client.init_async_mysql_connection(options=options)
 
@@ -345,7 +372,7 @@ class VectorServer:
         """Check if any request parameters required for computing on-demand features are missing.
 
         Parameters:
-            feature_vector: `Dict[str, Any]`. The feature vector used to compute on-demand features.
+            features: The feature vector used to compute on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
         """
         request_parameters = request_parameters if request_parameters else {}
@@ -420,7 +447,25 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | dict[str, Any]:
-        """Assembles serving vector from online feature store."""
+        """Assemble a single serving vector from the online feature store.
+
+        Parameters:
+            entry: Primary key values used to look up the feature vector.
+            return_type: The format of the returned feature vector.
+            passed_features: Feature values to substitute instead of fetching from the store.
+            vector_db_features: Feature values fetched from a vector database.
+            allow_missing: Whether to allow missing feature values in the result.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            request_parameters: Parameters required by on-demand transformation functions.
+            transformation_context: Contextual objects passed to transformation functions.
+            logging_data: Whether to include inference helper columns for logging.
+
+        Returns:
+            The assembled feature vector in the requested format.
+        """
         online_client_choice = self.which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
@@ -464,7 +509,9 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online SQL client")
             serving_vector = self.sql_client.get_single_feature_vector(
-                rondb_entry, logging_data=logging_data
+                rondb_entry,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
             )
 
         self._raise_transformation_warnings(
@@ -525,7 +572,25 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
-        """Assembles serving vector from online feature store."""
+        """Assemble a batch of serving vectors from the online feature store.
+
+        Parameters:
+            entries: List of primary key value dicts used to look up each feature vector.
+            return_type: The format of the returned feature vectors.
+            passed_features: Feature values to substitute instead of fetching from the store.
+            vector_db_features: Feature values fetched from a vector database.
+            request_parameters: Parameters required by on-demand transformation functions.
+            allow_missing: Whether to allow missing feature values in the result.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            transformation_context: Contextual objects passed to transformation functions.
+            logging_data: Whether to include inference helper columns for logging.
+
+        Returns:
+            The assembled feature vectors in the requested format.
+        """
         if passed_features is None:
             passed_features = []
         # Assertions on passed_features and vector_db_features
@@ -621,7 +686,9 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vectors through SQL client")
             batch_results, _ = self.sql_client.get_batch_feature_vectors(
-                rondb_entries, logging_data=logging_data
+                rondb_entries,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -728,7 +795,23 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_meta_data: LoggingMetaData = None,
     ) -> list[Any] | None:
-        """Assembles serving vector from online feature store."""
+        """Assemble a single serving vector from fetched and passed feature values.
+
+        Parameters:
+            result_dict: Feature values fetched from the online store.
+            passed_values: Feature values passed directly by the caller.
+            vector_db_result: Feature values fetched from a vector database.
+            allow_missing: Whether to allow missing feature values in the result.
+            client: Which online store client was used ("rest" or "sql").
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            request_parameters: Parameters required by on-demand transformation functions.
+            transformation_context: Contextual objects passed to transformation functions.
+            logging_meta_data: Metadata object for logging, if logging is enabled.
+
+        Returns:
+            The assembled feature vector as a list, or None if the result was null.
+        """
         # Errors in batch requests are returned as None values
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling serving vector: %s", result_dict)
@@ -812,9 +895,8 @@ class VectorServer:
         """Validate if an feature-vector provided contain all required features.
 
         Parameters:
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
-            on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
-
+            feature_vectors: The feature vectors to be converted.
+            on_demand_features: Specify if on-demand features provided in the input feature vector.
         """
         required_features = (
             set(self._untransformed_feature_vector_col_name)
@@ -857,11 +939,11 @@ class VectorServer:
         """Function that converts an input feature vector into a list of dictionaries.
 
         Parameters:
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
-            on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
+            feature_vectors: The feature vectors to be converted.
+            on_demand_features: Specify if on-demand features provided in the input feature vector.
 
         Returns:
-            `Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]`: A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
+            A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
 
         """
         if isinstance(feature_vectors, pd.DataFrame):
@@ -907,13 +989,13 @@ class VectorServer:
         """Applies model dependent transformation on the provided feature vector.
 
         Parameters:
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be transformed using attached model-dependent transformations.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+            feature_vectors: The feature vectors to be transformed using attached model-dependent transformations.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector.
+            The transformed feature vector.
         """
         if not self._model_dependent_transformation_functions:
             warnings.warn(
@@ -932,8 +1014,12 @@ class VectorServer:
 
         transformed_feature_vectors = []
         for feature_vector in feature_vectors:
-            transformed_feature_vector = self.apply_model_dependent_transformations(
-                feature_vector, transformation_context=transformation_context
+            transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                data=feature_vector,
+                online=True,
+                transformation_context=transformation_context,
+                transformation_functions=self.model_dependent_transformation_functions,
+                expected_features=set(self.transformed_feature_vector_col_name),
             )
             transformed_feature_vectors.append(
                 [
@@ -966,18 +1052,19 @@ class VectorServer:
         request_parameters: list[dict[str, Any]] | dict[str, Any] = None,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
-    ):
+    ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Function computes on-demand features present in the feature view.
 
         Parameters:
-            feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
+            feature_vectors: The feature vector(s) to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
+                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the `feature_vector`, the value from `request_parameters` is used.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            return_type: Defaults to the same type as the input feature vector.
 
         Returns:
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
+            The feature vector that contains all on-demand features in the feature view.
         """
         if not self._on_demand_transformation_functions:
             warnings.warn(
@@ -1008,12 +1095,15 @@ class VectorServer:
         )
         on_demand_feature_vectors = []
         for feature_vector, request_parameter in zip(
-            feature_vectors, request_parameters
+            feature_vectors, request_parameters, strict=False
         ):
-            on_demand_feature_vector = self.apply_on_demand_transformations(
-                feature_vector,
-                request_parameter,
+            on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                data=feature_vector,
+                online=True,
                 transformation_context=transformation_context,
+                request_parameters=request_parameter,
+                transformation_functions=self.on_demand_transformation_functions,
+                expected_features=set(self._on_demand_feature_vector_col_name),
             )
             on_demand_feature_vectors.append(
                 [
@@ -1043,15 +1133,19 @@ class VectorServer:
         """Function that accepts a feature vectors as a list and returns the untransformed features as a dict that maps feature names to their values.
 
         Parameters:
-            features : `List[Any]`. List of feature vectors.
-            on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
+            features: List of feature vectors.
+            on_demand_features: Specify if on-demand features provided in the input feature vector.
 
         Returns:
-            `Dict[str, Any]` : Dictionary mapping features name to values.
+            Dictionary mapping features name to values.
         """
         if on_demand_features:
-            return dict(zip(self._on_demand_feature_vector_col_name, features))
-        return dict(zip(self._untransformed_feature_vector_col_name, features))
+            return dict(
+                zip(self._on_demand_feature_vector_col_name, features, strict=False)
+            )
+        return dict(
+            zip(self._untransformed_feature_vector_col_name, features, strict=False)
+        )
 
     def handle_feature_vector_return_type(
         self,
@@ -1137,7 +1231,17 @@ class VectorServer:
         force_rest_client: bool,
         force_sql_client: bool,
     ) -> pd.DataFrame | pl.DataFrame | dict[str, Any]:
-        """Assembles serving vector from online feature store."""
+        """Retrieve inference helper values for a single entry.
+
+        Parameters:
+            entry: Primary key values used to look up the inference helper vector.
+            return_type: The format of the returned inference helpers.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+
+        Returns:
+            The inference helper values in the requested format.
+        """
         default_client = self.which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
         )
@@ -1175,7 +1279,17 @@ class VectorServer:
         force_rest_client: bool,
         force_sql_client: bool,
     ) -> pd.DataFrame | pl.DataFrame | list[dict[str, Any]]:
-        """Assembles serving vector from online feature store."""
+        """Retrieve inference helper values for a batch of entries.
+
+        Parameters:
+            entries: List of primary key value dicts used to look up each inference helper vector.
+            return_type: The format of the returned inference helpers.
+            force_rest_client: Force use of the REST client.
+            force_sql_client: Force use of the SQL client.
+
+        Returns:
+            The inference helper values in the requested format.
+        """
         default_client = self.which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
         )
@@ -1273,95 +1387,6 @@ class VectorServer:
             self.default_client = self.DEFAULT_SQL_CLIENT
             self._init_sql_client = True
 
-    def apply_on_demand_transformations(
-        self,
-        rows: dict | pd.DataFrame,
-        request_parameter: dict[str, Any],
-        transformation_context: dict[str, Any] = None,
-    ) -> dict:
-        if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug("Applying On-Demand transformation functions.")
-        for tf in self._on_demand_transformation_functions:
-            # Setting transformation function context variables.
-            tf.hopsworks_udf.transformation_context = transformation_context
-
-            # Check if feature provided as request parameter in prefixed or unprefixed format if not get it from retrieved feature vector.
-            features = []
-            for (
-                unprefixed_feature
-            ) in tf.hopsworks_udf.unprefixed_transformation_features:
-                # Check if the on-demand feature has a prefix. If it does, compute the prefixed feature name.
-                if tf.hopsworks_udf.feature_name_prefix:
-                    prefixed_feature = (
-                        tf.hopsworks_udf.feature_name_prefix + unprefixed_feature
-                    )
-                else:
-                    prefixed_feature = unprefixed_feature
-
-                # Check if the prefixed feature name is provided as a request parameter, if so then use it. Otherwise if the unprefixed feature name is provided as a request parameter and use it. Else fetch the feature from the retrieved feature vector
-                feature_value = request_parameter.get(
-                    prefixed_feature,
-                    request_parameter.get(
-                        unprefixed_feature, rows.get(prefixed_feature)
-                    ),
-                )
-
-                if (
-                    tf.hopsworks_udf.execution_mode.get_current_execution_mode(
-                        online=True
-                    )
-                    == UDFExecutionMode.PANDAS
-                ):
-                    features.append(
-                        pd.Series(feature_value)
-                        if (not isinstance(feature_value, pd.Series))
-                        else feature_value
-                    )
-                else:
-                    # No need to cast to pandas Series for Python UDF's
-                    features.append(feature_value)
-
-            on_demand_feature = tf.hopsworks_udf.get_udf(online=True)(
-                *features
-            )  # Get only python compatible UDF irrespective of engine
-
-            rows.update(self.parse_transformed_result(on_demand_feature, tf))
-        return rows
-
-    def apply_model_dependent_transformations(
-        self,
-        rows: dict | pd.DataFrame,
-        transformation_context: dict[str, Any] = None,
-    ):
-        if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug("Applying Model-Dependent transformation functions.")
-        for tf in self.model_dependent_transformation_functions:
-            # Setting transformation function context variables.
-            tf.hopsworks_udf.transformation_context = transformation_context
-            if (
-                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
-                == UDFExecutionMode.PANDAS
-            ):
-                features = [
-                    pd.Series(rows[feature])
-                    if (not isinstance(rows[feature], pd.Series))
-                    else rows[feature]
-                    for feature in tf.hopsworks_udf.transformation_features
-                ]
-            else:
-                # No need to cast to pandas Series for Python UDF's
-                # print("executing as python udfs")
-                features = [
-                    rows[feature]
-                    for feature in tf.hopsworks_udf.transformation_features
-                ]
-            transformed_result = tf.hopsworks_udf.get_udf(online=True)(
-                *features
-            )  # Get only python compatible UDF irrespective of engine
-
-            rows.update(self.parse_transformed_result(transformed_result, tf))
-        return rows
-
     def parse_transformed_result(self, transformed_results, transformation_function):
         rows = {}
         if (
@@ -1389,8 +1414,8 @@ class VectorServer:
         """Function that raises warnings based on the values of `transform` and `on_demand_features` parameters to let users know about the behavior of the function.
 
         Parameters:
-            transform : `bool`. Specify if model-dependent transformations should be applied.
-            on_demand_features : `bool`. Specify if on-demand features should be computed.
+            transform: Specify if model-dependent transformations should be applied.
+            on_demand_features: Specify if on-demand features should be computed.
         """
         warn_on_demand_features = (
             not on_demand_features and self.on_demand_transformation_functions
@@ -1429,11 +1454,15 @@ class VectorServer:
         on_demand_features: bool = True,
         logging_meta_data: LoggingMetaData = None,
     ):
-        """Function that applies both on-demand and model dependent transformation to the input dictonary.
+        """Apply both on-demand and model-dependent transformations to the input dictionary.
 
-        Returns:
-            feature_vector: The untransformed feature vector with untransformed features.
-            encoded_feature_dict: The transformed feature vector with transformed features.
+        Parameters:
+            row_dict: The feature dictionary or dataframe to transform.
+            request_parameter: Parameters required by on-demand transformation functions.
+            transformation_context: Contextual objects passed to transformation functions.
+            transform: Whether to apply model-dependent transformations.
+            on_demand_features: Whether to compute on-demand features.
+            logging_meta_data: Metadata object for logging, if logging is enabled.
         """
         feature_dict = row_dict
         encoded_feature_dict = None
@@ -1445,8 +1474,13 @@ class VectorServer:
             )
 
             # Apply on-demand transformations
-            feature_dict = self.apply_on_demand_transformations(
-                row_dict, request_parameter, transformation_context
+            feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                data=feature_dict,
+                online=True,
+                transformation_context=transformation_context,
+                request_parameters=request_parameter,
+                transformation_functions=self.on_demand_transformation_functions,
+                expected_features=set(self._on_demand_feature_vector_col_name),
             )
             if logging_meta_data:
                 logging_meta_data.untransformed_features.append(
@@ -1458,8 +1492,12 @@ class VectorServer:
 
         if transform or logging_meta_data:
             # Apply model dependent transformations
-            encoded_feature_dict = self.apply_model_dependent_transformations(
-                feature_dict, transformation_context
+            encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+                data=feature_dict,
+                online=True,
+                transformation_context=transformation_context,
+                transformation_functions=self.model_dependent_transformation_functions,
+                expected_features=set(self.transformed_feature_vector_col_name),
             )
             if logging_meta_data:
                 logging_meta_data.transformed_features.append(
@@ -1495,6 +1533,9 @@ class VectorServer:
         Values already provided as native Python objects (e.g., via passed_features or REST) are returned unchanged.
         Embedding vectors are already deserialized, but complex features stored in OpenSearch must be deserialized here.
         Timestamp conversion is handled separately.
+
+        Returns:
+            A dictionary mapping feature names to their decoder callables.
         """
         if not HAS_AVRO:
             raise ModuleNotFoundError(avro_not_installed_message)
@@ -1508,7 +1549,8 @@ class VectorServer:
                 )
             )
             for f in self._features
-            if f.is_complex() and f.feature_group.id not in self._skip_feature_decoding_fg_ids
+            if f.is_complex()
+            and f.feature_group.id not in self._skip_feature_decoding_fg_ids
         }
 
         if len(complex_feature_schemas) == 0:
@@ -1542,18 +1584,20 @@ class VectorServer:
             _logger.debug("Fast Avro not found, using avro for deserialization.")
         return {
             f_name: (
-                lambda feature_value, avro_schema=schema: avro_schema.read(
-                    BinaryDecoder(
-                        BytesIO(
-                            feature_value
-                            if isinstance(feature_value, bytes)
-                            else b64decode(feature_value)
+                lambda feature_value, avro_schema=schema: (
+                    avro_schema.read(
+                        BinaryDecoder(
+                            BytesIO(
+                                feature_value
+                                if isinstance(feature_value, bytes)
+                                else b64decode(feature_value)
+                            )
                         )
                     )
+                    # embedded features are deserialized already but not complex features stored in Opensearch
+                    if (isinstance(feature_value, (str, bytes)))
+                    else feature_value
                 )
-                # embedded features are deserialized already but not complex features stored in Opensearch
-                if (isinstance(feature_value, (str, bytes)))
-                else feature_value
             )
             for (f_name, schema) in complex_feature_schemas.items()
         }
@@ -1565,6 +1609,9 @@ class VectorServer:
 
         Re-using the current logic from the vector server means that we currently iterate over the feature vectors
         and values multiple times, as well as converting the feature values to a dictionary and then back to a list.
+
+        Parameters:
+            features: The list of training dataset features to build handlers for.
         """
         if (
             hasattr(self, "_return_feature_value_handlers")
@@ -1633,6 +1680,15 @@ class VectorServer:
                 via passed_features or vector_db_features.
 
         Keys relevant to vector_db are filtered out.
+
+        Parameters:
+            entry: Primary key values provided by the caller.
+            allow_missing: Whether to allow missing serving keys.
+            passed_features: Feature values passed directly by the caller.
+            vector_db_features: Feature values fetched from a vector database.
+
+        Returns:
+            The validated entry dict with vector_db keys removed.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -1699,6 +1755,11 @@ class VectorServer:
         Limitation:
         - The method does not check whether serving keys correspond to existing rows in the online feature store.
         - The method does not check whether the passed features names and data types correspond to the query schema.
+
+        Parameters:
+            entry: Primary key values provided by the caller.
+            passed_features: Feature values passed directly by the caller.
+            vector_db_features: Feature values fetched from a vector database.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -1761,7 +1822,15 @@ class VectorServer:
         serving_keys: list[sk_mod.ServingKey],
         features: list[tdf_mod.TrainingDatasetFeature],
     ) -> dict[str, tuple[str, set[str]]]:
-        """Build a dictionary of feature names which will be fetched per serving key."""
+        """Build a dictionary of feature names which will be fetched per serving key.
+
+        Parameters:
+            serving_keys: The list of serving keys for the feature view.
+            features: The list of training dataset features.
+
+        Returns:
+            A dictionary mapping each required serving key to a tuple of (feature_name, set_of_fetched_feature_names).
+        """
         per_serving_key_features = {}
         for serving_key in serving_keys:
             per_serving_key_features[serving_key.required_serving_key] = (
@@ -1876,12 +1945,6 @@ class VectorServer:
     def return_feature_value_handlers(self) -> dict[str, Callable]:
         """A dictionary of functions to the feature values returned from RonDB Server."""
         return self._return_feature_value_handlers
-
-    @property
-    def transformation_function_engine(
-        self,
-    ) -> tf_engine_mod.TransformationFunctionEngine:
-        return self._transformation_function_engine
 
     @property
     def feature_to_handle_if_rest(self) -> set[str]:

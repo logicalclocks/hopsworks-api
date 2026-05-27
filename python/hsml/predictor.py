@@ -17,13 +17,14 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import client, util
 from hopsworks_common.constants import (
     INFERENCE_ENDPOINTS,
     MODEL,
     MODEL_SERVING,
     PREDICTOR,
-    RESOURCES,
+    SCALING_CONFIG,
     Default,
 )
 from hsml import deployment
@@ -32,11 +33,25 @@ from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
 from hsml.predictor_state import PredictorState
 from hsml.resources import PredictorResources
+from hsml.scaling_config import (
+    PredictorScalingConfig,
+)
 from hsml.transformer import Transformer
 
 
+@public
 class Predictor(DeployableComponent):
     """Metadata object representing a predictor in Model Serving."""
+
+    @staticmethod
+    def _get_raw_num_instances(resources):
+        if resources is None:
+            return None
+        return (
+            resources._num_instances
+            if hasattr(resources, "_num_instances")
+            else resources.num_instances
+        )
 
     def __init__(
         self,
@@ -61,6 +76,10 @@ class Predictor(DeployableComponent):
         api_protocol: str | None = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
         environment: str | None = None,
         project_namespace: str = None,
+        scaling_configuration: PredictorScalingConfig | dict | Default | None = None,
+        env_vars: dict[str, str] | None = None,
+        vllm_variant: str | None = None,
+        vllm_image_tag: str | None = None,
         **kwargs,
     ):
         serving_tool = (
@@ -71,10 +90,18 @@ class Predictor(DeployableComponent):
             util.get_obj_from_json(resources, PredictorResources), serving_tool
         ) or self._get_default_resources(serving_tool)
 
+        self._scaling_configuration = util.get_obj_from_json(
+            scaling_configuration, PredictorScalingConfig
+        ) or PredictorScalingConfig.get_default_scaling_configuration(
+            serving_tool=serving_tool,
+            min_instances=self._get_raw_num_instances(resources),
+        )
+
         super().__init__(
             script_file,
             resources,
             inference_batcher,
+            scaling_configuration=self._scaling_configuration,
         )
 
         self._name = name
@@ -100,11 +127,18 @@ class Predictor(DeployableComponent):
         self._environment = environment
         self._project_namespace = project_namespace
         self._project_name = None
+        self._env_vars = env_vars
+        self._vllm_variant = vllm_variant
+        self._vllm_image_tag = vllm_image_tag
 
-    def deploy(self):
+    @public
+    def deploy(self) -> deployment.Deployment:
         """Create a deployment for this predictor and persists it in the Model Serving.
 
-        Example:
+        Returns:
+            The deployment metadata object of a new or existing deployment.
+
+        Examples:
             ```python
 
             import hopsworks
@@ -125,9 +159,6 @@ class Predictor(DeployableComponent):
 
             print(my_deployment.get_state())
             ```
-
-        Returns:
-            `Deployment`. The deployment metadata object of a new or existing deployment.
         """
         _deployment = deployment.Deployment(
             predictor=self, name=self._name, description=self._description
@@ -136,6 +167,7 @@ class Predictor(DeployableComponent):
 
         return _deployment
 
+    @public
     def describe(self):
         """Print a JSON description of the predictor."""
         util.pretty_print(self)
@@ -193,7 +225,7 @@ class Predictor(DeployableComponent):
         if (
             resources is not None
             and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-            and resources.num_instances != 0
+            and cls._get_raw_num_instances(resources) != 0
             and client.is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
@@ -208,7 +240,7 @@ class Predictor(DeployableComponent):
             0  # enable scale-to-zero by default if required
             if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
             and client.is_scale_to_zero_required()
-            else RESOURCES.MIN_NUM_INSTANCES
+            else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
         return PredictorResources(num_instances)
 
@@ -221,6 +253,7 @@ class Predictor(DeployableComponent):
         # get predictor for specific model, includes model type-related validations
         return util.get_predictor_for_model(model=model, **kwargs)
 
+    @public
     @classmethod
     def for_server(cls, name: str, script_file: str, **kwargs):
         # get predictor for a HTTP server without model
@@ -293,7 +326,21 @@ class Predictor(DeployableComponent):
         if "environment_dto" in json_decamelized:
             environment = json_decamelized.pop("environment_dto")
             kwargs["environment"] = environment["name"]
+        if "predictor_env_vars" in json_decamelized:
+            env_vars = json_decamelized.pop("predictor_env_vars")
+            kwargs["env_vars"] = (
+                dict(e.split("=", 1) for e in env_vars) if env_vars else None
+            )
         kwargs["project_namespace"] = json_decamelized.pop("project_namespace")
+        kwargs["scaling_configuration"] = PredictorScalingConfig.from_json(
+            json_decamelized
+        )
+        kwargs["vllm_variant"] = util.extract_field_from_json(
+            json_decamelized, "vllm_variant"
+        )
+        kwargs["vllm_image_tag"] = util.extract_field_from_json(
+            json_decamelized, "vllm_image_tag"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -320,6 +367,12 @@ class Predictor(DeployableComponent):
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
         }
+        if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
+            json = {
+                **json,
+                "vllmVariant": self._vllm_variant,
+                "vllmImageTag": self._vllm_image_tag,
+            }
         if self.model_name is not None:
             json = {**json, "modelName": self._model_name}
         if self.model_path is not None:
@@ -328,6 +381,11 @@ class Predictor(DeployableComponent):
             json = {**json, "modelVersion": self._model_version}
         if self.model_framework is not None:
             json = {**json, "modelFramework": self._model_framework}
+        if self._env_vars:
+            json = {
+                **json,
+                "predictorEnvVars": [f"{k}={v}" for k, v in self._env_vars.items()],
+            }
         if self.environment is not None:
             json = {**json, "environmentDTO": {"name": self._environment}}
         if self._resources is not None:
@@ -338,13 +396,17 @@ class Predictor(DeployableComponent):
             json = {**json, **self._inference_batcher.to_dict()}
         if self._transformer is not None:
             json = {**json, **self._transformer.to_dict()}
+        if self._scaling_configuration is not None:
+            json = {**json, **self._scaling_configuration.to_dict()}
         return json
 
+    @public
     @property
     def id(self):
         """Id of the predictor."""
         return self._id
 
+    @public
     @property
     def name(self):
         """Name of the predictor."""
@@ -354,11 +416,13 @@ class Predictor(DeployableComponent):
     def name(self, name: str):
         self._name = name
 
+    @public
     @property
     def version(self):
         """Version of the predictor."""
         return self._version
 
+    @public
     @property
     def description(self):
         """Description of the predictor."""
@@ -368,6 +432,7 @@ class Predictor(DeployableComponent):
     def description(self, description: str):
         self._description = description
 
+    @public
     @property
     def model_name(self):
         """Name of the model deployed by the predictor."""
@@ -377,6 +442,7 @@ class Predictor(DeployableComponent):
     def model_name(self, model_name: str):
         self._model_name = model_name
 
+    @public
     @property
     def model_path(self):
         """Model path deployed by the predictor."""
@@ -386,6 +452,7 @@ class Predictor(DeployableComponent):
     def model_path(self, model_path: str):
         self._model_path = model_path
 
+    @public
     @property
     def model_version(self):
         """Model version deployed by the predictor."""
@@ -395,6 +462,7 @@ class Predictor(DeployableComponent):
     def model_version(self, model_version: int):
         self._model_version = model_version
 
+    @public
     @property
     def model_framework(self):
         """Model framework of the model to be deployed by the predictor."""
@@ -405,6 +473,7 @@ class Predictor(DeployableComponent):
         self._model_framework = model_framework
         self._model_server = self._infer_model_server(model_framework)
 
+    @public
     @property
     def artifact_version(self):
         """Artifact version deployed by the predictor.
@@ -418,6 +487,7 @@ class Predictor(DeployableComponent):
     def artifact_version(self, artifact_version: int | str):
         pass  # do nothing, kept for backward compatibility
 
+    @public
     @property
     def artifact_files_path(self):
         """Path of the artifact files deployed by the predictor."""
@@ -430,6 +500,7 @@ class Predictor(DeployableComponent):
             str(self._version),
         )
 
+    @public
     @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip."""
@@ -437,11 +508,13 @@ class Predictor(DeployableComponent):
         artifact_name = f"{self._model_name}_{str(self._model_version)}_{str(self._artifact_version)}.zip"
         return f"{self._model_path}/{str(self._model_version)}/Artifacts/{str(self._artifact_version)}/{artifact_name}"
 
+    @public
     @property
     def model_server(self):
         """Model server used by the predictor."""
         return self._model_server
 
+    @public
     @property
     def serving_tool(self):
         """Serving tool used to run the model server."""
@@ -451,6 +524,7 @@ class Predictor(DeployableComponent):
     def serving_tool(self, serving_tool: str):
         self._serving_tool = serving_tool
 
+    @public
     @property
     def script_file(self):
         """Script file used to load and run the model."""
@@ -460,6 +534,7 @@ class Predictor(DeployableComponent):
     def script_file(self, script_file: str):
         self._script_file = script_file
 
+    @public
     @property
     def config_file(self):
         """Model server configuration file passed to the model deployment.
@@ -473,6 +548,7 @@ class Predictor(DeployableComponent):
     def config_file(self, config_file: str):
         self._config_file = config_file
 
+    @public
     @property
     def inference_logger(self):
         """Configuration of the inference logger attached to this predictor."""
@@ -482,6 +558,7 @@ class Predictor(DeployableComponent):
     def inference_logger(self, inference_logger: InferenceLogger):
         self._inference_logger = inference_logger
 
+    @public
     @property
     def transformer(self):
         """Transformer configuration attached to the predictor."""
@@ -491,24 +568,28 @@ class Predictor(DeployableComponent):
     def transformer(self, transformer: Transformer):
         self._transformer = transformer
 
+    @public
     @property
     def created_at(self):
         """Created at date of the predictor."""
         return self._created_at
 
+    @public
     @property
     def creator(self):
         """Creator of the predictor."""
         return self._creator
 
+    @public
     @property
     def requested_instances(self):
         """Total number of requested instances in the predictor."""
-        num_instances = self._resources.num_instances
+        num_instances = self._get_raw_num_instances(self._resources)
         if self._transformer is not None:
-            num_instances += self._transformer.resources.num_instances
+            num_instances += self._get_raw_num_instances(self._transformer.resources)
         return num_instances
 
+    @public
     @property
     def api_protocol(self):
         """API protocol enabled in the predictor (e.g., HTTP or GRPC)."""
@@ -517,6 +598,16 @@ class Predictor(DeployableComponent):
     @api_protocol.setter
     def api_protocol(self, api_protocol):
         self._api_protocol = api_protocol
+
+    @public
+    @property
+    def env_vars(self):
+        """Environment variables of the predictor."""
+        return self._env_vars
+
+    @env_vars.setter
+    def env_vars(self, env_vars: dict[str, str] | None):
+        self._env_vars = env_vars
 
     @property
     def environment(self):
@@ -527,6 +618,7 @@ class Predictor(DeployableComponent):
     def environment(self, environment):
         self._environment = environment
 
+    @public
     @property
     def project_namespace(self):
         """Kubernetes project namespace."""
@@ -536,6 +628,7 @@ class Predictor(DeployableComponent):
     def project_namespace(self, project_namespace):
         self._project_namespace = project_namespace
 
+    @public
     @property
     def project_name(self):
         """Name of the project the deployment belongs to."""
@@ -544,6 +637,125 @@ class Predictor(DeployableComponent):
     @project_name.setter
     def project_name(self, project_name: str):
         self._project_name = project_name
+
+    @public
+    @property
+    def vllm_variant(self):
+        """VLLM image variant for this predictor (VLLM or VLLM_OMNI)."""
+        return self._vllm_variant
+
+    @vllm_variant.setter
+    def vllm_variant(self, vllm_variant: str):
+        self._vllm_variant = vllm_variant
+
+    @public
+    @property
+    def vllm_image_tag(self):
+        """VLLM image tag override; None means use the cluster default."""
+        return self._vllm_image_tag
+
+    @vllm_image_tag.setter
+    def vllm_image_tag(self, vllm_image_tag: str):
+        self._vllm_image_tag = vllm_image_tag
+
+    @public
+    def get_endpoint_url(self) -> str | None:
+        """Get the base endpoint URL for this predictor.
+
+        Returns the base URL that can be used with external HTTP clients.
+        This is the path-based routing base endpoint without any protocol-specific
+        suffixes like `:predict` or `/v1`.
+
+        If Istio client is not available, returns `None` (Hopsworks REST API
+        doesn't support base-only endpoints).
+
+        Returns:
+            Base endpoint URL, or `None` if unavailable.
+
+        Examples:
+            ```python
+            url = predictor.get_endpoint_url()
+            # url = "https://host:port/v1/project/name"
+            ```
+        """
+        from hsml.core import serving_api
+
+        serving = serving_api.ServingApi()
+
+        istio_client = client.istio.get_instance()
+        if istio_client is not None:
+            path_parts = serving._get_istio_inference_path(self, base_only=True)
+            return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
+
+        # Hopsworks REST API doesn't support base-only endpoints
+        return None
+
+    @public
+    def get_openai_url(self) -> str | None:
+        """Get the OpenAI-compatible API URL for vLLM deployments.
+
+        Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
+        This method only returns a URL for LLM (vLLM) deployments.
+
+        Returns:
+            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment.
+
+        Examples:
+            ```python
+            url = predictor.get_openai_compatible_url()
+            # url = "https://host:port/v1/project/name/v1"
+            # Then use: url + "/chat/completions"
+            ```
+        """
+        if self._model_server != PREDICTOR.MODEL_SERVER_VLLM:
+            return None
+
+        base_url = self.get_endpoint_url()
+        if base_url is None:
+            return None
+
+        return f"{base_url}/v1"
+
+    @public
+    def get_inference_url(self) -> str | None:
+        """Get the KServe inference URL for standard model deployments.
+
+        Returns the full URL with `:predict` suffix for KServe inference protocol.
+        This method only returns a URL for standard model deployments (non-vLLM,
+        with a model attached).
+
+        If Istio client is not available, falls back to Hopsworks REST API path.
+
+        Returns:
+            Inference URL with `:predict` suffix, or `None` if not a standard model deployment.
+
+        Examples:
+            ```python
+            url = predictor.get_inference_url()
+            # url = "https://host:port/v1/project/name/v1/models/name:predict"
+            ```
+        """
+        from hsml.core import serving_api
+
+        # Only for standard model deployments (has model, not vLLM)
+        has_model = self._model_name is not None and self._model_version is not None
+        if not has_model or self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
+            return None
+
+        serving = serving_api.ServingApi()
+
+        # Try Istio client first
+        istio_client = client.istio.get_instance()
+        if istio_client is not None:
+            path_parts = serving._get_istio_inference_path(self, base_only=False)
+            return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
+
+        # Fallback to Hopsworks REST API path
+        hopsworks_client = client.get_instance()
+        path_parts = serving._get_hopsworks_inference_path(
+            hopsworks_client._project_id, self
+        )
+        return f"{hopsworks_client._base_url}/hopsworks-api/api/{'/'.join(str(p) for p in path_parts)}"
 
     def __repr__(self):
         desc = (

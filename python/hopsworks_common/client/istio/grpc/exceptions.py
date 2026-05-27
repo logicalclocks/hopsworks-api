@@ -19,30 +19,30 @@
 from __future__ import annotations
 
 import six
+from hopsworks_apigen import also_available_as
 
 
+@also_available_as("hsml.client.istio.grpc.exceptions.OpenApiException")
 class OpenApiException(Exception):
     """The base exception class for all OpenAPIExceptions."""
 
 
+@also_available_as("hsml.client.istio.grpc.exceptions.ApiTypeError")
 class ApiTypeError(OpenApiException, TypeError):
-    def __init__(self, msg, path_to_item=None, valid_classes=None, key_type=None):
+    def __init__(
+        self,
+        msg: str,
+        path_to_item: list | None = None,
+        valid_classes: tuple | None = None,
+        key_type: bool | None = None,
+    ) -> None:
         """Raises an exception for TypeErrors.
 
-        Args:
-            msg (str): the exception message
-
-        Keyword Args:
-            path_to_item (list): a list of keys an indices to get to the
-                                 current_item
-                                 None if unset
-            valid_classes (tuple): the primitive classes that current item
-                                   should be an instance of
-                                   None if unset
-            key_type (bool): False if our value is a value in a dict
-                             True if it is a key in a dict
-                             False if our item is an item in a list
-                             None if unset
+        Parameters:
+            msg: the exception message
+            path_to_item: a list of keys an indices to get to the current_item; None if unset
+            valid_classes: the primitive classes that current item should be an instance of; None if unset
+            key_type: False if our value is a value in a dict; True if it is a key in a dict; False if our item is an item in a list; None if unset
         """
         self.path_to_item = path_to_item
         self.valid_classes = valid_classes
@@ -53,6 +53,7 @@ class ApiTypeError(OpenApiException, TypeError):
         super().__init__(full_msg)
 
 
+@also_available_as("hsml.client.istio.grpc.exceptions.ApiValueError")
 class ApiValueError(OpenApiException, ValueError):
     def __init__(self, msg: str, path_to_item: list | None = None):
         """An error related to API value.
@@ -68,6 +69,7 @@ class ApiValueError(OpenApiException, ValueError):
         super().__init__(full_msg)
 
 
+@also_available_as("hsml.client.istio.grpc.exceptions.ApiKeyError")
 class ApiKeyError(OpenApiException, KeyError):
     def __init__(self, msg: str, path_to_item: list | None = None):
         """An error related to the API key.
@@ -84,6 +86,7 @@ class ApiKeyError(OpenApiException, KeyError):
         super().__init__(full_msg)
 
 
+@also_available_as("hsml.client.istio.grpc.exceptions.ApiException")
 class ApiException(OpenApiException):
     def __init__(self, status=None, reason=None, http_resp=None):
         if http_resp:
@@ -109,8 +112,16 @@ class ApiException(OpenApiException):
         return error_message
 
 
-def render_path(path_to_item):
-    """Returns a string representation of a path."""
+@also_available_as("hsml.client.istio.grpc.exceptions.render_path")
+def render_path(path_to_item: list) -> str:
+    """Returns a string representation of a path.
+
+    Parameters:
+        path_to_item: A list of path parts.
+
+    Returns:
+        A string representation of the path.
+    """
     result = ""
     for pth in path_to_item:
         if isinstance(pth, six.integer_types):

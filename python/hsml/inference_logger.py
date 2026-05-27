@@ -17,20 +17,19 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 from hopsworks_common.constants import DEFAULT, INFERENCE_LOGGER, Default
 from hopsworks_common.kafka_topic import KafkaTopic
 
 
+@public
 class InferenceLogger:
     """Configuration of an inference logger for a predictor.
 
     Parameters:
         kafka_topic: Kafka topic to send the inference logs to. By default, a new Kafka topic is configured.
         mode: Inference logging mode. (e.g., `NONE`, `ALL`, `PREDICTIONS`, or `MODEL_INPUTS`). By default, `ALL` inference logs are sent.
-
-    Returns:
-        `InferenceLogger`. Configuration of an inference logger.
     """
 
     def __init__(
@@ -46,6 +45,7 @@ class InferenceLogger:
             else INFERENCE_LOGGER.MODE_NONE
         )
 
+    @public
     def describe(self):
         """Print a JSON description of the inference logger."""
         util.pretty_print(self)
@@ -103,6 +103,7 @@ class InferenceLogger:
             return {**json, **self._kafka_topic.to_dict()}
         return json
 
+    @public
     @property
     def kafka_topic(self):
         """Kafka topic to send the inference logs to."""
@@ -112,6 +113,7 @@ class InferenceLogger:
     def kafka_topic(self, kafka_topic: KafkaTopic):
         self._kafka_topic = kafka_topic
 
+    @public
     @property
     def mode(self):
         """Inference logging mode ("NONE", "ALL", "PREDICTIONS", or "MODEL_INPUTS")."""

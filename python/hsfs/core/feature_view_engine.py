@@ -21,6 +21,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from hopsworks_common import client, constants
+from hopsworks_common.client import exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
@@ -31,8 +32,8 @@ from hsfs import (
     training_dataset_feature,
     util,
 )
-from hsfs.client import exceptions
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
     query_constructor_api,
@@ -52,9 +53,10 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     from hsfs.constructor.join import Join
-    from hsfs.constructor.query import Query
+    from hsfs.core import explicit_provenance
     from hsfs.core.feature_logging import LoggingMetaData
     from hsfs.feature_logger import FeatureLogger
+    from hsfs.transformation_function import TransformationFunction
 
 _logger = logging.getLogger(__name__)
 
@@ -83,16 +85,38 @@ class FeatureViewEngine:
         )
         self._query_constructor_api = query_constructor_api.QueryConstructorApi()
 
+    @staticmethod
+    def _normalize_extra_filter(extra_filter):
+        """Validate and normalize an `extra_filter` value before sending it.
+
+        Accepts `None`, a `Filter`, or a `Logic`. A raw `Filter` is wrapped
+        in `Logic.Single` so the wire shape is always a `FilterLogicDTO`,
+        matching what the backend expects. Anything else raises `TypeError`
+        with a clear message rather than failing later at JSON serialization.
+        """
+        from hsfs.constructor.filter import Filter, Logic
+
+        if extra_filter is None:
+            return None
+        if isinstance(extra_filter, Filter):
+            return Logic.Single(left_f=extra_filter)
+        if isinstance(extra_filter, Logic):
+            return extra_filter
+        raise TypeError(
+            "extra_filter must be a Filter, Logic, or None; "
+            f"got {type(extra_filter).__name__}."
+        )
+
     def save(
         self, feature_view_obj: feature_view.FeatureView
     ) -> feature_view.FeatureView:
         """Save a feature view to the backend.
 
         Parameters:
-            feature_view_obj `FeatureView` : The feature view object to be saved.
+            feature_view_obj: The feature view object to be saved.
 
         Returns:
-            `FeatureView` : Updated feature view that has the ID used to save in the backend.
+            Updated feature view that has the ID used to save in the backend.
         """
         if feature_view_obj.query.is_time_travel():
             warnings.warn(
@@ -100,13 +124,24 @@ class FeatureViewEngine:
                 " feature view does not support time travel query.",
                 stacklevel=1,
             )
+
+        # Build feature lookup cache once to avoid rebuilding it for every column.
+        # Only build the cache when there are labels or helper columns to resolve.
+        feature_lookup_cache = None
+        if (
+            feature_view_obj.labels
+            or feature_view_obj.inference_helper_columns
+            or feature_view_obj.training_helper_columns
+        ):
+            feature_lookup_cache = feature_view_obj.query._build_feature_lookup()
+
         if feature_view_obj.labels:
             for label_name in feature_view_obj.labels:
                 (
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(label_name)
+                ) = Query._resolve_feature_from_lookup(label_name, feature_lookup_cache)
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -120,7 +155,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = Query._resolve_feature_from_lookup(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -135,7 +172,9 @@ class FeatureViewEngine:
                     feature,
                     prefix,
                     featuregroup,
-                ) = feature_view_obj.query._get_feature_by_name(helper_column_name)
+                ) = Query._resolve_feature_from_lookup(
+                    helper_column_name, feature_lookup_cache
+                )
                 feature_view_obj._features.append(
                     training_dataset_feature.TrainingDatasetFeature(
                         name=feature.name,
@@ -157,30 +196,31 @@ class FeatureViewEngine:
         """Update the feature view object saved in the backend.
 
         Parameters:
-            feature_view_obj `FeatureView` : The feature view object to be saved.
+            feature_view_obj: The feature view object to be saved.
 
         Returns:
-            `FeatureView` : Updated feature view that has the ID used to save in the backend.
+            Updated feature view that has the ID used to save in the backend.
         """
         self._feature_view_api.update(feature_view_obj)
         return feature_view_obj
 
     def get(
-        self, name: str, version: int = None
+        self, name: str, version: int | None = None
     ) -> feature_view.FeatureView | list[feature_view.FeatureView]:
         """Get a feature view from the backend using name or using name and version.
 
         If version is not provided then a List of feature views containing all of its versions is returned.
 
         Parameters:
-            name `str`: Name of feature view.
-            version `version`: Version of the feature view.
+            name: Name of feature view.
+            version: Version of the feature view.
 
         Returns:
-            `Union[FeatureView, List[FeatureView]]`
+            If version is provided, the feature view with the specified name and version is returned.
+            Otherwise, a list that contains all version of the feature view is returned.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             ValueError: If the feature group associated with the feature view cannot be found.
         """
         if version:
@@ -189,26 +229,28 @@ class FeatureViewEngine:
             fv = self._feature_view_api.get_by_name(name)
         return fv
 
-    def delete(self, name, version=None):
+    def delete(self, name: str, version: int | None = None, force: bool = False):
         if version:
-            return self._feature_view_api.delete_by_name_version(name, version)
-        return self._feature_view_api.delete_by_name(name)
+            return self._feature_view_api.delete_by_name_version(name, version, force)
+        return self._feature_view_api.delete_by_name(name, force)
 
     def get_training_dataset_schema(
         self,
         feature_view: feature_view.FeatureView,
         training_dataset_version: int | None = None,
-    ):
+    ) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Function that returns the schema of the training dataset generated using the feature view.
 
         Parameters:
-            feature_view: `FeatureView`. The feature view for which the schema is to be generated.
-            training_dataset_version: `int`. Specifies the version of the training dataset for which the schema should be generated.
-                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+            feature_view: The feature view for which the schema is to be generated.
+            training_dataset_version:
+                Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to `None`.
+                However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
                 This is because the schema will then depend on the statistics of the training data used.
 
         Returns:
-            `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
+            List of training dataset features objects.
         """
         # This is used to verify that the training dataset version actually exists, otherwise it raises an exception
         if training_dataset_version:
@@ -273,7 +315,9 @@ class FeatureViewEngine:
                             label=True,
                         )
                         for transformed_label_name, output_type in zip(
-                            tf.output_column_names, tf.hopsworks_udf.return_types
+                            tf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                            strict=False,
                         )
                     ]
                 )
@@ -287,7 +331,9 @@ class FeatureViewEngine:
                             label=False,
                         )
                         for transformed_feature_name, output_type in zip(
-                            tf.output_column_names, tf.hopsworks_udf.return_types
+                            tf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                            strict=False,
                         )
                     ]
                 )
@@ -306,7 +352,10 @@ class FeatureViewEngine:
         training_helper_columns=False,
         training_dataset_version=None,
         spine=None,
+        extra_filter=None,
     ):
+        extra_filter = self._normalize_extra_filter(extra_filter)
+
         try:
             query = self._feature_view_api.get_batch_query(
                 feature_view_obj.name,
@@ -320,6 +369,7 @@ class FeatureViewEngine:
                 event_time=event_time,
                 inference_helper_columns=inference_helper_columns,
                 training_helper_columns=training_helper_columns,
+                extra_filter=extra_filter,
             )
             # verify whatever is passed 1. spine group with dataframe contained, or 2. dataframe
             # the schema has to be consistent
@@ -332,7 +382,7 @@ class FeatureViewEngine:
                     spine.dataframe
                 )
                 spine._feature_group_engine._verify_schema_compatibility(
-                    query._left_feature_group.features, dataframe_features
+                    query._left_feature_group.columns, dataframe_features
                 )
                 query._left_feature_group = spine
             elif isinstance(query._left_feature_group, feature_group.SpineGroup):
@@ -353,8 +403,15 @@ class FeatureViewEngine:
             raise e
 
     def get_batch_query_string(
-        self, feature_view_obj, start_time, end_time, training_dataset_version=None
+        self,
+        feature_view_obj,
+        start_time,
+        end_time,
+        training_dataset_version=None,
+        extra_filter=None,
     ):
+        extra_filter = self._normalize_extra_filter(extra_filter)
+
         try:
             query_obj = self._feature_view_api.get_batch_query(
                 feature_view_obj.name,
@@ -363,6 +420,7 @@ class FeatureViewEngine:
                 util.convert_event_time_to_timestamp(end_time),
                 training_dataset_version=training_dataset_version,
                 is_python_engine=engine.get_type() == "python",
+                extra_filter=extra_filter,
             )
         except exceptions.RestAPIError as e:
             if e.response.json().get("errorCode", "") == 270172:
@@ -672,7 +730,7 @@ class FeatureViewEngine:
         dataframe_type,
     ):
         try:
-            df = training_data_obj.storage_connector.read(
+            df = training_data_obj.data_source.storage_connector.read(
                 # always read from materialized dataset, not query object
                 query=None,
                 data_format=training_data_obj.data_format,
@@ -887,6 +945,41 @@ class FeatureViewEngine:
                 feature_view_obj.name, feature_view_obj.version
             )
 
+    def apply_transformations(
+        self,
+        transformation_functions: list[TransformationFunction],
+        data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
+        online: bool | None = None,
+        transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
+        request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+    ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
+        """Apply transformations functions to the passed dataframe or list of dictionaries.
+
+        Parameters:
+            transformation_functions: List of transformation functions to apply.
+            data: The dataframe or list of dictionaries to apply the transformations to.
+            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            transformation_context: Transformation context to be used when applying the transformations.
+            request_parameters: Request parameters to be used when applying the transformations.
+
+        Returns:
+            The updated dataframe or list of dictionaries with the transformations applied.
+        """
+        try:
+            df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                transformation_functions=transformation_functions,
+                data=data,
+                online=online,
+                transformation_context=transformation_context,
+                request_parameters=request_parameters,
+            )
+        except exceptions.TransformationFunctionException as e:
+            raise FeatureStoreException(
+                f"The following feature(s): {e.missing_features}, specified in the {e.transformation_type} transformation function '{e.transformation_function_name}' are not present in the dataframe."
+                " Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe."
+            ) from e
+        return df
+
     def get_batch_data(
         self,
         feature_view_obj,
@@ -903,6 +996,7 @@ class FeatureViewEngine:
         transformed=True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        extra_filter=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -927,15 +1021,21 @@ class FeatureViewEngine:
             training_helper_columns=False,
             training_dataset_version=training_dataset_version,
             spine=spine,
+            extra_filter=extra_filter,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if (transformation_functions and transformed) or logging_data:
-            transformed_dataframe = (
-                engine.get_instance()._apply_transformation_function(
-                    transformation_functions,
-                    dataset=feature_dataframe,
+            try:
+                transformed_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                    transformation_functions=transformation_functions,
+                    data=feature_dataframe,
+                    online=False,
                     transformation_context=transformation_context,
                 )
-            )
+            except exceptions.TransformationFunctionException as e:
+                raise FeatureStoreException(
+                    f"The following feature(s): {e.missing_features}, specified in the {e.transformation_type} transformation function '{e.transformation_function_name}' are not present in the dataframe."
+                    " Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe."
+                ) from e
         else:
             transformed_dataframe = None
 
@@ -959,9 +1059,15 @@ class FeatureViewEngine:
         return batch_dataframe
 
     def transform_batch_data(self, features, transformation_functions):
-        return engine.get_instance()._apply_transformation_function(
-            transformation_functions, dataset=features, inplace=False
-        )
+        try:
+            return self._transformation_function_engine.s(
+                transformation_functions, dataset=features, inplace=False
+            )
+        except exceptions.TransformationFunctionException as e:
+            raise exceptions.FeatureStoreException(
+                f"The following feature(s): {e.missing_features}, specified in the {e.transformation_type} transformation function '{e.transformation_function_name}' are not present in the feature view. "
+                " Please verify that the correct features are specified in the transformation function."
+            ) from e
 
     def add_tag(
         self, feature_view_obj, name: str, value, training_dataset_version=None
@@ -991,7 +1097,9 @@ class FeatureViewEngine:
             feature_view_obj, training_dataset_version=training_dataset_version
         )
 
-    def get_parent_feature_groups(self, feature_view_obj):
+    def get_parent_feature_groups(
+        self, feature_view_obj
+    ) -> explicit_provenance.Links | None:
         """Get the parents of this feature view, based on explicit provenance.
 
         Parents are feature groups or external feature groups. These feature
@@ -1003,7 +1111,7 @@ class FeatureViewEngine:
             feature_view_obj: Metadata object of feature view.
 
         Returns:
-            `Links`:  the feature groups used to generate this feature view or None
+            The feature groups used to generate this feature view or `None`.
         """
         links = self._feature_view_api.get_parent_feature_groups(
             feature_view_obj.name, feature_view_obj.version
@@ -1014,7 +1122,7 @@ class FeatureViewEngine:
 
     def get_models_provenance(
         self, feature_view_obj, training_dataset_version: int | None = None
-    ):
+    ) -> explicit_provenance.Links | None:
         """Get the generated models using this feature view, based on explicit provenance.
 
         These models can be accessible or inaccessible. Explicit
@@ -1027,7 +1135,7 @@ class FeatureViewEngine:
             training_dataset_version: Filter generated models based on the used training dataset version.
 
         Returns:
-            `Links`: the models generated using this feature group or None
+            The models generated using this feature view or `None`.
         """
         links = self._feature_view_api.get_models_provenance(
             feature_view_obj.name,
@@ -1096,7 +1204,7 @@ class FeatureViewEngine:
             sub_query_feature_group = sub_query._left_feature_group
             sub_query_pk_names = {
                 feature.name
-                for feature in sub_query_feature_group.features
+                for feature in sub_query_feature_group.columns
                 if feature.primary
             }
 
@@ -1175,7 +1283,7 @@ class FeatureViewEngine:
         root_feature_group = query._left_feature_group
 
         root_feature_group_primary_keys_names = {
-            feature.name for feature in root_feature_group.features if feature.primary
+            feature.name for feature in root_feature_group.columns if feature.primary
         }
 
         pk_names = {
@@ -1234,9 +1342,8 @@ class FeatureViewEngine:
     def get_logging_feature_from_dataframe(
         self,
         feature_view_obj: feature_view.FeatureView,
-        dataframes: list[
-            pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame")
-        ] = None,
+        dataframes: list[pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame")]
+        | None = None,
     ) -> list[feature.Feature]:
         """Function to extract features from a logging dataframe.
 
@@ -1245,7 +1352,7 @@ class FeatureViewEngine:
             dataframes: The dataframes from which logging features are to be extracted.
 
         Returns:
-            `List[feature.Feature]`. List of features extracted from the logging feature view provided.
+            List of features extracted from the logging feature view provided.
         """
         logging_features = []
         logging_feature_names = []
@@ -1270,8 +1377,8 @@ class FeatureViewEngine:
         return logging_features
 
     def enable_feature_logging(
-        self, fv, extra_log_columns: feature.Feature | dict[str, Any] = None
-    ):
+        self, fv, extra_log_columns: feature.Feature | dict[str, Any] | None = None
+    ) -> feature_view.FeatureView:
         """Function to enable feature logging for a feature view. This function creates logging feature groups for the feature view.
 
         Parameters:
@@ -1279,7 +1386,7 @@ class FeatureViewEngine:
             extra_log_columns: List of features to be logged.
 
         Returns:
-            `FeatureView`. Feature view object with feature logging enabled.
+            Feature view object with feature logging enabled.
         """
         logging_features = (
             [
@@ -1383,8 +1490,27 @@ class FeatureViewEngine:
 
         The functions collects the data as a list of dictionaries or a dataframe.
         - In the online inference, the data is collected as a list of dictionaries and logged asynchronously using the passed feature logger.
-        - In the batch inference, the data is collected as a dataframe and written directly to the
+        - In the batch inference, the data is collected as a dataframe and written directly to the logging feature groups.
 
+        Parameters:
+            fv: Feature view for which the features are logged.
+            feature_logging: Feature logging object containing the logging configuration for the feature view.
+            logs: The features to be logged.
+            untransformed_features: The untransformed features to be logged.
+            transformed_features: The transformed features to be logged.
+            predictions: The prediction features to be logged.
+            inference_helper_columns: The inference helper columns to be logged.
+            request_parameters: The request parameters to be logged.
+            event_time: The event time to be logged.
+            serving_keys: The serving keys to be logged.
+            extra_logging_features: The extra logging features to be logged.
+            request_id: The request id to be logged.
+            write_options: Dictionary containing the write options for writing the logging data to the logging feature groups.
+            training_dataset_version: The training dataset version used for the inference, to be logged.
+            hsml_model: The HSML model name used for the inference, to be logged.
+            model_name: The name of the model used for inference, to be logged.
+            model_version: The version of the model used for inference, to be logged.
+            logger: The feature logger to be used for logging the features asynchronously.
         """
         if (
             logs is None
@@ -1599,7 +1725,7 @@ class FeatureViewEngine:
                 logging_meta_data.event_time if event_time is None else event_time
             )
 
-        logging_feature_group_features = list(logging_feature_group.features)
+        logging_feature_group_features = list(logging_feature_group.columns)
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]
