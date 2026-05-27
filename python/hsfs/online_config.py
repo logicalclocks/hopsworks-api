@@ -73,16 +73,29 @@ class OnlineConfig:
                 f"secondary_indexes must be a list of column-name lists or None, "
                 f"got {type(value).__name__}."
             )
+        seen_indexes = set()
         for i, idx in enumerate(value):
             if not isinstance(idx, list) or len(idx) == 0:
                 raise ValueError(
                     f"secondary_indexes[{i}] must be a non-empty list of column names."
                 )
+            seen_columns = set()
             for col in idx:
                 if not isinstance(col, str) or not col:
                     raise ValueError(
                         f"secondary_indexes[{i}] contains an invalid column name: {col!r}."
                     )
+                if col in seen_columns:
+                    raise ValueError(
+                        f"secondary_indexes[{i}] contains duplicate column name: {col!r}."
+                    )
+                seen_columns.add(col)
+            index_definition = tuple(idx)
+            if index_definition in seen_indexes:
+                raise ValueError(
+                    f"secondary_indexes contains duplicate index definition at position {i}: {idx!r}."
+                )
+            seen_indexes.add(index_definition)
         return value
 
     @classmethod
