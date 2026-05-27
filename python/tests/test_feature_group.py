@@ -468,7 +468,6 @@ class TestFeatureGroup:
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "tt",
             "primaryKeyIndexType": None,
-            "secondaryIndexes": None,
         }
 
     def test_feature_group_online_disk_true(self, mocker):
@@ -495,7 +494,6 @@ class TestFeatureGroup:
             "onlineComments": None,
             "tableSpace": "ts_1",
             "primaryKeyIndexType": None,
-            "secondaryIndexes": None,
         }
 
     def test_feature_group_online_disk_true_override_online_config(self, mocker):
@@ -526,7 +524,6 @@ class TestFeatureGroup:
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "ts_1",
             "primaryKeyIndexType": None,
-            "secondaryIndexes": None,
         }
 
     def test_feature_group_online_disk_false(self, mocker):
@@ -553,7 +550,6 @@ class TestFeatureGroup:
             "onlineComments": None,
             "tableSpace": "",
             "primaryKeyIndexType": None,
-            "secondaryIndexes": None,
         }
 
     def test_feature_group_online_disk_false_override_online_config(self, mocker):
@@ -584,7 +580,6 @@ class TestFeatureGroup:
             "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
             "tableSpace": "",
             "primaryKeyIndexType": None,
-            "secondaryIndexes": None,
         }
 
     def test_feature_group_data_source_update_storage_connector(self, mocker):

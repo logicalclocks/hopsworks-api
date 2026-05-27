@@ -70,7 +70,6 @@ class TestOnlineConfig:
             "onlineComments": ["c1"],
             "tableSpace": "ts",
             "primaryKeyIndexType": "HASH",
-            "secondaryIndexes": None,
         }
 
     def test_to_dict_primary_key_index_type_unset(self):
@@ -80,7 +79,6 @@ class TestOnlineConfig:
             "onlineComments": ["c1"],
             "tableSpace": "ts",
             "primaryKeyIndexType": None,
-            "secondaryIndexes": None,
         }
 
     def test_from_response_json_round_trip(self):
@@ -162,7 +160,7 @@ class TestOnlineConfig:
         assert d["secondaryIndexes"] == [["user_id"], ["country", "city"]]
 
     def test_to_dict_secondary_indexes_unset(self):
-        assert OnlineConfig().to_dict()["secondaryIndexes"] is None
+        assert "secondaryIndexes" not in OnlineConfig().to_dict()
 
     def test_from_response_json_secondary_indexes_round_trip(self):
         payload = {

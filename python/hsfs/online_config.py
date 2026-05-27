@@ -94,12 +94,14 @@ class OnlineConfig:
         return cls(**json_decamelized)
 
     def to_dict(self):
-        return {
+        d = {
             "onlineComments": self._online_comments,
             "tableSpace": self._table_space,
             "primaryKeyIndexType": self._primary_key_index_type,
-            "secondaryIndexes": self._secondary_indexes,
         }
+        if self._secondary_indexes is not None:
+            d["secondaryIndexes"] = self._secondary_indexes
+        return d
 
     @public
     @property
@@ -158,21 +160,21 @@ class OnlineConfig:
     def secondary_indexes(self) -> list[list[str]] | None:
         """Secondary indexes for the online feature store table.
 
-        Each element is a list of feature names that form one index. The backend
-        names each index automatically as ``idx_<col1>_<col2>_...``.
+        Each element is a list of feature names that form one index.
+        The backend names each index automatically as ``idx_<col1>_<col2>_...``.
 
         Example::
 
             OnlineConfig(secondary_indexes=[["user_id"], ["country", "city"]])
 
-        generates::
+        Generates DDL::
 
             KEY `idx_user_id`(`user_id`),
             KEY `idx_country_city`(`country`,`city`)
 
         Warning: Create-only
-            Set at feature group creation time only. Indexes cannot be added or
-            removed after the table has been created without recreating it.
+            Set at feature group creation time only.
+            Indexes cannot be added or removed after the table has been created without recreating it.
         """
         return self._secondary_indexes
 
