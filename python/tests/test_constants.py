@@ -58,6 +58,7 @@ class TestConstants:
             "HOPSFS_MOUNT_PREFIX": "/hopsfs/",
             "MODELS_DATASET": "Models",
             "MODEL_FILES_DIR_NAME": "Files",
+            "MODEL_CACHE_DIR_DEFAULT": "/tmp/hopsworks/models",
         }
 
         # Assert
