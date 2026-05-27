@@ -215,8 +215,9 @@ class Model:
     def clear_cache(project_name=None, model_name=None, version=None):
         """Clear cached downloaded models.
 
-        Utility method to clear model cache from /tmp directory. Use this to free
-        disk space when cached models are no longer needed.
+        Utility method to clear the model cache from every fallback location
+        (temp dir, the Hopsworks home `.cache`, and the working directory).
+        Use this to free disk space when cached models are no longer needed.
 
         Parameters:
             project_name: If specified, only clear cache for this project.
@@ -244,7 +245,20 @@ class Model:
             Model.clear_cache(project_name="my_project", model_name="my_model", version=1)
             ```
         """
-        cache_base = MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT
+        return sum(
+            Model._clear_cache_base(cache_base, project_name, model_name, version)
+            for cache_base in model_engine.model_cache_base_dirs()
+        )
+
+    @staticmethod
+    def _clear_cache_base(cache_base, project_name, model_name, version):
+        """Clear cached models under a single cache base directory.
+
+        See `clear_cache` for the meaning of the filter parameters.
+
+        Returns:
+            int: Number of model versions removed from this base directory.
+        """
         removed_count = 0
 
         if not os.path.exists(cache_base):

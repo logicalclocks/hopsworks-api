@@ -15,8 +15,11 @@
 #
 from __future__ import annotations
 
+import errno
 import json
+import logging
 import os
+import shutil
 import tempfile
 import time
 from typing import TYPE_CHECKING
@@ -31,6 +34,40 @@ from tqdm.auto import tqdm
 
 if TYPE_CHECKING:
     from hsml.core import explicit_provenance
+
+
+_logger = logging.getLogger(__name__)
+
+
+def model_cache_base_dirs():
+    """Ordered list of base directories where downloaded models are cached.
+
+    Downloads are attempted in this order, falling back to the next location
+    when one is unusable (e.g. disk full or no write permission):
+
+    1. The system temp area (``/tmp/hopsworks/models`` by default).
+    2. A ``.cache`` directory under the Hopsworks home directory (``~/.hopsworks``).
+    3. A ``.hopsworks_cache`` directory under the current working directory.
+
+    Returns:
+        List of absolute base directory paths, de-duplicated and order-preserving.
+    """
+    home = os.path.expanduser("~")
+    bases = [
+        constants.MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT,
+        os.path.join(home, ".hopsworks", ".cache", "models"),
+        os.path.join(os.getcwd(), ".hopsworks_cache", "models"),
+    ]
+
+    # De-duplicate while preserving order; e.g. when CWD is itself under /tmp.
+    seen = set()
+    unique_bases = []
+    for base in bases:
+        abs_base = os.path.abspath(base)
+        if abs_base not in seen:
+            seen.add(abs_base)
+            unique_bases.append(abs_base)
+    return unique_bases
 
 
 class ModelEngine:
@@ -507,50 +544,152 @@ class ModelEngine:
         return model_instance
 
     def download(self, model_instance, local_path=None):
-        # User provided explicit path - bypass cache entirely
+        # User provided an explicit path - honour it exactly, no cache fallback.
         if local_path is not None:
-            os.makedirs(local_path, exist_ok=True)
-            self._download_model_files(model_instance, local_path)
+            try:
+                self._prepare_download_dir(local_path)
+                self._download_model_files(model_instance, local_path)
+            except OSError as err:
+                self._explain_dir_error(local_path, err, has_fallback=False)
+                raise
             return local_path
 
-        # Use cache path
-        cache_path = self._get_model_cache_path(model_instance)
+        candidates = self._model_cache_paths(model_instance)
 
-        # Check if model already exists in cache
-        if self._is_cached_model_valid(cache_path):
-            print(f"Model found in cache: {cache_path}")
-            return cache_path
+        # Reuse an already-complete download from any cache location.
+        for cache_path in candidates:
+            if self._is_cached_model_valid(cache_path):
+                print(f"Model found in cache: {cache_path}")
+                return cache_path
 
-        # Download to cache
-        os.makedirs(cache_path, exist_ok=True)
-        self._download_model_files(model_instance, cache_path)
+        # Otherwise download into the first cache location that works, falling
+        # back to the next one on disk-full or permission errors.
+        last_error = None
+        for index, cache_path in enumerate(candidates):
+            has_fallback = index < len(candidates) - 1
+            try:
+                self._prepare_download_dir(cache_path)
+                self._download_model_files(model_instance, cache_path)
+                self._create_completion_marker(cache_path)
+                return cache_path
+            except OSError as err:
+                last_error = err
+                self._explain_dir_error(cache_path, err, has_fallback=has_fallback)
+                # Remove the partial download so a stale dir is never mistaken
+                # for a valid cache on a later run.
+                self._cleanup_partial_download(cache_path)
+                if not has_fallback:
+                    raise
 
-        # Create a completion marker for validation
-        self._create_completion_marker(cache_path)
+        # Defensive: only reachable if candidates is empty, which should not
+        # happen because model_cache_base_dirs always returns at least one entry.
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("No cache location available to download the model.")
 
-        return cache_path
-
-    def _get_model_cache_path(self, model_instance):
-        """Generate the cache path for a model.
+    def _model_cache_paths(self, model_instance):
+        """Per-model cache paths, one for each base in `model_cache_base_dirs`.
 
         Args:
-            model_instance: Model instance with project_name, name, and version
+            model_instance: Model instance with project_name, name, and version.
 
         Returns:
-            str: Cache path in format /tmp/hopsworks/models/{project}/{model}/{version}
+            List of ``{base}/{project}/{model}/{version}`` paths in fallback order.
         """
-        cache_base = constants.MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT
         project_name = model_instance.project_name
-        model_name = model_instance.name
-        version = str(model_instance.version)
-
         if project_name is None:
             raise ValueError(
                 "Cannot cache model without project_name. "
                 "Please provide local_path explicitly."
             )
+        model_name = model_instance.name
+        version = str(model_instance.version)
 
-        return os.path.join(cache_base, project_name, model_name, version)
+        return [
+            os.path.join(base, project_name, model_name, version)
+            for base in model_cache_base_dirs()
+        ]
+
+    def _prepare_download_dir(self, path):
+        """Create the download directory and confirm it is writable.
+
+        Raises:
+            OSError: If the directory cannot be created or written to. The
+                errno (e.g. ENOSPC, EACCES) lets the caller decide whether to
+                fall back to another location.
+        """
+        os.makedirs(path, exist_ok=True)
+        if not os.access(path, os.W_OK):
+            raise PermissionError(
+                errno.EACCES, "Download directory is not writable", path
+            )
+
+    def _explain_dir_error(self, path, error, has_fallback):
+        """Print an actionable message for a failed download into `path`.
+
+        Args:
+            path: Directory the download was attempted in.
+            error: The OSError raised while preparing or writing the directory.
+            has_fallback: Whether another cache location will be tried next.
+        """
+        errnum = getattr(error, "errno", None)
+        next_step = (
+            "Retrying in the next location..."
+            if has_fallback
+            else "No fallback locations remain."
+        )
+
+        if errnum == errno.ENOSPC:
+            message = (
+                f"Not enough disk space to download the model into '{path}'. "
+                f"Free up space, or pass an explicit local_path with more room. "
+                f"{next_step}"
+            )
+        elif errnum in (errno.EACCES, errno.EPERM) or isinstance(
+            error, PermissionError
+        ):
+            owner_hint = self._dir_permission_hint(path)
+            message = (
+                f"Permission denied writing the model into '{path}'. {owner_hint} "
+                f"Check directory ownership and permissions (e.g. 'ls -ld {path}'), "
+                f"or pass an explicit local_path you can write to. {next_step}"
+            )
+        elif errnum == errno.EROFS:
+            message = (
+                f"Cannot write the model into '{path}': the filesystem is "
+                f"read-only. Pass an explicit local_path on a writable "
+                f"filesystem. {next_step}"
+            )
+        else:
+            message = (
+                f"Failed to download the model into '{path}': {error}. {next_step}"
+            )
+
+        _logger.warning(message)
+        print(message)
+
+    def _dir_permission_hint(self, path):
+        """Best-effort hint about which existing parent directory blocks writes."""
+        probe = path
+        while probe and not os.path.exists(probe):
+            parent = os.path.dirname(probe)
+            if parent == probe:
+                break
+            probe = parent
+        if probe and os.path.exists(probe) and not os.access(probe, os.W_OK):
+            return f"The existing path '{probe}' is not writable by the current user."
+        return ""
+
+    def _cleanup_partial_download(self, path):
+        """Remove a partially downloaded cache dir, ignoring cleanup failures."""
+        if not os.path.exists(path):
+            return
+        try:
+            shutil.rmtree(path)
+        except OSError as cleanup_err:
+            _logger.debug(
+                "Could not clean up partial download %s: %s", path, cleanup_err
+            )
 
     def _is_cached_model_valid(self, cache_path):
         """Check if a cached model is valid and complete.
