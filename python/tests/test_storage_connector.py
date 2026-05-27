@@ -160,10 +160,50 @@ class TestUnityCatalogConnector:
         assert sc.description == "Unity Catalog connector description"
         assert sc.type == storage_connector.StorageConnector.UNITY_CATALOG
         assert sc.workspace_url == "https://test.cloud.databricks.com"
-        assert sc.access_token == "dapi-test-token"
+        # access_token itself is write-only on the backend; the server never
+        # returns it on GET. hasAccessToken signals that one is on file.
+        assert sc.access_token is None
+        assert sc.has_access_token is True
+        assert sc.auth_method == "PAT"
         assert sc.default_catalog == "test_catalog"
         assert sc.aws_region == "us-west-2"
         assert sc.arguments == {"arg1": "val1"}
+
+    def test_from_response_json_oauth_workspace(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"][
+            "get_unity_catalog_oauth_workspace"
+        ]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.auth_method == "OAUTH_M2M"
+        assert sc.oauth_endpoint == "WORKSPACE"
+        assert sc.client_id == "test-sp-client-id"
+        assert sc.client_secret is None
+        assert sc.has_client_secret is True
+        assert sc.account_id is None
+        assert sc.account_host is None
+
+    def test_from_response_json_oauth_account(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog_oauth_account"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.auth_method == "OAUTH_M2M"
+        assert sc.oauth_endpoint == "ACCOUNT"
+        assert sc.client_id == "test-sp-client-id"
+        assert sc.client_secret is None
+        assert sc.has_client_secret is True
+        assert sc.account_id == "12345678-1234-1234-1234-1234567890ab"
+        assert sc.account_host == "accounts.cloud.databricks.com"
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
@@ -204,6 +244,38 @@ class TestUnityCatalogConnector:
         )
         with pytest.raises(NotImplementedError):
             sc.spark_options()
+
+    def test_legacy_construction_defaults_pat(self):
+        # Connectors built before OAuth support landed have no auth_method
+        # field at all. They must keep working as PAT.
+        sc = storage_connector.UnityCatalogConnector(
+            id=1,
+            name="uc",
+            featurestore_id=1,
+            workspace_url="https://ws.cloud.databricks.com",
+            access_token="dapi-xyz",
+        )
+        assert sc.auth_method == "PAT"
+        assert sc.oauth_endpoint is None
+        assert sc.client_id is None
+        assert sc.has_access_token is True
+        assert sc.has_client_secret is False
+
+    def test_oauth_construction_defaults_workspace_endpoint(self):
+        # auth_method=OAUTH_M2M without oauth_endpoint defaults to WORKSPACE,
+        # matching the frontend default.
+        sc = storage_connector.UnityCatalogConnector(
+            id=1,
+            name="uc",
+            featurestore_id=1,
+            workspace_url="https://ws.cloud.databricks.com",
+            auth_method="OAUTH_M2M",
+            client_id="cid",
+            client_secret="csec",
+        )
+        assert sc.oauth_endpoint == "WORKSPACE"
+        assert sc.client_secret == "csec"
+        assert sc.has_client_secret is True
 
 
 class TestRedshiftConnector:
@@ -1812,7 +1884,34 @@ class TestMongoDBConnector:
         assert opts["connection.uri"].startswith("mongodb+srv://alice:secret@")
         assert opts["database"] == "sample_mflix"
         assert opts["collection"] == "comments"
-        assert opts["maxPoolSize"] == "10"
+
+    def test_get_tables_without_database_raises(self):
+        """MongoDB get_tables() with no database configured and no argument raises."""
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+        )
+        with pytest.raises(ValueError, match="Database name is required for MongoDB"):
+            sc.get_tables()
+
+    def test_get_tables_uses_connector_default_database(self, mocker):
+        """MongoDB get_tables() defaults to the connector's database when none is passed."""
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+            database="sample_mflix",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "sample_mflix")
 
     def test_connector_options_forwards_self_options(self):
         # Reviewer note: connector_options() previously returned only

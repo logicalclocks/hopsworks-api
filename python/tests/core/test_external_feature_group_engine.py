@@ -123,6 +123,40 @@ class TestExternalFeatureGroupEngine:
         assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
         assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
 
+    def test_save_path_infers_schema(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine.get_type")
+        mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        f = feature.Feature(name="f", type="str")
+
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            id=10,
+            data_source=ds.DataSource(path="s3://bucket/path"),
+        )
+
+        mock_get_data.return_value = dsd.DataSourceData(features=[f])
+
+        # Act
+        external_fg_engine.save(feature_group=fg)
+
+        # Assert
+        assert mock_get_data.call_count == 1
+        assert mock_fg_api.return_value.save.call_count == 1
+        assert len(mock_fg_api.return_value.save.call_args[0][0].columns) == 1
+        assert not mock_fg_api.return_value.save.call_args[0][0].columns[0].primary
+
     def test_save_primary_key(self, mocker):
         # Arrange
         feature_store_id = 99

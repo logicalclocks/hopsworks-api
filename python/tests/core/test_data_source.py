@@ -124,6 +124,41 @@ class TestDataSource:
         # Act / Assert
         ds._update_storage_connector(None)
 
+    def test_format_preserved_in_constructor(self):
+        # Arrange / Act
+        ds = data_source.DataSource(path="s3://bucket/path", format="parquet")
+
+        # Assert
+        assert ds.format == "parquet"
+
+    def test_format_round_trips_via_from_response_json(self):
+        # Arrange
+        payload = {"path": "s3://bucket/path", "format": "delta"}
+
+        # Act
+        ds = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert ds.format == "delta"
+
+    def test_format_emitted_in_to_dict(self):
+        # Arrange
+        ds = data_source.DataSource(path="s3://bucket/path", format="hudi")
+
+        # Act
+        result = ds.to_dict()
+
+        # Assert
+        assert result["format"] == "hudi"
+
+    def test_format_none_by_default(self):
+        # Arrange / Act
+        ds = data_source.DataSource()
+
+        # Assert
+        assert ds.format is None
+        assert ds.to_dict()["format"] is None
+
 
 class TestInferredMetadata:
     def test_from_response_json_decamelizes(self):
