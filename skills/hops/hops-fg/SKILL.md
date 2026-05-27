@@ -1,15 +1,11 @@
 ---
 name: hopsworks-fg
-description: Use when writing Python code that creates, inserts into, or manages
-  Hopsworks feature groups via the hsfs SDK. Auto-invoke when user writes feature
-  pipelines, feature engineering code, or asks about feature group best practices
-  (online vs offline, batching, OOM, materialization, embeddings, statistics).
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash
+description: Use when writing Python code that creates, inserts into, or manages tables or feature groups. Auto-invoke when user writes feature pipelines, feature engineering code, or asks about feature group best practices (online vs offline, batching, OOM, materialization, embeddings, statistics).
 ---
 
-# Hopsworks Feature Groups — Python SDK Best Practices
+When a user refers to tables, clarify that you interpret them as feature groups in Hopsworks.
 
-Reference: `/tmp/hopsworks-api/python/hsfs/`
+# Hopsworks Feature Groups — Python SDK Best Practices
 
 ## Before Writing a Feature Pipeline — Ask the User
 
