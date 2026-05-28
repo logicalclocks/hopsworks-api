@@ -49,7 +49,7 @@ _FAILED_STATES = frozenset(
 
 @public("hopsworks.app.App")
 class App:
-    """Represents a Hopsworks App (Streamlit application)."""
+    """Represents a Hopsworks Python App."""
 
     def __init__(
         self,
@@ -70,6 +70,10 @@ class App:
         memory_usage=None,
         cpu_requested=None,
         memory_requested=None,
+        description=None,
+        app_kind=None,
+        app_port=None,
+        entrypoint_command=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -89,6 +93,10 @@ class App:
         self._memory_usage = memory_usage
         self._cpu_requested = cpu_requested
         self._memory_requested = memory_requested
+        self._description = description
+        self._app_kind = app_kind
+        self._app_port = app_port
+        self._entrypoint_command = entrypoint_command
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -150,8 +158,32 @@ class App:
     @public
     @property
     def app_path(self) -> str | None:
-        """Path to the Streamlit .py file in HopsFS."""
+        """Path to the app file in HopsFS."""
         return self._app_path
+
+    @public
+    @property
+    def app_kind(self) -> str | None:
+        """Configured app kind."""
+        return self._app_kind
+
+    @public
+    @property
+    def app_port(self) -> int | None:
+        """Configured app port."""
+        return self._app_port
+
+    @public
+    @property
+    def entrypoint_command(self) -> str | None:
+        """Configured startup command."""
+        return self._entrypoint_command
+
+    @public
+    @property
+    def description(self) -> str | None:
+        """App description."""
+        return self._description
 
     @public
     @property
@@ -289,8 +321,21 @@ class App:
         self._final_status = updated._final_status
         self._serving = updated._serving
         self._app_url = updated._app_url
+        self._app_path = updated._app_path
         self._execution_id = updated._execution_id
         self._execution_start = updated._execution_start
+        self._creator = updated._creator
+        self._creator_firstname = updated._creator_firstname
+        self._creator_lastname = updated._creator_lastname
+        self._environment_name = updated._environment_name
+        self._cpu_usage = updated._cpu_usage
+        self._memory_usage = updated._memory_usage
+        self._cpu_requested = updated._cpu_requested
+        self._memory_requested = updated._memory_requested
+        self._description = updated._description
+        self._app_kind = updated._app_kind
+        self._app_port = updated._app_port
+        self._entrypoint_command = updated._entrypoint_command
         return self
 
     def _wait_for_serving(self) -> App:

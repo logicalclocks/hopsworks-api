@@ -1,9 +1,10 @@
-"""``hops app`` — Streamlit application lifecycle.
+"""``hops app`` — Python app lifecycle.
 
 Wraps the SDK's ``project.get_app_api()``: list, info, create, start, stop,
 delete, plus a convenience ``url`` that prints the public serving URL.
 App scripts must be uploaded to HopsFS first (``hops files upload``);
-``create`` takes the HopsFS path, same as ``hops job create``.
+``create`` takes the HopsFS path for Streamlit apps and the startup command
+for custom apps, matching ``hops job create`` style inputs.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from hopsworks.cli import output, session
 
 @click.group("app")
 def app_group() -> None:
-    """Streamlit application commands."""
+    """Python app commands."""
 
 
 @app_group.command("list")
@@ -65,12 +66,16 @@ def app_info(ctx: click.Context, name: str) -> None:
     rows = [
         ["ID", getattr(a, "id", "?")],
         ["Name", getattr(a, "name", "?")],
+        ["Type", getattr(a, "app_kind", "-")],
         ["State", getattr(a, "state", "-")],
         ["Serving", "yes" if getattr(a, "serving", False) else "no"],
         ["Environment", getattr(a, "environment", "-")],
         ["Memory (MB)", getattr(a, "memory", "-")],
         ["Cores", getattr(a, "cores", "-")],
-        ["Path", getattr(a, "app_path", "-")],
+        ["Path", getattr(a, "app_path", None) or "-"],
+        ["Port", getattr(a, "app_port", None) or "-"],
+        ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
+        ["Description", getattr(a, "description", None) or "-"],
         ["URL", getattr(a, "app_url", None) or "-"],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
@@ -107,8 +112,33 @@ def app_url(ctx: click.Context, name: str) -> None:
 @click.option(
     "--path",
     "app_path",
-    required=True,
-    help="HopsFS path to the Streamlit .py file (upload with `hops files upload` first).",
+    help=(
+        "HopsFS path to the app file (required for Streamlit apps; optional "
+        "for custom apps)."
+    ),
+)
+@click.option(
+    "--app-kind",
+    type=click.Choice(["STREAMLIT", "CUSTOM", "FLASK", "GRADIO"], case_sensitive=False),
+    default="STREAMLIT",
+    show_default=True,
+    help="App type to create.",
+)
+@click.option(
+    "--entrypoint-command",
+    default=None,
+    help="Startup command for custom apps.",
+)
+@click.option(
+    "--app-port",
+    type=int,
+    default=None,
+    help="Port exposed by custom apps.",
+)
+@click.option(
+    "--description",
+    default=None,
+    help="Optional app description.",
 )
 @click.option(
     "--environment",
@@ -129,28 +159,46 @@ def app_url(ctx: click.Context, name: str) -> None:
 def app_create(
     ctx: click.Context,
     name: str,
-    app_path: str,
+    app_path: str | None,
+    app_kind: str,
+    entrypoint_command: str | None,
+    app_port: int | None,
+    description: str | None,
     environment: str,
     memory: int,
     cores: float,
     start: bool,
 ) -> None:
-    """Create a new Streamlit app.
+    """Create a new app.
 
     Args:
         ctx: Click context.
         name: App name.
-        app_path: HopsFS path to the Streamlit script.
+        app_path: HopsFS path to the app script.
+        app_kind: App type.
+        entrypoint_command: Startup command for custom apps.
+        app_port: Port for custom apps.
+        description: Optional app description.
         environment: Python environment name.
         memory: Memory in MB.
         cores: CPU cores.
         start: When True, start the app and wait for serving.
     """
+    app_kind = app_kind.upper()
+    if app_kind == "STREAMLIT" and not app_path:
+        raise click.ClickException("Streamlit apps require --path.")
+    if app_kind != "STREAMLIT" and not entrypoint_command:
+        raise click.ClickException("Custom apps require --entrypoint-command.")
+
     apps = _get_app_api(ctx)
     try:
         a = apps.create_app(
             name=name,
             app_path=app_path,
+            app_kind=app_kind,
+            entrypoint_command=entrypoint_command,
+            app_port=app_port,
+            description=description,
             environment=environment,
             memory=memory,
             cores=cores,
@@ -272,11 +320,15 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
     return {
         "id": getattr(a, "id", None),
         "name": getattr(a, "name", None),
+        "app_kind": getattr(a, "app_kind", None),
         "state": getattr(a, "state", None),
         "serving": bool(getattr(a, "serving", False)),
         "environment": getattr(a, "environment", None),
         "memory": getattr(a, "memory", None),
         "cores": getattr(a, "cores", None),
         "app_path": getattr(a, "app_path", None),
+        "app_port": getattr(a, "app_port", None),
+        "entrypoint_command": getattr(a, "entrypoint_command", None),
+        "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }

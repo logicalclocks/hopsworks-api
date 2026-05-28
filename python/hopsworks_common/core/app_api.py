@@ -76,13 +76,17 @@ class AppApi:
     def create_app(
         self,
         name: str,
-        app_path: str,
+        app_path: str | None = None,
         environment: str = "python-app-pipeline",
         memory: int = 2048,
         cores: float = 1.0,
         env_vars: dict[str, str] | None = None,
+        app_kind: str = "STREAMLIT",
+        entrypoint_command: str | None = None,
+        app_port: int | None = None,
+        description: str | None = None,
     ) -> app.App:
-        """Create a new Streamlit app.
+        """Create a new Python app.
 
         Example:
             ```python
@@ -102,25 +106,34 @@ class AppApi:
 
         Parameters:
             name: Name of the app.
-            app_path: Path to the Streamlit .py file in HopsFS.
+            app_path: Path to the app file in HopsFS.
             environment: Python environment name (default: "python-app-pipeline").
             memory: Memory in MB (default: 2048).
             cores: CPU cores (default: 1.0).
             env_vars: Per-runtime env vars applied when the app is started.
                 These override account-level env vars for this app's executions.
+            app_kind: App kind to create. Defaults to ``STREAMLIT``.
+            entrypoint_command: Startup command for non-Streamlit apps.
+            app_port: Port exposed by non-Streamlit apps.
+            description: Optional app description.
 
         Returns:
             The created App object.
         """
         _client = client.get_instance()
 
-        if not app_path.startswith("hdfs://"):
+        app_kind_name = str(getattr(app_kind, "name", app_kind) or "STREAMLIT").upper()
+        if app_kind_name == "STREAMLIT" and not app_path:
+            raise ValueError("app_path is required for Streamlit apps.")
+        if app_kind_name != "STREAMLIT" and not entrypoint_command:
+            raise ValueError("entrypoint_command is required for custom apps.")
+
+        if app_path and not app_path.startswith("hdfs://"):
             app_path = "hdfs://" + util.convert_to_abs(app_path, _client._project_name)
 
         config = {
             "type": "pythonAppJobConfiguration",
             "appName": name,
-            "appPath": app_path,
             "resourceConfig": {
                 "memory": memory,
                 "cores": cores,
@@ -128,7 +141,16 @@ class AppApi:
                 "shmSize": 128,
             },
         }
+        if app_path:
+            config["appPath"] = app_path
+        config["appKind"] = app_kind_name
         config["environmentName"] = environment
+        if app_kind_name != "STREAMLIT" and entrypoint_command:
+            config["entrypointCommand"] = entrypoint_command
+        if app_kind_name != "STREAMLIT" and app_port is not None:
+            config["appPort"] = app_port
+        if description is not None:
+            config["description"] = description
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}

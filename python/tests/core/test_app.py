@@ -52,6 +52,30 @@ class TestApp:
         assert app.memory_requested == "2048Mi"
         assert app.app_path == "hdfs:///Projects/proj/Resources/app.py"
 
+    def test_from_response_json_preserves_app_metadata(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        json_data = {
+            "jobId": 42,
+            "name": "my_app",
+            "state": "RUNNING",
+            "serving": True,
+            "appPath": "hdfs:///Projects/proj/Resources/app.py",
+            "appKind": "CUSTOM",
+            "appPort": 8080,
+            "entrypointCommand": 'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"',
+            "description": "Custom FastAPI app",
+        }
+
+        app = App.from_response_json(json_data)
+
+        assert app.app_path == "hdfs:///Projects/proj/Resources/app.py"
+        assert app.app_kind == "CUSTOM"
+        assert app.app_port == 8080
+        assert app.entrypoint_command == (
+            'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"'
+        )
+        assert app.description == "Custom FastAPI app"
+
     def test_from_response_json_list(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
         json_list = [
