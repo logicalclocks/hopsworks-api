@@ -174,16 +174,18 @@ class OnlineConfig:
         """Secondary indexes for the online feature store table.
 
         Each element is a list of feature names that form one index.
-        The backend names each index automatically as ``idx_<col1>_<col2>_...``.
+        The backend names each index automatically as `idx_<col1>_<col2>_...`.
 
-        Example::
-
+        Example:
+            ```python
             OnlineConfig(secondary_indexes=[["user_id"], ["country", "city"]])
+            ```
 
-        Generates DDL::
-
+        Generates DDL:
+            ```sql
             KEY `idx_user_id`(`user_id`),
             KEY `idx_country_city`(`country`,`city`)
+            ```
 
         Warning: Create-only
             Set at feature group creation time only.
