@@ -8,8 +8,6 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 # Hopsworks Streamlit Apps — Python SDK Best Practices
 
-Reference: `/tmp/hopsworks-api/python/hopsworks_common/`
-
 ## Overview
 
 Hopsworks supports deploying **Streamlit** applications as managed apps. Apps are Python scripts backed by a Hopsworks job that runs the Streamlit server. Only Streamlit apps are currently supported.
@@ -17,6 +15,8 @@ Hopsworks supports deploying **Streamlit** applications as managed apps. Apps ar
 ---
 
 ## Creating and Running an App
+
+When you create charts, prefer to use seaborn over plotly (which isn't installed by default).
 
 ### 1. Write a Streamlit Script
 

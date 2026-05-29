@@ -8,7 +8,7 @@
     <version>5.0.0-SNAPSHOT</version>
 
     <properties>
-        <hops.version>3.4.3.0-EE-RC4</hops.version>
+        <hops.version>3.4.3.1-EE-RC0</hops.version>
         <hsfs.version>${project.version}</hsfs.version>
         <slf4j.version>2.0.17</slf4j.version>
         <maven.compiler.source>1.8</maven.compiler.source>
