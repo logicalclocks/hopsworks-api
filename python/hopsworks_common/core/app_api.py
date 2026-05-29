@@ -177,8 +177,10 @@ class AppApi:
                     "entrypoint_script is only used for Streamlit Git repository apps."
                 )
 
-        if app_path and not git_repo_app and not app_path.startswith("hdfs://"):
-            app_path = "hdfs://" + util.convert_to_abs(app_path, _client._project_name)
+        if app_path and not git_repo_app:
+            app_path = util.convert_to_abs(app_path, _client._project_name)
+            if not app_path.startswith("hdfs://"):
+                app_path = "hdfs://" + app_path
 
         config = {
             "type": "pythonAppJobConfiguration",
@@ -201,7 +203,7 @@ class AppApi:
                 config["gitBranch"] = git_branch
             if streamlit_app:
                 config["entrypointScript"] = entrypoint_script
-        elif app_kind_name != "STREAMLIT" and entrypoint_command:
+        if not streamlit_app and entrypoint_command:
             config["entrypointCommand"] = entrypoint_command
         if app_kind_name != "STREAMLIT" and app_port is not None:
             config["appPort"] = app_port

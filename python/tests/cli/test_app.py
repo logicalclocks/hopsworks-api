@@ -182,9 +182,6 @@ def test_app_create_forwards_args(mock_project):
         name="dash",
         app_path="Resources/dash.py",
         app_kind="STREAMLIT",
-        entrypoint_command=None,
-        app_port=None,
-        description=None,
         environment="custom-env",
         memory=4096,
         cores=2.0,
@@ -219,7 +216,6 @@ def test_app_create_custom_forwards_args(mock_project):
     assert result.exit_code == 0, result.output
     apps.create_app.assert_called_once_with(
         name="dash",
-        app_path=None,
         app_kind="CUSTOM",
         entrypoint_command='python -m uvicorn dash:app --host 0.0.0.0 --port "$APP_PORT"',
         app_port=8080,
