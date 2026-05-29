@@ -74,6 +74,10 @@ class App:
         app_kind=None,
         app_port=None,
         entrypoint_command=None,
+        git_url=None,
+        git_provider=None,
+        git_branch=None,
+        entrypoint_script=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -97,6 +101,10 @@ class App:
         self._app_kind = app_kind
         self._app_port = app_port
         self._entrypoint_command = entrypoint_command
+        self._git_url = git_url
+        self._git_provider = git_provider
+        self._git_branch = git_branch
+        self._entrypoint_script = entrypoint_script
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -184,6 +192,30 @@ class App:
     def description(self) -> str | None:
         """App description."""
         return self._description
+
+    @public
+    @property
+    def git_url(self) -> str | None:
+        """Configured Git repository URL."""
+        return self._git_url
+
+    @public
+    @property
+    def git_provider(self) -> str | None:
+        """Configured Git provider."""
+        return self._git_provider
+
+    @public
+    @property
+    def git_branch(self) -> str | None:
+        """Configured Git branch."""
+        return self._git_branch
+
+    @public
+    @property
+    def entrypoint_script(self) -> str | None:
+        """Configured Git-backed Streamlit entrypoint script."""
+        return self._entrypoint_script
 
     @public
     @property
@@ -359,6 +391,10 @@ class App:
         self._app_kind = updated._app_kind
         self._app_port = updated._app_port
         self._entrypoint_command = updated._entrypoint_command
+        self._git_url = updated._git_url
+        self._git_provider = updated._git_provider
+        self._git_branch = updated._git_branch
+        self._entrypoint_script = updated._entrypoint_script
         return self
 
     def _wait_for_serving(self) -> App:

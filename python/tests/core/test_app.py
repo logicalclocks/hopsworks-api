@@ -64,6 +64,10 @@ class TestApp:
             "appPort": 8080,
             "entrypointCommand": 'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"',
             "description": "Custom FastAPI app",
+            "gitUrl": "https://github.com/org/repo.git",
+            "gitProvider": "GitHub",
+            "gitBranch": "main",
+            "entrypointScript": "streamlitapp.py",
         }
 
         app = App.from_response_json(json_data)
@@ -75,6 +79,10 @@ class TestApp:
             'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"'
         )
         assert app.description == "Custom FastAPI app"
+        assert app.git_url == "https://github.com/org/repo.git"
+        assert app.git_provider == "GitHub"
+        assert app.git_branch == "main"
+        assert app.entrypoint_script == "streamlitapp.py"
 
     def test_from_response_json_list(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")

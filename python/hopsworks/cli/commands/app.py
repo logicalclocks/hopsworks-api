@@ -2,9 +2,9 @@
 
 Wraps the SDK's ``project.get_app_api()``: list, info, create, start, redeploy,
 stop, delete, plus a convenience ``url`` that prints the public serving URL.
-App scripts must be uploaded to HopsFS first (``hops files upload``);
-``create`` takes the HopsFS path for Streamlit apps and the startup command
-for custom apps, matching ``hops job create`` style inputs.
+App scripts can either live in HopsFS or in a Git repository. File-backed
+Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
+``--entrypoint-script``; custom apps use ``--entrypoint-command``.
 """
 
 from __future__ import annotations
@@ -67,6 +67,7 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["ID", getattr(a, "id", "?")],
         ["Name", getattr(a, "name", "?")],
         ["Type", getattr(a, "app_kind", "-")],
+        ["Source", _app_source(a)],
         ["State", getattr(a, "state", "-")],
         ["Serving", "yes" if getattr(a, "serving", False) else "no"],
         ["Environment", getattr(a, "environment", "-")],
@@ -74,6 +75,10 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Cores", getattr(a, "cores", "-")],
         ["Path", getattr(a, "app_path", None) or "-"],
         ["Port", getattr(a, "app_port", None) or "-"],
+        ["Git URL", getattr(a, "git_url", None) or "-"],
+        ["Git provider", getattr(a, "git_provider", None) or "-"],
+        ["Git branch", getattr(a, "git_branch", None) or "-"],
+        ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
         ["Description", getattr(a, "description", None) or "-"],
         ["URL", getattr(a, "app_url", None) or "-"],
@@ -136,6 +141,27 @@ def app_url(ctx: click.Context, name: str) -> None:
     help="Port exposed by custom apps.",
 )
 @click.option(
+    "--git-url",
+    default=None,
+    help="Git repository URL to clone on every app start.",
+)
+@click.option(
+    "--git-provider",
+    type=click.Choice(["GitHub", "GitLab", "BitBucket"], case_sensitive=False),
+    default=None,
+    help="Git provider for git-backed apps.",
+)
+@click.option(
+    "--git-branch",
+    default=None,
+    help="Optional Git branch to clone.",
+)
+@click.option(
+    "--entrypoint-script",
+    default=None,
+    help="Relative .py entrypoint script for Streamlit Git repository apps.",
+)
+@click.option(
     "--description",
     default=None,
     help="Optional app description.",
@@ -163,6 +189,10 @@ def app_create(
     app_kind: str,
     entrypoint_command: str | None,
     app_port: int | None,
+    git_url: str | None,
+    git_provider: str | None,
+    git_branch: str | None,
+    entrypoint_script: str | None,
     description: str | None,
     environment: str,
     memory: int,
@@ -178,6 +208,10 @@ def app_create(
         app_kind: App type.
         entrypoint_command: Startup command for custom apps.
         app_port: Port for custom apps.
+        git_url: Git repository URL for git-backed apps.
+        git_provider: Git provider for git-backed apps.
+        git_branch: Optional Git branch.
+        entrypoint_script: Relative entrypoint script for Streamlit git apps.
         description: Optional app description.
         environment: Python environment name.
         memory: Memory in MB.
@@ -185,24 +219,67 @@ def app_create(
         start: When True, start the app and wait for serving.
     """
     app_kind = app_kind.upper()
-    if app_kind == "STREAMLIT" and not app_path:
-        raise click.ClickException("Streamlit apps require --path.")
-    if app_kind != "STREAMLIT" and not entrypoint_command:
-        raise click.ClickException("Custom apps require --entrypoint-command.")
+    git_repo_app = bool(git_url)
+    if app_kind == "STREAMLIT":
+        if entrypoint_command:
+            raise click.ClickException(
+                "Streamlit apps do not accept --entrypoint-command."
+            )
+        if git_repo_app:
+            if not git_provider:
+                raise click.ClickException(
+                    "Streamlit Git repository apps require --git-provider."
+                )
+            if not entrypoint_script:
+                raise click.ClickException(
+                    "Streamlit Git repository apps require --entrypoint-script."
+                )
+            if entrypoint_command:
+                raise click.ClickException(
+                    "Streamlit Git repository apps do not accept --entrypoint-command."
+                )
+        elif not app_path:
+            raise click.ClickException("Streamlit apps require --path.")
+        elif entrypoint_script:
+            raise click.ClickException(
+                "--entrypoint-script is only supported for Streamlit Git apps."
+            )
+    else:
+        if not entrypoint_command:
+            raise click.ClickException("Custom apps require --entrypoint-command.")
+        if git_repo_app and not git_provider:
+            raise click.ClickException("Git repository apps require --git-provider.")
+        if entrypoint_script:
+            raise click.ClickException(
+                "--entrypoint-script is only supported for Streamlit Git apps."
+            )
 
     apps = _get_app_api(ctx)
+    create_kwargs: dict[str, Any] = {
+        "name": name,
+        "app_kind": app_kind,
+        "environment": environment,
+        "memory": memory,
+        "cores": cores,
+    }
+    if description is not None:
+        create_kwargs["description"] = description
+    if app_path is not None:
+        create_kwargs["app_path"] = app_path
+    if entrypoint_command is not None:
+        create_kwargs["entrypoint_command"] = entrypoint_command
+    if app_port is not None:
+        create_kwargs["app_port"] = app_port
+    if git_url is not None:
+        create_kwargs["git_url"] = git_url
+    if git_provider is not None:
+        create_kwargs["git_provider"] = git_provider
+    if git_branch is not None:
+        create_kwargs["git_branch"] = git_branch
+    if entrypoint_script is not None:
+        create_kwargs["entrypoint_script"] = entrypoint_script
     try:
-        a = apps.create_app(
-            name=name,
-            app_path=app_path,
-            app_kind=app_kind,
-            entrypoint_command=entrypoint_command,
-            app_port=app_port,
-            description=description,
-            environment=environment,
-            memory=memory,
-            cores=cores,
-        )
+        a = apps.create_app(**create_kwargs)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create app: {exc}") from exc
 
@@ -357,10 +434,12 @@ def _redeploy(a: Any, await_serving: bool = True) -> None:
 
 
 def _app_to_dict(a: Any) -> dict[str, Any]:
+    source = _app_source(a)
     return {
         "id": getattr(a, "id", None),
         "name": getattr(a, "name", None),
         "app_kind": getattr(a, "app_kind", None),
+        "source": source,
         "state": getattr(a, "state", None),
         "serving": bool(getattr(a, "serving", False)),
         "environment": getattr(a, "environment", None),
@@ -368,7 +447,15 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "cores": getattr(a, "cores", None),
         "app_path": getattr(a, "app_path", None),
         "app_port": getattr(a, "app_port", None),
+        "git_url": getattr(a, "git_url", None),
+        "git_provider": getattr(a, "git_provider", None),
+        "git_branch": getattr(a, "git_branch", None),
+        "entrypoint_script": getattr(a, "entrypoint_script", None),
         "entrypoint_command": getattr(a, "entrypoint_command", None),
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
+
+
+def _app_source(a: Any) -> str:
+    return "Git repository" if getattr(a, "git_url", None) else "Project file"

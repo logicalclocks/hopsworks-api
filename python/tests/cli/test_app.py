@@ -22,6 +22,10 @@ def _fake_app(**overrides):
     a.app_path = overrides.get("app_path", "Resources/app.py")
     a.app_port = overrides.get("app_port")
     a.entrypoint_command = overrides.get("entrypoint_command")
+    a.git_url = overrides.get("git_url")
+    a.git_provider = overrides.get("git_provider")
+    a.git_branch = overrides.get("git_branch")
+    a.entrypoint_script = overrides.get("entrypoint_script")
     a.description = overrides.get("description")
     a.app_url = overrides.get("app_url")
     return a
@@ -70,6 +74,27 @@ def test_app_info_shows_custom_metadata(mock_project):
     assert 'python -m uvicorn dash:app --port "$APP_PORT"' in result.output
 
 
+def test_app_info_shows_git_metadata(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash",
+        state="RUNNING",
+        serving=True,
+        app_kind="STREAMLIT",
+        git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+        git_provider="GitHub",
+        git_branch="main",
+        entrypoint_script="streamlitapp.py",
+    )
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "Git repository" in result.output
+    assert "https://github.com/gibchikafa/appshopsworkstests.git" in result.output
+    assert "GitHub" in result.output
+    assert "main" in result.output
+    assert "streamlitapp.py" in result.output
+
+
 def test_app_info_json_includes_custom_metadata(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.get_app.return_value = _fake_app(
@@ -88,6 +113,29 @@ def test_app_info_json_includes_custom_metadata(mock_project):
     assert payload["app_port"] == 8080
     assert payload["entrypoint_command"] == 'python -m uvicorn dash:app --port "$APP_PORT"'
     assert payload["description"] == "FastAPI demo"
+    assert payload["source"] == "Project file"
+
+
+def test_app_info_json_includes_git_metadata(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash",
+        state="RUNNING",
+        serving=True,
+        app_kind="STREAMLIT",
+        git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+        git_provider="GitHub",
+        git_branch="main",
+        entrypoint_script="streamlitapp.py",
+    )
+    result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["source"] == "Git repository"
+    assert payload["git_url"] == "https://github.com/gibchikafa/appshopsworkstests.git"
+    assert payload["git_provider"] == "GitHub"
+    assert payload["git_branch"] == "main"
+    assert payload["entrypoint_script"] == "streamlitapp.py"
 
 
 def test_app_url_exits_non_zero_when_not_serving(mock_project):
@@ -180,6 +228,81 @@ def test_app_create_custom_forwards_args(mock_project):
     )
 
 
+def test_app_create_streamlit_git_forwards_args(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--app-kind",
+            "STREAMLIT",
+            "--git-url",
+            "https://github.com/gibchikafa/appshopsworkstests.git",
+            "--git-provider",
+            "github",
+            "--git-branch",
+            "main",
+            "--entrypoint-script",
+            "streamlitapp.py",
+            "--environment",
+            "custom-env",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    apps.create_app.assert_called_once_with(
+        name="dash",
+        app_kind="STREAMLIT",
+        environment="custom-env",
+        memory=2048,
+        cores=1.0,
+        git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+        git_provider="GitHub",
+        git_branch="main",
+        entrypoint_script="streamlitapp.py",
+    )
+
+
+def test_app_create_custom_git_forwards_args(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--app-kind",
+            "CUSTOM",
+            "--git-url",
+            "https://github.com/gibchikafa/appshopsworkstests.git",
+            "--git-provider",
+            "GitHub",
+            "--git-branch",
+            "main",
+            "--entrypoint-command",
+            'python -m uvicorn dash:app --host 0.0.0.0 --port "$APP_PORT"',
+            "--app-port",
+            "8080",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    apps.create_app.assert_called_once_with(
+        name="dash",
+        app_kind="CUSTOM",
+        environment="python-app-pipeline",
+        memory=2048,
+        cores=1.0,
+        entrypoint_command='python -m uvicorn dash:app --host 0.0.0.0 --port "$APP_PORT"',
+        app_port=8080,
+        git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+        git_provider="GitHub",
+        git_branch="main",
+    )
+
+
 def test_app_create_streamlit_requires_path(mock_project):
     result = CliRunner().invoke(cli, ["app", "create", "dash"])
     assert result.exit_code != 0
@@ -192,6 +315,23 @@ def test_app_create_custom_requires_entrypoint(mock_project):
     )
     assert result.exit_code != 0
     assert "Custom apps require --entrypoint-command" in result.output
+
+
+def test_app_create_streamlit_git_requires_script(mock_project):
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--git-url",
+            "https://github.com/gibchikafa/appshopsworkstests.git",
+            "--git-provider",
+            "GitHub",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "require --entrypoint-script" in result.output
 
 
 def test_app_create_with_start_triggers_run(mock_project):

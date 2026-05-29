@@ -72,6 +72,35 @@ class TestAppApiCreate:
         with pytest.raises(ValueError, match="app_path is required"):
             api.create_app("my_app")
 
+    def test_create_streamlit_git_app_payload(self, mock_client, api):
+        api.create_app(
+            "streamlit_git_app",
+            app_kind="STREAMLIT",
+            git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+            git_provider="github",
+            git_branch="main",
+            entrypoint_script="streamlitapp.py",
+        )
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["appKind"] == "STREAMLIT"
+        assert body["gitUrl"] == "https://github.com/gibchikafa/appshopsworkstests.git"
+        assert body["gitProvider"] == "GitHub"
+        assert body["gitBranch"] == "main"
+        assert body["entrypointScript"] == "streamlitapp.py"
+        assert "appPath" not in body
+        assert "entrypointCommand" not in body
+        assert "appPort" not in body
+
+    def test_create_streamlit_git_app_requires_entrypoint_script(self, mock_client, api):
+        with pytest.raises(ValueError, match="entrypoint_script is required"):
+            api.create_app(
+                "streamlit_git_app",
+                app_kind="STREAMLIT",
+                git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+                git_provider="GitHub",
+            )
+
     def test_create_custom_app_payload(self, mock_client, api, mocker):
         mocker.patch(
             "hopsworks_common.core.app_api.util.convert_to_abs",
@@ -115,6 +144,31 @@ class TestAppApiCreate:
         assert "appPath" not in body
         assert body["appPort"] == 8080
         assert body["entrypointCommand"].startswith("python -m pip install --no-cache-dir flask")
+
+    def test_create_custom_git_app_payload(self, mock_client, api):
+        api.create_app(
+            "fastapi_app",
+            app_kind="CUSTOM",
+            git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+            git_provider="GitHub",
+            git_branch="main",
+            entrypoint_command=(
+                'python -m uvicorn fastapiapp:app --host 0.0.0.0 --port "$APP_PORT"'
+            ),
+            app_port=8080,
+        )
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["appKind"] == "CUSTOM"
+        assert body["gitUrl"] == "https://github.com/gibchikafa/appshopsworkstests.git"
+        assert body["gitProvider"] == "GitHub"
+        assert body["gitBranch"] == "main"
+        assert body["entrypointCommand"] == (
+            'python -m uvicorn fastapiapp:app --host 0.0.0.0 --port "$APP_PORT"'
+        )
+        assert body["appPort"] == 8080
+        assert "appPath" not in body
+        assert "entrypointScript" not in body
 
     def test_create_custom_app_requires_entrypoint(self, mock_client, api):
         with pytest.raises(ValueError, match="entrypoint_command is required"):
