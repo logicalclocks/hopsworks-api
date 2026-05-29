@@ -154,14 +154,12 @@ class AppApi:
                 raise ValueError("entrypoint_command is only used for custom apps.")
             if git_repo_app:
                 if not git_provider:
-                    raise ValueError("git_provider is required for Git repository apps.")
+                    raise ValueError(
+                        "git_provider is required for Git repository apps."
+                    )
                 if not entrypoint_script:
                     raise ValueError(
                         "entrypoint_script is required for Streamlit Git repository apps."
-                    )
-                if entrypoint_command:
-                    raise ValueError(
-                        "entrypoint_command is not used for Streamlit Git repository apps."
                     )
             elif not app_path:
                 raise ValueError("app_path is required for Streamlit apps.")
@@ -306,14 +304,14 @@ class AppApi:
     def _trim_to_none(self, value: str | None) -> str | None:
         if value is None:
             return None
-        if hasattr(value, "git_provider"):
-            value = value.git_provider
         if not isinstance(value, str):
             value = str(value)
         trimmed = value.strip()
         return trimmed or None
 
     def _normalize_git_provider(self, git_provider: str | None) -> str | None:
+        if hasattr(git_provider, "git_provider"):
+            git_provider = git_provider.git_provider
         provider = self._trim_to_none(git_provider)
         if not provider:
             return None

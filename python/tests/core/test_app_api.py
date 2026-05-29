@@ -25,6 +25,10 @@ from hopsworks_common.core.app_api import AppApi
 
 
 class TestAppApiCreate:
+    class _ProviderLike:
+        def __init__(self, git_provider: str):
+            self.git_provider = git_provider
+
     @pytest.fixture
     def mock_client(self, mocker):
         client_mock = Mock()
@@ -92,7 +96,23 @@ class TestAppApiCreate:
         assert "entrypointCommand" not in body
         assert "appPort" not in body
 
-    def test_create_streamlit_git_app_requires_entrypoint_script(self, mock_client, api):
+    def test_create_streamlit_git_app_accepts_provider_like_object(
+        self, mock_client, api
+    ):
+        api.create_app(
+            "streamlit_git_app",
+            app_kind="STREAMLIT",
+            git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+            git_provider=self._ProviderLike("github"),
+            entrypoint_script="streamlitapp.py",
+        )
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["gitProvider"] == "GitHub"
+
+    def test_create_streamlit_git_app_requires_entrypoint_script(
+        self, mock_client, api
+    ):
         with pytest.raises(ValueError, match="entrypoint_script is required"):
             api.create_app(
                 "streamlit_git_app",
@@ -112,7 +132,7 @@ class TestAppApiCreate:
             app_path="Resources/fastapi_custom_app.py",
             app_kind="custom",
             entrypoint_command=(
-                'python -m uvicorn fastapi_custom_app:app --host 0.0.0.0 '
+                "python -m uvicorn fastapi_custom_app:app --host 0.0.0.0 "
                 '--port "$APP_PORT"'
             ),
             app_port=8080,
@@ -121,7 +141,9 @@ class TestAppApiCreate:
 
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body["appKind"] == "CUSTOM"
-        assert body["appPath"] == "hdfs:///Projects/demo/Resources/fastapi_custom_app.py"
+        assert (
+            body["appPath"] == "hdfs:///Projects/demo/Resources/fastapi_custom_app.py"
+        )
         assert body["entrypointCommand"] == (
             'python -m uvicorn fastapi_custom_app:app --host 0.0.0.0 --port "$APP_PORT"'
         )
@@ -133,7 +155,7 @@ class TestAppApiCreate:
             "flask_app",
             app_kind="CUSTOM",
             entrypoint_command=(
-                'python -m pip install --no-cache-dir flask && '
+                "python -m pip install --no-cache-dir flask && "
                 'exec python -m flask --app flask_custom_app run --host 0.0.0.0 --port "$APP_PORT"'
             ),
             app_port=8080,
@@ -143,7 +165,9 @@ class TestAppApiCreate:
         assert body["appKind"] == "CUSTOM"
         assert "appPath" not in body
         assert body["appPort"] == 8080
-        assert body["entrypointCommand"].startswith("python -m pip install --no-cache-dir flask")
+        assert body["entrypointCommand"].startswith(
+            "python -m pip install --no-cache-dir flask"
+        )
 
     def test_create_custom_git_app_payload(self, mock_client, api):
         api.create_app(

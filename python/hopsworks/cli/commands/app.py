@@ -234,10 +234,6 @@ def app_create(
                 raise click.ClickException(
                     "Streamlit Git repository apps require --entrypoint-script."
                 )
-            if entrypoint_command:
-                raise click.ClickException(
-                    "Streamlit Git repository apps do not accept --entrypoint-command."
-                )
         elif not app_path:
             raise click.ClickException("Streamlit apps require --path.")
         elif entrypoint_script:

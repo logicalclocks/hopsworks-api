@@ -111,7 +111,9 @@ def test_app_info_json_includes_custom_metadata(mock_project):
     payload = json.loads(result.output)
     assert payload["app_kind"] == "CUSTOM"
     assert payload["app_port"] == 8080
-    assert payload["entrypoint_command"] == 'python -m uvicorn dash:app --port "$APP_PORT"'
+    assert (
+        payload["entrypoint_command"] == 'python -m uvicorn dash:app --port "$APP_PORT"'
+    )
     assert payload["description"] == "FastAPI demo"
     assert payload["source"] == "Project file"
 
@@ -310,9 +312,7 @@ def test_app_create_streamlit_requires_path(mock_project):
 
 
 def test_app_create_custom_requires_entrypoint(mock_project):
-    result = CliRunner().invoke(
-        cli, ["app", "create", "dash", "--app-kind", "CUSTOM"]
-    )
+    result = CliRunner().invoke(cli, ["app", "create", "dash", "--app-kind", "CUSTOM"])
     assert result.exit_code != 0
     assert "Custom apps require --entrypoint-command" in result.output
 
