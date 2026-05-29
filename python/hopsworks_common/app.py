@@ -245,6 +245,29 @@ class App:
 
     @public
     @usage.method_logger
+    def redeploy(self, await_serving: bool = True) -> App:
+        """Redeploy the app by rolling its Kubernetes deployment.
+
+        This stops the current running execution and starts a new one using the
+        same app configuration and runtime parameters.
+
+        Parameters:
+            await_serving: If True, wait until the app is serving before returning.
+
+        Returns:
+            Self, with updated state.
+        """
+        _logger.info("Redeploying app: %s", self._name)
+        self._app_api._redeploy(self._name)
+
+        if await_serving:
+            _logger.info("Waiting for app to become ready after redeploy...")
+            return self._wait_for_serving()
+
+        return self._refresh()
+
+    @public
+    @usage.method_logger
     def stop(self) -> App:
         """Stop the app.
 

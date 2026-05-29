@@ -1,7 +1,7 @@
 """``hops app`` — Python app lifecycle.
 
-Wraps the SDK's ``project.get_app_api()``: list, info, create, start, stop,
-delete, plus a convenience ``url`` that prints the public serving URL.
+Wraps the SDK's ``project.get_app_api()``: list, info, create, start, redeploy,
+stop, delete, plus a convenience ``url`` that prints the public serving URL.
 App scripts must be uploaded to HopsFS first (``hops files upload``);
 ``create`` takes the HopsFS path for Streamlit apps and the startup command
 for custom apps, matching ``hops job create`` style inputs.
@@ -233,6 +233,28 @@ def app_start(ctx: click.Context, name: str, no_wait: bool) -> None:
     _start(a, await_serving=not no_wait)
 
 
+@app_group.command("redeploy")
+@click.argument("name")
+@click.option(
+    "--no-wait",
+    is_flag=True,
+    help="Return immediately after submission; do not wait for serving.",
+)
+@click.pass_context
+def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
+    """Redeploy a running app.
+
+    Blocks until the app is ``serving`` unless ``--no-wait`` is set.
+
+    Args:
+        ctx: Click context.
+        name: App name.
+        no_wait: Skip the wait-for-serving loop.
+    """
+    a = _get_app(ctx, name)
+    _redeploy(a, await_serving=not no_wait)
+
+
 @app_group.command("stop")
 @click.argument("name")
 @click.pass_context
@@ -308,6 +330,24 @@ def _start(a: Any, await_serving: bool = True) -> None:
     serving = getattr(a, "serving", False)
     output.success(
         "✓ Started app %s (state=%s, serving=%s)",
+        getattr(a, "name", "?"),
+        state,
+        "yes" if serving else "no",
+    )
+    if url:
+        click.echo(url)
+
+
+def _redeploy(a: Any, await_serving: bool = True) -> None:
+    try:
+        a.redeploy(await_serving=await_serving)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Redeploy failed: {exc}") from exc
+    url = getattr(a, "app_url", None)
+    state = getattr(a, "state", "-")
+    serving = getattr(a, "serving", False)
+    output.success(
+        "✓ Redeployed app %s (state=%s, serving=%s)",
         getattr(a, "name", "?"),
         state,
         "yes" if serving else "no",

@@ -232,6 +232,24 @@ def test_app_start_no_wait_passes_false(mock_project):
     a.run.assert_called_once_with(await_serving=False)
 
 
+def test_app_redeploy_defaults_await_serving_true(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(state="RUNNING", serving=True, app_url="https://h/x")
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "redeploy", "dash"])
+    assert result.exit_code == 0, result.output
+    a.redeploy.assert_called_once_with(await_serving=True)
+
+
+def test_app_redeploy_no_wait_passes_false(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app()
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "redeploy", "dash", "--no-wait"])
+    assert result.exit_code == 0, result.output
+    a.redeploy.assert_called_once_with(await_serving=False)
+
+
 def test_app_stop_calls_sdk(mock_project):
     apps = mock_project.get_app_api.return_value
     a = _fake_app()

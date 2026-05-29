@@ -205,6 +205,19 @@ class AppApi:
             "PUT", path_params, headers=headers, data=json.dumps({"state": "stopped"})
         )
 
+    def _redeploy(self, app_name: str):
+        """Redeploy a running app."""
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "apps",
+            app_name,
+            "redeploy",
+        ]
+        headers = {"content-type": "application/json"}
+        return _client._send_request("POST", path_params, headers=headers)
+
     def _get_log(self, app_name: str, execution_id: int, log_type: str) -> dict:
         """Get stdout or stderr log metadata for an app execution."""
         _client = client.get_instance()

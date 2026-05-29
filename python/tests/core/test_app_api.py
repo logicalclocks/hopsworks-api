@@ -119,3 +119,16 @@ class TestAppApiCreate:
     def test_create_custom_app_requires_entrypoint(self, mock_client, api):
         with pytest.raises(ValueError, match="entrypoint_command is required"):
             api.create_app("custom_app", app_kind="CUSTOM", app_path=None)
+
+    def test_redeploy_posts_to_backend(self, mock_client):
+        api = AppApi()
+        api._redeploy("my_app")
+
+        assert mock_client._send_request.call_args.args[0] == "POST"
+        assert mock_client._send_request.call_args.args[1] == [
+            "project",
+            119,
+            "apps",
+            "my_app",
+            "redeploy",
+        ]

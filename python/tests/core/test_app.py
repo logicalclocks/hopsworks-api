@@ -179,6 +179,30 @@ class TestApp:
 
         assert "App failed to start" in str(e_info.value)
 
+    def test_redeploy_waits_for_serving(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.app.time.sleep")
+        mock_api = mocker.patch(
+            "hopsworks_common.core.app_api.AppApi",
+        )
+
+        not_serving = App(name="my_app", state="RUNNING", serving=False)
+        serving = App(
+            name="my_app",
+            state="RUNNING",
+            serving=True,
+            app_url="pythonapp/proj/my_app/",
+        )
+        mock_api.return_value.get_app.side_effect = [not_serving, serving]
+
+        app = App(name="my_app", state="STOPPED")
+        app._app_api = mock_api.return_value
+
+        result = app.redeploy(await_serving=True)
+
+        mock_api.return_value._redeploy.assert_called_once_with("my_app")
+        assert result._serving is True
+
     def test_stop(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
         mock_api = mocker.patch(
