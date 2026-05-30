@@ -77,6 +77,7 @@ class App:
         git_url=None,
         git_provider=None,
         git_branch=None,
+        latest_commit=None,
         entrypoint_script=None,
         **kwargs,
     ):
@@ -104,6 +105,7 @@ class App:
         self._git_url = git_url
         self._git_provider = git_provider
         self._git_branch = git_branch
+        self._latest_commit = latest_commit
         self._entrypoint_script = entrypoint_script
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
@@ -210,6 +212,12 @@ class App:
     def git_branch(self) -> str | None:
         """Configured Git branch."""
         return self._git_branch
+
+    @public
+    @property
+    def latest_commit(self) -> str | None:
+        """Latest deployed Git commit."""
+        return self._latest_commit
 
     @public
     @property
@@ -394,6 +402,7 @@ class App:
         self._git_url = updated._git_url
         self._git_provider = updated._git_provider
         self._git_branch = updated._git_branch
+        self._latest_commit = updated._latest_commit
         self._entrypoint_script = updated._entrypoint_script
         return self
 

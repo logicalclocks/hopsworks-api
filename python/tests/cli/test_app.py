@@ -25,6 +25,7 @@ def _fake_app(**overrides):
     a.git_url = overrides.get("git_url")
     a.git_provider = overrides.get("git_provider")
     a.git_branch = overrides.get("git_branch")
+    a.latest_commit = overrides.get("latest_commit")
     a.entrypoint_script = overrides.get("entrypoint_script")
     a.description = overrides.get("description")
     a.app_url = overrides.get("app_url")
@@ -84,6 +85,7 @@ def test_app_info_shows_git_metadata(mock_project):
         git_url="https://github.com/gibchikafa/appshopsworkstests.git",
         git_provider="GitHub",
         git_branch="main",
+        latest_commit="0123456789abcdef0123456789abcdef01234567",
         entrypoint_script="streamlitapp.py",
     )
     result = CliRunner().invoke(cli, ["app", "info", "dash"])
@@ -92,6 +94,8 @@ def test_app_info_shows_git_metadata(mock_project):
     assert "https://github.com/gibchikafa/appshopsworkstests.git" in result.output
     assert "GitHub" in result.output
     assert "main" in result.output
+    assert "Latest commit" in result.output
+    assert "0123456789abcdef0123456789abcdef01234567" in result.output
     assert "streamlitapp.py" in result.output
 
 
@@ -128,6 +132,7 @@ def test_app_info_json_includes_git_metadata(mock_project):
         git_url="https://github.com/gibchikafa/appshopsworkstests.git",
         git_provider="GitHub",
         git_branch="main",
+        latest_commit="0123456789abcdef0123456789abcdef01234567",
         entrypoint_script="streamlitapp.py",
     )
     result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
@@ -137,6 +142,7 @@ def test_app_info_json_includes_git_metadata(mock_project):
     assert payload["git_url"] == "https://github.com/gibchikafa/appshopsworkstests.git"
     assert payload["git_provider"] == "GitHub"
     assert payload["git_branch"] == "main"
+    assert payload["latest_commit"] == "0123456789abcdef0123456789abcdef01234567"
     assert payload["entrypoint_script"] == "streamlitapp.py"
 
 

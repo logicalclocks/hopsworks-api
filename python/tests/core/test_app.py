@@ -67,6 +67,7 @@ class TestApp:
             "gitUrl": "https://github.com/org/repo.git",
             "gitProvider": "GitHub",
             "gitBranch": "main",
+            "latestCommit": "0123456789abcdef0123456789abcdef01234567",
             "entrypointScript": "streamlitapp.py",
         }
 
@@ -82,6 +83,7 @@ class TestApp:
         assert app.git_url == "https://github.com/org/repo.git"
         assert app.git_provider == "GitHub"
         assert app.git_branch == "main"
+        assert app.latest_commit == "0123456789abcdef0123456789abcdef01234567"
         assert app.entrypoint_script == "streamlitapp.py"
 
     def test_from_response_json_list(self, mocker):
