@@ -1,15 +1,9 @@
 ---
 name: hopsworks-batch-inference
-description: Use when writing Python or PySpark code for batch inference with
-  Hopsworks. Auto-invoke when user wants to retrieve batch data from feature views,
-  use spine groups for point-in-time joins, download models from the model registry
-  for batch prediction, or build batch scoring pipelines.
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash
+description: Use when writing Python or PySpark code for batch inference with Hopsworks. Auto-invoke when user wants to retrieve batch data from feature views, use spine groups for point-in-time joins, download models from the model registry for batch prediction, or build batch scoring pipelines.
 ---
 
 # Hopsworks Batch Inference — Python SDK Best Practices
-
-Reference: `/tmp/hopsworks-api/python/hsfs/` and `/tmp/hopsworks-api/python/hsml/`
 
 ## Overview
 
