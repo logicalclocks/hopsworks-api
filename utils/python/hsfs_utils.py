@@ -611,7 +611,7 @@ if __name__ == "__main__":
             "delta_vacuum_fg",
             "offline_fg_materialization",
             "update_table_schema_fg",
-            "create_delta_table_fg",
+            "offline_fg_create_delta_table",
         ],
         help="Operation type",
     )
@@ -662,7 +662,7 @@ if __name__ == "__main__":
             offline_fg_materialization(spark, job_conf, args.initialCheckPointString)
         elif args.op == "update_table_schema_fg":
             update_table_schema_fg(spark, job_conf)
-        elif args.op == "create_delta_table_fg":
+        elif args.op == "offline_fg_create_delta_table":
             create_delta_table_fg(spark, job_conf)
 
         success = True
