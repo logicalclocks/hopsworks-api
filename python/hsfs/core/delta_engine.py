@@ -311,7 +311,50 @@ class DeltaEngine:
         )
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
+    def _materialize_partitioned_by_grains_spark(self, dataset):
+        """Materialize the partitioned_by grain columns into a Spark DataFrame.
+
+        Mirror of [`_materialize_partitioned_by_grains`][] for the Spark engine:
+        the grain columns are real partition columns, so their values are derived
+        from event_time before the write.
+        Columns already present (the empty-table create path) are left untouched.
+        """
+        grains = getattr(self._feature_group, "partitioned_by", None)
+        if not grains:
+            return dataset
+        event_time = self._feature_group.event_time
+        if event_time is None or event_time not in dataset.columns:
+            return dataset
+        from pyspark.sql import functions as F
+        from pyspark.sql.types import DateType, NumericType, TimestampType
+
+        et_type = dataset.schema[event_time].dataType
+        if isinstance(et_type, (TimestampType, DateType)):
+            ts = F.col(event_time)
+        elif isinstance(et_type, NumericType):
+            # seconds-vs-milliseconds rule: a value up to ten digits is seconds.
+            ts = (
+                F.when(F.abs(F.col(event_time)) <= 9999999999, F.col(event_time))
+                .otherwise(F.col(event_time) / 1000)
+                .cast("timestamp")
+            )
+        else:
+            ts = F.to_timestamp(F.col(event_time))
+        grain_fns = {
+            "year": F.year,
+            "month": F.month,
+            "week": F.weekofyear,
+            "day": F.dayofmonth,
+            "hour": F.hour,
+        }
+        for grain in grains:
+            if grain in dataset.columns:
+                continue
+            dataset = dataset.withColumn(grain, grain_fns[grain](ts).cast("int"))
+        return dataset
+
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
+        dataset = self._materialize_partitioned_by_grains_spark(dataset)
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
@@ -539,6 +582,7 @@ class DeltaEngine:
                 dataset = dataset.to_arrow()
 
         dataset = self._prepare_df_for_delta(dataset)
+        dataset = self._materialize_partitioned_by_grains(dataset)
 
         append_requested = operation == "insert" or (
             isinstance(write_options, dict)
@@ -646,6 +690,62 @@ class DeltaEngine:
         return self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
+
+    def _materialize_partitioned_by_grains(self, table):
+        """Materialize the partitioned_by grain columns into an Arrow table.
+
+        delta-rs partitions only by real, materialized columns, so the grain
+        columns (year/month/week/day/hour) derived from event_time must be
+        present in the dataframe before the write.
+        Columns already present are left untouched, so the empty-table create
+        path (which builds the grain columns from the schema) is a no-op here.
+        """
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        if not isinstance(table, pa.Table):
+            return table
+        grains = getattr(self._feature_group, "partitioned_by", None)
+        if not grains:
+            return table
+        event_time = self._feature_group.event_time
+        if event_time is None or event_time not in table.column_names:
+            return table
+        ts = self._event_time_arrow_to_timestamp(table.column(event_time))
+        grain_fns = {
+            "year": pc.year,
+            "month": pc.month,
+            "week": pc.iso_week,
+            "day": pc.day,
+            "hour": pc.hour,
+        }
+        for grain in grains:
+            if grain in table.column_names:
+                continue
+            values = pc.cast(grain_fns[grain](ts), pa.int32())
+            table = table.append_column(grain, values)
+        return table
+
+    @staticmethod
+    def _event_time_arrow_to_timestamp(column):
+        """Return a timestamp/date Arrow array from an event_time column.
+
+        Integer event_time follows the seconds-vs-milliseconds rule (a value up
+        to ten digits is treated as unix seconds, longer as milliseconds), the
+        same convention the rest of the client uses.
+        """
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        col_type = column.type
+        if pa.types.is_timestamp(col_type) or pa.types.is_date(col_type):
+            return column
+        if pa.types.is_integer(col_type):
+            mx = pc.max(pc.abs(column)).as_py()
+            unit = "s" if mx is None or mx <= 9999999999 else "ms"
+            return pc.cast(column, pa.timestamp(unit))
+        # strings / other — let Arrow attempt a timestamp cast
+        return pc.cast(column, pa.timestamp("us"))
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):

@@ -422,96 +422,6 @@ def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> Non
     engine.get_instance().update_table_schema(entity)
 
 
-# Spark SQL functions used by the Delta GENERATED ALWAYS AS expression
-# for each supported partitioned_by grain. The names match the Spark SQL
-# built-ins; Delta interprets them and computes the partition column on
-# every write.
-_PARTITIONED_BY_GRAIN_FNS = {
-    "year": "YEAR",
-    "month": "MONTH",
-    "week": "WEEKOFYEAR",
-    "day": "DAYOFMONTH",
-    "hour": "HOUR",
-}
-
-
-def _event_time_timestamp_expr(event_time: str, event_time_type: str) -> str:
-    """Return a Spark SQL expression that yields a TIMESTAMP from event_time.
-
-    Mirrors the seconds-vs-milliseconds rule used by the Python client and the
-    Hopsworks `convert_event_time_to_timestamp` helper: values with absolute
-    magnitude up to ten digits are treated as unix seconds, anything longer as
-    unix milliseconds.
-    Timestamp and date columns pass through unchanged.
-    """
-    et_type = (event_time_type or "").lower()
-    if et_type.startswith("timestamp") or et_type == "date":
-        return f"`{event_time}`"
-    # bigint / int / long / smallint / tinyint — encode the per-row decision
-    # as a CASE WHEN so the GENERATED expression handles both unit conventions.
-    return (
-        f"CAST("
-        f"CASE WHEN ABS(`{event_time}`) <= 9999999999 THEN `{event_time}` "
-        f"ELSE `{event_time}` / 1000 END "
-        f"AS TIMESTAMP)"
-    )
-
-
-def create_delta_table_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> None:
-    """Create a Delta-format feature group table with GENERATED ALWAYS AS partition columns.
-
-    The Java side persists the feature group entity (with the synthetic grain
-    features marked partition=true), writes a JSON config to HopsFS, and
-    launches this job. The job assembles a Spark SQL `CREATE TABLE … USING
-    DELTA … GENERATED ALWAYS AS …` statement and executes it via Spark, which
-    registers the table in the Hive metastore and initializes the Delta
-    `_delta_log/` with the generation expressions.
-
-    Expected `job_conf` keys:
-        - feature_store (str)            — name of the offline featurestore db
-        - db_name       (str)            — same as feature_store today
-        - table_name    (str)            — `<fg_name>_<version>`
-        - location      (str)            — HDFS path for the table
-        - event_time    (str)            — name of the event-time column
-        - event_time_type (str)          — declared type (timestamp / date / bigint / …)
-        - source_columns (list[dict])    — non-grain feature schema:
-                                            `[{"name": ..., "type": ...}, ...]`
-        - partitioned_by (list[str])     — ordered list of grains
-    """
-    db_name = job_conf["db_name"]
-    table_name = job_conf["table_name"]
-    location = job_conf["location"]
-    event_time = job_conf["event_time"]
-    event_time_type = job_conf["event_time_type"]
-    # source_columns and partitioned_by arrive as JSON strings because the
-    # Java FsJobManagerController stores job configuration as
-    # Map<String, String>. Decode them here.
-    source_columns = job_conf["source_columns"]
-    if isinstance(source_columns, str):
-        source_columns = json.loads(source_columns)
-    partitioned_by = job_conf["partitioned_by"]
-    if isinstance(partitioned_by, str):
-        partitioned_by = json.loads(partitioned_by)
-
-    et_expr = _event_time_timestamp_expr(event_time, event_time_type)
-
-    col_defs: list[str] = [f"`{c['name']}` {c['type']}" for c in source_columns]
-    for grain in partitioned_by:
-        fn = _PARTITIONED_BY_GRAIN_FNS[grain]
-        col_defs.append(f"`{grain}` INT GENERATED ALWAYS AS ({fn}({et_expr}))")
-
-    partition_clause = ", ".join(f"`{g}`" for g in partitioned_by)
-
-    sql = (
-        f"CREATE TABLE IF NOT EXISTS `{db_name}`.`{table_name}` (\n"
-        + ",\n".join(f"  {c}" for c in col_defs)
-        + f"\n) USING DELTA PARTITIONED BY ({partition_clause}) "
-        + f"LOCATION '{location}'"
-    )
-
-    spark.sql(sql)
-
-
 def _build_offsets(initial_check_point_string: str):
     if not initial_check_point_string:
         return ""
@@ -611,7 +521,6 @@ if __name__ == "__main__":
             "delta_vacuum_fg",
             "offline_fg_materialization",
             "update_table_schema_fg",
-            "offline_fg_create_delta_table",
         ],
         help="Operation type",
     )
@@ -662,8 +571,6 @@ if __name__ == "__main__":
             offline_fg_materialization(spark, job_conf, args.initialCheckPointString)
         elif args.op == "update_table_schema_fg":
             update_table_schema_fg(spark, job_conf)
-        elif args.op == "offline_fg_create_delta_table":
-            create_delta_table_fg(spark, job_conf)
 
         success = True
     except Exception as e:
