@@ -71,13 +71,16 @@ class TestNoOp:
         out = augment_filter(f, fg, engine_type="python")
         assert out is f
 
-    def test_spark_delta_no_translation(self):
+    def test_spark_delta_translates(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
         fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
-        # Delta auto-derives partition predicates from GENERATED expressions
-        # on the Spark engine, so the translator must NOT touch the filter.
+        # Grain columns are real partition columns (no Delta GENERATED
+        # expressions), so an event_time range does not prune on its own.
+        # The translator adds grain predicates the engine prunes on — for
+        # Spark+Delta the same as the Trino/ArrowFlight path.
         out = augment_filter(f, fg, engine_type="spark")
-        assert out is f
+        assert _has_predicate(out, "ts", Filter.GE)
+        assert _has_predicate(out, "year", Filter.GE, 2026)
 
     def test_non_hierarchical_falls_back(self):
         # ["month"] without year is non-hierarchical — the translator should

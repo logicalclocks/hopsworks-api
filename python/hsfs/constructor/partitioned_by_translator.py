@@ -103,8 +103,12 @@ def augment_filter(
     fmt = (getattr(fg, "time_travel_format", None) or "").upper()
     engine = (engine_type or "").lower()
 
-    if engine == "spark" and fmt == "DELTA":
-        return f  # Delta auto-derives both directions; nothing to add.
+    if fmt == "DELTA":
+        # Grain columns are real materialized partition columns (no Delta
+        # GENERATED expressions), so an event_time range does not prune on its
+        # own — translate it to predicates on the grain columns, which Delta
+        # prunes natively, for both Spark and Trino/ArrowFlight reads.
+        return _augment_event_time_to_derived(f, fg, grains)
     if engine == "spark" and fmt == "HUDI":
         return _augment_derived_to_event_time(f, fg, grains)
     if engine == "python":  # python engine → Trino reads

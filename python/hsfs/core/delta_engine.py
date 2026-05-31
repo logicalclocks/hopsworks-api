@@ -741,9 +741,16 @@ class DeltaEngine:
         if pa.types.is_timestamp(col_type) or pa.types.is_date(col_type):
             return column
         if pa.types.is_integer(col_type):
-            mx = pc.max(pc.abs(column)).as_py()
-            unit = "s" if mx is None or mx <= 9999999999 else "ms"
-            return pc.cast(column, pa.timestamp(unit))
+            # Per-row seconds-vs-milliseconds decision (mirrors the Spark path):
+            # a value up to ten digits is unix seconds, longer is milliseconds.
+            # Decide per element rather than once for the whole column so a
+            # column mixing the two units is not all coerced to one.
+            seconds = pc.if_else(
+                pc.less_equal(pc.abs(column), 9999999999),
+                column,
+                pc.divide(column, 1000),
+            )
+            return pc.cast(seconds, pa.timestamp("s"))
         # strings / other — let Arrow attempt a timestamp cast
         return pc.cast(column, pa.timestamp("us"))
 
