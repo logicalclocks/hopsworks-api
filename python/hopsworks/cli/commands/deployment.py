@@ -80,7 +80,7 @@ def deployment_info(ctx: click.Context, name: str) -> None:
         ["Model version", getattr(deployment, "model_version", "?")],
         ["Serving tool", getattr(deployment, "serving_tool", "-")],
         ["Model server", getattr(deployment, "model_server", "-")],
-        ["Status", _deployment_status(deployment)],
+        ["Status", _deployment_status_live(deployment)],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -105,6 +105,27 @@ def _deployment_status(d: Any) -> str:
     return "-"
 
 
+def _deployment_status_live(d: Any) -> str:
+    """Status for a single deployment, fetching live state when available.
+
+    Unlike the list view, ``info`` can afford the REST call ``get_state()``
+    makes, so the Status reflects reality. The cached attributes are usually
+    empty (which rendered "-"); fall back to them only if the call fails.
+
+    Args:
+        d: Deployment instance.
+
+    Returns:
+        A short human-readable status label.
+    """
+    try:
+        state = d.get_state()
+    except Exception:  # noqa: BLE001 - degrade to the cached attributes
+        state = None
+    status = getattr(state, "status", None) if state is not None else None
+    return str(status) if status else _deployment_status(d)
+
+
 def _deployment_to_dict(d: Any) -> dict[str, Any]:
     return {
         "id": getattr(d, "id", None),
@@ -113,7 +134,7 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
         "model_version": getattr(d, "model_version", None),
         "serving_tool": getattr(d, "serving_tool", None),
         "model_server": getattr(d, "model_server", None),
-        "status": _deployment_status(d),
+        "status": _deployment_status_live(d),
     }
 
 
