@@ -166,8 +166,13 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
 @click.option(
     "--script",
     "script_file",
-    type=click.Path(exists=True),
-    help="Optional predictor script (Python file).",
+    help="Predictor script: a local file (uploaded to HopsFS) or an "
+    "existing HopsFS path.",
+)
+@click.option(
+    "--env",
+    "environment",
+    help="Inference environment name (e.g. pandas-inference-pipeline).",
 )
 @click.option(
     "--serving-tool",
@@ -182,17 +187,23 @@ def deployment_create(
     version: int | None,
     name: str | None,
     script_file: str | None,
+    environment: str | None,
     serving_tool: str | None,
     description: str,
 ) -> None:
     """Deploy a model from the registry.
+
+    A local ``--script`` is uploaded to HopsFS first (the backend needs a
+    HopsFS path); an existing HopsFS path is passed through. ``--env`` selects
+    the inference environment.
 
     Args:
         ctx: Click context.
         model_name: Model registry name.
         version: Model version.
         name: Deployment name; defaults to the model name.
-        script_file: Optional predictor script.
+        script_file: Predictor script, local or HopsFS.
+        environment: Inference environment name.
         serving_tool: ``KSERVE`` or ``DEFAULT``.
         description: Deployment description.
     """
@@ -209,11 +220,37 @@ def deployment_create(
     if model is None:
         raise click.ClickException(f"Model '{model_name}' not found.")
 
+    deploy_name = name or model_name
+    # Upload a local predictor to HopsFS (the backend needs a HopsFS path);
+    # an existing HopsFS path passes through untouched.
+    if script_file and Path(script_file).is_file():
+        dataset = project.get_dataset_api()
+        dest_dir = f"Resources/deployments/{deploy_name}"
+        try:
+            dataset.mkdir(dest_dir)
+        except Exception:  # noqa: BLE001 - directory may already exist
+            pass
+        try:
+            uploaded = dataset.upload(
+                local_path=script_file, upload_path=dest_dir, overwrite=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not upload predictor: {exc}"
+            ) from exc
+        script_file = uploaded or f"{dest_dir}/{Path(script_file).name}"
+        # Serving needs an absolute /Projects/<project>/... path; dataset
+        # upload returns one relative to the project root.
+        if not script_file.startswith("/"):
+            script_file = f"/Projects/{project.name}/{script_file}"
+        output.success("✓ Uploaded predictor -> %s", script_file)
+
     try:
         deployment = model.deploy(
-            name=name or model_name,
+            name=deploy_name,
             description=description,
             script_file=script_file,
+            environment=environment,
             serving_tool=(serving_tool or "").upper() or None,
         )
     except Exception as exc:  # noqa: BLE001
