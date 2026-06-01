@@ -194,8 +194,7 @@ def test_fv_info(mock_project):
 
 
 def test_fv_info_shows_transformations(mock_project):
-    """Post-transform output columns and dropped sources surface in fv info, so
-    the schema view matches what training data and the model actually see."""
+    """Post-transform output and dropped columns surface in fv info."""
     fs = mock_project.get_feature_store.return_value
     fv = mock.MagicMock()
     fv.id, fv.name, fv.version = 11, "fraud_fv", 1

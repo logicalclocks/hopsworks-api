@@ -143,9 +143,7 @@ def app_logs(ctx: click.Context, name: str, stream: str) -> None:
         ) from exc
 
     if output.JSON_MODE:
-        output.print_json(
-            logs if stream == "both" else {stream: logs.get(stream, "")}
-        )
+        output.print_json(logs if stream == "both" else {stream: logs.get(stream, "")})
         return
 
     if stream in ("stdout", "both"):

@@ -246,9 +246,11 @@ def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
 
 
 def _format_splits(td: Any) -> str:
-    """Render every split as ``name:pct`` so a multi-split TD is distinguishable
-    from a single-split one. Metadata only (no data read); row counts would need
-    materializing each split."""
+    """Render every split as ``name:pct`` for the SPLITS column.
+
+    Distinguishes a multi-split TD from a single-split one. Metadata only (no
+    data read); row counts would need materializing each split.
+    """
     splits = getattr(td, "splits", None) or []
     if not splits:
         return "-"

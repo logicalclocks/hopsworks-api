@@ -884,8 +884,11 @@ def _stat_num(value: Any, as_int: bool = False) -> str:
 
 
 def _truncate_cell(value: Any, width: int = 60) -> str:
-    """Collapse wide list/array cells (embeddings, struct arrays) to a length +
-    head preview so a row stays on one line; truncate long scalars to ``width``."""
+    """Collapse a wide list/array cell to a length + head preview.
+
+    Embeddings and struct arrays would otherwise blow up the row; long scalars
+    are truncated to ``width``.
+    """
     is_seq = isinstance(value, (list, tuple)) or (
         hasattr(value, "tolist") and hasattr(value, "__len__")
     )

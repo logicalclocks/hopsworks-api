@@ -32,6 +32,7 @@ from hsfs import (
     usage,
     util,
 )
+from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import (
     data_source as ds,
 )
@@ -44,7 +45,6 @@ from hsfs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core.chart import Chart
 from hsfs.core.chart_api import ChartApi
 from hsfs.core.dashboard import Dashboard
@@ -208,9 +208,11 @@ class FeatureStore:
         return None
 
     def _find_in_shared_stores(self, name: str, version: int) -> str | None:
-        """Return the name of an accessible shared store holding ``name``, else
-        ``None``. Best-effort: any failure yields ``None`` so the caller keeps
-        its documented return-``None`` contract for a genuinely absent group."""
+        """Return the name of an accessible shared store holding ``name``.
+
+        ``None`` when not found. Best-effort: any failure yields ``None`` so the
+        caller keeps its documented return-``None`` contract for an absent group.
+        """
         try:
             from hsfs.core.feature_store_api import FeatureStoreApi
 

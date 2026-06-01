@@ -97,7 +97,9 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
     tfs = getattr(fv, "transformation_functions", []) or []
     if tfs:
         output.info("")
-        output.info("Transformations (rename the schema seen by training data / serving):")
+        output.info(
+            "Transformations (rename the schema seen by training data / serving):"
+        )
         rows = []
         for tf in tfs:
             udf = getattr(tf, "hopsworks_udf", None)
@@ -174,9 +176,7 @@ def _fv_to_dict(fv: Any) -> dict[str, Any]:
                 "input": _tf_inputs(getattr(tf, "hopsworks_udf", None)).split(", "),
                 "output_columns": list(getattr(tf, "output_column_names", []) or []),
                 "dropped": list(
-                    getattr(
-                        getattr(tf, "hopsworks_udf", None), "dropped_features", []
-                    )
+                    getattr(getattr(tf, "hopsworks_udf", None), "dropped_features", [])
                     or []
                 ),
             }
