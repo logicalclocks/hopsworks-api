@@ -271,7 +271,7 @@
 | python/hsfs/core/expectation\_suite\_api.py                                      |       53 |       39 |     26% |44-64, 77-100, 115-140, 150-168, 176-187 |
 | python/hsfs/core/expectation\_suite\_engine.py                                   |       37 |        2 |     95% |    68, 82 |
 | python/hsfs/core/explicit\_provenance.py                                         |      228 |      152 |     33% |35, 38, 41, 44, 57-63, 69, 75, 81, 84, 87, 98, 101, 109-123, 137-140, 149, 159, 175, 184, 187, 206, 209, 216-233, 237-243, 247-260, 264-281, 285-302, 306-351, 371-433, 438-485 |
-| python/hsfs/core/external\_feature\_group\_engine.py                             |       57 |       18 |     68% |36, 82, 96-133, 204-206 |
+| python/hsfs/core/external\_feature\_group\_engine.py                             |       57 |       18 |     68% |36, 79, 93-130, 201-203 |
 | python/hsfs/core/feature\_descriptive\_statistics.py                             |      179 |       24 |     87% |103, 106-107, 123-124, 136, 172, 178, 211, 214, 217, 247, 253, 259, 265, 271, 277, 283, 295, 301, 311, 325, 335, 341 |
 | python/hsfs/core/feature\_group\_api.py                                          |      141 |       87 |     38% |51-63, 77-89, 159-165, 173-175, 192-214, 230-250, 263-273, 288-297, 326-337, 361-372, 397-412, 430-442, 460-472, 495-512, 533-550, 574-591, 615-632 |
 | python/hsfs/core/feature\_group\_base\_engine.py                                 |       77 |       19 |     75% |76, 90, 107-110, 127-130, 147-150, 167-170, 214 |

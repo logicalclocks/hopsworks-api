@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_chart_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-01 10:38 +0000
+            created at 2026-06-01 14:04 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -718,11 +718,13 @@
     <p class="run run2"><span class="n"><a id="t636" href="#t636">636</a></span><span class="t">        <span class="key">lambda</span> <span class="nam">fg</span><span class="op">:</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">fg</span><span class="op">,</span> <span class="nam">feature_group</span><span class="op">.</span><span class="nam">ExternalFeatureGroup</span><span class="op">)</span><span class="op">,</span> <span class="nam">featuregroups</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t637" href="#t637">637</a></span><span class="t">    <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t638" href="#t638">638</a></span><span class="t">        <span class="key">if</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t639" href="#t639">639</a></span><span class="t">            <span class="nam">fg</span><span class="op">.</span><span class="nam">data_source</span><span class="op">.</span><span class="nam">storage_connector</span><span class="op">.</span><span class="nam">type</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t640" href="#t640">640</a></span><span class="t">            <span class="key">not</span> <span class="key">in</span> <span class="nam">ArrowFlightClient</span><span class="op">.</span><span class="nam">SUPPORTED_EXTERNAL_CONNECTORS</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t641" href="#t641">641</a></span><span class="t">        <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t642" href="#t642">642</a></span><span class="t">            <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t643" href="#t643">643</a></span><span class="t">    <span class="key">return</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t639" href="#t639">639</a></span><span class="t">            <span class="key">not</span> <span class="nam">fg</span><span class="op">.</span><span class="nam">data_source</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t640" href="#t640">640</a></span><span class="t">            <span class="key">or</span> <span class="key">not</span> <span class="nam">fg</span><span class="op">.</span><span class="nam">data_source</span><span class="op">.</span><span class="nam">storage_connector</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t641" href="#t641">641</a></span><span class="t">            <span class="key">or</span> <span class="nam">fg</span><span class="op">.</span><span class="nam">data_source</span><span class="op">.</span><span class="nam">storage_connector</span><span class="op">.</span><span class="nam">type</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t642" href="#t642">642</a></span><span class="t">            <span class="key">not</span> <span class="key">in</span> <span class="nam">ArrowFlightClient</span><span class="op">.</span><span class="nam">SUPPORTED_EXTERNAL_CONNECTORS</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t643" href="#t643">643</a></span><span class="t">        <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t644" href="#t644">644</a></span><span class="t">            <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t645" href="#t645">645</a></span><span class="t">    <span class="key">return</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -732,7 +734,7 @@
             <a class="nav" href="z_8e412babf0efab20_chart_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-01 10:38 +0000
+            created at 2026-06-01 14:04 +0000
         </p>
     </div>
 </footer>
