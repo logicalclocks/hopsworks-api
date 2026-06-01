@@ -7,6 +7,7 @@ follows the same memoized-session pattern as the rest of the CLI.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from typing import TYPE_CHECKING, Any
 
@@ -272,10 +273,8 @@ def job_deploy(
     if os.path.isfile(script):
         dataset = project.get_dataset_api()
         dest_dir = upload_dir or f"Resources/jobs/{name}"
-        try:
+        with contextlib.suppress(Exception):  # directory may already exist
             dataset.mkdir(dest_dir)
-        except Exception:  # noqa: BLE001 - directory may already exist
-            pass
         try:
             uploaded = dataset.upload(
                 local_path=script, upload_path=dest_dir, overwrite=overwrite

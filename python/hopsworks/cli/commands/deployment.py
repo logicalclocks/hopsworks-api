@@ -7,6 +7,7 @@ Create, start, stop, predict, logs, and delete are all served by the SDK's
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -226,18 +227,14 @@ def deployment_create(
     if script_file and Path(script_file).is_file():
         dataset = project.get_dataset_api()
         dest_dir = f"Resources/deployments/{deploy_name}"
-        try:
+        with contextlib.suppress(Exception):  # directory may already exist
             dataset.mkdir(dest_dir)
-        except Exception:  # noqa: BLE001 - directory may already exist
-            pass
         try:
             uploaded = dataset.upload(
                 local_path=script_file, upload_path=dest_dir, overwrite=True
             )
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(
-                f"Could not upload predictor: {exc}"
-            ) from exc
+            raise click.ClickException(f"Could not upload predictor: {exc}") from exc
         script_file = uploaded or f"{dest_dir}/{Path(script_file).name}"
         # Serving needs an absolute /Projects/<project>/... path; dataset
         # upload returns one relative to the project root.
