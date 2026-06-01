@@ -120,6 +120,48 @@ def test_fg_preview(mock_project):
     assert "id" in result.output
 
 
+def test_fg_preview_truncates_wide_columns(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.read.return_value = pd.DataFrame({"id": [1], "emb": [[0.1] * 1536]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "preview", "transactions"])
+    assert result.exit_code == 0, result.output
+    # wide embedding collapsed, not dumped in full
+    assert "len=1536" in result.output
+
+
+def test_fg_preview_columns_projection(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.read.return_value = pd.DataFrame({"id": [1, 2], "emb": [[0.1] * 4, [0.2] * 4]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "preview", "transactions", "--columns", "id"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "id" in result.output
+    assert "emb" not in result.output  # projected out
+
+
+def test_fg_preview_bad_column_errors(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.read.return_value = pd.DataFrame({"id": [1, 2]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "preview", "transactions", "--columns", "nope"]
+    )
+    assert result.exit_code != 0
+    assert "nope" in result.output
+
+
 # --- fv --------------------------------------------------------------------
 
 

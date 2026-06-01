@@ -99,6 +99,11 @@ def fg_info(
     "--featurestore",
     help="Pin lookup to this feature store by name (for shared/ambiguous names).",
 )
+@click.option(
+    "--columns",
+    help="Comma-separated columns to show (projection); useful to skip wide "
+    "embedding/array columns.",
+)
 @click.pass_context
 def fg_preview(
     ctx: click.Context,
@@ -107,8 +112,13 @@ def fg_preview(
     n: int,
     online: bool,
     featurestore: str | None,
+    columns: str | None,
 ) -> None:
     """Show the first ``n`` rows of a feature group.
+
+    Wide array/struct columns (embeddings, nested arrays) are collapsed to a
+    ``[len=N] head…`` preview in the table view so one row stays one line; use
+    ``--columns`` to project, or ``--json`` for the untruncated values.
 
     Args:
         ctx: Click context.
@@ -117,6 +127,7 @@ def fg_preview(
         n: Number of rows to fetch.
         online: When True, read from the online store.
         featurestore: Pin lookup to this feature store by name.
+        columns: Optional comma-separated column projection.
     """
     fg = _get_fg(ctx, name, version, featurestore)
     try:
@@ -124,13 +135,22 @@ def fg_preview(
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
         raise click.ClickException(f"Could not read feature group: {exc}") from exc
 
+    if columns:
+        wanted = [c.strip() for c in columns.split(",") if c.strip()]
+        missing = [c for c in wanted if c not in df.columns]
+        if missing:
+            raise click.BadParameter(
+                f"Unknown column(s): {', '.join(missing)}", param_hint="--columns"
+            )
+        df = df[wanted]
+
     if output.JSON_MODE:
         output.print_json(df.to_dict(orient="records"))
         return
 
-    columns = list(df.columns)
-    rows = [[row[c] for c in columns] for _, row in df.iterrows()]
-    output.print_table(columns, rows)
+    cols = list(df.columns)
+    rows = [[_truncate_cell(row[c]) for c in cols] for _, row in df.iterrows()]
+    output.print_table(cols, rows)
 
 
 @fg_group.command("features")
@@ -699,7 +719,26 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
         to_dict = getattr(stats, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else {"stats": str(stats)})
         return
-    output.info("%s", stats)
+
+    fds = getattr(stats, "feature_descriptive_statistics", None)
+    if not fds:
+        output.info("%s", stats)
+        return
+    rows = [
+        [
+            getattr(s, "feature_name", "?"),
+            _stat_num(getattr(s, "count", None), as_int=True),
+            _stat_num(getattr(s, "completeness", None)),
+            _stat_num(getattr(s, "min", None)),
+            _stat_num(getattr(s, "max", None)),
+            _stat_num(getattr(s, "mean", None)),
+            _stat_num(getattr(s, "stddev", None)),
+        ]
+        for s in fds
+    ]
+    output.print_table(
+        ["FEATURE", "COUNT", "COMPLETE", "MIN", "MAX", "MEAN", "STDDEV"], rows
+    )
 
 
 @fg_group.command("search")
@@ -831,6 +870,36 @@ def fg_remove_keyword(
 
 
 # region Helpers
+
+
+def _stat_num(value: Any, as_int: bool = False) -> str:
+    """Format a single statistic for the table view; ``None`` renders as ``-``."""
+    if value is None:
+        return "-"
+    if as_int and isinstance(value, (int, float)):
+        return str(int(value))
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def _truncate_cell(value: Any, width: int = 60) -> str:
+    """Collapse wide list/array cells (embeddings, struct arrays) to a length +
+    head preview so a row stays on one line; truncate long scalars to ``width``."""
+    is_seq = isinstance(value, (list, tuple)) or (
+        hasattr(value, "tolist") and hasattr(value, "__len__")
+    )
+    if is_seq:
+        try:
+            seq = list(value)
+        except TypeError:
+            seq = None
+        if seq is not None:
+            head = ", ".join(str(x)[:12] for x in seq[:3])
+            tail = ", …" if len(seq) > 3 else ""
+            return f"[len={len(seq)}] {head}{tail}"
+    text = str(value)
+    return text if len(text) <= width else text[: width - 1] + "…"
 
 
 def _split_csv(value: str | None) -> list[str]:
