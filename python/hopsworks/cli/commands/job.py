@@ -7,6 +7,7 @@ follows the same memoized-session pattern as the rest of the CLI.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -193,6 +194,136 @@ def job_create(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create job: {exc}") from exc
     output.success("✓ Created job %s", getattr(job, "name", name))
+
+
+@job_group.command("deploy")
+@click.argument("name")
+@click.argument("script")
+@click.option(
+    "--type",
+    "job_type",
+    type=click.Choice(
+        ["PYTHON", "PYSPARK", "SPARK", "DOCKER", "FLINK"], case_sensitive=False
+    ),
+    default="PYTHON",
+    show_default=True,
+    help="Job type.",
+)
+@click.option(
+    "--env",
+    "environment",
+    help="Python environment name (sets environmentName; otherwise the type default).",
+)
+@click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option(
+    "--cron",
+    help="Schedule (Quartz cron or @hourly/@daily/@weekly/@monthly shorthand).",
+)
+@click.option("--run", "do_run", is_flag=True, help="Run once after deploying.")
+@click.option(
+    "--wait", is_flag=True, help="With --run, block until the execution finishes."
+)
+@click.option(
+    "--upload-dir",
+    default=None,
+    help="HopsFS dir to upload a local script to (default: Resources/jobs/<name>).",
+)
+@click.option(
+    "--overwrite", is_flag=True, help="Overwrite the uploaded script if it exists."
+)
+@click.pass_context
+def job_deploy(
+    ctx: click.Context,
+    name: str,
+    script: str,
+    job_type: str,
+    environment: str | None,
+    app_args: str | None,
+    cron: str | None,
+    do_run: bool,
+    wait: bool,
+    upload_dir: str | None,
+    overwrite: bool,
+) -> None:
+    """Deploy a job end to end: upload, set environment, schedule, run.
+
+    One-shot for what ``create`` + ``schedule`` + ``run`` do separately, plus
+    the environment selection that ``create`` cannot set. ``SCRIPT`` is either
+    a local file (uploaded to HopsFS) or an existing HopsFS path.
+
+    Args:
+        ctx: Click context.
+        name: Job name (created or updated).
+        script: Local file to upload, or an existing HopsFS path.
+        job_type: One of PYTHON/PYSPARK/SPARK/DOCKER/FLINK.
+        environment: Python environment name; the type default if omitted.
+        app_args: Argument string passed to the job.
+        cron: Schedule; Quartz or a shorthand. No schedule if omitted.
+        do_run: Run once after deploying.
+        wait: With ``do_run``, block until the execution terminates.
+        upload_dir: HopsFS directory for a local script upload.
+        overwrite: Overwrite an existing uploaded script.
+    """
+    project = session.get_project(ctx)
+    api = project.get_job_api()
+
+    # 1. Resolve the app path — upload when a local file was given.
+    app_path = script
+    if os.path.isfile(script):
+        dataset = project.get_dataset_api()
+        dest_dir = upload_dir or f"Resources/jobs/{name}"
+        try:
+            dataset.mkdir(dest_dir)
+        except Exception:  # noqa: BLE001 - directory may already exist
+            pass
+        try:
+            uploaded = dataset.upload(
+                local_path=script, upload_path=dest_dir, overwrite=overwrite
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Could not upload script: {exc}") from exc
+        app_path = uploaded or f"{dest_dir}/{os.path.basename(script)}"
+        output.success("✓ Uploaded %s -> %s", os.path.basename(script), app_path)
+
+    # 2. Build the config, including the environment the CLI otherwise can't set.
+    try:
+        config = api.get_configuration(job_type.upper())
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not load default config: {exc}") from exc
+    config["appPath"] = app_path
+    if app_args:
+        config["defaultArgs"] = app_args
+    if environment:
+        config["environmentName"] = environment
+
+    # 3. Create or update the job.
+    try:
+        job = api.create_job(name=name, config=config)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not deploy job: {exc}") from exc
+    output.success("✓ Deployed job %s (env=%s)", name, environment or "default")
+
+    # 4. Schedule.
+    if cron:
+        cron_expr = _expand_cron_alias(cron)
+        try:
+            job.schedule(cron_expression=cron_expr)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Schedule failed: {exc}") from exc
+        output.success("✓ Scheduled %s (%s)", name, cron_expr)
+
+    # 5. Run.
+    if do_run:
+        try:
+            execution = job.run(args=app_args, await_termination=wait)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Run failed: {exc}") from exc
+        output.success(
+            "✓ Started %s (execution #%s, state=%s)",
+            name,
+            getattr(execution, "id", "?"),
+            getattr(execution, "state", "?"),
+        )
 
 
 _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
