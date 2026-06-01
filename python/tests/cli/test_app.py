@@ -45,6 +45,28 @@ def test_app_list_renders_rows(mock_project):
     assert "RUNNING" in result.output
 
 
+def test_app_logs_prints_streams(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash")
+    a.get_logs.return_value = {"stdout": "hello out", "stderr": "boom err"}
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "hello out" in result.output
+    assert "boom err" in result.output
+
+
+def test_app_logs_stderr_only(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash")
+    a.get_logs.return_value = {"stdout": "hello out", "stderr": "boom err"}
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash", "--stream", "stderr"])
+    assert result.exit_code == 0, result.output
+    assert "boom err" in result.output
+    assert "hello out" not in result.output
+
+
 def test_app_info_shows_url(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.get_app.return_value = _fake_app(

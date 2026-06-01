@@ -113,6 +113,49 @@ def app_url(ctx: click.Context, name: str) -> None:
         click.echo(url)
 
 
+@app_group.command("logs")
+@click.argument("name")
+@click.option(
+    "--stream",
+    type=click.Choice(["stdout", "stderr", "both"]),
+    default="both",
+    show_default=True,
+    help="Which stream to print.",
+)
+@click.pass_context
+def app_logs(ctx: click.Context, name: str, stream: str) -> None:
+    """Print stdout/stderr logs for the app's latest execution.
+
+    Avoids dropping to ``kubectl`` when a managed Streamlit app misbehaves.
+    One-shot: the backend exposes the latest execution's logs, not a live tail.
+
+    Args:
+        ctx: Click context.
+        name: App name.
+        stream: Which stream(s) to print: ``stdout``, ``stderr``, or ``both``.
+    """
+    a = _get_app(ctx, name)
+    try:
+        logs = a.get_logs()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not read logs for app '{name}': {exc}"
+        ) from exc
+
+    if output.JSON_MODE:
+        output.print_json(
+            logs if stream == "both" else {stream: logs.get(stream, "")}
+        )
+        return
+
+    if stream in ("stdout", "both"):
+        click.echo("=== stdout ===")
+        click.echo(logs.get("stdout") or "(empty)")
+    if stream in ("stderr", "both"):
+        click.echo("=== stderr ===")
+        click.echo(logs.get("stderr") or "(empty)")
+
+
 @app_group.command("create")
 @click.argument("name")
 @click.option(
