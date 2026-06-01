@@ -373,6 +373,30 @@ from hsfs import udf
 | `"pandas"` | Always `pd.Series` → `pd.Series` | Always `pd.Series` → `pd.Series` | Vectorized operations, Spark pandas UDF |
 | `"python"` | Always scalar → scalar | Always scalar → scalar | Simple per-row logic |
 
+> **A default-mode udf runs on BOTH a Series (offline) and a scalar (online).**
+> Training and `td compute` call it with a `pd.Series`; online serving
+> (`get_feature_vectors`) calls the **same body** with a single Python scalar. So
+> **never use Series-only methods** (`.clip`, `.fillna`, `.str`, `.between`,
+> `.where`, `.dt`) in a default-mode udf. They raise on the scalar and surface as
+> an **HTTP 500 on the first online predict** — invisible until then, because
+> training only exercises the offline (Series) path.
+>
+> Use numpy ufuncs / plain arithmetic that accept both a scalar and a Series:
+> ```python
+> @udf(float, drop=["amount"])
+> def log1p_safe(amount):
+>     import numpy as np
+>     return np.log1p(np.maximum(amount, 0))   # works on a scalar AND a Series
+> ```
+> If you specifically need Series methods, set `mode="pandas"` (always a Series,
+> both paths). Either way, smoke-test the logic on both shapes **before** wiring
+> the FV:
+> ```python
+> import numpy as np, pandas as pd
+> logic = lambda x: np.log1p(np.maximum(x, 0))
+> assert logic(5.0) == logic(pd.Series([5.0])).iloc[0]   # scalar == offline path
+> ```
+
 ### Custom UDF Examples
 
 **Simple transformation (no statistics):**
@@ -434,6 +458,14 @@ def clip_outliers(feature: pd.Series) -> pd.Series:
 tf = log_amount("price")
 tf.alias("log_price")  # custom output name
 ```
+
+> **A udf is frozen into the feature view at `fv create`.** The transform source
+> is bound to the FV version, not resolved live from the registry. Fixing a udf
+> means a new FV version → recompute training data → retrain → recreate the
+> deployment. And **renaming a udf renames its output columns** (`<fn>_<col>_`),
+> so even an identical-output rename forces a retrain to match the new names. A
+> transform defect is the most expensive thing to get wrong here — smoke-test the
+> scalar+Series logic above before `fv create`, not after.
 
 ### On-Demand Transformations
 
