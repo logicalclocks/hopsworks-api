@@ -166,6 +166,31 @@ def test_job_logs(mock_project):
     execution.download_logs.assert_called_once()
 
 
+def test_job_logs_stdout(mock_project):
+    import os
+    import tempfile
+
+    tmp = tempfile.mkdtemp()
+    out = os.path.join(tmp, "out.log")
+    err = os.path.join(tmp, "err.log")
+    with open(out, "w") as fd:
+        fd.write("metrics: {'r2': 0.5}\n")
+    with open(err, "w") as fd:
+        fd.write("warn: something\n")
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    execution = mock.MagicMock()
+    execution.download_logs.return_value = (out, err)
+    job.get_executions.return_value = [execution]
+    api.get_job.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(cli, ["job", "logs", "etl", "--stdout"])
+    assert result.exit_code == 0, result.output
+    # content streamed to the terminal, not just a path printed
+    assert "metrics:" in result.output
+    assert "warn: something" in result.output
+
+
 # --- files (formerly `dataset`) -------------------------------------------
 
 
