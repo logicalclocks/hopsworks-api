@@ -27,40 +27,51 @@ def fg_group() -> None:
 @fg_group.command("list")
 @click.pass_context
 def fg_list(ctx: click.Context) -> None:
-    """List all feature groups in the active project's feature store.
+    """List feature groups across every feature store the project can access.
+
+    Includes feature groups in shared feature stores (as the UI does). The
+    STORE column shows which feature store each one lives in.
 
     Args:
         ctx: Click context.
     """
-    fs = session.get_feature_store(ctx)
-    fgs = fs.get_feature_groups()
+    stores = session.get_accessible_feature_stores(ctx)
     rows = []
-    for fg in fgs:
-        rows.append(
-            [
-                getattr(fg, "id", "?"),
-                getattr(fg, "name", "?"),
-                getattr(fg, "version", "?"),
-                _fg_type_label(fg),
-                "yes" if getattr(fg, "online_enabled", False) else "no",
-            ]
-        )
-    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE"], rows)
+    for fs in stores:
+        for fg in fs.get_feature_groups():
+            rows.append(
+                [
+                    getattr(fg, "id", "?"),
+                    getattr(fg, "name", "?"),
+                    getattr(fg, "version", "?"),
+                    _fg_type_label(fg),
+                    "yes" if getattr(fg, "online_enabled", False) else "no",
+                    getattr(fs, "name", "?"),
+                ]
+            )
+    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE", "STORE"], rows)
 
 
 @fg_group.command("info")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
-def fg_info(ctx: click.Context, name: str, version: int | None) -> None:
+def fg_info(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
     """Print metadata for a single feature group.
 
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Specific version to inspect; latest if omitted.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     if output.JSON_MODE:
         output.print_json(_fg_to_dict(fg))
         return
@@ -84,9 +95,18 @@ def fg_info(ctx: click.Context, name: str, version: int | None) -> None:
 @click.option(
     "--online", is_flag=True, help="Read from the online store (default: offline)."
 )
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
 def fg_preview(
-    ctx: click.Context, name: str, version: int | None, n: int, online: bool
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    n: int,
+    online: bool,
+    featurestore: str | None,
 ) -> None:
     """Show the first ``n`` rows of a feature group.
 
@@ -96,8 +116,9 @@ def fg_preview(
         version: Specific version to read.
         n: Number of rows to fetch.
         online: When True, read from the online store.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     try:
         df = fg.read(online=online, dataframe_type="pandas").head(n)
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
@@ -115,16 +136,23 @@ def fg_preview(
 @fg_group.command("features")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
-def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
+def fg_features(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
     """List the schema of a feature group (name, type, primary key).
 
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Specific version to inspect.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     rows = []
     for f in getattr(fg, "features", []) or []:
         rows.append(
@@ -139,12 +167,40 @@ def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["NAME", "TYPE", "PK", "PARTITION", "DESCRIPTION"], rows)
 
 
-def _get_fg(ctx: click.Context, name: str, version: int | None) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        return fs.get_feature_group(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature group '{name}' not found: {exc}") from exc
+def _get_fg(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    featurestore: str | None = None,
+) -> Any:
+    """Resolve a feature group across the project's accessible feature stores.
+
+    Searches the project's own store first, then shared stores, so a shared
+    feature group resolves just like a local one. ``featurestore`` pins the
+    lookup to a single store by name when the same name exists in several.
+    """
+    stores = session.get_accessible_feature_stores(ctx)
+    if featurestore is not None:
+        stores = [s for s in stores if getattr(s, "name", None) == featurestore]
+        if not stores:
+            raise click.ClickException(
+                f"Feature store '{featurestore}' is not accessible from this project."
+            )
+    last_exc: Exception | None = None
+    for fs in stores:
+        try:
+            fg = fs.get_feature_group(name, version=version)
+        except Exception as exc:  # noqa: BLE001 - not in this store, try the next
+            last_exc = exc
+            continue
+        # The SDK returns None (rather than raising) when a store lacks the
+        # feature group; keep searching the remaining accessible stores.
+        if fg is not None:
+            return fg
+    suffix = f": {last_exc}" if last_exc else ""
+    raise click.ClickException(
+        f"Feature group '{name}' not found in any accessible feature store{suffix}"
+    )
 
 
 def _fg_type_label(fg: Any) -> str:

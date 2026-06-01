@@ -130,6 +130,32 @@ deployment.delete()
 
 A predictor script must define a `Predict` class with `__init__` and `predict` methods.
 
+**Loading model files (important).** At serving time the model files mount under
+`MODEL_FILES_PATH`, NOT `ARTIFACT_FILES_PATH` — that variable points at the
+directory holding only the predictor script, so `joblib.load(ARTIFACT_FILES_PATH + "/model.pkl")`
+fails with `FileNotFoundError`. Use a resolver that searches the known mounts and
+call it from `__init__`:
+
+```python
+import os, glob
+
+def load_model_file(name):
+    """Resolve a file saved alongside the model. Model files mount under
+    MODEL_FILES_PATH at serving time (ARTIFACT_FILES_PATH holds only this
+    script); fall back to the standard mount roots."""
+    for root in (os.environ.get("MODEL_FILES_PATH"),
+                 os.environ.get("ARTIFACT_FILES_PATH"),
+                 "/mnt/models", "/mnt/artifacts"):
+        if root:
+            hits = glob.glob(f"{root}/**/{name}", recursive=True)
+            if hits:
+                return hits[0]
+    raise FileNotFoundError(f"{name} not found under the model/artifact mounts")
+```
+
+Include this helper in each `predictor.py` below; the examples load with
+`joblib.load(load_model_file("model.pkl"))`.
+
 ### Basic Predictor
 
 ```python
@@ -144,7 +170,7 @@ class Predict:
         Load model, initialize feature view, set up resources here.
         The model files are available in the current working directory.
         """
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
+        self.model = joblib.load(load_model_file("model.pkl"))
 
     def predict(self, inputs):
         """Called for each inference request.
@@ -171,7 +197,7 @@ import hopsworks
 class Predict:
     def __init__(self):
         # Load model
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
+        self.model = joblib.load(load_model_file("model.pkl"))
         
         # Connect to feature store
         project = hopsworks.login()
@@ -206,7 +232,7 @@ import hopsworks
 
 class Predict:
     def __init__(self):
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
+        self.model = joblib.load(load_model_file("model.pkl"))
         
         project = hopsworks.login()
         fs = project.get_feature_store()
@@ -625,7 +651,7 @@ import hopsworks
 
 class Predict:
     def __init__(self):
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
+        self.model = joblib.load(load_model_file("model.pkl"))
         
         project = hopsworks.login()
         fs = project.get_feature_store()
