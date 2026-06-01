@@ -52,6 +52,7 @@ if HAS_NUMPY:
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
+    from hsfs.constructor import lookback as _lookback
     from hsfs.constructor.join import Join
     from hsfs.core import explicit_provenance
     from hsfs.core.feature_logging import LoggingMetaData
@@ -353,6 +354,7 @@ class FeatureViewEngine:
         training_dataset_version=None,
         spine=None,
         extra_filter=None,
+        lookback=None,
     ):
         extra_filter = self._normalize_extra_filter(extra_filter)
 
@@ -371,6 +373,11 @@ class FeatureViewEngine:
                 training_helper_columns=training_helper_columns,
                 extra_filter=extra_filter,
             )
+            # Attach the lookbacks config to the Query so it rides on the wire as
+            # `QueryDTO.lookbacks` (top-level). The backend resolves it against the
+            # query tree in `QueryController.resolveLookbacks`.
+            if lookback is not None:
+                query._lookbacks = lookback
             # verify whatever is passed 1. spine group with dataframe contained, or 2. dataframe
             # the schema has to be consistent
 
@@ -409,6 +416,7 @@ class FeatureViewEngine:
         end_time,
         training_dataset_version=None,
         extra_filter=None,
+        lookback: _lookback.Lookbacks | None = None,
     ):
         extra_filter = self._normalize_extra_filter(extra_filter)
 
@@ -431,6 +439,9 @@ class FeatureViewEngine:
                 ) from e
             raise e
 
+        if lookback is not None:
+            query_obj._lookbacks = lookback
+
         fs_query = self._query_constructor_api.construct_query(query_obj)
         if fs_query.pit_query is not None:
             return fs_query.pit_query
@@ -446,11 +457,31 @@ class FeatureViewEngine:
         event_time=True,
         training_helper_columns=True,
         transformation_context: dict[str, Any] = None,
+        lookback: _lookback.Lookbacks | None = None,
     ):
+        # Build the lookback list (one entry per FG in the Query tree) from
+        # the feature view's query. The backend's POST /trainingdatasets
+        # handler reconstructs the query from the persisted FeatureView and
+        # Attach the lookbacks config to the training dataset so it rides on the
+        # wire as `TrainingDatasetDTO.lookbacks` (top-level). The backend resolves
+        # it against the reconstructed query tree in
+        # `QueryController.resolveLookbacks`, the shared walker used by the
+        # batch-data path.
+        if lookback is not None:
+            training_dataset_obj._lookbacks = lookback
         self._set_event_time(feature_view_obj, training_dataset_obj)
         updated_instance = self._create_training_data_metadata(
             feature_view_obj, training_dataset_obj
         )
+        # `_create_training_data_metadata` calls
+        # `TrainingDataset.update_from_response_json` which re-runs
+        # `__init__(**response)` and silently resets `_lookbacks` when the
+        # backend response omits the field. Re-set it on both the local TD
+        # and the returned instance so `compute_training_dataset` and any
+        # caller that inspects either object still sees the lookback.
+        if lookback is not None:
+            training_dataset_obj._lookbacks = lookback
+            updated_instance._lookbacks = lookback
         td_job = self.compute_training_dataset(
             feature_view_obj,
             user_write_options,
@@ -477,6 +508,15 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
     ):
+        # Snapshot the user-supplied lookback BEFORE the metadata POST.
+        # `_create_training_data_metadata` calls
+        # `TrainingDataset.update_from_response_json` which re-runs
+        # `__init__(**response)` and silently resets `_lookbacks` to None when
+        # the backend response omits the field. The in-memory branch below
+        # needs the original lookback, so capture it now.
+        local_lookback = None
+        if training_dataset_obj is not None:
+            local_lookback = getattr(training_dataset_obj, "_lookbacks", None)
         # check if provided td version has already existed.
         if training_dataset_version:
             td_updated = self._get_training_dataset_metadata(
@@ -534,6 +574,16 @@ class FeatureViewEngine:
             )
         else:
             self._check_feature_group_accessibility(feature_view_obj)
+            # In-memory training-data fetches go through get_batch_query, which
+            # accepts a `lookback` kwarg that attaches Lookbacks to the Query
+            # so the backend's `QueryController.resolveLookbacks` picks it up.
+            # `local_lookback` was snapshotted above before the metadata POST
+            # reset `training_dataset_obj._lookbacks`; fall back to the
+            # roundtripped TD only if the snapshot was empty (e.g. the engine
+            # was entered with `training_dataset_version`).
+            in_memory_lookback = local_lookback
+            if in_memory_lookback is None:
+                in_memory_lookback = getattr(td_updated, "_lookbacks", None)
             query = self.get_batch_query(
                 feature_view_obj,
                 training_dataset_version=td_updated.version,
@@ -545,6 +595,7 @@ class FeatureViewEngine:
                 event_time=event_time,
                 training_helper_columns=training_helper_columns,
                 spine=spine,
+                lookback=in_memory_lookback,
             )
             split_df = engine.get_instance().get_training_data(
                 td_updated,
@@ -820,6 +871,10 @@ class FeatureViewEngine:
         else:
             raise ValueError("No training dataset object or version is provided")
 
+        # The materialization Spark job runs the PIT query off the batch query
+        # this method builds, so any lookback set on the TD must ride along.
+        # `create_training_dataset` puts the user-supplied Lookbacks on
+        # `training_dataset_obj._lookbacks` before calling this helper.
         batch_query = self.get_batch_query(
             feature_view_obj,
             training_dataset_obj.event_start_time,
@@ -831,6 +886,7 @@ class FeatureViewEngine:
             training_helper_columns=training_helper_columns,
             training_dataset_version=training_dataset_obj.version,
             spine=spine,
+            lookback=getattr(training_dataset_obj, "_lookbacks", None),
         )
 
         # for spark job
@@ -997,6 +1053,7 @@ class FeatureViewEngine:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         extra_filter=None,
+        lookback=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -1022,6 +1079,7 @@ class FeatureViewEngine:
             training_dataset_version=training_dataset_version,
             spine=spine,
             extra_filter=extra_filter,
+            lookback=lookback,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if (transformation_functions and transformed) or logging_data:
             try:

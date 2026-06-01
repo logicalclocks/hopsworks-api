@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
     from hsfs.constructor.fs_query import FsQuery
+    from hsfs.constructor.lookback import Lookbacks
     from hsfs.feature import Feature
 
 
@@ -91,6 +92,11 @@ class Query:
         self._joins = joins or []
         self._filter = Logic.from_response_json(filter)
         self._limit = limit
+        # Lookbacks configuration for the feature view's joins. Only set on the root
+        # Query. Emitted in `to_dict` as the top-level `lookbacks` field; the backend
+        # resolves it against the Query tree (sent for batch-data, reconstructed for
+        # training-dataset) in `QueryController.resolveLookbacks`.
+        self._lookbacks: Lookbacks | None = None
         self._python_engine: bool = engine.get_type() == "python"
         self._query_constructor_api: query_constructor_api.QueryConstructorApi = (
             query_constructor_api.QueryConstructorApi()
@@ -710,7 +716,7 @@ class Query:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "featureStoreName": self._feature_store_name,
             "featureStoreId": self._feature_store_id,
             "leftFeatureGroup": self._left_feature_group,
@@ -722,6 +728,9 @@ class Query:
             "limit": self._limit,
             "hiveEngine": self._python_engine,
         }
+        if self._lookbacks is not None:
+            payload["lookbacks"] = self._lookbacks.to_dict()
+        return payload
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> Query:
@@ -743,7 +752,7 @@ class Query:
             feature_group_obj = fg_mod.FeatureGroup.from_response_json(
                 feature_group_json
             )
-        return cls(
+        q = cls(
             left_feature_group=feature_group_obj,
             left_features=json_decamelized["left_features"],
             feature_store_name=json_decamelized.get("feature_store_name", None),
@@ -761,6 +770,18 @@ class Query:
             filter=json_decamelized.get("filter", None),
             limit=json_decamelized.get("limit", None),
         )
+        # Restore Lookbacks from the wire payload. Without this, any consumer
+        # that reconstructs a Query from JSON (notably the materialization
+        # Spark job that runs `Query.from_response_json` on the td_app_conf
+        # the SDK posted) would drop the lookback and run an unbounded PIT
+        # join. The SDK's local-process callers (get_batch_data, in-memory
+        # training_data) attach `_lookbacks` themselves after this method
+        # returns, so the only behavior change here is for cross-process
+        # reconstructions.
+        from hsfs.constructor.lookback import Lookbacks
+
+        q._lookbacks = Lookbacks.from_response_json(json_decamelized.get("lookbacks"))
+        return q
 
     def _check_read_supported(self, online: bool) -> None:
         if not online:
