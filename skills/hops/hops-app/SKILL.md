@@ -88,6 +88,12 @@ if app.serving:
     print(f"App URL: {app.app_url}")
 ```
 
+> **The app path differs between the SDK and the `hops` CLI.** The SDK
+> `create_app(app_path=...)` takes a **project-relative** path
+> (`Users/<username>/app.py`); the CLI `hops app create --path` takes the
+> **HopsFS absolute** path (`/Projects/<project>/Users/<username>/app.py`). Each
+> surface rejects the other's form, so don't copy one into the other.
+
 ---
 
 ## App Lifecycle
@@ -184,6 +190,13 @@ fv.init_serving(training_dataset_version=1)
 vector = fv.get_feature_vector(entry={"user_id": 123}, return_type="pandas")
 ```
 
+> **A just-created feature group is not queryable via Trino/`hops sql`
+> immediately.** The offline table syncs into the Trino catalog with a short lag,
+> so a `SELECT ... FROM <fresh_fg>` right after `insert` can return
+> `TABLE_NOT_FOUND`. Online feature-vector reads are available before the offline
+> Trino table is, so don't hardcode a UI bound from a fresh Trino query — make the
+> app not-found-safe (warn on an empty online vector) instead of trusting a range.
+
 ### Model Registry
 
 ```python
@@ -251,8 +264,21 @@ Apps render as a bare default Streamlit page unless you theme them. Drop in the
 Hopsworks palette so a shipped app reads as part of the platform — brand accents
 only, don't restyle every widget.
 
-`.streamlit/config.toml` (next to the app script):
+`.streamlit/config.toml` — **must sit in the same directory as the app script**,
+not in `~/.streamlit/`. Streamlit reads config from the script's own directory
+(and CWD), so an app under `customer_spend_fti/app.py` needs
+`customer_spend_fti/.streamlit/config.toml`. Copy it per app directory.
+
 ```toml
+[server]
+fileWatcherType = "none"   # REQUIRED on HopsFS/FUSE: the watcher stats the
+headless = true            # script over FUSE on the event loop and blocks the
+runOnSave = false          # readiness probe, making the managed app flap
+                           # serving<->running. Without this the app never holds.
+
+[browser]
+gatherUsageStats = false
+
 [theme]
 primaryColor = "#1EB182"           # Hopsworks teal-green
 backgroundColor = "#0E1117"
