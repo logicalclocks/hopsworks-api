@@ -414,6 +414,25 @@ def job_history(ctx: click.Context, name: str) -> None:
     output.print_table(["ID", "STATE", "FINAL", "SUBMITTED"], rows)
 
 
+# Quartz cron (sec min hour day-of-month month day-of-week) for the common
+# crontab shorthands. day-of-month and day-of-week are mutually exclusive in
+# Quartz, hence the `?` placeholder in one of the two.
+_CRON_ALIASES = {
+    "@hourly": "0 0 * * * ?",
+    "@daily": "0 0 0 * * ?",
+    "@midnight": "0 0 0 * * ?",
+    "@weekly": "0 0 0 ? * SUN",
+    "@monthly": "0 0 0 1 * ?",
+    "@yearly": "0 0 0 1 1 ?",
+    "@annually": "0 0 0 1 1 ?",
+}
+
+
+def _expand_cron_alias(cron: str) -> str:
+    """Translate ``@daily``-style shorthands to a Quartz cron expression."""
+    return _CRON_ALIASES.get(cron.strip().lower(), cron)
+
+
 @job_group.command("schedule")
 @click.argument("name")
 @click.argument("cron")
@@ -494,7 +513,8 @@ def job_schedule(
     Args:
         ctx: Click context.
         name: Job name.
-        cron: Quartz cron expression.
+        cron: Quartz cron expression, or a shorthand (@hourly, @daily,
+            @midnight, @weekly, @monthly, @yearly).
         start_time: ISO timestamp for the first trigger.
         end_time: ISO timestamp for the last trigger.
         start_offset_seconds: Per-fire offset for ``HOPS_START_TIME``.
@@ -504,6 +524,7 @@ def job_schedule(
         max_catchup_runs: Upper bound on missed intervals to replay during catchup.
     """
     job = _get_job(ctx, name)
+    cron = _expand_cron_alias(cron)
     try:
         schedule = job.schedule(
             cron_expression=cron,

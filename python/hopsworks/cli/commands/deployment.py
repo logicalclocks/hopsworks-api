@@ -85,6 +85,24 @@ def deployment_info(ctx: click.Context, name: str) -> None:
     output.print_table(["FIELD", "VALUE"], rows)
 
 
+@deployment_group.command("status")
+@click.argument("name")
+@click.pass_context
+def deployment_status(ctx: click.Context, name: str) -> None:
+    """Show the current status of a deployment.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+    """
+    deployment = _get_deployment(ctx, name)
+    status = _deployment_status_live(deployment)
+    if output.JSON_MODE:
+        output.print_json({"name": name, "status": status})
+        return
+    click.echo(status)
+
+
 def _deployment_status(d: Any) -> str:
     """Return a best-effort status string without triggering a network call.
 
