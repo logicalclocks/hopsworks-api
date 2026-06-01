@@ -44,6 +44,7 @@ from hsfs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
+from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core.chart import Chart
 from hsfs.core.chart_api import ChartApi
 from hsfs.core.dashboard import Dashboard
@@ -169,10 +170,11 @@ class FeatureStore:
             version: Version of the feature group to retrieve, defaults to `None` and will return the `version=1`.
 
         Returns:
-            The feature group metadata object or `None` if it does not exist.
+            The feature group metadata object, or `None` if it does not exist in any store accessible to the project.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group is not in this store but exists in a store shared with the project; the message names the store to call `get_feature_store(name=...)` on.
         """
         if version is None:
             warnings.warn(
@@ -187,7 +189,39 @@ class FeatureStore:
             util.check_missing_mandatory_tags(
                 feature_group_object.missing_mandatory_tags
             )
-        return feature_group_object
+            return feature_group_object
+
+        # Not in this store. The same feature group may live in a store shared
+        # with the project (the UI lists those too); returning a silent ``None``
+        # there sends callers straight into an AttributeError on ``.read()``.
+        # Point them at the right store instead. Best-effort: any failure in the
+        # cross-store probe falls back to the documented ``None`` return.
+        shared_store = self._find_in_shared_stores(name, version)
+        if shared_store is not None:
+            raise FeatureStoreException(
+                f"Feature group `{name}` (version {version}) is not in feature "
+                f"store `{self.name}`, but exists in shared store "
+                f"`{shared_store}`. Get it with "
+                f"`project.get_feature_store(name='{shared_store}')"
+                f".get_feature_group('{name}', version={version})`."
+            )
+        return None
+
+    def _find_in_shared_stores(self, name: str, version: int) -> str | None:
+        """Return the name of an accessible shared store holding ``name``, else
+        ``None``. Best-effort: any failure yields ``None`` so the caller keeps
+        its documented return-``None`` contract for a genuinely absent group."""
+        try:
+            from hsfs.core.feature_store_api import FeatureStoreApi
+
+            for store in FeatureStoreApi().get_all():
+                if getattr(store, "id", None) == self.id:
+                    continue
+                if self._feature_group_api.get(store.id, name, version):
+                    return store.name
+        except Exception:  # noqa: BLE001 - hint is best-effort, never fatal
+            return None
+        return None
 
     @public
     def get_feature_groups(
