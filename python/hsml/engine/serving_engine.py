@@ -844,13 +844,24 @@ class ServingEngine:
                     raise ModelServingException(
                         "Inference data cannot contain an empty list."
                     )
-                if not isinstance(payload[0], list):
+                # KServe V1 instances may be lists (columnar predictors) or
+                # objects/dicts (custom predictors that key on field names).
+                # Accept both; only reject bare scalars and empty entries.
+                first = payload[0]
+                if isinstance(first, list):
+                    if len(first) == 0:
+                        raise ModelServingException(
+                            "Inference data cannot contain an empty list."
+                        )
+                elif isinstance(first, dict):
+                    if len(first) == 0:
+                        raise ModelServingException(
+                            "Inference data cannot contain an empty object."
+                        )
+                else:
                     raise ModelServingException(
-                        "Instances field should contain a 2-dim list."
-                    )
-                if len(payload[0]) == 0:
-                    raise ModelServingException(
-                        "Inference data cannot contain an empty list."
+                        "Instances field should contain a list of lists or a "
+                        "list of objects."
                     )
             else:  # not Dict
                 if isinstance(data, InferInput) or (
