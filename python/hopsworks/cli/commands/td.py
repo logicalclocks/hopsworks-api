@@ -21,16 +21,32 @@ def td_group() -> None:
 
 @td_group.command("list")
 @click.argument("feature_view")
-@click.option("--version", type=int, help="Feature view version; defaults to latest.")
+@click.argument("fv_version", type=int, required=False)
+@click.option(
+    "--version",
+    "version_opt",
+    type=int,
+    help="Feature view version; same as the positional FV_VERSION. Defaults to latest.",
+)
 @click.pass_context
-def td_list(ctx: click.Context, feature_view: str, version: int | None) -> None:
+def td_list(
+    ctx: click.Context,
+    feature_view: str,
+    fv_version: int | None,
+    version_opt: int | None,
+) -> None:
     """List training dataset versions generated from a feature view.
+
+    The FV version can be given positionally (``td list <fv> 2``, matching
+    ``td compute``) or via ``--version``; the positional form wins.
 
     Args:
         ctx: Click context.
         feature_view: Feature view name.
-        version: Feature view version.
+        fv_version: Feature view version (positional, optional).
+        version_opt: Feature view version (``--version``, optional).
     """
+    version = fv_version if fv_version is not None else version_opt
     fs = session.get_feature_store(ctx)
     try:
         fv = fs.get_feature_view(feature_view, version=version)
