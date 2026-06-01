@@ -51,10 +51,10 @@ def td_list(ctx: click.Context, feature_view: str, version: int | None) -> None:
                 getattr(td, "version", "?"),
                 getattr(td, "data_format", "-"),
                 getattr(td, "coalesce", "-"),
-                getattr(td, "train_split", "") or "",
+                _format_splits(td),
             ]
         )
-    output.print_table(["VERSION", "FORMAT", "COALESCE", "SPLIT"], rows)
+    output.print_table(["VERSION", "FORMAT", "COALESCE", "SPLITS"], rows)
 
 
 @td_group.command("compute")
@@ -243,6 +243,21 @@ def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
         return fs.get_feature_view(name, version=version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+
+
+def _format_splits(td: Any) -> str:
+    """Render every split as ``name:pct`` so a multi-split TD is distinguishable
+    from a single-split one. Metadata only (no data read); row counts would need
+    materializing each split."""
+    splits = getattr(td, "splits", None) or []
+    if not splits:
+        return "-"
+    parts = []
+    for s in splits:
+        name = getattr(s, "name", "?")
+        pct = getattr(s, "percentage", None)
+        parts.append(f"{name}:{pct:g}" if pct is not None else str(name))
+    return "/".join(parts)
 
 
 def _parse_splits(spec: str | None) -> dict[str, float]:
