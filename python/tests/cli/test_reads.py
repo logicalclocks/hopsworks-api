@@ -186,10 +186,33 @@ def test_fv_info(mock_project):
     fv = mock.MagicMock()
     fv.id, fv.name, fv.version = 11, "fraud_fv", 1
     fv.labels, fv.description, fv.features = ["fraud"], "", []
+    fv.transformation_functions = []
     fs.get_feature_view.return_value = fv
     result = CliRunner().invoke(cli, ["fv", "info", "fraud_fv"])
     assert result.exit_code == 0, result.output
     assert "fraud_fv" in result.output
+
+
+def test_fv_info_shows_transformations(mock_project):
+    """Post-transform output columns and dropped sources surface in fv info, so
+    the schema view matches what training data and the model actually see."""
+    fs = mock_project.get_feature_store.return_value
+    fv = mock.MagicMock()
+    fv.id, fv.name, fv.version = 11, "fraud_fv", 1
+    fv.labels, fv.description, fv.features = ["fraud"], "", []
+    tf = mock.MagicMock()
+    tf.output_column_names = ["zscore_scaler_amount_"]
+    feat = mock.MagicMock()
+    feat.feature_name = "amount"
+    tf.hopsworks_udf.function_name = "zscore_scaler"
+    tf.hopsworks_udf.transformation_features = [feat]
+    tf.hopsworks_udf.dropped_features = ["amount"]
+    fv.transformation_functions = [tf]
+    fs.get_feature_view.return_value = fv
+    result = CliRunner().invoke(cli, ["fv", "info", "fraud_fv"])
+    assert result.exit_code == 0, result.output
+    assert "zscore_scaler_amount_" in result.output
+    assert "zscore_scaler" in result.output
 
 
 # --- datasource ------------------------------------------------------------
