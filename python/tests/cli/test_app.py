@@ -67,6 +67,29 @@ def test_app_logs_stderr_only(mock_project):
     assert "hello out" not in result.output
 
 
+def test_app_create_drops_unsupported_kwargs(mock_project):
+    """Create stays resilient when the deployed SDK predates app_kind etc."""
+    apps = mock_project.get_app_api.return_value
+    created = _fake_app(name="legacy")
+
+    def old_create_app(
+        name,
+        app_path=None,
+        environment="python-app-pipeline",
+        memory=2048,
+        cores=1.0,
+        env_vars=None,
+    ):
+        return created
+
+    apps.create_app = old_create_app
+    result = CliRunner().invoke(
+        cli, ["app", "create", "legacy", "--path", "Resources/app.py"]
+    )
+    # would TypeError on app_kind without the signature filter
+    assert result.exit_code == 0, result.output
+
+
 def test_app_info_shows_url(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.get_app.return_value = _fake_app(

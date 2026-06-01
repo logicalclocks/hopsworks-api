@@ -9,6 +9,7 @@ Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import click
@@ -316,6 +317,7 @@ def app_create(
         create_kwargs["git_branch"] = git_branch
     if entrypoint_script is not None:
         create_kwargs["entrypoint_script"] = entrypoint_script
+    create_kwargs = _accepted_kwargs(apps.create_app, create_kwargs)
     try:
         a = apps.create_app(**create_kwargs)
     except Exception as exc:  # noqa: BLE001
@@ -417,6 +419,31 @@ def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted app %s", name)
+
+
+def _accepted_kwargs(fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Drop kwargs the callable's signature rejects, warning on each.
+
+    Guards ``hops app create`` against CLI/SDK drift: a deployed SDK older than
+    this CLI may not accept newer create_app params (app_kind,
+    entrypoint_command, app_port, git_*). A ``**kwargs`` signature accepts
+    everything, so nothing is dropped.
+    """
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return kwargs
+    if any(p.kind == p.VAR_KEYWORD for p in params):
+        return kwargs
+    accepted = {p.name for p in params}
+    dropped = [k for k in kwargs if k not in accepted]
+    if dropped:
+        output.warn(
+            "Installed SDK's create_app does not accept %s; ignoring "
+            "(CLI/SDK version drift).",
+            ", ".join(dropped),
+        )
+    return {k: v for k, v in kwargs.items() if k in accepted}
 
 
 def _get_app_api(ctx: click.Context) -> Any:
