@@ -100,3 +100,32 @@ def get_feature_store(ctx: click.Context) -> Any:
     fs = project.get_feature_store()
     obj["fs"] = fs
     return fs
+
+
+def get_accessible_feature_stores(ctx: click.Context) -> list[Any]:
+    """Return every feature store the project can access (own + shared).
+
+    Mirrors what the UI lists: the project's own feature store plus any shared
+    with it. The own store is placed first so callers can prefer it when a
+    feature group name is ambiguous. Cached on ``ctx.obj``.
+
+    Args:
+        ctx: Click context.
+
+    Returns:
+        A list of feature store objects, own store first, de-duplicated by id.
+    """
+    obj: dict[str, Any] = ctx.ensure_object(dict)
+    if obj.get("all_fs") is not None:
+        return obj["all_fs"]
+    own = get_feature_store(ctx)
+    from hsfs.core.feature_store_api import FeatureStoreApi
+
+    try:
+        stores = FeatureStoreApi().get_all()
+    except Exception:  # noqa: BLE001 - degrade to just the project store
+        stores = [own]
+    own_id = getattr(own, "id", None)
+    ordered = [own] + [s for s in stores if getattr(s, "id", None) != own_id]
+    obj["all_fs"] = ordered
+    return ordered

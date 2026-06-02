@@ -153,6 +153,48 @@ def _render_markdown(
             )
         out("\n")
 
+    _render_guidance(out)
+
+
+def _render_guidance(out: Any) -> None:
+    """Append a static CLI-vs-skill routing guide.
+
+    The CLI is the primary interface; the SDK is the fallback for what the CLI
+    cannot do. Each row maps a task to its CLI command and/or the skill that
+    covers it, so an agent knows where to go without rediscovering it.
+    """
+    out("## Working in this project\n\n")
+    out(
+        "Primary interface: the `hops` CLI — explore and operate with it. Write "
+        "Python with the `hopsworks` SDK for pipeline scripts that run as jobs or "
+        "deployments. Load the matching `hops-*` skill for SDK-heavy steps.\n\n"
+    )
+    out("| Task | CLI / skill |\n|---|---|\n")
+    out(
+        "| Explore data, list/preview FGs & FVs, ad-hoc SQL | `hops fg` / `hops fv` / `hops sql` |\n"
+    )
+    out(
+        "| Feature pipeline | write Python (skill: hops-features), run `hops job deploy --env python-feature-pipeline` |\n"
+    )
+    out(
+        "| Transforms + feature view | `hops transformation create`, `hops fv create` (skill: hops-fv) |\n"
+    )
+    out(
+        "| Train a model | `train.py` from the FV (skill: hops-train), run `hops job deploy --env pandas-training-pipeline` |\n"
+    )
+    out(
+        "| Online deployment | `hops deployment create --script <predictor> --env pandas-inference-pipeline` (skill: hops-online-inference) |\n"
+    )
+    out("| Batch inference | skill: hops-batch-inference |\n")
+    out("| Streamlit app | `hops app create` (skill: hops-app) |\n\n")
+    out(
+        "The CLI sets job/deployment environments via `--env`; the SDK is the "
+        "fallback for what the CLI cannot (custom job config). Imported feature "
+        "groups may live in a shared store — `hops fg list` shows a STORE "
+        "column, and a pipeline reads a shared FG via "
+        '`get_feature_store(name="<that store>")`.\n\n'
+    )
+
 
 def _fg_summary(fg: Any) -> dict[str, Any]:
     return {

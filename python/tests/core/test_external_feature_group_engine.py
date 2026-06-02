@@ -62,6 +62,7 @@ class TestExternalFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.core.arrow_flight_client.supports", return_value=True)
         mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
@@ -95,6 +96,7 @@ class TestExternalFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.core.arrow_flight_client.supports", return_value=True)
         mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
@@ -128,6 +130,7 @@ class TestExternalFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.core.arrow_flight_client.supports", return_value=True)
         mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 

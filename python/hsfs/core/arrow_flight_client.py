@@ -636,7 +636,9 @@ def supports(featuregroups):
         lambda fg: isinstance(fg, feature_group.ExternalFeatureGroup), featuregroups
     ):
         if (
-            fg.data_source.storage_connector.type
+            not fg.data_source
+            or not fg.data_source.storage_connector
+            or fg.data_source.storage_connector.type
             not in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
         ):
             return False

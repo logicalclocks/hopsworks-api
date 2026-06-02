@@ -61,9 +61,16 @@ def transformation_list(ctx: click.Context) -> None:
     "--code",
     help='Inline @udf source, e.g. "@udf(float)\\ndef x(c): return c * 2".',
 )
+@click.option(
+    "--version",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Transformation function version.",
+)
 @click.pass_context
 def transformation_create(
-    ctx: click.Context, file_path: str | None, code: str | None
+    ctx: click.Context, file_path: str | None, code: str | None, version: int
 ) -> None:
     """Register a new user-defined transformation.
 
@@ -76,6 +83,8 @@ def transformation_create(
         ctx: Click context.
         file_path: Python source path.
         code: Inline Python source.
+        version: Transformation function version (the backend rejects a null
+            version, so the CLI always sends one; defaults to 1).
     """
     if not file_path and not code:
         raise click.UsageError("Provide either --file or --code.")
@@ -93,7 +102,9 @@ def transformation_create(
 
     fs = session.get_feature_store(ctx)
     try:
-        tf = fs.create_transformation_function(transformation_function=udf)
+        tf = fs.create_transformation_function(
+            transformation_function=udf, version=version
+        )
         tf.save()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create transformation: {exc}") from exc
