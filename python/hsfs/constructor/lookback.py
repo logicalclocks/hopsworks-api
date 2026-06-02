@@ -1,5 +1,5 @@
 #
-#   Copyright 2026 Logical Clocks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -26,37 +26,39 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
 
-EVENT_TIME = "event_time"
-PARTITION_KEY = "partition_key"
+EVENT_TIME = "EVENT_TIME"
+PARTITION_KEY = "PARTITION_KEY"
 _VALID_LOOKBACK_KEYS = (EVENT_TIME, PARTITION_KEY)
 
 _UNIFORM_LOOKBACK_DICT_KEYS = frozenset({"key", "start", "end"})
-_LOOKBACKS_DICT_KEYS = frozenset({"default", "feature_groups"})
+_LOOKBACK_DICT_KEYS = frozenset({"default", "feature_group_lookbacks"})
 
 
 @public
 @typechecked
-class Lookback:
-    """A lookback window for PIT joins on a feature view.
+class FeatureGroupLookback:
+    """A lookback window for point-in-time joins on a feature view.
 
-    Bounds the rows of the joined feature group(s) that participate in the
-    point-in-time join, so flyingduck and Spark can prune partitions before
-    reading files.
+    A lookback bounds how far back in time the joined feature group(s) may
+    contribute rows to a point-in-time join, so partition scans stay bounded
+    as feature groups grow.
 
-    `key="partition_key"` emits the predicate against the FG's partition
-    column — flyingduck and Spark prune partitions before reading files.
-    `key="event_time"` emits against the event_time column — row-level
-    correctness only; partition pruning is engine-dependent.
+    Use `key="PARTITION_KEY"` when the feature group is partitioned by a DATE
+    column aligned with the lookback bounds; the storage engine then prunes
+    whole partitions before reading any files.
+    Use `key="EVENT_TIME"` to bound on the event-time column; the result is
+    always correct, but whether the engine can also prune files depends on
+    the storage format.
 
-    Use this class for a uniform window across every FG; use
-    [`Lookbacks`][hsfs.constructor.lookback.Lookbacks] for per-FG
-    overrides.
+    Use this class for a uniform window across every feature group in the
+    view; use [`Lookback`][hsfs.constructor.lookback.Lookback] when
+    different feature groups need different windows.
 
     Example:
         ```python
         fv.get_batch_data(
-            lookback=Lookback(
-                key="partition_key",
+            lookback=FeatureGroupLookback(
+                key="PARTITION_KEY",
                 start=date(2026, 5, 5),
                 end=date(2026, 5, 17),
             ),
@@ -70,60 +72,55 @@ class Lookback:
         start: date | datetime | int | str,
         end: date | datetime | int | str | None = None,
     ) -> None:
-        if key not in _VALID_LOOKBACK_KEYS:
+        normalized_key = key.upper() if isinstance(key, str) else key
+        if normalized_key not in _VALID_LOOKBACK_KEYS:
             raise ValueError(
-                f"Lookback `key` must be one of {_VALID_LOOKBACK_KEYS!r}; got {key!r}."
+                f"FeatureGroupLookback `key` must be one of {_VALID_LOOKBACK_KEYS!r} "
+                f"(case-insensitive); got {key!r}."
             )
         if start is None:
-            raise ValueError("Lookback `start` is required.")
+            raise ValueError("FeatureGroupLookback `start` is required.")
         if end is not None:
             start_ms = convert_event_time_to_timestamp(start)
             end_ms = convert_event_time_to_timestamp(end)
             if start_ms >= end_ms:
                 raise ValueError(
-                    f"Lookback `start` ({start!r}) must be strictly earlier "
+                    f"FeatureGroupLookback `start` ({start!r}) must be strictly earlier "
                     f"than `end` ({end!r})."
                 )
-        self._key = key
+        self._key = normalized_key
         self._start = start
         self._end = end
 
+    @public
     @property
     def key(self) -> str:
-        """Column the lookback predicate targets on each joined feature group."""
+        """Column the lookback predicate targets on each joined feature group.
+
+        One of `"PARTITION_KEY"` or `"EVENT_TIME"`.
+        """
         return self._key
 
+    @public
     @property
     def start(self) -> date | datetime | int | str:
-        """Required lower bound of the lookback window.
-
-        Holds whatever shape `__init__` accepted: a `date`/`datetime` for user-form
-        construction, or epoch-millis `int` / ISO `str` after `from_response_json`
-        reconstructs from the wire payload. `convert_event_time_to_timestamp` accepts
-        all four shapes uniformly.
-        """
+        """Lower bound of the lookback window (inclusive)."""
         return self._start
 
+    @public
     @property
     def end(self) -> date | datetime | int | str | None:
-        """Optional upper bound; `None` emits a one-sided lower-bound predicate only.
-
-        Same value-shape contract as `start`.
-        """
+        """Upper bound of the lookback window (inclusive), or `None` for an open-ended upper side."""
         return self._end
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the wire-format payload for the backend.
-
-        Bounds are emitted as epoch milliseconds; `key` is upper-cased to
-        match the backend enum; `end` is omitted when not provided.
+        """Serialize this lookback to a JSON-compatible dict.
 
         Returns:
-            The wire-format dict with keys `lookbackKey`, `start`, and
-            optionally `end`.
+            A dict carrying the lookback's key, start, and (when set) end.
         """
         payload: dict[str, Any] = {
-            "lookbackKey": self._key.upper(),
+            "lookbackKey": self._key,
             "start": convert_event_time_to_timestamp(self._start),
         }
         if self._end is not None:
@@ -131,13 +128,191 @@ class Lookback:
         return payload
 
     @classmethod
+    def from_dict(
+        cls, value: dict[str, Any] | FeatureGroupLookback | None
+    ) -> FeatureGroupLookback | None:
+        """Build a `FeatureGroupLookback` from a `{"key", "start", "end"}` dict.
+
+        An existing `FeatureGroupLookback` is returned unchanged; `None` is returned as
+        `None`.
+
+        Parameters:
+            value:
+                A `{"key", "start", "end"}` dict, an existing `FeatureGroupLookback`, or `None`.
+
+        Returns:
+            A `FeatureGroupLookback` instance, or `None` if `value` was `None`.
+        """
+        if value is None or isinstance(value, cls):
+            return value
+        if not isinstance(value, dict):
+            raise TypeError(
+                f"FeatureGroupLookback expects a dict or `FeatureGroupLookback` instance; got {type(value)!r}."
+            )
+        return cls(
+            key=value.get("key"),
+            start=value.get("start"),
+            end=value.get("end"),
+        )
+
+    @classmethod
+    def from_response_json(
+        cls, value: dict[str, Any] | None
+    ) -> FeatureGroupLookback | None:
+        """Reconstruct a `FeatureGroupLookback` from the payload returned by the Hopsworks backend.
+
+        Parameters:
+            value:
+                The payload dict, or `None`.
+
+        Returns:
+            A `FeatureGroupLookback` instance, or `None` if `value` was `None` or the key field was missing.
+        """
+        if value is None:
+            return None
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, dict):
+            raise TypeError(
+                f"FeatureGroupLookback.from_response_json expects a dict; got {type(value)!r}."
+            )
+        key = value.get("lookback_key") or value.get("key")
+        if key is None:
+            return None
+        return cls(
+            key=key,
+            start=value.get("start"),
+            end=value.get("end"),
+        )
+
+
+@public
+@typechecked
+class Lookback:
+    """Per-feature-group lookback windows for a point-in-time-joined feature view.
+
+    `default` applies to every feature group in the view (root and joined)
+    that does not have a matching `feature_group_lookbacks` override.
+    `feature_group_lookbacks` maps a specific feature group to its own lookback,
+    which wins over the default for that feature group.
+    At least one of `default` or `feature_group_lookbacks` must be set.
+
+    If `default` is omitted, feature groups not listed in `feature_group_lookbacks`
+    are read without any lookback (same as not passing `lookback=...`).
+
+    Use [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] directly for a
+    uniform window across every feature group in the view.
+
+    `feature_group_lookbacks` keys identify the feature group in one of two ways:
+
+    - `"name"` — matches every feature group with that name, regardless of
+      version. Covers the common case where each feature group appears once
+      in the view.
+    - Feature group instance — matches a specific `(name, version)`. Use
+      this when the view joins two versions of the same feature group.
+
+    If you supply both a name string and a feature group instance that
+    resolve to the same name, the instance entry wins for its specific
+    version and the name entry applies to the other versions.
+
+    Feature group instances are not JSON-serializable; if you need to
+    persist this configuration, use name strings as keys.
+
+    Example:
+        ```python
+        fv.get_batch_data(
+            lookback=Lookback(
+                default=FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5)),
+                feature_group_lookbacks={
+                    "transactions": FeatureGroupLookback(key="EVENT_TIME",
+                                             start=datetime(2026, 5, 1, tzinfo=timezone.utc)),
+                },
+            ),
+        )
+        ```
+    """
+
+    def __init__(
+        self,
+        default: FeatureGroupLookback | dict[str, Any] | None = None,
+        feature_group_lookbacks: dict[Any, FeatureGroupLookback | dict[str, Any]]
+        | None = None,
+    ) -> None:
+        # Import done here to prevent circular dependencies
+        from hsfs.feature_group import FeatureGroupBase
+
+        self._default = (
+            FeatureGroupLookback.from_dict(default) if default is not None else None
+        )
+
+        entries: dict[Any, FeatureGroupLookback] = {}
+        for raw_key, raw_value in (feature_group_lookbacks or {}).items():
+            if not isinstance(raw_key, (str, FeatureGroupBase)):
+                raise ValueError(
+                    f"feature_group_lookbacks key must be a str or FeatureGroup instance; "
+                    f"got {type(raw_key).__name__}"
+                )
+            if raw_value is None:
+                raise ValueError(
+                    f"feature_group_lookbacks[{raw_key!r}] must be a FeatureGroupLookback or dict; got None."
+                )
+            entries[raw_key] = FeatureGroupLookback.from_dict(raw_value)
+
+        if self._default is None and not entries:
+            raise ValueError(
+                "Lookback requires at least one of `default` or `feature_group_lookbacks` "
+                "to be set."
+            )
+        self._feature_groups: dict[Any, FeatureGroupLookback] = entries
+
+    @public
+    @property
+    def default(self) -> FeatureGroupLookback | None:
+        """FeatureGroupLookback applied to every feature group without a `feature_group_lookbacks` override."""
+        return self._default
+
+    @public
+    @property
+    def feature_group_lookbacks(self) -> dict[Any, FeatureGroupLookback]:
+        """Per-feature-group overrides keyed by feature group name or instance."""
+        return dict(self._feature_groups)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize this configuration to a JSON-compatible dict.
+
+        Returns:
+            A dict carrying the default lookback (when set) and the
+            per-feature-group overrides (when any are set).
+        """
+        payload: dict[str, Any] = {}
+        if self._default is not None:
+            payload["defaultLookback"] = self._default.to_dict()
+        if self._feature_groups:
+            payload["featureGroupLookbacks"] = [
+                {
+                    "name": raw_key if isinstance(raw_key, str) else raw_key.name,
+                    "version": None if isinstance(raw_key, str) else raw_key.version,
+                    "lookback": lookback.to_dict(),
+                }
+                for raw_key, lookback in self._feature_groups.items()
+            ]
+        return payload
+
+    @classmethod
     def from_dict(cls, value: dict[str, Any] | Lookback | None) -> Lookback | None:
-        """Construct a `Lookback` from a user-form dict (or pass through an instance).
+        """Build a `Lookback` from a `{"default", "feature_group_lookbacks"}` dict.
 
-        Accepts `{"key", "start", "end"}`, an existing `Lookback`, or `None`.
+        An existing `Lookback` is returned unchanged; `None` is returned as
+        `None`.
+        If the dict shape might also be a uniform single-window payload
+        (`{key, start, end}`), use
+        [`from_user_input`][hsfs.constructor.lookback.Lookback.from_user_input]
+        instead, which accepts both shapes.
 
-        Args:
-            value: A user-form dict, an existing `Lookback`, or `None`.
+        Parameters:
+            value:
+                A `{"default", "feature_group_lookbacks"}` dict, an existing
+                `Lookback`, or `None`.
 
         Returns:
             A `Lookback` instance, or `None` if `value` was `None`.
@@ -149,26 +324,23 @@ class Lookback:
                 f"Lookback expects a dict or `Lookback` instance; got {type(value)!r}."
             )
         return cls(
-            key=value.get("key"),
-            start=value.get("start"),
-            end=value.get("end"),
+            default=value.get("default"),
+            feature_group_lookbacks=value.get("feature_group_lookbacks"),
         )
 
     @classmethod
     def from_response_json(cls, value: dict[str, Any] | None) -> Lookback | None:
-        """Reconstruct a `Lookback` from the wire-format payload the backend echoes.
+        """Reconstruct a `Lookback` from the payload returned by the Hopsworks backend.
 
-        `Query.from_response_json` uses this to restore `_lookbacks` when the
-        materialization Spark job (or any cross-process consumer) rebuilds a
-        Query from its serialized form.
-        The decamelized wire dict uses `lookback_key` instead of `key`, and the
-        reconstructed `key` is lower-cased to match the SDK contract.
+        Per-feature-group overrides come back keyed by name string only,
+        since feature group instances are not available when deserialising.
 
-        Args:
-            value: The decamelized wire dict (`lookback_key`, `start`, `end`), or `None`.
+        Parameters:
+            value:
+                The payload dict, or `None`.
 
         Returns:
-            A `Lookback` instance, or `None` when `value` is `None` or its `lookback_key` is missing.
+            A `Lookback` instance, or `None` if `value` was `None` or carried no usable entries.
         """
         if value is None:
             return None
@@ -178,254 +350,76 @@ class Lookback:
             raise TypeError(
                 f"Lookback.from_response_json expects a dict; got {type(value)!r}."
             )
-        key = value.get("lookback_key") or value.get("key")
-        if key is None:
-            return None
-        return cls(
-            key=str(key).lower(),
-            start=value.get("start"),
-            end=value.get("end"),
-        )
-
-
-@public
-@typechecked
-class Lookbacks:
-    """Lookback configuration with per-feature-group overrides.
-
-    `default` applies to every feature group in the query (root and joined)
-    that has no matching `feature_groups` entry; `feature_groups` overrides
-    the default for the named feature groups. At least one of the two must
-    be provided.
-
-    In per-FG-only mode (no `default`), feature groups not listed receive
-    no lookback and behave as they would with `lookback=None`.
-
-    For a uniform lookback across the whole feature view, use
-    [`Lookback`][hsfs.constructor.lookback.Lookback] directly.
-
-    `feature_groups` keys identify each FG one of two ways:
-
-    - `"name"` — matches every FG (root or joined) with that name, any
-      version. Covers the common case where each FG appears once in the FV.
-    - FG instance — matches every FG with the same `(name, version)`. Use
-      this to disambiguate when two versions of the same FG appear in the FV.
-
-    When a single key matches multiple join sites (e.g. the same FG joined
-    with two prefixes), the same lookback is applied to all matches.
-
-    When both shapes are supplied for the same name (a bare-string and an
-    FG-instance key that resolve to the same FG), the exact-version entry
-    takes precedence at its specific join site and the any-version entry
-    applies elsewhere — letting users express "lookback A for every version
-    of `dim_a`, except v1 which gets lookback B."
-
-    FG-instance keys are not JSON-serializable; for config files / serialised
-    payloads use string keys.
-
-    All matching, default fallback, and FG-eligibility validation happen on
-    the backend in `QueryController.resolveLookbacks`; this class is purely
-    the SDK-side container and wire serializer.
-
-    Example:
-        ```python
-        fv.get_batch_data(
-            lookback=Lookbacks(
-                default=Lookback(key="partition_key", start=date(2026, 5, 5)),
-                feature_groups={
-                    "transactions": Lookback(key="event_time",
-                                             start=datetime(2026, 5, 1, tzinfo=timezone.utc)),
-                },
-            ),
-        )
-        ```
-    """
-
-    def __init__(
-        self,
-        default: Lookback | dict[str, Any] | None = None,
-        feature_groups: dict[Any, Lookback | dict[str, Any]] | None = None,
-    ) -> None:
-        # Import done here to prevent circular dependencies
-        from hsfs.feature_group import FeatureGroupBase
-
-        self._default = Lookback.from_dict(default) if default is not None else None
-
-        entries: dict[Any, Lookback] = {}
-        for raw_key, raw_value in (feature_groups or {}).items():
-            if not isinstance(raw_key, (str, FeatureGroupBase)):
-                raise ValueError(
-                    f"feature_groups key must be a str or FeatureGroup instance; "
-                    f"got {type(raw_key).__name__}"
-                )
-            if raw_value is None:
-                raise ValueError(
-                    f"feature_groups[{raw_key!r}] must be a Lookback or dict; got None."
-                )
-            entries[raw_key] = Lookback.from_dict(raw_value)
-
-        if self._default is None and not entries:
-            raise ValueError(
-                "Lookbacks requires at least one of `default` or `feature_groups` "
-                "to be set."
-            )
-        self._feature_groups: dict[Any, Lookback] = entries
-
-    @property
-    def default(self) -> Lookback | None:
-        """Uniform default applied to FGs without a `feature_groups` entry."""
-        return self._default
-
-    @property
-    def feature_groups(self) -> dict[Any, Lookback]:
-        """User-supplied key → `Lookback` override map (keys returned verbatim).
-
-        Returns a copy to prevent external mutation of internal state.
-        """
-        return dict(self._feature_groups)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Return the wire-format payload for the backend.
-
-        Emits `{"defaultLookback": <LookbackDTO>, "featureGroups": [<entries>]}`.
-        Each entry carries `{"name", "version", "lookback"}`; bare-string keys
-        emit `version=None` (matches every version of the named FG on the
-        backend side), while FG-instance keys emit the FG's pinned version.
-
-        Returns:
-            The wire-format dict with the keys `defaultLookback` and
-            `featureGroups`; either may be omitted when not set.
-        """
-        payload: dict[str, Any] = {}
-        if self._default is not None:
-            payload["defaultLookback"] = self._default.to_dict()
-        if self._feature_groups:
-            payload["featureGroups"] = [
-                {
-                    "name": raw_key if isinstance(raw_key, str) else raw_key.name,
-                    "version": None if isinstance(raw_key, str) else raw_key.version,
-                    "lookback": lookback.to_dict(),
-                }
-                for raw_key, lookback in self._feature_groups.items()
-            ]
-        return payload
-
-    @classmethod
-    def from_dict(cls, value: dict[str, Any] | Lookbacks | None) -> Lookbacks | None:
-        """Construct a `Lookbacks` from its own user-form dict.
-
-        Accepts `{"default": ..., "feature_groups": {...}}`, an existing
-        `Lookbacks`, or `None`. For shapes that might be a uniform `Lookback`
-        dict instead, use `Lookbacks.from_user_input`.
-
-        Args:
-            value: A `Lookbacks`-shaped user-form dict, an existing
-                `Lookbacks`, or `None`.
-
-        Returns:
-            A `Lookbacks` instance, or `None` if `value` was `None`.
-        """
-        if value is None or isinstance(value, cls):
-            return value
-        if not isinstance(value, dict):
-            raise TypeError(
-                f"Lookbacks expects a dict or `Lookbacks` instance; got "
-                f"{type(value)!r}."
-            )
-        return cls(
-            default=value.get("default"),
-            feature_groups=value.get("feature_groups"),
-        )
-
-    @classmethod
-    def from_response_json(cls, value: dict[str, Any] | None) -> Lookbacks | None:
-        """Reconstruct a `Lookbacks` from the wire-format payload the backend echoes.
-
-        Per-feature-group entries are keyed by bare-string names because
-        Feature Group instances are not available at deserialization time;
-        version selection relies on the backend's `version=null` any-version
-        semantics.
-
-        Args:
-            value: The decamelized wire dict (`default_lookback`, `feature_groups`), or `None`.
-
-        Returns:
-            A `Lookbacks` instance, or `None` when `value` is `None` or carries no usable entries.
-        """
-        if value is None:
-            return None
-        if isinstance(value, cls):
-            return value
-        if not isinstance(value, dict):
-            raise TypeError(
-                f"Lookbacks.from_response_json expects a dict; got {type(value)!r}."
-            )
-        default = Lookback.from_response_json(value.get("default_lookback"))
-        feature_groups: dict[Any, Lookback] = {}
-        for entry in value.get("feature_groups", []) or []:
+        default = FeatureGroupLookback.from_response_json(value.get("default_lookback"))
+        feature_group_lookbacks: dict[Any, FeatureGroupLookback] = {}
+        for entry in value.get("feature_group_lookbacks", []) or []:
             if not isinstance(entry, dict):
                 continue
-            lookback = Lookback.from_response_json(entry.get("lookback"))
+            lookback = FeatureGroupLookback.from_response_json(entry.get("lookback"))
             if lookback is None:
                 continue
             name = entry.get("name")
             if name is None:
                 continue
-            feature_groups[name] = lookback
-        if default is None and not feature_groups:
+            feature_group_lookbacks[name] = lookback
+        if default is None and not feature_group_lookbacks:
             return None
-        return cls(default=default, feature_groups=feature_groups or None)
+        return cls(
+            default=default, feature_group_lookbacks=feature_group_lookbacks or None
+        )
 
     @classmethod
     def from_user_input(
         cls,
-        value: Lookback | Lookbacks | dict[str, Any] | None,
-    ) -> Lookbacks | None:
-        """Normalize any user-supplied `lookback=` argument to a `Lookbacks`.
+        value: FeatureGroupLookback | Lookback | dict[str, Any] | None,
+    ) -> Lookback | None:
+        """Normalize any value accepted by the `lookback=` parameter to a `Lookback`.
 
-        Accepts a `Lookback` (wrapped as `Lookbacks(default=value)`), a
-        `Lookbacks` (passthrough), a dict in either uniform shape
-        (`{key, start, end}`) or per-FG shape (`{default, feature_groups}`),
-        or `None`. Callers past the public API boundary then deal with a
-        single internal type.
+        A `FeatureGroupLookback` is wrapped as a uniform default; a `Lookback` is
+        returned unchanged; a dict is interpreted as either the uniform
+        single-window shape (`{"key", "start", "end"}`) or the per-
+        feature-group shape (`{"default", "feature_group_lookbacks"}`); `None` is
+        returned as `None`.
+        Mixing keys from both dict shapes is rejected.
 
-        Args:
-            value: A `Lookback`, `Lookbacks`, a user-form dict, or `None`.
+        Parameters:
+            value:
+                A `FeatureGroupLookback`, `Lookback`, dict, or `None`.
 
         Returns:
-            A `Lookbacks` instance, or `None` if `value` was `None`.
+            A `Lookback` instance, or `None` if `value` was `None`.
         """
         if value is None:
             return None
         if isinstance(value, cls):
             return value
-        if isinstance(value, Lookback):
+        if isinstance(value, FeatureGroupLookback):
             return cls(default=value)
         if not isinstance(value, dict):
             raise TypeError(
-                f"lookback must be Lookback, Lookbacks, dict, or None; "
+                f"lookback must be FeatureGroupLookback, Lookback, dict, or None; "
                 f"got {type(value).__name__}"
             )
         if not value:
             raise ValueError(
                 "lookback dict cannot be empty; pass a uniform shape with keys "
                 "{'key', 'start', 'end'} or a per-FG shape with keys "
-                "{'default', 'feature_groups'}, or omit the parameter entirely"
+                "{'default', 'feature_group_lookbacks'}, or omit the parameter entirely"
             )
         input_keys = set(value)
         uniform_keys_present = input_keys & _UNIFORM_LOOKBACK_DICT_KEYS
-        lookbacks_keys_present = input_keys & _LOOKBACKS_DICT_KEYS
-        if uniform_keys_present and lookbacks_keys_present:
+        lookback_keys_present = input_keys & _LOOKBACK_DICT_KEYS
+        if uniform_keys_present and lookback_keys_present:
             raise ValueError(
                 "lookback dict mixes uniform keys (key/start/end) with per-FG "
-                "keys (default/feature_groups); pick one shape"
+                "keys (default/feature_group_lookbacks); pick one shape"
             )
-        unknown_keys = input_keys - _UNIFORM_LOOKBACK_DICT_KEYS - _LOOKBACKS_DICT_KEYS
+        unknown_keys = input_keys - _UNIFORM_LOOKBACK_DICT_KEYS - _LOOKBACK_DICT_KEYS
         if unknown_keys:
             raise ValueError(
                 f"unknown lookback keys: {sorted(unknown_keys)}. "
-                "Allowed: {key, start, end} or {default, feature_groups}"
+                "Allowed: {key, start, end} or {default, feature_group_lookbacks}"
             )
         if uniform_keys_present:
-            return cls(default=Lookback.from_dict(value))
+            return cls(default=FeatureGroupLookback.from_dict(value))
         return cls.from_dict(value)
