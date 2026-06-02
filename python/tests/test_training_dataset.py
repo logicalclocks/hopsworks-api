@@ -169,3 +169,88 @@ class TestTrainingDataset:
 
         # Assert
         assert len(td_list) == 0
+
+    def test_from_response_json_omits_lookback(self, mocker, backend_fixtures):
+        # Older training datasets persisted before lookback support have no `lookbacks`
+        # field on the response. `from_response_json` must accept that and leave
+        # `_lookback` as None.
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["training_dataset"]["get"]["response"]
+        td = training_dataset.TrainingDataset.from_response_json(json)
+        if isinstance(td, list):
+            td = td[0]
+        assert td._lookback is None
+
+    def test_training_dataset_to_dict_emits_lookback_when_set(self, mocker):
+        # When the engine layer attaches a Lookback during create_training_*,
+        # `to_dict` emits the `lookbacks` wire shape so the backend's
+        # `QueryController.resolveLookbacks` can pick it up.
+        from datetime import date
+
+        from hsfs.constructor.lookback import FeatureGroupLookback, Lookback
+
+        mocker.patch("hopsworks_common.client.get_instance")
+        td = training_dataset.TrainingDataset(
+            name="td_lb",
+            version=1,
+            data_format="parquet",
+            featurestore_id=1,
+        )
+        lb = FeatureGroupLookback(
+            key="partition_key", start=date(2026, 5, 10), end=date(2026, 5, 17)
+        )
+        td._lookback = Lookback(default=lb)
+        payload = td.to_dict()
+        assert payload["lookback"] == {"defaultLookback": lb.to_dict()}
+
+    def test_training_dataset_accepts_lookback_via_constructor(self, mocker):
+        # The in-memory training_data / train_test_split / train_validation_test_split
+        # methods construct the TD directly with `lookbacks=Lookback.from_user_input(lookback)`
+        # rather than threading through an engine kwarg, so the constructor must accept
+        # a Lookback instance and emit it on the wire via to_dict().
+        from datetime import date
+
+        from hsfs.constructor.lookback import FeatureGroupLookback, Lookback
+
+        mocker.patch("hopsworks_common.client.get_instance")
+        lb = FeatureGroupLookback(
+            key="partition_key", start=date(2026, 5, 10), end=date(2026, 5, 17)
+        )
+        td = training_dataset.TrainingDataset(
+            name="td_inmem_lb",
+            version=None,
+            data_format="tsv",
+            featurestore_id=1,
+            lookback=Lookback(default=lb),
+        )
+        payload = td.to_dict()
+        assert payload["lookback"] == {"defaultLookback": lb.to_dict()}
+
+    def test_training_dataset_normalizes_wire_lookback_dict(self, mocker):
+        # `update_from_response_json` runs `self.__init__(**response)` with the decamelized
+        # backend payload. If the response carries `lookbacks`, the constructor must
+        # normalize that dict into a `Lookback` instance — otherwise `_lookback` ends up
+        # a raw dict and the next `to_dict()` blows up with `AttributeError: 'dict' object
+        # has no attribute 'to_dict'`.
+        from hsfs.constructor.lookback import Lookback
+
+        mocker.patch("hopsworks_common.client.get_instance")
+        wire = {
+            "default_lookback": {
+                "lookback_key": "PARTITION_KEY",
+                "start": 1747008000000,
+                "end": 1747612800000,
+            },
+        }
+        td = training_dataset.TrainingDataset(
+            name="td_wire_lb",
+            version=1,
+            data_format="parquet",
+            featurestore_id=1,
+            lookback=wire,
+        )
+        assert isinstance(td._lookback, Lookback)
+        # Round-trips through to_dict() so wire-form lookbacks restored from the backend
+        # remain serialisable for subsequent requests.
+        payload = td.to_dict()
+        assert payload["lookback"]["defaultLookback"]["lookbackKey"] == "PARTITION_KEY"
