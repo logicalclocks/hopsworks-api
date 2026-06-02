@@ -25,6 +25,7 @@ from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import engine, tag, training_dataset_feature, util
 from hsfs.constructor import filter
 from hsfs.constructor import query as query_module
+from hsfs.constructor.lookback import Lookback
 from hsfs.core import data_source as ds
 from hsfs.core import (
     statistics_engine,
@@ -587,6 +588,7 @@ class TrainingDataset(TrainingDatasetBase):
         data_source=None,
         missing_mandatory_tags=None,
         tags=None,
+        lookback=None,
         **kwargs,
     ):
         super().__init__(
@@ -627,6 +629,15 @@ class TrainingDataset(TrainingDatasetBase):
         self._querydto = querydto
         self._feature_store_id = featurestore_id
         self._feature_store_name = featurestore_name
+        # Normalize so `_lookback` is always a `Lookback` instance or None.
+        # `update_from_response_json` calls `__init__(**response)` with the
+        # decamelized wire dict (`{"default_lookback": ..., "feature_group_lookbacks": [...]}`),
+        # which would otherwise leak a raw dict into `_lookback` and crash the next
+        # `to_dict()` (it calls `self._lookback.to_dict()`).
+        if isinstance(lookback, Lookback) or lookback is None:
+            self._lookback = lookback
+        else:
+            self._lookback = Lookback.from_response_json(lookback)
 
         self._training_dataset_api = training_dataset_api.TrainingDatasetApi(
             featurestore_id
@@ -981,6 +992,8 @@ class TrainingDataset(TrainingDatasetBase):
             "extraFilter": self._extra_filter,
             "type": "trainingDatasetDTO",
         }
+        if self._lookback is not None:
+            td_dict["lookback"] = self._lookback.to_dict()
         if self._data_source:
             td_dict["dataSource"] = self._data_source.to_dict()
         tags_dict = tag.Tag.tags_to_dict(self._tags)
