@@ -27,6 +27,7 @@ from typing import (
     Literal,
     TypeVar,
 )
+from urllib.parse import urlparse
 
 import avro.schema
 import hsfs.expectation_suite
@@ -3105,7 +3106,20 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def _is_hopsfs_storage(self) -> bool:
-        """Return True if storage is HopsFS."""
+        """Return True if the offline storage location is HopsFS.
+
+        Sink-enabled feature groups can keep the source storage connector
+        (for example Redshift) attached while their offline data still lives
+        on the default HopsFS warehouse path.
+        In that case the location is the reliable signal for how delta-rs
+        should talk to storage.
+        """
+        location = getattr(self, "location", None)
+        if isinstance(location, str):
+            scheme = urlparse(location).scheme
+            if scheme in {"hopsfs", "hdfs"}:
+                return True
+
         return self.storage_connector is None or (
             self.storage_connector is not None
             and self.storage_connector.type == sc.StorageConnector.HOPSFS
@@ -3138,6 +3152,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.SNOWFLAKE,
                 sc.StorageConnector.REDSHIFT,
                 sc.StorageConnector.BIGQUERY,
+                sc.StorageConnector.MONGODB,
             ]
         ) or supported_sql_connector
 
@@ -3160,7 +3175,7 @@ class FeatureGroup(FeatureGroupBase):
             )
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
-                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY, "
+                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY, MONGODB, "
                 "and SQL connectors with database_type MYSQL, POSTGRESQL, or ORACLE."
             )
 
@@ -5184,6 +5199,39 @@ class ExternalFeatureGroup(FeatureGroupBase):
             ge_report.to_ge_type() if ge_report is not None else None,
         )
 
+    def _maybe_read_unity_catalog_via_spark(
+        self, *, force_vended: bool = False
+    ) -> Any | None:
+        """Return a Spark DataFrame for UC-backed external FGs, or None.
+
+        Returns None for any FG that isn't a UC external FG so the caller
+        can fall through to the standard Query path.
+        On Databricks-hosted Spark (auto-detected) routes to native
+        `spark.read.table()`; otherwise delegates to the connector, which
+        gets a bearer from Hopsworks and calls Databricks directly for
+        vended S3 temp-credentials.
+        `force_vended=True` skips the Databricks detection.
+        """
+        from hsfs import storage_connector as storage_connector_mod
+
+        ds = getattr(self, "_data_source", None) or getattr(self, "data_source", None)
+        connector = getattr(ds, "_storage_connector", None) if ds is not None else None
+        if (
+            connector is None
+            or getattr(connector, "type", None)
+            != storage_connector_mod.StorageConnector.UNITY_CATALOG
+        ):
+            return None
+
+        spark = engine.get_instance()._spark_session
+        return connector.read(
+            spark,
+            catalog=ds.database,
+            schema=ds.group,
+            table=ds.table,
+            force_vended=force_vended,
+        )
+
     @public
     def read(
         self,
@@ -5194,6 +5242,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         read_options: dict[str, Any] | None = None,
         start_time: str | int | datetime | date | None = None,
         end_time: str | int | datetime | date | None = None,
+        *,
+        force_vended: bool = False,
     ) -> (
         TypeVar("pyspark.sql.DataFrame")
         | TypeVar("pyspark.RDD")
@@ -5268,6 +5318,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
                 or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
                 Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
+            force_vended:
+                For Unity Catalog-backed external feature groups read with Spark: skip the
+                Databricks-runtime auto-detection and always resolve vended S3 credentials
+                via Hopsworks instead of falling through to `spark.read.table()`.
+                Use when the Databricks cluster's identity lacks UC grants the connector's
+                service principal has, or to force the Hopsworks read path in tests.
+                Ignored for non-UC feature groups and for non-Spark dataframe types.
 
         Returns:
             A dataframe in the requested format containing the feature group data.
@@ -5287,6 +5344,22 @@ class ExternalFeatureGroup(FeatureGroupBase):
             start_time, end_time = util.apply_scheduler_time_defaults(
                 start_time, end_time
             )
+
+        # Unity Catalog external FG + spark engine: short-circuit through
+        # the FG-level spark-options resolver. The standard Query path
+        # can't read UC tables (no Spark UC adapter in the Hopsworks
+        # cluster's Spark); the resolver vends short-lived S3 credentials
+        # and we read the underlying Delta files directly.
+        if (
+            dataframe_type in ("default", "spark")
+            and engine.get_type().startswith("spark")
+            and not online
+            and start_time is None
+            and end_time is None
+        ):
+            uc_df = self._maybe_read_unity_catalog_via_spark(force_vended=force_vended)
+            if uc_df is not None:
+                return uc_df
 
         if (
             engine.get_type() == "python"

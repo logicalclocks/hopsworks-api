@@ -182,6 +182,8 @@ class ArrowFlightClient:
         StorageConnector.GCS,
         StorageConnector.UNITY_CATALOG,
         StorageConnector.SAP_HANA,
+        StorageConnector.MONGODB,
+        StorageConnector.S3,
     ]
     # Oracle rides on StorageConnector.SQL above — it's distinguished on the
     # backend by sqlConnector.databaseType == "ORACLE". Keep that routing in
@@ -634,7 +636,9 @@ def supports(featuregroups):
         lambda fg: isinstance(fg, feature_group.ExternalFeatureGroup), featuregroups
     ):
         if (
-            fg.data_source.storage_connector.type
+            not fg.data_source
+            or not fg.data_source.storage_connector
+            or fg.data_source.storage_connector.type
             not in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
         ):
             return False

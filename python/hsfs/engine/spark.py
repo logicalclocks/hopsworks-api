@@ -56,7 +56,6 @@ try:
         array,
         col,
         concat,
-        count,
         current_timestamp,
         from_json,
         lit,
@@ -565,86 +564,6 @@ class Engine:
                 )
         return self._spark_session.createDataFrame(dataframe_copy)
 
-    def _check_duplicate_records(self, dataframe, feature_group):
-        """Check for duplicate records within primary_key, event_time and partition_key columns.
-
-        Raises FeatureStoreException if duplicates are found.
-
-        Parameters:
-        -----------
-        dataframe : pyspark.sql.DataFrame
-            The Spark DataFrame to check for duplicates
-        feature_group : FeatureGroup
-            The feature group instance containing primary_key, event_time and partition_key
-        """
-        # Get the key columns to check (primary_key + partition_key)
-        key_columns = list(feature_group.primary_key)
-
-        if not key_columns:
-            # No keys to check, skip validation
-            return
-
-        if feature_group.event_time:
-            key_columns.append(feature_group.event_time)
-
-        if feature_group.partition_key:
-            key_columns.extend(feature_group.partition_key)
-
-        # Verify all key columns exist in the dataset
-        dataframe_columns = dataframe.columns
-        missing_columns = [
-            col_name for col_name in key_columns if col_name not in dataframe_columns
-        ]
-        if missing_columns:
-            raise FeatureStoreException(
-                f"Key columns {missing_columns} are missing from the dataset. "
-                f"Available columns: {dataframe_columns}"
-            )
-
-        # Check for duplicates using Spark groupBy and count
-        # Group by key columns and count occurrences
-        grouped = dataframe.groupBy(*key_columns).agg(count("*").alias("count"))
-
-        # Filter groups with count > 1 (duplicates)
-        duplicate_groups = grouped.filter(col("count") > 1)
-
-        # Count the number of duplicate groups
-        duplicate_count = duplicate_groups.count()
-
-        if duplicate_count > 0:
-            # Get total number of duplicate rows (sum of counts - 1 for each duplicate group)
-            # Since count includes the first occurrence, duplicates = count - 1 per group
-            duplicate_rows_data = duplicate_groups.select(
-                col("count").cast("long")
-            ).collect()
-            total_duplicate_rows = (
-                sum(row["count"] for row in duplicate_rows_data) - duplicate_count
-            )
-
-            # Get sample duplicate records for error message
-            # Take first 10 duplicate groups and get their key values
-            sample_groups = duplicate_groups.limit(10).collect()
-
-            # Build sample string showing the duplicate key combinations
-            sample_rows = []
-            for row in sample_groups:
-                row_dict = {}
-                for col_name in key_columns:
-                    row_dict[col_name] = row[col_name]
-                row_dict["count"] = row["count"]
-                sample_rows.append(str(row_dict))
-
-            sample_str = "\n".join(sample_rows)
-
-            raise FeatureStoreException(
-                FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
-                + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
-                f"primary_key ({feature_group.primary_key}) and "
-                f"partition_key ({feature_group.partition_key}). "
-                f"Found {duplicate_count} duplicate group(s). "
-                f"Sample duplicate key combinations:\n{sample_str}"
-            )
-
     def save_dataframe(
         self,
         feature_group,
@@ -659,17 +578,6 @@ class Engine:
         if self._metrics:
             self._metrics.snapshot()
         try:
-            if (
-                # Only `FeatureGroup class has time_travel_format property
-                isinstance(feature_group, fg_mod.FeatureGroup)
-                and feature_group.time_travel_format == "DELTA"
-                and storage in [None, "offline"]
-            ):
-                self._check_duplicate_records(dataframe, feature_group)
-                _logger.debug(
-                    "No duplicate records found. Proceeding with Delta write."
-                )
-
             # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
             # FeatureGroups with stream=True use the same batch insert logic as non-stream
             # feature groups in spark; streaming ingestion is handled by save_stream_dataframe.
@@ -1719,7 +1627,56 @@ class Engine:
             return self._setup_adls_hadoop_conf(storage_connector, path)
         if storage_connector.type == StorageConnector.GCS:
             return self._setup_gcp_hadoop_conf(storage_connector, path)
+        if storage_connector.type == StorageConnector.MONGODB:
+            return self._setup_mongodb_spark_conf(storage_connector, path)
         return path
+
+    def _setup_mongodb_spark_conf(self, storage_connector, path):
+        """Configure the SparkConf for `spark.read.format("mongodb").load()`.
+
+        Sets `spark.mongodb.read.connection.uri` (and the matching `.write.`
+        prefix) plus optional database/collection defaults. The
+        `mongo-spark-connector` jar must already be on the cluster — it's
+        bundled in the Hopsworks Spark image, so production-equivalent
+        clusters resolve `spark.read.format("mongodb")` without the user
+        passing `--packages`. Returns `path` unchanged: MongoDB reads
+        identify a collection through Spark options, not a path.
+        """
+        uri = storage_connector._connection_uri()
+        self._set_spark_conf("spark.mongodb.read.connection.uri", uri)
+        # Write URI mirrors the read URI today — if/when we expose
+        # MongoDB as a write target we can split them out.
+        self._set_spark_conf("spark.mongodb.write.connection.uri", uri)
+        if getattr(storage_connector, "database", None):
+            self._set_spark_conf(
+                "spark.mongodb.read.database", storage_connector.database
+            )
+            self._set_spark_conf(
+                "spark.mongodb.write.database", storage_connector.database
+            )
+        if getattr(storage_connector, "collection", None):
+            self._set_spark_conf(
+                "spark.mongodb.read.collection", storage_connector.collection
+            )
+            self._set_spark_conf(
+                "spark.mongodb.write.collection", storage_connector.collection
+            )
+        return path
+
+    def _set_spark_conf(self, key, value):
+        """Set a SparkConf entry on the active session (no-op if not running)."""
+        if value is None:
+            return
+        try:
+            self._spark_session.conf.set(key, str(value))
+        except Exception:  # noqa: BLE001
+            # Older Spark may reject runtime updates of `spark.mongodb.*`;
+            # the user can pass these through `--conf` instead.
+            _logger.debug(
+                "Could not set Spark conf %s at runtime; "
+                "set it via --conf at session creation if reads fail",
+                key,
+            )
 
     def _setup_s3_hadoop_conf(self, storage_connector, path):
         FS_S3_GLOBAL_CONF = "fs.s3a.global-conf"

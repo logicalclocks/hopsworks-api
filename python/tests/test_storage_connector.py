@@ -160,10 +160,50 @@ class TestUnityCatalogConnector:
         assert sc.description == "Unity Catalog connector description"
         assert sc.type == storage_connector.StorageConnector.UNITY_CATALOG
         assert sc.workspace_url == "https://test.cloud.databricks.com"
-        assert sc.access_token == "dapi-test-token"
+        # access_token itself is write-only on the backend; the server never
+        # returns it on GET. hasAccessToken signals that one is on file.
+        assert sc.access_token is None
+        assert sc.has_access_token is True
+        assert sc.auth_method == "PAT"
         assert sc.default_catalog == "test_catalog"
         assert sc.aws_region == "us-west-2"
         assert sc.arguments == {"arg1": "val1"}
+
+    def test_from_response_json_oauth_workspace(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"][
+            "get_unity_catalog_oauth_workspace"
+        ]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.auth_method == "OAUTH_M2M"
+        assert sc.oauth_endpoint == "WORKSPACE"
+        assert sc.client_id == "test-sp-client-id"
+        assert sc.client_secret is None
+        assert sc.has_client_secret is True
+        assert sc.account_id is None
+        assert sc.account_host is None
+
+    def test_from_response_json_oauth_account(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_unity_catalog_oauth_account"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert sc.auth_method == "OAUTH_M2M"
+        assert sc.oauth_endpoint == "ACCOUNT"
+        assert sc.client_id == "test-sp-client-id"
+        assert sc.client_secret is None
+        assert sc.has_client_secret is True
+        assert sc.account_id == "12345678-1234-1234-1234-1234567890ab"
+        assert sc.account_host == "accounts.cloud.databricks.com"
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
@@ -204,6 +244,38 @@ class TestUnityCatalogConnector:
         )
         with pytest.raises(NotImplementedError):
             sc.spark_options()
+
+    def test_legacy_construction_defaults_pat(self):
+        # Connectors built before OAuth support landed have no auth_method
+        # field at all. They must keep working as PAT.
+        sc = storage_connector.UnityCatalogConnector(
+            id=1,
+            name="uc",
+            featurestore_id=1,
+            workspace_url="https://ws.cloud.databricks.com",
+            access_token="dapi-xyz",
+        )
+        assert sc.auth_method == "PAT"
+        assert sc.oauth_endpoint is None
+        assert sc.client_id is None
+        assert sc.has_access_token is True
+        assert sc.has_client_secret is False
+
+    def test_oauth_construction_defaults_workspace_endpoint(self):
+        # auth_method=OAUTH_M2M without oauth_endpoint defaults to WORKSPACE,
+        # matching the frontend default.
+        sc = storage_connector.UnityCatalogConnector(
+            id=1,
+            name="uc",
+            featurestore_id=1,
+            workspace_url="https://ws.cloud.databricks.com",
+            auth_method="OAUTH_M2M",
+            client_id="cid",
+            client_secret="csec",
+        )
+        assert sc.oauth_endpoint == "WORKSPACE"
+        assert sc.client_secret == "csec"
+        assert sc.has_client_secret is True
 
 
 class TestRedshiftConnector:
@@ -1676,3 +1748,204 @@ class TestSapHanaConnector:
         )
         with pytest.raises(DataSourceException, match="requires a host"):
             sc.spark_options()
+
+
+class TestMongoDBConnector:
+    """Cover the MongoDBConnector — from_response_json, URI builder, options."""
+
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_mongodb"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert sc.id == 1
+        assert sc.name == "test_mongodb"
+        assert sc._featurestore_id == 67
+        assert sc.description == "MongoDB connector description"
+        assert sc.connection_string == "mongodb+srv://hopsworks.example.mongodb.net"
+        assert sc.database == "sample_mflix"
+        assert sc.collection == "comments"
+        assert sc.user == "test_user"
+        assert sc.password == "test_password"
+        assert sc.auth_source == "admin"
+        assert sc.auth_mechanism == "SCRAM-SHA-256"
+        assert sc.options == {"maxPoolSize": "10"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_mongodb_basic_info"][
+            "response"
+        ]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert sc.id == 1
+        assert sc.name == "test_mongodb"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.connection_string is None
+        assert sc.database is None
+        assert sc.collection is None
+        assert sc.user is None
+        assert sc.password is None
+        assert sc.auth_source is None
+        assert sc.auth_mechanism is None
+        assert sc.options == {}
+
+    def test_connection_uri_auth_params_without_user(self):
+        # Reviewer note: authSource / authMechanism are valid independent
+        # of userinfo (e.g. X.509 client-cert auth has no username).
+        # Always append them when set.
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+            auth_mechanism="MONGODB-X509",
+        )
+
+        assert sc._connection_uri() == (
+            "mongodb://host:27017/?authMechanism=MONGODB-X509"
+        )
+
+    def test_connection_uri_adds_path_separator_before_query(self):
+        # Bug regression: previously `mongodb://host:27017?authSource=admin`
+        # was produced (no `/` between host and `?`), which is invalid per
+        # the MongoDB URI spec and rejected by pymongo's parser.
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+            user="alice",
+            auth_source="admin",
+        )
+
+        uri = sc._connection_uri()
+        # The path separator `/` precedes the query string `?`.
+        assert "/?" in uri
+        assert uri.endswith("/?authSource=admin")
+
+    def test_connection_uri_preserves_existing_query_and_path(self):
+        # If the stored connection string already carries query params or
+        # a path, we preserve them and append our own params.
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017/dbX?retryWrites=true",
+            user="alice",
+            auth_source="admin",
+        )
+
+        uri = sc._connection_uri()
+        assert uri == (
+            "mongodb://alice@host:27017/dbX?retryWrites=true&authSource=admin"
+        )
+
+    def test_connection_uri_no_user_no_auth_returns_base(self):
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+        )
+        # No userinfo, no extra params — but we still insert the path
+        # separator so the URI is spec-valid.
+        assert sc._connection_uri() == "mongodb://host:27017/"
+
+    def test_connection_uri_missing_connection_string_raises(self):
+        from hopsworks_common.client.exceptions import DataSourceException
+
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+        )
+        with pytest.raises(DataSourceException, match="requires a connection_string"):
+            sc._connection_uri()
+
+    def test_spark_options(self):
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb+srv://cluster.example.mongodb.net",
+            database="sample_mflix",
+            collection="comments",
+            user="alice",
+            password="secret",
+            options={"maxPoolSize": "10"},
+        )
+
+        opts = sc.spark_options()
+        # The connection URI is set under `connection.uri` (the
+        # mongo-spark-connector option name); database + collection are
+        # passed through as defaults; persisted options are merged.
+        assert opts["connection.uri"].startswith("mongodb+srv://alice:secret@")
+        assert opts["database"] == "sample_mflix"
+        assert opts["collection"] == "comments"
+
+    def test_get_tables_without_database_raises(self):
+        """MongoDB get_tables() with no database configured and no argument raises."""
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+        )
+        with pytest.raises(ValueError, match="Database name is required for MongoDB"):
+            sc.get_tables()
+
+    def test_get_tables_uses_connector_default_database(self, mocker):
+        """MongoDB get_tables() defaults to the connector's database when none is passed."""
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+            database="sample_mflix",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "sample_mflix")
+
+    def test_connector_options_forwards_self_options(self):
+        # Reviewer note: connector_options() previously returned only
+        # {host: uri}. self.options (operator-set pymongo kwargs) must be
+        # forwarded so values like maxPoolSize / serverSelectionTimeoutMS
+        # reach the driver.
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+            user="alice",
+            options={
+                "maxPoolSize": 10,
+                "serverSelectionTimeoutMS": 5000,
+                "host": "ignored",  # explicit-host key dropped to avoid clash
+            },
+        )
+
+        opts = sc.connector_options()
+        assert opts["host"].startswith("mongodb://alice@host:27017/")
+        # `host` from self.options is dropped — already set from URI builder.
+        assert opts["host"] != "ignored"
+        assert opts["maxPoolSize"] == 10
+        assert opts["serverSelectionTimeoutMS"] == 5000
+
+    def test_connector_options_drops_none_values(self):
+        sc = storage_connector.MongoDBConnector(
+            id=1,
+            name="m",
+            featurestore_id=1,
+            connection_string="mongodb://host:27017",
+            options={"maxPoolSize": None, "tlsAllowInvalidCertificates": True},
+        )
+        opts = sc.connector_options()
+        assert "maxPoolSize" not in opts
+        assert opts["tlsAllowInvalidCertificates"] is True

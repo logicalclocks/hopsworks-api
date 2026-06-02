@@ -27,40 +27,51 @@ def fg_group() -> None:
 @fg_group.command("list")
 @click.pass_context
 def fg_list(ctx: click.Context) -> None:
-    """List all feature groups in the active project's feature store.
+    """List feature groups across every feature store the project can access.
+
+    Includes feature groups in shared feature stores (as the UI does). The
+    STORE column shows which feature store each one lives in.
 
     Args:
         ctx: Click context.
     """
-    fs = session.get_feature_store(ctx)
-    fgs = fs.get_feature_groups()
+    stores = session.get_accessible_feature_stores(ctx)
     rows = []
-    for fg in fgs:
-        rows.append(
-            [
-                getattr(fg, "id", "?"),
-                getattr(fg, "name", "?"),
-                getattr(fg, "version", "?"),
-                _fg_type_label(fg),
-                "yes" if getattr(fg, "online_enabled", False) else "no",
-            ]
-        )
-    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE"], rows)
+    for fs in stores:
+        for fg in fs.get_feature_groups():
+            rows.append(
+                [
+                    getattr(fg, "id", "?"),
+                    getattr(fg, "name", "?"),
+                    getattr(fg, "version", "?"),
+                    _fg_type_label(fg),
+                    "yes" if getattr(fg, "online_enabled", False) else "no",
+                    getattr(fs, "name", "?"),
+                ]
+            )
+    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE", "STORE"], rows)
 
 
 @fg_group.command("info")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
-def fg_info(ctx: click.Context, name: str, version: int | None) -> None:
+def fg_info(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
     """Print metadata for a single feature group.
 
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Specific version to inspect; latest if omitted.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     if output.JSON_MODE:
         output.print_json(_fg_to_dict(fg))
         return
@@ -84,9 +95,18 @@ def fg_info(ctx: click.Context, name: str, version: int | None) -> None:
 @click.option(
     "--online", is_flag=True, help="Read from the online store (default: offline)."
 )
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
 def fg_preview(
-    ctx: click.Context, name: str, version: int | None, n: int, online: bool
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    n: int,
+    online: bool,
+    featurestore: str | None,
 ) -> None:
     """Show the first ``n`` rows of a feature group.
 
@@ -96,8 +116,9 @@ def fg_preview(
         version: Specific version to read.
         n: Number of rows to fetch.
         online: When True, read from the online store.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     try:
         df = fg.read(online=online, dataframe_type="pandas").head(n)
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
@@ -115,16 +136,23 @@ def fg_preview(
 @fg_group.command("features")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
-def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
+def fg_features(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
     """List the schema of a feature group (name, type, primary key).
 
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Specific version to inspect.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     rows = []
     for f in getattr(fg, "features", []) or []:
         rows.append(
@@ -139,12 +167,40 @@ def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["NAME", "TYPE", "PK", "PARTITION", "DESCRIPTION"], rows)
 
 
-def _get_fg(ctx: click.Context, name: str, version: int | None) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        return fs.get_feature_group(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature group '{name}' not found: {exc}") from exc
+def _get_fg(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    featurestore: str | None = None,
+) -> Any:
+    """Resolve a feature group across the project's accessible feature stores.
+
+    Searches the project's own store first, then shared stores, so a shared
+    feature group resolves just like a local one. ``featurestore`` pins the
+    lookup to a single store by name when the same name exists in several.
+    """
+    stores = session.get_accessible_feature_stores(ctx)
+    if featurestore is not None:
+        stores = [s for s in stores if getattr(s, "name", None) == featurestore]
+        if not stores:
+            raise click.ClickException(
+                f"Feature store '{featurestore}' is not accessible from this project."
+            )
+    last_exc: Exception | None = None
+    for fs in stores:
+        try:
+            fg = fs.get_feature_group(name, version=version)
+        except Exception as exc:  # noqa: BLE001 - not in this store, try the next
+            last_exc = exc
+            continue
+        # The SDK returns None (rather than raising) when a store lacks the
+        # feature group; keep searching the remaining accessible stores.
+        if fg is not None:
+            return fg
+    suffix = f": {last_exc}" if last_exc else ""
+    raise click.ClickException(
+        f"Feature group '{name}' not found in any accessible feature store{suffix}"
+    )
 
 
 def _fg_type_label(fg: Any) -> str:
@@ -290,7 +346,42 @@ def fg_create(
     "--connector", "connector_name", required=True, help="Storage connector name."
 )
 @click.option(
-    "--query", "query", required=True, help="SQL query backing this feature group."
+    "--query",
+    "query",
+    help="SQL query backing this feature group (data-warehouse sources).",
+)
+@click.option(
+    "--path",
+    "path",
+    help=(
+        "Object-storage path for data-lake sources, e.g. an S3 key for a single "
+        "parquet file (`sales/2024.parquet`) or a prefix for a parquet directory "
+        "(`sales/`)."
+    ),
+)
+@click.option(
+    "--data-format",
+    "data_format",
+    type=click.Choice(
+        ["parquet", "delta", "hudi", "orc", "avro", "csv"], case_sensitive=False
+    ),
+    help="Required for object-storage sources (e.g. `parquet` for an S3 source).",
+)
+@click.option(
+    "--database",
+    "database",
+    help=(
+        "Database to read from (overrides the connector default). For MongoDB this "
+        "is the Mongo database name; for SQL/Snowflake/BigQuery the catalog."
+    ),
+)
+@click.option(
+    "--table",
+    "table",
+    help=(
+        "Table or collection to read from (overrides the connector default). For "
+        "MongoDB this is the collection name; for SQL the table name."
+    ),
 )
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
@@ -301,42 +392,86 @@ def fg_create_external(
     ctx: click.Context,
     name: str,
     connector_name: str,
-    query: str,
+    query: str | None,
+    path: str | None,
+    data_format: str | None,
+    database: str | None,
+    table: str | None,
     version: int | None,
     primary_key: str | None,
     event_time: str | None,
     description: str,
 ) -> None:
-    """Register an external feature group backed by a storage connector.
+    r"""Register an external feature group backed by a storage connector.
+
+    Exactly one source spec is required:
+
+    \b
+    - ``--query`` for SQL / data-warehouse sources (Snowflake, BigQuery,
+      Redshift, SQL, SAP HANA, Unity Catalog).
+    - ``--path`` + ``--data-format`` for object-storage sources (S3 parquet
+      file or directory, ADLS, GCS).
+    - ``--database`` + ``--table`` for MongoDB collections.
 
     Args:
         ctx: Click context.
         name: Feature group name.
         connector_name: Storage connector to query.
-        query: SQL backing the feature group.
+        query: SQL backing the feature group (warehouse sources).
+        path: Object-storage path (file or prefix) for data-lake sources.
+        data_format: Required with ``--path``; one of parquet/delta/hudi/orc/avro/csv.
+        database: Database/collection-container override for the source.
+        table: Table/collection override for the source.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
         event_time: Event-time column.
         description: Free-form description.
     """
+    if not query and not path and not table:
+        raise click.UsageError(
+            "Provide one of --query (SQL sources), --path + --data-format "
+            "(S3/ADLS/GCS), or --database + --table (MongoDB)."
+        )
+    if path and not data_format:
+        raise click.UsageError("--data-format is required when --path is set.")
+
     fs = session.get_feature_store(ctx)
     try:
-        connector = fs.get_data_source(connector_name).storage_connector
+        data_source = fs.get_data_source(connector_name)
+        connector = data_source.storage_connector
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Connector '{connector_name}' not found: {exc}"
         ) from exc
 
+    # Apply per-FG database/collection overrides to the data source. The
+    # backend's MongoDB controller and the broader DataSource entity pick
+    # the FG-level values over the connector defaults at read time.
+    if database is not None:
+        data_source.database = database
+    if table is not None:
+        # MongoDB exposes collection-as-table; SQL exposes table-as-table.
+        # Both end up on `DataSource.table_name` server-side.
+        data_source.table = table
+
+    create_kwargs = {
+        "name": name,
+        "storage_connector": connector,
+        "data_source": data_source,
+        "version": version,
+        "description": description,
+        "primary_key": _split_csv(primary_key) or None,
+        "event_time": event_time,
+    }
+    if query:
+        create_kwargs["query"] = query
+    if path:
+        create_kwargs["path"] = path
+    if data_format:
+        create_kwargs["data_format"] = data_format.lower()
+
     try:
-        fg = fs.create_external_feature_group(
-            name=name,
-            storage_connector=connector,
-            query=query,
-            version=version,
-            description=description,
-            primary_key=_split_csv(primary_key) or None,
-            event_time=event_time,
-        )
+        fg = fs.create_external_feature_group(**create_kwargs)
         fg.save()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create external FG: {exc}") from exc

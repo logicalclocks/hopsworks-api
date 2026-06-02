@@ -139,6 +139,26 @@ class TestTypeSystems:
         # Assert
         assert str(e_info.value) == "dtype 'time32[s]' not supported"
 
+    def test_infer_type_pyarrow_decimal128(self):
+        # Decimal types are parameterised and not in the static mapping table.
+        # Render as Hive `decimal(p,s)` from the Arrow type's precision/scale.
+        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+            arrow_type=pa.decimal128(7, 2)
+        )
+        assert result == "decimal(7,2)"
+
+    def test_infer_type_pyarrow_decimal128_zero_scale(self):
+        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+            arrow_type=pa.decimal128(10, 0)
+        )
+        assert result == "decimal(10,0)"
+
+    def test_infer_type_pyarrow_decimal256(self):
+        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+            arrow_type=pa.decimal256(38, 6)
+        )
+        assert result == "decimal(38,6)"
+
     def test_infer_type_pyarrow_struct_with_decimal_fields(self):
         # Arrange
         mapping = {f"user{i}": 2.0 for i in range(2)}

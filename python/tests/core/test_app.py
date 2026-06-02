@@ -52,6 +52,40 @@ class TestApp:
         assert app.memory_requested == "2048Mi"
         assert app.app_path == "hdfs:///Projects/proj/Resources/app.py"
 
+    def test_from_response_json_preserves_app_metadata(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        json_data = {
+            "jobId": 42,
+            "name": "my_app",
+            "state": "RUNNING",
+            "serving": True,
+            "appPath": "hdfs:///Projects/proj/Resources/app.py",
+            "appKind": "CUSTOM",
+            "appPort": 8080,
+            "entrypointCommand": 'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"',
+            "description": "Custom FastAPI app",
+            "gitUrl": "https://github.com/org/repo.git",
+            "gitProvider": "GitHub",
+            "gitBranch": "main",
+            "latestCommit": "0123456789abcdef0123456789abcdef01234567",
+            "entrypointScript": "streamlitapp.py",
+        }
+
+        app = App.from_response_json(json_data)
+
+        assert app.app_path == "hdfs:///Projects/proj/Resources/app.py"
+        assert app.app_kind == "CUSTOM"
+        assert app.app_port == 8080
+        assert app.entrypoint_command == (
+            'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"'
+        )
+        assert app.description == "Custom FastAPI app"
+        assert app.git_url == "https://github.com/org/repo.git"
+        assert app.git_provider == "GitHub"
+        assert app.git_branch == "main"
+        assert app.latest_commit == "0123456789abcdef0123456789abcdef01234567"
+        assert app.entrypoint_script == "streamlitapp.py"
+
     def test_from_response_json_list(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
         json_list = [
@@ -154,6 +188,30 @@ class TestApp:
             app.run(await_serving=True)
 
         assert "App failed to start" in str(e_info.value)
+
+    def test_redeploy_waits_for_serving(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.app.time.sleep")
+        mock_api = mocker.patch(
+            "hopsworks_common.core.app_api.AppApi",
+        )
+
+        not_serving = App(name="my_app", state="RUNNING", serving=False)
+        serving = App(
+            name="my_app",
+            state="RUNNING",
+            serving=True,
+            app_url="pythonapp/proj/my_app/",
+        )
+        mock_api.return_value.get_app.side_effect = [not_serving, serving]
+
+        app = App(name="my_app", state="STOPPED")
+        app._app_api = mock_api.return_value
+
+        result = app.redeploy(await_serving=True)
+
+        mock_api.return_value._redeploy.assert_called_once_with("my_app")
+        assert result._serving is True
 
     def test_stop(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
