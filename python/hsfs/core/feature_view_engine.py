@@ -52,8 +52,8 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     from hsfs.constructor.join import Join
-    from hsfs.constructor.query import Query
     from hsfs.constructor.lookback import Lookback
+    from hsfs.constructor.query import Query
     from hsfs.core import explicit_provenance
     from hsfs.core.feature_logging import LoggingMetaData
     from hsfs.feature_logger import FeatureLogger
