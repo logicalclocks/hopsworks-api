@@ -102,6 +102,7 @@ def _delta_table_for_path(spark_session, path: str):
 class DeltaEngine:
     DELTA_SPARK_FORMAT = "delta"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
+    DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
     DELTA_DOT_PREFIX = "delta."
     APPEND = "append"
@@ -184,7 +185,7 @@ class DeltaEngine:
         )
 
         delta_options = self._setup_delta_read_opts(
-            delta_fg_alias, read_options=read_options
+            delta_fg_alias, location=location, read_options=read_options
         )
         if not is_cdc_query:
             self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
@@ -204,6 +205,7 @@ class DeltaEngine:
     def _setup_delta_read_opts(
         self,
         delta_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
+        location: str | None = None,
         read_options: dict[str, Any] | None = None,
     ):
         delta_options = {}
@@ -218,12 +220,22 @@ class DeltaEngine:
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time
-            _delta_commit_end_time = util._get_delta_datestr_from_timestamp(
-                delta_fg_alias.left_feature_group_end_timestamp
-            )
-            delta_options = {
-                self.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: _delta_commit_end_time,
-            }
+            end_ts = delta_fg_alias.left_feature_group_end_timestamp
+            earliest = self._get_delta_earliest_commit(location) if location else None
+            if earliest is not None and end_ts <= earliest[1]:
+                # Requested time predates the Delta log's first commit.
+                # Happens when compute_statistics runs immediately after a fresh
+                # insert: the backend-recorded commit_time can be a few ms before
+                # the Delta log's first commit, and Delta rejects timestampAsOf
+                # in that range. Fall back to versionAsOf on the earliest commit.
+                delta_options = {
+                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: earliest[0],
+                }
+            else:
+                _delta_commit_end_time = util._get_delta_datestr_from_timestamp(end_ts)
+                delta_options = {
+                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: _delta_commit_end_time,
+                }
         elif delta_fg_alias.left_feature_group_start_timestamp is not None:
             # change data feed query with start and end time
             _delta_commit_start_time = util._get_delta_datestr_from_timestamp(
@@ -253,6 +265,43 @@ class DeltaEngine:
         )
 
         return delta_options
+
+    def _get_delta_earliest_commit(self, location: str):
+        """Get earliest commit from the Delta log.
+
+        Return (version, timestamp_ms) of the earliest commit in the Delta
+        log at `location`, or None if the history cannot be read.
+        """
+        try:
+            if self._spark_session is not None:
+                from delta.tables import DeltaTable
+
+                rows = (
+                    DeltaTable.forPath(self._spark_session, location)
+                    .history()
+                    .select("version", "timestamp")
+                    .collect()
+                )
+                if not rows:
+                    return None
+                oldest = min(rows, key=lambda r: r["version"])
+                return int(oldest["version"]), int(
+                    oldest["timestamp"].timestamp() * 1000
+                )
+
+            from deltalake import DeltaTable as DeltaRsTable
+
+            history = DeltaRsTable(location, storage_options={}).history()
+            if not history:
+                return None
+            oldest = min(history, key=lambda c: c["version"])
+            return (
+                int(oldest["version"]),
+                int(util._convert_event_time_to_timestamp(oldest["timestamp"])),
+            )
+        except Exception as e:
+            _logger.debug(f"Could not read Delta history at {location}: {e}")
+            return None
 
     def _delete_record(self, delete_df):
         storage_options = None

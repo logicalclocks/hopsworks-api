@@ -602,6 +602,116 @@ class Model:
         """
         return self._model_engine._get_training_dataset_provenance(model_instance=self)
 
+    @public
+    def get_monitoring_configs(self):
+        """Get the feature monitoring configurations for this model version.
+
+        Example:
+            ```python
+
+            import hopsworks
+
+            project = hopsworks.login()
+
+            mr = project.get_model_registry()
+            my_model = mr.get_model("my_model", version=1)
+
+            fm_configs = my_model.get_monitoring_configs()
+            ```
+
+        Returns:
+            List of `FeatureMonitoringConfig` objects for this model version.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        try:
+            from hsfs.core.feature_monitoring_config_api import (
+                FeatureMonitoringConfigApi,
+            )
+        except ModuleNotFoundError as err:
+            from hopsworks_common.client.exceptions import FeatureStoreException
+
+            raise FeatureStoreException(
+                "Feature monitoring requires the hsfs library, which is not installed. "
+                "Install hsfs before fetching model monitoring configurations."
+            ) from err
+
+        return FeatureMonitoringConfigApi.get_by_model(
+            model_registry_id=self._model_registry_id,
+            model_id=self._id,
+        )
+
+    @public
+    def create_model_monitoring(
+        self,
+        name: str,
+        description: str | None = None,
+        start_date_time: int | str | None = None,
+        end_date_time: int | str | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ):
+        """Create a model monitoring config for this model.
+
+        Resolves this model's parent feature view via provenance and delegates to
+        ``feature_view.create_model_monitoring`` with this model's ``name`` and
+        ``version`` already filled in. The resulting config targets the FV's
+        logging feature group, filters by this model + version, and defaults the
+        reference training dataset to the version that was used to train the model.
+
+        Experimental:
+            Public API is subject to change, this feature is not suitable for production use-cases.
+
+        Example:
+            ```python3
+            mr = project.get_model_registry()
+            my_model = mr.get_model("my_model", version=1)
+
+            my_model.create_model_monitoring(
+                name="psi_drift",
+            ).with_detection_window(
+                time_offset="1d", window_length="1d",
+            ).with_reference_training_dataset(  # defaults to model's TD version
+            ).compare_on_distribution(
+                feature_name="amount", metric="PSI", threshold=0.2,
+            ).save()
+            ```
+
+        Parameters:
+            name: Name of the feature monitoring configuration.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression scheduling the FM job (UTC, Quartz).
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If this model has no
+                parent feature view recorded in its provenance, or if downstream
+                FV validation fails (no logging enabled, no recorded TD version, ...).
+
+        Returns:
+            A ``FeatureMonitoringConfig`` builder. Call ``with_detection_window``,
+            ``with_reference_*``, ``compare_on`` / ``compare_on_distribution``,
+            and ``save()`` to register it.
+        """
+        fv = self.get_feature_view(init=False)
+        if fv is None:
+            from hopsworks_common.client.exceptions import FeatureStoreException
+
+            raise FeatureStoreException(
+                f"Cannot create model monitoring for model '{self.name}' "
+                f"v{self.version}: no parent feature view recorded in its provenance."
+            )
+        return fv.create_model_monitoring(
+            name=name,
+            model_name=self.name,
+            model_version=self.version,
+            description=description,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
+        )
+
     def _get_default_serving_name(self):
         return re.sub(r"[^a-zA-Z0-9]", "", self._name)
 

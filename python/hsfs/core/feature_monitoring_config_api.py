@@ -239,6 +239,34 @@ class FeatureMonitoringConfigApi:
 
         return Job.from_response_json(_client._send_request("POST", path_params))
 
+    @staticmethod
+    def get_by_model(
+        model_registry_id: int,
+        model_id: str,
+    ) -> list[fmc.FeatureMonitoringConfig]:
+        """Get all Feature Monitoring Configurations associated with a model version.
+
+        Parameters:
+            model_registry_id: ID of the model registry.
+            model_id: ID of the model version (``name_version`` format).
+
+        Returns:
+            List of feature monitoring configurations for the model version.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "modelregistries",
+            model_registry_id,
+            "models",
+            model_id,
+            "featuremonitoring",
+        ]
+        return fmc.FeatureMonitoringConfig.from_response_json(
+            _client._send_request("GET", path_params)
+        )
+
     def _build_path_params(
         self,
         project_id: int,

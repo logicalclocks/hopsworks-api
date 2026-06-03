@@ -48,7 +48,7 @@ public class FeatureDescriptiveStatistics extends RestDto<FeatureDescriptiveStat
   private Double max;
   private Double sum;
   private Double mean;
-  private Double stddev;
+  private Double stdDev;
   private Map<String, Double> percentiles;
 
   // with exact uniqueness
@@ -122,7 +122,7 @@ public class FeatureDescriptiveStatistics extends RestDto<FeatureDescriptiveStat
       fds.setMean(statsJson.getDouble("mean"));
     }
     if (statsJson.has("stdDev")) {
-      fds.setStddev(statsJson.getDouble("stdDev"));
+      fds.setStdDev(statsJson.getDouble("stdDev"));
     }
 
     JSONObject extendedStatistics = new JSONObject();

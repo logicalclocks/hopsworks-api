@@ -50,6 +50,14 @@ public class StatisticsConfig {
   @Setter
   private List<String> columns = new ArrayList<>();
 
+  @Getter
+  @Setter
+  private Boolean kll = false;
+
+  @Getter
+  @Setter
+  private Integer histogramBins = null;
+
   public StatisticsConfig(Boolean enabled, Boolean histograms, Boolean correlations,
                           Boolean exactUniqueness) {
     this.enabled = enabled;

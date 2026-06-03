@@ -453,6 +453,60 @@ def _get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     return _get_hostname_replaced_url(sub_path)
 
 
+@also_available_as("hopsworks.util.get_feature_monitoring_url")
+def get_feature_monitoring_url(
+    feature_store_id: int,
+    feature_monitoring_config_id: int,
+    feature_group_id: int | None = None,
+    feature_view_name: str | None = None,
+    feature_view_version: int | None = None,
+) -> str:
+    """Build the public URL for a feature monitoring config detail page.
+
+    Dispatches on the parent entity: feature group configs land on the FG's
+    feature-monitoring page, feature view configs land on the FV's page.
+
+    Parameters:
+        feature_store_id: Id of the feature store owning the config.
+        feature_monitoring_config_id: Id of the feature monitoring config.
+        feature_group_id: Id of the parent feature group, if any.
+        feature_view_name: Name of the parent feature view, if any.
+        feature_view_version: Version of the parent feature view, if any.
+
+    Returns:
+        The public URL, or an empty string if the config is not associated
+        with either parent.
+    """
+    project_id = client.get_instance()._project_id
+    if feature_group_id is not None:
+        sub_path = (
+            "/p/"
+            + str(project_id)
+            + "/fs/"
+            + str(feature_store_id)
+            + "/fg/"
+            + str(feature_group_id)
+            + "/feature-monitoring/"
+            + str(feature_monitoring_config_id)
+        )
+    elif feature_view_name is not None and feature_view_version is not None:
+        sub_path = (
+            "/p/"
+            + str(project_id)
+            + "/fs/"
+            + str(feature_store_id)
+            + "/fv/"
+            + str(feature_view_name)
+            + "/version/"
+            + str(feature_view_version)
+            + "/feature-monitoring/"
+            + str(feature_monitoring_config_id)
+        )
+    else:
+        return ""
+    return _get_hostname_replaced_url(sub_path)
+
+
 @also_available_as("hopsworks.util._is_runtime_notebook")
 def _is_runtime_notebook():
     return "ipykernel" in sys.modules

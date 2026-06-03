@@ -152,9 +152,9 @@ class Engine:
                 sql_query,
                 dataframe_type,
                 schema,
-                arrow_flight_config=read_options.get("arrow_flight_config", {})
-                if read_options
-                else {},
+                arrow_flight_config=(
+                    read_options.get("arrow_flight_config", {}) if read_options else {}
+                ),
             )
         return self._jdbc(sql_query, online_conn, dataframe_type, read_options, schema)
 
@@ -677,6 +677,8 @@ class Engine:
         correlations: Any,
         histograms: Any,
         exact_uniqueness: bool = True,
+        kll: bool = False,
+        histogram_bins: int | None = None,
     ) -> str:
         # TODO: add statistics for correlations, histograms and exact_uniqueness
         _logger.info("Computing insert statistics")

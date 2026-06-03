@@ -31,6 +31,8 @@ class StatisticsConfig:
         histograms=False,
         exact_uniqueness=False,
         columns=None,
+        kll=False,
+        histogram_bins=None,
         **kwargs,
     ):
         self._enabled = enabled
@@ -40,6 +42,8 @@ class StatisticsConfig:
         self.exact_uniqueness = exact_uniqueness
         # overwrite default with new empty [] but keep the empty list default for documentation
         self._columns = columns or []
+        self.kll = kll
+        self.histogram_bins = histogram_bins
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -50,13 +54,18 @@ class StatisticsConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {
+        the_dict = {
             "enabled": self._enabled,
             "correlations": self._correlations,
             "histograms": self._histograms,
             "exactUniqueness": self._exact_uniqueness,
             "columns": self._columns,
         }
+        if self._kll:
+            the_dict["kll"] = self._kll
+        if self._histogram_bins is not None:
+            the_dict["histogramBins"] = self._histogram_bins
+        return the_dict
 
     @public
     @property
@@ -108,6 +117,26 @@ class StatisticsConfig:
     def columns(self, columns):
         self._columns = columns
 
+    @public
+    @property
+    def kll(self) -> bool:
+        """Enable KLL sketch computation for approximate quantile estimation."""
+        return self._kll
+
+    @kll.setter
+    def kll(self, kll: bool):
+        self._kll = kll
+
+    @public
+    @property
+    def histogram_bins(self) -> int | None:
+        """Number of histogram bins to compute. If None, Deequ's default (20) is used."""
+        return self._histogram_bins
+
+    @histogram_bins.setter
+    def histogram_bins(self, histogram_bins: int | None):
+        self._histogram_bins = histogram_bins
+
     def __str__(self):
         return self.json()
 
@@ -115,5 +144,6 @@ class StatisticsConfig:
         return (
             f"StatisticsConfig({self._enabled}, {self._correlations}, {self._histograms},"
             f" {self._exact_uniqueness},"
-            f" {self._columns})"
+            f" {self._columns},"
+            f" kll={self._kll}, histogram_bins={self._histogram_bins})"
         )

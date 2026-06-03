@@ -802,8 +802,8 @@ class TestFeatureGroup:
                 "21378543924": {}
             },  # non-empty dict to simulate successful commit
         )
-        mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
+        mock_stats_compute = mocker.patch(
+            "hsfs.core.statistics_api.StatisticsApi._compute",
             return_value=None,
         )
 
@@ -822,7 +822,8 @@ class TestFeatureGroup:
 
         mock_convert_to_default_dataframe.assert_called_once_with(data)
         mock_commit_details.assert_called_once()
-        mock_stats_engine.assert_called_once()
+        mock_stats_compute.assert_called_once()
+        assert mock_stats_compute.call_args.kwargs["end_commit_time"] == "21378543924"
 
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -842,8 +843,8 @@ class TestFeatureGroup:
                 "21378543924": {}
             },  # non-empty dict to simulate successful commit
         )
-        mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
+        mock_stats_compute = mocker.patch(
+            "hsfs.core.statistics_api.StatisticsApi._compute",
             return_value=None,
         )
 
@@ -872,7 +873,8 @@ class TestFeatureGroup:
             n_processes=None,
         )
         mock_commit_details.assert_called_once()
-        mock_stats_engine.assert_called_once()
+        mock_stats_compute.assert_called_once()
+        assert mock_stats_compute.call_args.kwargs["end_commit_time"] == "21378543924"
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -892,8 +894,8 @@ class TestFeatureGroup:
                 "21378543924": {}
             },  # non-empty dict to simulate successful commit
         )
-        mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
+        mock_stats_compute = mocker.patch(
+            "hsfs.core.statistics_api.StatisticsApi._compute",
             return_value=None,
         )
 
@@ -923,7 +925,8 @@ class TestFeatureGroup:
             n_processes=None,
         )
         mock_commit_details.assert_called_once()
-        mock_stats_engine.assert_called_once()
+        mock_stats_compute.assert_called_once()
+        assert mock_stats_compute.call_args.kwargs["end_commit_time"] == "21378543924"
 
     @pytest.mark.parametrize(
         "sc,expected",

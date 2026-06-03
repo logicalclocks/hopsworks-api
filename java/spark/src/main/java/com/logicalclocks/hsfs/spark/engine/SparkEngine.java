@@ -84,9 +84,6 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.TimestampType;
 import org.json.JSONObject;
 
-import com.amazon.deequ.profiles.ColumnProfilerRunBuilder;
-import com.amazon.deequ.profiles.ColumnProfilerRunner;
-import com.amazon.deequ.profiles.ColumnProfiles;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -115,6 +112,7 @@ import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
+import com.logicalclocks.hsfs.spark.engine.profile.ColumnProfiler;
 import com.logicalclocks.hsfs.spark.util.StorageConnectorUtils;
 import com.logicalclocks.hsfs.util.Constants;
 
@@ -667,27 +665,21 @@ public class SparkEngine extends EngineBase {
   }
 
   public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation,
+      Boolean histogram, Boolean exactUniqueness, Boolean kll, Integer histogramBins) {
+    // defaults aligned with the prior Deequ-backed implementation; preserved for training-dataset
+    // callers where the backend doesn't set them.
+    boolean correlationFlag = correlation == null ? true : correlation;
+    boolean histogramFlag = histogram == null ? true : histogram;
+    boolean exactUniquenessFlag = exactUniqueness == null ? true : exactUniqueness;
+    boolean kllFlag = kll != null && kll;
+    int binCount = histogramBins != null ? histogramBins : 20;
+    return new ColumnProfiler().profile(df, restrictToColumns, correlationFlag, histogramFlag,
+        binCount, exactUniquenessFlag, kllFlag);
+  }
+
+  public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation,
       Boolean histogram, Boolean exactUniqueness) {
-    // only needed for training datasets, as the backend is not setting the defaults
-    if (correlation == null) {
-      correlation = true;
-    }
-    if (histogram == null) {
-      histogram = true;
-    }
-    if (exactUniqueness == null) {
-      exactUniqueness = true;
-    }
-    ColumnProfilerRunBuilder runner = new ColumnProfilerRunner()
-                                            .onData(df)
-                                            .withCorrelation(correlation, 100)
-                                            .withHistogram(histogram, 20)
-                                            .withExactUniqueness(exactUniqueness);
-    if (restrictToColumns != null && !restrictToColumns.isEmpty()) {
-      runner.restrictToColumns(JavaConverters.asScalaIteratorConverter(restrictToColumns.iterator()).asScala().toSeq());
-    }
-    ColumnProfiles result = runner.run();
-    return ColumnProfiles.toJson(result.profiles().values().toSeq(), result.numRecords());
+    return profile(df, restrictToColumns, correlation, histogram, exactUniqueness, null, null);
   }
 
   public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation, Boolean histogram) {
