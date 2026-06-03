@@ -1,5 +1,5 @@
 ---
-name: hopsworks-apps
+name: hops-app
 description: Use when writing Streamlit apps for Hopsworks or managing app
   deployments. Auto-invoke when user wants to create a Streamlit dashboard, deploy a
   Python app to Hopsworks, or access the feature store from a Streamlit application.
@@ -53,14 +53,19 @@ st.bar_chart(df["amount"].value_counts().head(20))
 
 If an app uses libraries that are not installed in `python-app-pipeline`, you need to clone the `python-app-pipline` Python environment, install the requirements (e.g., app-requirements.txt) in the cloned environment, and then create the app using the cloned environment. If no app-requirements.txt file exists, prompt the user to create one. You should also warn the user that installing the app-requirements.txt file in the user's cloned Python environment takes a couple of minutes.
 
+```python
 env_api = project.get_environment_api()
-# Clone from an existing environment
+# Clone the base app env, then install the extra requirements into the CLONE.
 cloned_env = env_api.create_environment(
     "my_cloned_env",                                                                                                                                                                        
     description="Cloned from feature pipeline env",
     base_environment_name="python-app-pipeline",                                                                                                                                        
 )                                                                
-cloned_env.install_requirements("Users/<username>/app-requirements.txt")
+cloned_env.install_requirements("Users/<username>/app-requirements.txt")  # takes a few minutes
+```
+
+Then create the app against the **cloned** env: pass `environment="my_cloned_env"`
+to `create_app(...)` below (not the base `python-app-pipeline`).
      
 
 ### 2. Create and Run the App
@@ -400,3 +405,25 @@ app.run()
 | Get app by name | `apps.get_app("name")` |
 | Check if serving | `app.serving` |
 | Install deps | `env.install_requirements("Resources/requirements.txt")` |
+
+---
+
+## Manage Apps from the CLI
+
+```bash
+hops app list                 # apps + state
+hops app info <name>          # detail (id, type, source)
+hops app url <name>           # the app URL
+hops app start <name> / stop <name>
+hops app logs <name>          # tail logs (newer CLI)
+hops app delete <name> --yes  # non-interactive
+```
+
+`hops app create <name> --path /Projects/<project>/Users/<user>/app.py` takes a
+HopsFS-absolute path (the SDK `create_app(app_path=...)` takes a project-relative
+one). `logs` / `redeploy` may be absent on older deployed `hops` binaries.
+
+## Next Steps
+
+- Read features in the app: **hops-fg** / **hops-fv**. Query via SQL: **hops-trino-sql**.
+- Dashboards instead of an app: **hops-superset**.
