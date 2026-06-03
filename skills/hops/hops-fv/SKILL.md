@@ -38,6 +38,26 @@ hops fv get <name> --version 1 --entry "pk=val" # one online feature vector, no 
 
 Non-interactive delete needs flags: `hops fv delete <name> --version 1 --yes --force`.
 
+### Build the view + training data from the CLI
+
+The whole F→T handoff can run from the CLI, no Python — this is what the terminal
+kickoff flow uses. Register any custom transforms first (the `--transform` flag
+resolves them **by name** from the transformation store, so an unregistered udf
+fails):
+
+```bash
+hops transformation create --file transformations.py            # register udfs first
+hops fv create <name> --feature-group <derived_fg>:1 \
+  --transform <fn>:<col> --labels <label>                       # --join "<fg> LEFT <on>" repeatable
+hops td compute <fv> <fv_version> --split "train:0.8,test:0.2"  # positional = FEATURE-VIEW version
+hops td list <fv>                                               # TD version auto-increments; read it back here
+```
+
+`hops fv create --feature-group` takes `name[:version]`; `--transform` and `--join`
+are repeatable. `hops td compute` takes the FV version as a required positional —
+the training-dataset version it writes auto-increments, so read it from `hops td list`
+rather than assuming `1`.
+
 ---
 
 ## Ask the user (only when state is ambiguous)

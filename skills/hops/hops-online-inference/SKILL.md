@@ -152,7 +152,25 @@ deployment.delete()
 
 ## Smoke-test
 
-**CLI smoke-test:** `hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
+**CLI smoke-test:** `hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with `hops deployment status <name>` (its own command) or the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
+
+### Deploy from the CLI (no Python)
+
+The whole deploy→serve→smoke loop runs from the CLI — this is what the terminal
+kickoff flow uses. The model must already be registered (`hops model list`):
+
+```bash
+hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline
+hops deployment start <name>
+hops deployment status <name>                                   # poll until READY
+hops deployment predict <name> --data '{"instances": [{ <one known-good row> }]}'
+hops deployment delete <name> --yes --force                    # delete prompts; --force skips the running check
+```
+
+A sane number back from `predict` (not an HTTP 500) confirms the udf runs on the
+scalar serving path. `create` requires the model name as the positional and the
+deployment name via `--name`; recreate over a stale deployment with
+`hops deployment delete <name> --yes --force` first (there is no TTY in a job/terminal).
 
 ## Robustness and latency
 

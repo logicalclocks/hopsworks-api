@@ -467,9 +467,11 @@ hops app logs <name>          # tail logs (newer CLI)
 hops app delete <name> --yes  # non-interactive
 ```
 
-`hops app create <name> --path /Projects/<project>/Users/<user>/app.py` takes a
-HopsFS-absolute path (the SDK `create_app(app_path=...)` takes a project-relative
-one). `logs` / `redeploy` may be absent on older deployed `hops` binaries.
+`hops app create <name> --path /Projects/<project>/Users/<user>/app.py --start`
+takes a HopsFS-absolute path (the SDK `create_app(app_path=...)` takes a
+project-relative one). `--start` creates, starts, and waits for serving in one
+call (no separate `hops app start`). `logs` / `redeploy` may be absent on older
+deployed `hops` binaries.
 
 ## Next Steps
 

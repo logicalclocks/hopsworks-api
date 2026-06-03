@@ -29,7 +29,8 @@ specific algorithm or threshold blindly.
 that uses the `hopsworks` Python SDK (the `hops` CLI has no `train`). The CLI
 does the surrounding steps: `hops fv list` / `hops td compute <fv> <v>` before,
 and running the script as a job after:
-`hops job deploy train.py --name train --env pandas-training-pipeline --run --wait`.
+`hops job deploy train train.py --env pandas-training-pipeline --run --wait --overwrite`
+(NAME then SCRIPT are positional; `--overwrite` replaces the uploaded script on re-run).
 
 ## 1. Load training data from the feature view
 
@@ -59,8 +60,9 @@ Hints:
   dataset from `hops td compute <fv>` is read with
   `fv.get_training_data(training_dataset_version=N)` — calling `get_train_test_split`
   on it raises `Use feature_view.get_training_data instead`.
-- `hops td compute <fv>` ignores a version argument and auto-increments; read the
-  new version back from `hops td list <fv>` rather than hardcoding `1`.
+- `hops td compute <fv> <fv_version>` takes the FEATURE-VIEW version as a required
+  positional; the training-dataset version it creates auto-increments — read it
+  back from `hops td list <fv>` rather than hardcoding `1`.
 - `get_train_test_split` returns `(X_train, X_test, y_train, y_test)`; `y` is
   empty when the FV declares no label.
 - Model-dependent transformations (MDTs) declared on the FV are applied
@@ -140,10 +142,13 @@ Hints:
 ## 5. Run it as a job
 
 ```bash
-hops job deploy train.py --name train --env pandas-training-pipeline --run --wait
+hops job deploy train train.py --env pandas-training-pipeline --run --wait --overwrite
 hops model list                       # confirm the model registered
 hops model info <name> --version <v>  # metrics + description
 ```
+
+`hops job deploy` takes NAME then SCRIPT as positionals (no `--name`); `--overwrite`
+replaces the uploaded script so a re-run does not error on the existing file.
 
 Non-interactive cleanup needs flags: `hops model delete <name> --yes`,
 `hops fv delete <name> --version <v> --yes --force` (a FV with training data

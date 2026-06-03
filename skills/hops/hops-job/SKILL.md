@@ -36,8 +36,10 @@ separately, plus the environment selection `create` cannot do.
 
 ```bash
 # Positional args are NAME then SCRIPT (a local script is uploaded for you).
+# --overwrite replaces the uploaded script so a re-run does not error on the
+# existing file; without it a second deploy of the same name fails.
 hops job deploy feature-pipeline feature_pipeline.py \
-  --env python-feature-pipeline --cron @daily --run --wait
+  --env python-feature-pipeline --cron @daily --run --wait --overwrite
 ```
 
 Key fact: `hops job create` (and a bare job config) **cannot set the Python

@@ -22,11 +22,20 @@ A feature pipeline applies **model-independent transformations (MITs)** and writ
 Before writing Python, and to confirm results after, use the CLI. No Spark session needed:
 
 ```bash
-hops fg list                              # is the name/version free? did it register?
+hops fg list                              # is the name/version free? did it register? (note the STORE column)
 hops fg info <name> --version 1           # metadata: id, online flag, primary key, event_time
 hops fg features <name> --version 1       # schema with primary-key / partition flags
 hops fg preview <name> --version 1 --n 10 # first rows (flag is --n, not -n)
+hops fg preview <name> --columns a,b,c    # project away wide embedding/array columns
+hops fg stats <name> --version 1          # null counts / ranges — spot bad data early
 ```
+
+To preview an FG in a shared store from the CLI, pass `--featurestore <store>`
+(the STORE value from `hops fg list`).
+
+`hops fg list` shows a **STORE** column. Imported / public feature groups live in a
+**shared** store, not this project's own — that distinction matters when you read
+them (see "Reading from a shared store" below).
 
 A feature group is registered server-side on its **first insert**, not at `get_or_create_feature_group(...)`. Until the first insert `fg.id` is `None` and `hops fg list` will not show it.
 
@@ -366,6 +375,22 @@ df = fg.read(dataframe_type="polars")         # or "pandas", "spark", "numpy"
 # Online store read
 df = fg.read(online=True, dataframe_type="polars")
 ```
+
+### Reading from a shared store
+
+An FG in a **shared** store (the STORE column from `hops fg list` — e.g. imported
+public tables) is NOT reachable through this project's default feature store
+handle: `project.get_feature_store().get_feature_group(name, version=1)` returns
+`None` for it. Pass the store name explicitly:
+
+```python
+shared_fs = project.get_feature_store(name="<that_store>")   # the STORE value
+fg = shared_fs.get_feature_group("<name>", version=1)
+df = fg.read(dataframe_type="polars")
+```
+
+In a job environment `fs.get_feature_groups()` / `get_all()` may be absent, so
+resolve the shared FG by store name as above rather than enumerating.
 
 ### Time-Filtered Read
 
