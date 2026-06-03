@@ -1,21 +1,24 @@
 ---
 name: hops-eda
-description: Exploratory Data Analysis before training an ML model. Input: a feature view; Output: an EDA profile as eda-<ml-system>.md.
+description: Exploratory Data Analysis before training an ML model. Auto-invoke when the user wants to profile feature-view training data, check for leakage, or produce an EDA report before building a feature view or training. Input: a feature view → Output: an EDA profile written as eda-<ml-system>.md.
 ---
 
 # Exploratory Data Analysis
 
-This skill helps write a program to do EDA on training data for a model. The input will be a feature view and the output will be EDA over a subset or all of the data that will be used to train the model.
+Profile a feature view's training data before training: run the bundled profiler,
+then deepen with target / leakage / per-feature analysis. The *what to look for*
+lives in [hops-eda-checklist](../hops-eda-checklist/SKILL.md); this skill is the
+*how to run it*.
 
 ## Contract
-- **Input:** a feature view (set of features), the prediction problem type, and a split strategy.
-- **Output:** an EDA profile written as `eda-<ml-system-name>.md` (text profile, optionally extended with target/leakage/per-feature analysis).
+- **Input:** a feature view, the prediction problem type, and a split strategy.
+- **Output:** an EDA profile written as `eda-<ml-system-name>.md`.
 - **Pre-condition:** the feature view already exists.
 
 ## Smoke-test (cheap pre/post-flight)
-
-This skill ships two ready profilers — start with them before writing anything, they cover the Section 1 profile (dtypes, semantic types, null %, unique counts, numeric stats, datetime ranges, missing-data summary):
-
+Two ready profilers ship with this skill — run one before writing anything. They
+produce the Section-1 profile (dtypes, semantic types, null %, unique counts,
+numeric stats, datetime ranges, missing-data summary) as text on stdout.
 ```bash
 # Polars (in-memory) — args: <fv_name> [version] [start_time] [end_time]
 python3 ~/.claude/skills/hops-eda/scripts/fv-eda.py <fv_name> 1 > eda-<ml-system>.md
@@ -23,136 +26,24 @@ python3 ~/.claude/skills/hops-eda/scripts/fv-eda.py <fv_name> 1 > eda-<ml-system
 # PySpark (large data) — same args, builds a Spark session
 python3 ~/.claude/skills/hops-eda/scripts/fv-eda-pyspark.py <fv_name> 1 > eda-<ml-system>.md
 ```
-
-The scripts print a text profile to stdout (no plots, no file unless you redirect). `start_time`/`end_time` require an `event_time` on the underlying FG. Then go deeper with the checklist below (target analysis, leakage, per-feature).
+`start_time`/`end_time` require an `event_time` on the underlying FG.
 
 ## Ask the user (only when state is ambiguous)
+- Prediction problem type (classification / regression / forecasting).
+- Split strategy — infer it (e.g. time-based for time-series), AskUserQuestion only if unclear: `random`, `time-based`, `grouped`, `entity-based`.
 
-- Prediction problem type.
-- Split strategy. Infer the split strategy (e.g., time-based for time-series data) but if it is unclear, then AskUserQuestion about the desired split strategy.
-  - random
-  - time-based
-  - grouped
-  - entity-based
-
-If the data is under say 10Bs, use Polars. If larger than 100GBs, prefer to use PySpark. If it between 10-100 GBs, make a judgement call on Polars vs PySpark.
+Sizing: under ~10 GB use Polars; over ~100 GB use PySpark; in between, judgement call.
 
 ## Steps
+1. **Run the Section-1 profile** with the bundled script above. Do not re-write what it covers.
+2. **Go deeper** on the dimensions the script does not cover — target analysis, per-feature analysis, and leakage detection. The full dimension list is in [hops-eda-checklist](../hops-eda-checklist/SKILL.md). Leakage is the expensive one; do not skip it.
+3. **Extend or write** a small Polars program for the deep analysis (PySpark + a Hopsworks job for >100 GB — see **hops-job**).
+4. **Save** the result as `eda-<ml-system-name>.md` for the feature-view and training steps.
 
-### 1. Run basic dataset profiling
-- Row count
-- Column count
-- Data types
-- Missing values
-- Unique counts
-- Duplicate rows
-- Duplicate entity-time rows
-- Constant columns
-- Near-constant columns
-- Min/max for numeric columns
-- Min/max timestamps
-- Cardinality for categorical columns
-- Memory footprint
-- Approximate class balance if classification
-
-For large datasets, use sampled profiling plus approximate statistics where appropriate.
-
-### 2. Analyze the target
-
-For classification:
-- Class distribution
-- Minority class rate
-- Label missingness
-- Label imbalance severity
-- Target drift over time, if timestamp exists
-
-For regression:
-- Distribution
-- Outliers
-- Zero inflation
-- Negative values, if unexpected
-- Skewness
-- Temporal drift
-
-For forecasting:
-- Series length
-- Frequency
-- Gaps
-- Seasonality hints
-- Missing intervals
-- Entity-level coverage
-
-### 3. Analyze features
-
-For each feature group:
-
-Numerical:
-- Missingness
-- Distribution
-- Outliers
-- Correlation with target
-- Monotonic signals
-- Temporal stability
-
-Categorical:
-- Cardinality
-- Rare categories
-- Unseen-category risk
-- Target rate by category
-- High-cardinality leakage risk
-
-Temporal:
-- Event ordering
-- Feature timestamp vs label timestamp
-- Lookahead risk
-- Seasonality
-- Recency effects
-
-Text:
-- Missingness
-- Length distribution
-- Language or encoding issues
-- Potential PII
-- Need for embeddings or text preprocessing
-
-Identifiers:
-- Check whether ID-like columns are accidentally predictive
-- Warn if IDs are used directly as features
-- Suggest grouped splits where appropriate
-
-### 4. Detect leakage risks
-
-Check for:
-
-- Features created after the label time
-- Columns that directly encode the label
-- Status columns that are consequences of the outcome
-- Aggregates computed using future data
-- Rolling/window features without point-in-time correctness
-- Duplicate entities across train/test split
-- Target-derived encodings before splitting
-- Temporal split violations
-- Columns with suspiciously high target correlation
-- Features with names like:
-  - `churned`
-  - `outcome`
-  - `approved`
-  - `declined`
-  - `post_`
-  - `future_`
-  - `after_`
-  - `resolved`
-  - `closed`
-  - `chargeback`
-  - `defaulted`
-
-
-### 5. Write the program to perform EDA
-
-For the basic profile, prefer the bundled scripts above (`fv-eda.py` / `fv-eda-pyspark.py`) rather than re-writing them. For the deeper analysis (target, leakage, per-feature) that the scripts do not cover, extend them or write a small Polars program; for >100GB, write a PySpark program and run it as a Hopsworks job (use **hops-job** skill).
-Save the results as a `eda-<ml-system-name>.md` file (redirect the script's stdout, or write it) for use when building the feature view and training pipeline.
+## Toolset
+- **Scripts:** `fv-eda.py` (Polars), `fv-eda-pyspark.py` (Spark) — bundled under this skill's `scripts/`.
+- **Checklist:** [hops-eda-checklist](../hops-eda-checklist/SKILL.md) — the dimensions to cover.
 
 ## Next Steps
-
 - Select features and build the view: **hops-fv**. Then train: **hops-train**.
 - Inspect raw data first: **hops-data-discovery**, **hops-trino-sql**.

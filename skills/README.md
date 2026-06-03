@@ -18,6 +18,7 @@ into bucket folders:
 - [hops-reqs](ml/hops-reqs/SKILL.md) — specify an ML system into `reqs/`.
 - [hops-features](ml/hops-features/SKILL.md) — specify a feature pipeline.
 - [hops-eda](ml/hops-eda/SKILL.md) — EDA before training.
+- [hops-eda-checklist](ml/hops-eda-checklist/SKILL.md) — reference: EDA dimensions (profiling, target, leakage).
 
 ## hops/ — feature store, training, inference, jobs, apps, agents
 - [hops-fg](hops/hops-fg/SKILL.md) — feature groups.
