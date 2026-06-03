@@ -1,9 +1,17 @@
 ---
 name: hops-fv
-description: Use when writing Python code that creates, queries, or manages Hopsworks feature views via the hsfs SDK. Auto-invoke when user builds feature views, selects features, applies transformations, creates training data, retrieves feature vectors, or asks about feature view best practices (labels, filters, joins, transformations, online serving, embeddings).
+description: Use when writing Python code that creates, queries, or manages Hopsworks feature views via the hsfs SDK. Auto-invoke when user builds feature views, selects features, applies transformations, creates training data, retrieves feature vectors, or asks about feature view best practices (labels, filters, joins, transformations, online serving, embeddings). Input: feature groups + a feature selection; Output: a feature view that serves training data and online/batch feature vectors.
 ---
 
 # Hopsworks Feature Views — Python SDK Best Practices
+
+A feature view defines a set of features from one or more feature groups, joined together via a Query. It is the read interface of the feature store — the V between F and T/I in the FTI pattern.
+
+## Contract
+
+- **Input:** one or more feature groups, a feature selection (`select`/`join`) forming a Query, an optional label column, and optional transformation functions.
+- **Output:** a named, versioned feature view that produces reproducible training datasets, online feature vectors for serving, and offline batch data.
+- **Pre-condition:** the source feature groups already exist. For online serving every feature group in the view must be `online_enabled` (sole exception: all-on-demand views). The label, if any, must be in the query selection.
 
 ## What Is a Feature View
 
@@ -15,7 +23,9 @@ A feature view defines a set of features from one or more feature groups, joined
 
 ---
 
-## Verify State with the `hops` CLI (cheap pre/post-flight)
+## Smoke-test
+
+Verify state with the `hops` CLI (cheap pre/post-flight):
 
 ```bash
 hops fv list                                    # list feature views (id, name, version, labels)
@@ -25,6 +35,14 @@ hops fv get <name> --version 1 --entry "pk=val" # one online feature vector, no 
 ```
 
 Non-interactive delete needs flags: `hops fv delete <name> --version 1 --yes --force`.
+
+---
+
+## Ask the user (only when state is ambiguous)
+
+- **Label column** — which selected feature is the prediction target (or none, for an unsupervised / retrieval view). It must be in the query selection.
+- **Which features** — which feature groups and columns to select, and how they join.
+- **Online vs offline source FGs** — whether the view needs online serving. If yes, every source feature group must be `online_enabled`; confirm before relying on `init_serving()`.
 
 ---
 

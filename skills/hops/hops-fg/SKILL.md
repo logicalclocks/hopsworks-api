@@ -1,13 +1,21 @@
 ---
 name: hops-fg
-description: Use when writing Python code that creates, inserts into, or manages tables or feature groups. Auto-invoke when user writes feature pipelines, feature engineering code, or asks about feature group best practices (online vs offline, batching, OOM, materialization, embeddings, statistics).
+description: Use when writing Python code that creates, inserts into, or manages tables or feature groups. Auto-invoke when user writes feature pipelines, feature engineering code, or asks about feature group best practices (online vs offline, batching, OOM, materialization, embeddings, statistics). Input→output: a DataFrame of computed features → a registered, populated Hopsworks feature group.
 ---
 
 When a user refers to tables, clarify that you interpret them as feature groups in Hopsworks.
 
 # Hopsworks Feature Groups — Python SDK Best Practices
 
-## Verify State with the `hops` CLI (cheap pre/post-flight)
+Writes computed features into a Hopsworks feature group — the storage backing the F (feature) stage of the FTI pattern.
+
+## Contract
+
+- **Input:** a DataFrame (Pandas/Polars/PySpark) of computed features, plus the target name/version and key columns.
+- **Output:** a feature group registered server-side (on first insert) and populated with rows; optionally online-enabled and materialized to the offline store.
+- **Pre-condition:** a Hopsworks project login and a feature store handle (`fs = project.get_feature_store()`); any parent FGs used for provenance already exist.
+
+## Smoke-test (cheap pre/post-flight)
 
 Before writing Python, and to confirm results after, use the CLI. No Spark session needed:
 
@@ -20,7 +28,7 @@ hops fg preview <name> --version 1 --n 10 # first rows (flag is --n, not -n)
 
 A feature group is registered server-side on its **first insert**, not at `get_or_create_feature_group(...)`. Until the first insert `fg.id` is `None` and `hops fg list` will not show it.
 
-## Before Writing a Feature Pipeline — Ask the User
+## Ask the user (before writing a feature pipeline)
 
 Before creating a feature group, clarify these decisions with the user:
 

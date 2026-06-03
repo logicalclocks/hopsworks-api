@@ -3,9 +3,15 @@ name: hops-trino-sql
 description: Query Hopsworks feature store tables via Trino SQL using the hops CLI.
 ---
 
-Prefer the `hops` CLI for interactive Trino queries over writing Python.
+# Trino SQL on Hopsworks
 
-## Table naming
+## Concept
+
+Offline feature groups are queryable as Trino tables; the `hops` CLI is the preferred path for interactive Trino queries over writing Python.
+
+## Key facts / rules
+
+### Table naming
 
 Offline feature groups are queried through Trino with this reference pattern:
 
@@ -18,7 +24,14 @@ hudi.<project_name>_featurestore.<fg_name>_<fg_version>
 - Schema is `<project_name>_featurestore` (project name lowercase).
 - Table is `<fg_name>_<version>` — the version suffix is required.
 
-## Commands
+### Caveats
+
+- The CLI's default catalog is `iceberg`, so always **fully-qualify** with
+  `delta.`/`hudi.` (or pass `--catalog delta`) when reading feature groups.
+- `--limit` caps rows (default soft cap; `--limit 0` = unlimited). `-f file.sql`
+  runs a query from a file; `-i` reads from stdin.
+
+## Commands / API
 
 ```bash
 hops trino query "SELECT * FROM delta.<project>_featurestore.<fg>_1 LIMIT 5"
@@ -28,12 +41,7 @@ hops trino tables delta.<project>_featurestore
 hops trino describe delta.<project>_featurestore.<fg>_1
 ```
 
-- The CLI's default catalog is `iceberg`, so always **fully-qualify** with
-  `delta.`/`hudi.` (or pass `--catalog delta`) when reading feature groups.
-- `--limit` caps rows (default soft cap; `--limit 0` = unlimited). `-f file.sql`
-  runs a query from a file; `-i` reads from stdin.
-
-## See also
+## Related skills
 
 - **hops-data-discovery** — find FG/FV/data-source/file names to query.
 - **hops-fg** / **hops-fv** — create and read these tables via the Python SDK.

@@ -1,9 +1,21 @@
 ---
 name: hops-online-inference
-description: Use when writing code for model deployment, online inference, predictor scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to deploy models, write predictor.py files, retrieve precomputed features for serving, create on-demand transformation functions, or configure model serving.
+description: Use when writing code for model deployment, online inference, predictor scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to deploy models, write predictor.py files, retrieve precomputed features for serving, create on-demand transformation functions, or configure model serving. Input registered model + online feature view; output a running KServe endpoint.
 ---
 
 # Hopsworks Online Inference — Python SDK Best Practices
+
+## Contract
+
+- **Input:** a registered model + an online-serving feature view.
+- **Output:** a running KServe HTTP endpoint serving predictions.
+- **Pre-condition:** the model is registered in the model registry, and every feature group backing the feature view is `online_enabled` (unless all features are on-demand).
+
+## Ask the user (only when state is ambiguous)
+
+- **Resources:** CPU cores, memory, GPUs for the predictor (requests vs limits).
+- **Environment:** which Python environment the predictor runs in.
+- **Scaling:** min/max instances, scale-to-zero, and target concurrency (`ScaleMetric.CONCURRENCY`).
 
 ## Model Deployment Overview
 
@@ -131,6 +143,8 @@ deployment.stop(await_stopped=120)
 # Delete
 deployment.delete()
 ```
+
+## Smoke-test
 
 **CLI smoke-test:** `hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
 

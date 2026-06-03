@@ -1,9 +1,26 @@
 ---
 name: hops-batch-inference
-description: Use when writing Python or PySpark code for batch inference with Hopsworks. Auto-invoke when user wants to retrieve batch data from feature views, use spine groups for point-in-time joins, download models from the model registry for batch prediction, or build batch scoring pipelines.
+description: Use when writing Python or PySpark code for batch inference with Hopsworks. Auto-invoke when user wants to retrieve batch data from feature views, use spine groups for point-in-time joins, download models from the model registry for batch prediction, or build batch scoring pipelines. Input feature view + registered model → output predictions, logged or persisted.
 ---
 
 # Hopsworks Batch Inference — Python SDK Best Practices
+
+## Contract
+- **Input:** a feature view + a registered model from the Model Registry.
+- **Output:** predictions, either logged (monitoring) or persisted (downstream consumption).
+- **Pre-condition:** the model is trained and registered; the feature view is materialized offline.
+
+## Smoke-test (cheap pre/post-flight)
+```bash
+hops model list             # confirm the model exists before scoring
+hops fv list                # confirm the feature view exists
+hops td list                # confirm a training dataset version exists for batch scoring
+```
+
+## Ask the user (only when state is ambiguous)
+- Which model version to score with (specific version vs best-by-metric).
+- The time range for the batch (full FV vs `start_time`/`end_time` window).
+- Persist vs log: write predictions to a prediction feature group, or log them for monitoring.
 
 ## Overview
 
