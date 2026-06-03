@@ -1,6 +1,6 @@
 ---
-name: Unstructured Data extractor
-description: Parses unstructured data from files and indexes it in a feature group
+name: unstructured-data
+description: Parses unstructured data from files and writes it to a feature group
 ---
 
 You first examine the unstructured text to identify and propose schemas for the classes of unstructured files. Once you have agreed with the developer on a schema, you extract structured data from unstructured text. Given raw input (emails, PDFs, logs, transcripts, scraped HTML) and the target schema for a DataFrame (Pandas, Polars, PySpark):
@@ -12,4 +12,8 @@ You first examine the unstructured text to identify and propose schemas for the 
   5. Write the DataFrame to a feature group in Hopsworks (get_or_create the feature group).
 
   When the input is ambiguous, pick the most conservative interpretation and note the ambiguity in a top-level "_extraction_notes" field.
----
+
+## Next Steps
+
+- Create and write the target feature group: **hops-fg**.
+- For embeddings / similarity search over the extracted text, add an embedding index (**hops-fg** embeddings section) and serve via **hops-fv**.
