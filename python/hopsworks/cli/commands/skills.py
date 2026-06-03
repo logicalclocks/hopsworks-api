@@ -102,17 +102,21 @@ def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
         skills_dir: Directory containing ``<bucket>/<skill>/SKILL.md`` files.
 
     Returns:
-        Records sorted by bucket then skill name, each with ``bucket``,
-        ``name``, ``folder``, ``description`` and ``path`` keys.
+        Records sorted by bucket then name, each with ``bucket``, ``name`` (the
+        folder, which is how skills are invoked), ``frontmatter_name`` (the
+        declared ``name``, shown only when it differs), ``description`` and
+        ``path`` keys.
     """
     skills: list[dict[str, str]] = []
     for skill_md in skills_dir.glob("*/*/SKILL.md"):
+        folder = skill_md.parent.name
         front = _parse_frontmatter(skill_md)
+        declared = front["name"]
         skills.append(
             {
                 "bucket": skill_md.parent.parent.name,
-                "name": front["name"] or skill_md.parent.name,
-                "folder": skill_md.parent.name,
+                "name": folder,
+                "frontmatter_name": declared if declared and declared != folder else "",
                 "description": front["description"],
                 "path": str(skill_md),
             }
@@ -167,7 +171,11 @@ def skills_show(name: str) -> None:
         raise SystemExit(1)
 
     match = next(
-        (s for s in _collect_skills(skills_dir) if name in (s["name"], s["folder"])),
+        (
+            s
+            for s in _collect_skills(skills_dir)
+            if name in (s["name"], s["frontmatter_name"])
+        ),
         None,
     )
     if match is None:
