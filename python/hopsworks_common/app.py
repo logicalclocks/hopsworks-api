@@ -79,6 +79,8 @@ class App:
         git_branch=None,
         latest_commit=None,
         entrypoint_script=None,
+        public_access=None,
+        public_token=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -107,6 +109,8 @@ class App:
         self._git_branch = git_branch
         self._latest_commit = latest_commit
         self._entrypoint_script = entrypoint_script
+        self._public_access = public_access or False
+        self._public_token = public_token
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -305,6 +309,65 @@ class App:
             return self._wait_for_serving()
 
         return self._refresh()
+
+    @public
+    @property
+    def public_access(self) -> bool:
+        """Whether the app is publicly accessible without a Hopsworks login."""
+        return self._public_access
+
+    @public
+    @property
+    def public_url(self) -> str | None:
+        """Public share URL, or None if the app is not public.
+
+        Only populated for data owners.
+        """
+        return self._build_public_url(self._public_token)
+
+    def _build_public_url(self, token: str | None) -> str | None:
+        if not token:
+            return None
+        _client = client.get_instance()
+        return (
+            _client._base_url.rstrip("/")
+            + "/hopsworks-api/pythonapp/"
+            + _client._project_name
+            + "/"
+            + self._name
+            + "/__public?t="
+            + token
+        )
+
+    @public
+    @usage.method_logger
+    def make_public(self) -> str | None:
+        """Make this Streamlit app reachable without a Hopsworks login.
+
+        Returns the share URL to give out.
+
+        Danger:
+            Anyone with the link can use the app with the app's own credentials,
+            data access, and secrets. This is not read-only access.
+            Only data owners can enable it, and only Streamlit apps are eligible.
+        """
+        _logger.info("Making app public: %s", self._name)
+        response = self._app_api._set_public(self._name, True)
+        self._public_access = True
+        self._public_token = response.get("publicToken") if response else None
+        return self.public_url
+
+    @public
+    @usage.method_logger
+    def make_private(self) -> None:
+        """Revoke public access.
+
+        Every outstanding public link stops working immediately.
+        """
+        _logger.info("Making app private: %s", self._name)
+        self._app_api._set_public(self._name, False)
+        self._public_access = False
+        self._public_token = None
 
     @public
     @usage.method_logger
