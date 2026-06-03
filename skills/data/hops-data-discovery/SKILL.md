@@ -1,5 +1,43 @@
 ---
 name: hops-data-discovery
-description: Find available data in Hopsworks from feature groups, data sources, free-text search, and files. 
+description: Find available data in Hopsworks from feature groups, data sources, free-text search, and files.
 ---
-Prefer to use the hops CLI for data discovery over writing Python programs. You can preview data in feature groups using hops fg <name> preview.
+
+Prefer the `hops` CLI for data discovery over writing Python. Four surfaces:
+
+## Feature groups (and views / training data)
+
+```bash
+hops fg list                              # all feature groups in the project
+hops fg info <name> --version 1           # metadata (online flag, PK, event time)
+hops fg features <name> --version 1       # schema with PK / partition flags
+hops fg preview <name> --version 1 --n 10 # first rows (note: preview <name>, not <name> preview)
+hops fv list                              # feature views
+```
+
+## Free-text search
+
+```bash
+hops search ls <term>                     # match FGs, FVs, training datasets, features
+hops search ls <term> --type feature_group   # restrict by type
+hops search ls <term> --global            # search across shared/other projects
+```
+
+## Data sources (external connectors)
+
+```bash
+hops datasource list                      # configured connectors (Snowflake, S3, JDBC, ...)
+hops datasource info <name>
+```
+
+## Files (HopsFS)
+
+```bash
+hops files list [path]                    # browse the project filesystem
+```
+
+## See also
+
+- **hops-trino-sql** — run SQL against the offline tables you discover.
+- **hops-fg** / **hops-fv** — create and read these via the Python SDK.
+- **hops-data-source** — mount a new external source as a feature group.
