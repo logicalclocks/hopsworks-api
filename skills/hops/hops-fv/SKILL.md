@@ -15,6 +15,19 @@ A feature view defines a set of features from one or more feature groups, joined
 
 ---
 
+## Verify State with the `hops` CLI (cheap pre/post-flight)
+
+```bash
+hops fv list                                    # list feature views (id, name, version, labels)
+hops fv info <name> --version 1                 # metadata + schema; flags the label column
+hops td list <fv-name> --version 1              # training-dataset versions
+hops fv get <name> --version 1 --entry "pk=val" # one online feature vector, no Python
+```
+
+Non-interactive delete needs flags: `hops fv delete <name> --version 1 --yes --force`.
+
+---
+
 ## Creating a Feature View
 
 ### 1. Build a Query (Feature Selection)
@@ -98,6 +111,8 @@ feature_view = fs.get_or_create_feature_view(
 )
 ```
 
+> **The label must be in the query selection.** `labels=[...]` only marks which *already-selected* columns are targets; it does not add them. If the label is not in your `select(...)` (or is dropped by `select_except([...])`), create fails with `FeatureStoreException: Feature name '<label>' could not be found in query`. Select the label, then name it in `labels=`. (The examples above assume `is_fraud` is part of `query`.)
+
 ### Key Parameters
 
 | Parameter | Type | Description |
@@ -105,7 +120,7 @@ feature_view = fs.get_or_create_feature_view(
 | `name` | `str` | Feature view name |
 | `query` | `Query` | Query defining feature selection and joins |
 | `version` | `int` | Version number (auto-increments if None) |
-| `labels` | `list[str]` | Feature names used as prediction target. Excluded from feature vectors at inference |
+| `labels` | `list[str]` | Which *selected* features are the prediction target. Must be present in the query selection (`labels=` marks, it does not select). Excluded from feature vectors at inference |
 | `inference_helper_columns` | `list[str]` | Features not used in model but available during inference (e.g., for post-processing). Excluded from `get_feature_vector()`, available via `get_inference_helper()` |
 | `training_helper_columns` | `list[str]` | Features not in model schema but useful during training (e.g., for sampling). Excluded at inference time |
 | `transformation_functions` | `list` | Model-dependent transformations (see below) |
@@ -263,6 +278,8 @@ Transformations in feature views come in two types:
 ### Built-in Transformations
 
 Import from `hsfs.builtin_transformations`. All built-in transformations are model-dependent (they learn statistics from training data).
+
+A transformation **renames its output column** to `<fn>_<col>_` (e.g. `standard_scaler("past_total_spent")` → `standard_scaler_past_total_spent_`). The original column name is gone after transformation, so downstream code (training, serving) must reference the new name. This applies to built-ins as well as custom `@udf`s.
 
 **Scaling & Normalization:**
 
@@ -814,3 +831,11 @@ batch_predictions = model.predict(batch_df)
 | Batch scoring | `fv.get_batch_data(start_time=..., end_time=...)` |
 | Similarity search | `fv.find_neighbors(embedding=[...], k=10)` |
 | Delete feature view | `fv.delete()` |
+
+---
+
+## Next Steps
+
+- Train a model on this view's training data: **hops-train**.
+- Batch scoring: **hops-batch-inference**. Online serving: **hops-online-inference**.
+- Need to create or fix the source feature groups first: **hops-fg**.
