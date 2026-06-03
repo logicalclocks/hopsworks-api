@@ -36,7 +36,7 @@ Sizing: under ~10 GB use Polars; over ~100 GB use PySpark; in between, judgement
 
 ## Steps
 1. **Run the Section-1 profile** with the bundled script above. Do not re-write what it covers.
-2. **Go deeper** on the dimensions the script does not cover — target analysis, per-feature analysis, and leakage detection. The full dimension list is in [hops-eda-checklist](../hops-eda-checklist/SKILL.md). Leakage is the expensive one; do not skip it.
+2. **Go deeper** on the dimensions the script does not cover — target analysis, per-feature analysis, and leakage detection. The full dimension list is in [hops-eda-checklist](../hops-eda-checklist/SKILL.md). Leakage is the expensive one; do not skip it — check that features respect point-in-time correctness (no future data leaking past the label time) and that the split has no train/test entity overlap.
 3. **Extend or write** a small Polars program for the deep analysis (PySpark + a Hopsworks job for >100 GB — see **hops-job**).
 4. **Save** the result as `eda-<ml-system-name>.md` for the feature-view and training steps.
 

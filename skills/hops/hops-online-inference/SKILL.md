@@ -5,6 +5,8 @@ description: Use when writing code for model deployment, online inference, predi
 
 # Hopsworks Online Inference — Python SDK Best Practices
 
+An **online inference pipeline** is one of the three FTI pipelines (Feature, Training, Inference): a separate program that runs 24/7 behind a network endpoint, accepts prediction requests, builds feature vectors (precomputed features from the online store + on-demand + passed features), calls `model.predict`, and logs its inputs and outputs for monitoring and debugging. What you deploy is the pipeline, not the model alone. The model is one step inside it.
+
 ## Contract
 
 - **Input:** a registered model + an online-serving feature view.
@@ -19,7 +21,11 @@ description: Use when writing code for model deployment, online inference, predi
 
 ## Model Deployment Overview
 
-Hopsworks Model Serving deploys models as HTTP endpoints using KServe. Supported frameworks:
+Hopsworks Model Serving deploys an online inference pipeline as an HTTP endpoint using KServe. The endpoint exposes a **deployment API** (serving keys + request parameters + return type), which is the contract clients depend on. Keep it more stable than the model signature: as long as the deployment API is unchanged you can swap the model version or move a precomputed feature to an on-demand one without breaking clients.
+
+Library versions must match across the feature, training, and inference pipelines (e.g. the `joblib` used to pickle the model in training must be able to unpickle it here). The Hopsworks feature/training/inference base container images are version-aligned for this reason; if you customize an environment, install compatible versions.
+
+Supported frameworks:
 
 | Framework | Model Server | Requires predictor.py | Notes |
 |---|---|---|---|
@@ -148,6 +154,12 @@ deployment.delete()
 
 **CLI smoke-test:** `hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
 
+## Robustness and latency
+
+An online inference pipeline is a 24/7 operational service: make it robust to missing request parameters, missing or delayed precomputed features, and slow/failing third-party calls. Log errors to stdout/stderr (Hopsworks ships them to OpenSearch) and design fallbacks (impute from training statistics, use default or cached last-known values, or fall back to a simpler model) rather than letting the request fail. Set low timeouts on any network/feature lookups.
+
+Total latency is the sum of every step (feature lookup + ODTs + MDTs + `model.predict` + logging + network), so define an SLO (p99 latency, allowed downtime) on the deployment API. For the lowest latency use a single predictor container (a separate transformer container adds a network hop), keep ODTs as low-latency Python UDFs at request time, and rely on the asynchronous logging above.
+
 ---
 
 ## Writing predictor.py Files
@@ -239,11 +251,11 @@ helpers = fv.get_inference_helper(
 
 ## On-Demand Transformation Functions
 
-On-demand transformations compute features at request time. They are attached to **feature groups** and automatically included in feature views that select those features.
+On-demand transformations (ODTs) compute features at request time from request parameters (and optionally precomputed features). They are registered on **feature groups** (not feature views) because they also run in feature pipelines, and they are automatically included in feature views that select those features. This is what keeps ODTs equivalent across offline (training/backfill) and online (serving) execution: the same versioned function and its source code is used in both, avoiding training/serving skew. Contrast with model-dependent transformations (MDTs), which are registered on the feature view, run after reading from the feature store, are specific to one model, and may use training-data statistics.
 
 ### Key Constraints
 
-- On-demand transformations **cannot** use training statistics (no `statistics` parameter)
+- On-demand transformations **cannot** use training statistics (no `statistics` parameter); that is what distinguishes an ODT from an MDT
 - On-demand transformations are `TransformationType.ON_DEMAND` (set automatically when attached to a feature group)
 - External feature groups do **not** support on-demand transformations
 
@@ -404,6 +416,8 @@ scaling = PredictorScalingConfig(
 ```
 
 ### Inference Logger
+
+An online inference pipeline should log its inputs and outputs so the deployment can be monitored and debugged. Logging the model inputs and predictions also gives you the feature/prediction data needed for monitoring drift and model performance over time. Hopsworks logs are written asynchronously so they do not add latency to the prediction response.
 
 ```python
 from hsml.inference_logger import InferenceLogger

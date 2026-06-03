@@ -7,7 +7,7 @@ description: Query Hopsworks feature store tables via Trino SQL using the hops C
 
 ## Concept
 
-Offline feature groups are queryable as Trino tables; the `hops` CLI is the preferred path for interactive Trino queries over writing Python.
+The offline store is lakehouse tables (Hudi, Delta, or Iceberg), and these are queryable directly as Trino tables. Trino SQL is a direct-table read path for interactive exploration and EDA; training and inference pipelines should read through a feature view instead, so that model-dependent transformations and point-in-time joins stay consistent. The `hops` CLI is the preferred path for interactive Trino queries over writing Python.
 
 ## Key facts / rules
 
@@ -30,6 +30,15 @@ hudi.<project_name>_featurestore.<fg_name>_<fg_version>
   `delta.`/`hudi.` (or pass `--catalog delta`) when reading feature groups.
 - `--limit` caps rows (default soft cap; `--limit 0` = unlimited). `-f file.sql`
   runs a query from a file; `-i` reads from stdin.
+
+### Faster queries
+
+- Select only the columns you need (projection pushdown) and filter on the
+  feature group's partition key to prune files (data skipping). Date partition
+  keys are stored in ISO 8601 (`YYYY-MM-DD`), so range filters like
+  `date >= '2025-01-31' AND date <= '2025-02-28'` get partition-pruned.
+- Multipart partition keys prune left-to-right: filtering only the second key
+  (not the first) skips no files.
 
 ## Commands / API
 

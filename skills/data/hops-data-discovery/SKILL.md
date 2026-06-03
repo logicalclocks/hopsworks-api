@@ -7,7 +7,9 @@ description: Find available data in Hopsworks from feature groups, data sources,
 
 ## Concept
 
-Find available data in a Hopsworks project across four surfaces — feature groups (and views / training data), free-text search, data sources, and files. Prefer the `hops` CLI for data discovery over writing Python.
+Find available data in a Hopsworks project across four surfaces: feature groups (and views / training data), free-text search, data sources, and files. Prefer the `hops` CLI for data discovery over writing Python.
+
+Discovery enables **feature reuse**: a model that reuses an existing feature does not need a new feature pipeline, so search the feature registry first before engineering features from scratch. The commands below browse that registry (definitions, schemas, tags, statistics).
 
 ## Commands / API
 

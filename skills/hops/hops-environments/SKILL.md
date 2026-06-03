@@ -5,9 +5,12 @@ description: Use when a Hopsworks job, app, or deployment needs Python libraries
 
 # Hopsworks Python Environments
 
-Every job, app, and deployment runs in a named Python environment. The base
-environments are read-only managed images; to add libraries you **clone a base,
-then install into the clone**, and point the workload at the clone.
+Every job, app, and deployment runs in a named Python environment. This is
+Hopsworks' **automatic containerization**: you pick a base, add libraries, and
+the backend builds and registers the container for you — no Dockerfile, no
+registry to manage. The base environments are read-only managed images; to add
+libraries you **clone a base, then install into the clone**, and point the
+workload at the clone.
 
 ## Contract
 - **Input:** a base environment name + a `requirements.txt` (or a `.whl`).
@@ -24,7 +27,9 @@ hops env install my_env -f requirements.txt     # blocks minutes; resolves + com
 ```
 
 ## Base environments (pick by workload)
-One per workload; all Python 3.12. Clone the one matching the workload, then add libs.
+One per workload; all Python 3.12. Each base matches an FTI pipeline stage
+(feature / training / inference) or a serving workload. Clone the one matching
+the workload, then add libs.
 | Workload | Base environment |
 |---|---|
 | Feature pipeline (Python) | `python-feature-pipeline` |
@@ -80,6 +85,9 @@ env.delete()                               # remove the environment
 - **Install into the clone, never the base** — bases are managed/read-only.
 - The requirements path is a **project (Hopsworks) path**, not a local one, for the
   SDK. The CLI `-f` flag uploads a local file for you.
+- **MLOps:** prefer code (SDK/CLI) over the UI so env setup is reproducible across
+  dev/staging/prod, and name the clone after the pipeline version it serves (e.g.
+  `spark-feature-pipeline-v1`) so a pinned env travels with the code version.
 
 ## Toolset
 - **CLI:** `hops env list`, `hops env clone <new> --from <base> [--description]`, `hops env install <env> -f <requirements.txt>`.

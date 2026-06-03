@@ -5,10 +5,13 @@ description: Mount or ingest a table from a supported datasource. Mount tables f
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
 
+Mounting and ingesting both build a feature pipeline's input side: an external feature group leaves data in the source (no copy, no copy-time MITs); a DLTHub ingest copies the source into a managed feature group. Mounting is the lower-cost path when the source already holds the data you want, since reuse beats rebuilding a pipeline.
+
 ## Contract
 - **Input:** a configured connector + a table from it.
-- **Output:** an external (on-demand) feature group, or a managed feature group ingested via DLTHub.
+- **Output:** an external feature group (mounted in place), or a managed feature group ingested via DLTHub.
 - **Pre-condition:** the connector already exists (configured on the cluster).
+- **Pick mount vs ingest:** mounting serves the offline store only. To load the online store or a vector index, ingest (an ETL path) instead.
 
 ## Smoke-test: what connectors exist
 
@@ -31,7 +34,7 @@ Programmatic equivalent: `data_source.infer_metadata()` on a `DataSource` return
 
 ## Mount a table as an external feature group
 
-An external (on-demand) feature group leaves data in the source and queries it through the connector — no copy into Hopsworks.
+An external feature group leaves data in the source and queries it through the connector — no copy into Hopsworks. It is offline-only: reads serve training and batch inference. Set an `event_time` column so the feature store can read point-in-time correct snapshots and so polling can read a `start_time`/`end_time` range for backfill or incremental runs.
 
 ```python
 import hopsworks
@@ -56,7 +59,7 @@ ext_fg.save()
 
 ## Ingest into a new feature group with DLTHub
 
-DLTHub ingestion copies the source into a managed feature group and runs server-side in the `dlthub-ingestion-pipeline` environment (`dlt` is not installed in the interactive venv). You can attach a custom transform; the example just copies rows, but any Pandas-DataFrame transform works:
+DLTHub is a data integration platform: use it when you need the data copied into Hopsworks — to populate the online store or a vector index, or when the source is an API/SaaS endpoint that does not mount well. Ingestion copies the source into a managed feature group and runs server-side in the `dlthub-ingestion-pipeline` environment (`dlt` is not installed in the interactive venv). You can attach a custom transform; the example just copies rows, but any Pandas-DataFrame transform works (these are model-independent transformations: keep model-specific encoding/scaling out, do it in a feature view at read time):
 
 ```python
 import pandas as pd

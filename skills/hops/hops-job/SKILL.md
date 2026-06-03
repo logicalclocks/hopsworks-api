@@ -7,6 +7,8 @@ description: Use when creating, configuring, scheduling, or running Hopsworks jo
 
 Run a HopsFS-resident Python/PySpark script as a Hopsworks job — created, scheduled, executed, and (optionally) chained via Airflow.
 
+A Hopsworks job is a **job orchestrator**: it schedules and runs a single program (one FTI pipeline — feature, training, or batch-inference). For a DAG of dependent programs you need a **workflow orchestrator** (Airflow, below). A single job is usually enough; reach for Airflow only when one program must run after another or fire on an event.
+
 ## Contract
 - **Input:** a script in HopsFS + job config (name, environment, schedule).
 - **Output:** a created/scheduled job + executions.
@@ -23,6 +25,10 @@ Two equivalent interfaces:
 - `project.get_job_api()` Python SDK — preferred from inside a program / notebook / pipeline script that creates and runs the job
 
 ## Creating a job, with its environment
+
+Hopsworks does **automatic containerization**: you pick a base environment and it
+builds/reuses the container behind the scenes — no Dockerfile to write. One
+customized environment can back many jobs.
 
 `hops job deploy` is the one-shot: it uploads a local script, sets the Python
 environment, schedules, and runs — everything `create` + `schedule` + `run` do
@@ -52,7 +58,7 @@ pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 `pandas-inference-pipeline`) are deployment-only and cannot run as jobs.
 
 # Orchestrating Hopsworks Jobs with Airflow
-- When you want to chain Hopsworks jobs together or have a job triggered in response to an event like file landing in HopsFS, then write an Airflow DAG.
+- Airflow is the **workflow orchestrator**: it runs a DAG of jobs (tasks) with dependencies between them. Use it when you want to chain Hopsworks jobs together — e.g. derived-feature pipelines that run only after their upstream parents succeed — or trigger a job in response to an event like a file landing in HopsFS. One DAG to monitor beats five separate jobs. For a single pipeline, a plain scheduled job is enough.
 
 Here is an example of an airflow program that runs a Hopsworks Job:
 

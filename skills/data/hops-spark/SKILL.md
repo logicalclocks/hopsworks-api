@@ -7,6 +7,8 @@ description: Use whenever you write PySpark code in a Hopsworks terminal (termin
 
 ## Concept
 
+PySpark is the distributed engine you reach for inside an FTI pipeline (feature, training, or batch inference) when the data exceeds what a single machine can process in Pandas/Polars. A batch feature pipeline runs model-independent transformations (MITs) over a bounded slice of source data; backfilling over many historical partitions is the canonical case where PySpark's parallel workers earn their keep. PySpark is also the engine behind Spark Structured Streaming (micro-batch) streaming feature pipelines.
+
 This skill covers **PySpark** (Python), which is the common path on Hopsworks: interactively in the terminal-spark image (Spark Connect) and as `--type PYSPARK` jobs. For **JVM/Scala/Java Spark** packaged as a JAR, there is no Spark Connect session to build — submit it as a `--type SPARK` job via the **hops-job** skill (`hops job deploy <name> <app.jar> --type SPARK`); the Delta/catalog wiring below is configured cluster-side for those, not in user code.
 
 The terminal-spark image runs Spark in **Spark Connect** mode by default. The local Spark Connect server is started by the entrypoint and the connection URI is exported into the user's shell as `SPARK_REMOTE` (`sc://localhost:15002`). PySpark reads `SPARK_REMOTE` automatically, so user code must **not** hard-code `.remote("sc://localhost:15002")` — that path turns into a brittle smoke test that fails the moment the port shifts or the script is run inside a job pod (where the Connect server lives somewhere else).

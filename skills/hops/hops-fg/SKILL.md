@@ -9,6 +9,8 @@ When a user refers to tables, clarify that you interpret them as feature groups 
 
 Writes computed features into a Hopsworks feature group — the storage backing the F (feature) stage of the FTI pattern.
 
+A feature pipeline applies **model-independent transformations (MITs)** and writes the resulting **untransformed, reusable** feature data to feature groups. Do NOT store model-dependent transformations (MDTs — e.g. scaling, one-hot encoding) in a feature group: those are applied later, in the feature view, when reading for training/inference. Storing MDT output makes the data non-reusable across models, can cause write amplification (a parameterized MDT like standardization rewrites every existing row), and breaks EDA on raw values. Reuse is the payoff: the lowest-cost feature pipeline is the one you don't have to create, so write features other models can also select.
+
 ## Contract
 
 - **Input:** a DataFrame (Pandas/Polars/PySpark) of computed features, plus the target name/version and key columns.
@@ -40,6 +42,8 @@ Before creating a feature group, clarify these decisions with the user:
 2. **Does this FG derive from other FGs?** If so, pass `parents=[fg1, fg2, ...]` at creation time. This sets up explicit provenance/lineage tracking in the Hopsworks UI. Always pass the actual FeatureGroup objects, not names.
 
 3. **Data volume** — estimate row count × column count × avg bytes per value. This drives decisions on batching, statistics, and materialization (see below).
+
+4. **Time-series or not?** If features change over time, set `event_time` to the timestamp when the feature value was *valid* (not when the row was ingested). This is what lets the feature store build point-in-time correct training data (no future leakage, no stale values) via the feature view. Omit `event_time` only for immutable feature data.
 
 ---
 
@@ -501,6 +505,6 @@ derived_fg.materialization_job.run(await_termination=True)
 
 ## Next Steps
 
-- Serve these features for training/inference: **hops-fv** (build a feature view over this FG).
+- Serve these features for training/inference: **hops-fv** (build a feature view over this FG). The feature view, not the feature group, is where you attach MDTs and ODTs — it applies the same transformations in training and inference, preventing training/serving skew.
 - Explore / query the data: **hops-data-discovery**, **hops-trino-sql**.
 - Schedule the pipeline as a recurring job: **hops-job**.

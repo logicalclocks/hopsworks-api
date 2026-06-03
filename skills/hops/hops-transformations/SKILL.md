@@ -5,13 +5,20 @@ description: Use when writing Python code for Hopsworks transformation functions
 
 # Hopsworks Transformations
 
-The T in FTI. A transformation function maps feature columns to transformed
-columns, applied consistently at training and inference. Two kinds:
+A transformation function maps feature columns to transformed columns. These are
+the post-feature-store transformations in the FTI architecture: **MDTs** run after
+reading from the feature store (training + serving), **ODTs** run at request time.
+The transformations that produce *reusable* features (MITs, model-independent) run
+in the feature pipeline itself, not here; see [hops-fg](../hops-fg/SKILL.md).
+Both kinds below must be **equivalent across training and inference** so the model
+sees the same logic at both times: no training/serving skew. Two kinds:
 
-- **Model-dependent** — learn statistics from training data (scalers, encoders,
-  imputers). Attached to a **feature view**; applied during training and serving.
-- **On-demand** — computed at request time from request parameters, no statistics.
-  Attached at the **feature group** level; auto-included by any FV selecting them.
+- **Model-dependent (MDT)**: learn statistics from training data (scalers,
+  encoders, imputers), or are otherwise specific to one model (e.g. LLM tokenizers).
+  Attached to a **feature view**; applied during training and serving.
+- **On-demand (ODT)**: computed at request time from request parameters, no
+  statistics. Attached at the **feature group** level; auto-included by any FV
+  selecting them.
 
 ## Contract
 - **Input:** a feature (or features) and a transform (built-in or `@udf`).
@@ -32,6 +39,12 @@ hops transformation create --file my_udf.py --version 1     # or from a .py file
 - **Model-dependent** (learns training statistics) or **on-demand** (request-time, no statistics)?
 - A **built-in** transform, or a **custom `@udf`**?
 - For a custom udf: does the logic need Series-only methods? If so it must be `mode="pandas"` (see the online footgun below).
+
+Before reaching for an MDT, check the feature could not just be an **MIT** in the
+feature pipeline (see [hops-fg](../hops-fg/SKILL.md)). If the result is reusable
+across models, compute it once as a feature and store it; the cheapest pipeline is
+the one you don't build. Pick MDT when the feature is model-specific or you want to
+skip the feature pipeline's freshness/operational overhead.
 
 ## Steps (generic, non-binding)
 1. Pick the transform kind (built-in / custom `@udf` / on-demand).
@@ -96,8 +109,10 @@ def log_amount(amount):
 | `"pandas"` | always `pd.Series` → `pd.Series` | always `pd.Series` |
 | `"python"` | scalar → scalar | scalar → scalar |
 
-A **default-mode** udf runs on a `pd.Series` offline (training, `td compute`) and on
-a **scalar** online (`get_feature_vector`) — the *same body*. Series-only methods
+A **default-mode** udf is what the book calls a **mixed-mode UDF**: it runs as a
+Pandas UDF on a `pd.Series` offline (training, batch inference, `td compute`) and as
+a low-latency Python UDF on a **scalar** online (`get_feature_vector`), the *same
+body*. Only simple logic survives both paths. Series-only methods
 (`.clip`, `.fillna`, `.str`, `.between`, `.where`, `.dt`) raise on the scalar and
 surface as an **HTTP 500 on the first online predict**, invisible until then. Use
 numpy ufuncs / plain arithmetic that accept both, or set `mode="pandas"`. Smoke-test

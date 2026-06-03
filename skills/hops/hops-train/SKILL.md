@@ -46,6 +46,9 @@ fs = project.get_feature_store()
 fv = fs.get_feature_view(name="my_fv", version=1)  # no FV yet? create one first (skill: hops-fv)
 
 # Materialize a train/test split, then read it back BY ITS VERSION.
+# Reading by training_dataset_version makes training data reproducible: the
+# version pins the feature-group commits and split seed, so every model
+# trained on it (and any later recreation) sees identical rows.
 # train_test_split() returns the new training-dataset version (it auto-increments).
 td_version, _ = fv.train_test_split(test_size=0.2)
 X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=td_version)
@@ -60,8 +63,10 @@ Hints:
   new version back from `hops td list <fv>` rather than hardcoding `1`.
 - `get_train_test_split` returns `(X_train, X_test, y_train, y_test)`; `y` is
   empty when the FV declares no label.
-- Retrieval-time transformations declared on the FV are applied automatically
-  to the returned frames, using statistics stored with the training dataset.
+- Model-dependent transformations (MDTs) declared on the FV are applied
+  automatically to the returned frames, using statistics stored with the
+  training dataset. The same MDTs run at inference time, so training and
+  serving stay equivalent (no training/serving skew).
 - The FV's `select_all()` includes the serving key(s) and event time as columns.
   Drop them from the model inputs by name (e.g. `X_train.drop(columns=[key, event_time])`)
   — they are identifiers, not features.
@@ -83,6 +88,12 @@ model.fit(X_train, y_train)
 Compute the metrics that fit the task (R²/MAE for regression, precision/recall/
 AUC for classification, …) and save plots as PNGs alongside the model so they
 land in the registry.
+
+Evaluation (metrics on the test set) is distinct from **model validation**:
+checking the model on slices of the data at risk of bias before it ships. Use
+the FV's `training_helper_columns` (e.g. `gender`, `age`) to slice the test set
+without feeding those columns to the model — they are dropped before `fit` and
+not returned at inference. Store validation results alongside the metrics.
 
 ```python
 from sklearn.metrics import r2_score, mean_absolute_error
@@ -122,6 +133,9 @@ Hints:
 - Download later: `model.download(local_path="./model")`.
 - The `feature_view` + `training_dataset_version` arguments record provenance so
   the model is linked back to the exact data it was trained on.
+- Metrics, plots, and validation results saved with the model form its **model
+  card**: the handoff doc the I side reads to deploy. Aim to capture intended
+  use, performance, and bias-test outcomes, not just raw metrics.
 
 ## 5. Run it as a job
 

@@ -64,6 +64,9 @@ Use this skill whenever the user wants to:
 - Render a feature group (or any Trino table) in Superset
 - Create / update / delete Superset charts, datasets, or dashboards programmatically
 - Wire a Hopsworks feature group into an existing Superset dashboard
+- Build a custom monitoring dashboard over a model's **logging feature group**
+  (feature drift, prediction distributions, KPI degradation) — the logs an
+  inference pipeline writes are an offline FG, so they chart the same way
 - Debug Superset chart errors like `Item with key "X" is not registered` or `Empty query?`
 
 ---
@@ -461,3 +464,14 @@ if __name__ == "__main__":
 - Get a feature group materialized offline to chart: **hops-fg**.
 - Inspect / query the underlying Trino table: **hops-trino-sql**, **hops-data-discovery**.
 - A custom interactive app instead of BI dashboards: **hops-app**.
+
+### Monitoring dashboards
+
+Inference pipelines log untransformed features, transformed features, and
+predictions to a per-model logging feature group. That FG is offline-queryable
+in Trino like any other, so the same dataset/chart/dashboard machinery here
+builds feature- and model-monitoring dashboards: chart a feature's distribution
+over a recent detection window against its training-time reference, or track a
+KPI over time to spot degradation. Build the drift jobs themselves (univariate /
+multivariate, deviation-from-mean, NannyML) in the inference pipeline; use this
+skill to surface their outputs.

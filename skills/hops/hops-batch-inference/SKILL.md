@@ -24,11 +24,13 @@ hops td list                # confirm a training dataset version exists for batc
 
 ## Overview
 
+A batch inference pipeline is one of the three FTI pipelines (feature, training, inference): a separate program that runs on a schedule, makes non-time-critical predictions, and writes them to an inference store (a feature group, database, or object store) for asynchronous consumers. It defines a batch AI system. Log its inputs and predictions so you can monitor and debug it.
+
 Batch inference in Hopsworks follows this pattern:
 
 1. Download a trained model from the Model Registry
 2. Retrieve a batch of inference data from a Feature View
-3. Apply the model to produce predictions
+3. Apply model-dependent transformations (MDTs) and call the model to produce predictions
 
 Two approaches for retrieving batch data:
 - **`get_batch_data()`** — filter by event time range from offline feature store
@@ -114,7 +116,7 @@ print(model.model_schema)        # input/output schema (if set)
 
 ## Retrieving Batch Data with get_batch_data()
 
-`get_batch_data()` reads features from the offline feature store, optionally filtered by event time, and applies model-dependent transformations.
+`get_batch_data()` reads features from the offline feature store, optionally filtered by event time, and applies the model-dependent transformations (MDTs). The feature view applies the same filters and MDTs used at training time, so inference features match training features (no training/serving skew).
 
 ### Basic Usage
 
@@ -394,8 +396,9 @@ fv.materialize_log()                         # flush now (otherwise written peri
 logged = fv.read_log(model=model)            # also: start_time/end_time/filter
 ```
 
-**2. Prediction feature group (downstream consumption).** When another pipeline
-reads the scores as features, write them to a normal FG instead (see **hops-fg**):
+**2. Inference-store feature group (downstream consumption).** When dashboards or
+another pipeline read the scores, write them to a normal FG (the inference store)
+instead (see **hops-fg**):
 
 ```python
 preds_fg = fs.get_or_create_feature_group(

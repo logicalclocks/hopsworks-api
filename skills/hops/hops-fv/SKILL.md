@@ -21,6 +21,8 @@ A feature view defines a set of features from one or more feature groups, joined
 - Retrieving online feature vectors for model serving
 - Batch scoring with offline data
 
+It is metadata-only (stores no data) and is the feature store's mechanism for preventing training/serving skew: it returns the same ordered features and applies the same model-dependent (MDT) and on-demand (ODT) transformations in training and inference pipelines.
+
 ---
 
 ## Smoke-test
@@ -50,7 +52,7 @@ Non-interactive delete needs flags: `hops fv delete <name> --version 1 --yes --f
 
 ### 1. Build a Query (Feature Selection)
 
-Feature selection starts from feature groups. Use `select()`, `select_all()`, or `select_except()` on a feature group to create a Query, then join additional queries.
+Feature selection starts from a **root feature group** (often, but not necessarily, the one holding the label). From the root you can reach any feature group connected by a join key path; a feature group with no path from the root cannot be included. Use `select()`, `select_all()`, or `select_except()` on a feature group to create a Query, then join additional queries.
 
 ```python
 import hopsworks
@@ -140,7 +142,7 @@ feature_view = fs.get_or_create_feature_view(
 | `version` | `int` | Version number (auto-increments if None) |
 | `labels` | `list[str]` | Which *selected* features are the prediction target. Must be present in the query selection (`labels=` marks, it does not select). Excluded from feature vectors at inference |
 | `inference_helper_columns` | `list[str]` | Features not used in model but available during inference (e.g., for post-processing). Excluded from `get_feature_vector()`, available via `get_inference_helper()` |
-| `training_helper_columns` | `list[str]` | Features not in model schema but useful during training (e.g., for sampling). Excluded at inference time |
+| `training_helper_columns` | `list[str]` | Features not in model schema but useful during training (e.g., for sampling, or for slicing evaluation data by a sensitive attribute like gender to check for bias without training on it). Excluded at inference time |
 | `transformation_functions` | `list` | Model-dependent transformations (see below) |
 | `logging_enabled` | `bool` | Enable feature vector logging |
 
@@ -288,9 +290,9 @@ neighbors = fv.find_neighbors(
 
 ## Transformations
 
-Transformations are the **T** in FTI. Two kinds:
-- **Model-dependent** — statistics-based (scalers, encoders, imputers), attached here via `transformation_functions=` on `create_feature_view`; applied at training and serving.
-- **On-demand** — computed at request time from `request_parameters`, attached at the feature group; auto-included when this FV selects them.
+Transformations on a feature view are the **T** in FTI. Two kinds:
+- **Model-dependent (MDT)** — statistics-based (scalers, encoders, imputers), specific to one model, attached here via `transformation_functions=` on `create_feature_view`; applied as the last step before the model, at both training and serving. Training-dataset statistics (mean, min/max, encoding maps) are stored with the training dataset, so `init_serving`/`init_batch_scoring` take a `training_dataset_version` to apply the exact same MDT at inference and avoid skew.
+- **On-demand (ODT)** — computed at request time from `request_parameters`, registered at the feature group (not the FV, since they also run in feature pipelines); auto-included when this FV selects them.
 
 ```python
 from hsfs.builtin_transformations import standard_scaler, label_encoder, impute_mean

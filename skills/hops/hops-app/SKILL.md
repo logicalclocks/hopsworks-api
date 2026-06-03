@@ -13,6 +13,8 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 Hopsworks supports deploying **Streamlit** applications as managed apps. Apps are Python scripts backed by a Hopsworks job that runs the Streamlit server. Only Streamlit apps are currently supported.
 
+A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itself. It reads features and predictions written by the feature, training, and inference pipelines (via the feature store, model registry, and online deployments) and presents them. It can also act as a thin online-inference front by downloading a model from the registry and predicting locally (an **embedded model**), avoiding a network call to a model deployment.
+
 ## Contract
 
 - **Input:** a Streamlit `app.py` + environment + memory.
@@ -229,6 +231,12 @@ model = mr.get_model("fraud_model", version=1)
 # Download model files
 model_dir = model.download()
 ```
+
+For an embedded model (predict locally instead of calling a deployment), cache the
+downloaded model and its feature view in `@st.cache_resource` so the download and
+load happen once, not per rerun. Apply the same MDTs/ODTs the model saw in
+training — the feature view does this for you when you read through it — so there
+is no training/serving skew.
 
 ### Model Serving
 

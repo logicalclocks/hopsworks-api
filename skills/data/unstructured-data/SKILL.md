@@ -5,9 +5,11 @@ description: Parses unstructured data from files and writes it to a feature grou
 
 # Unstructured Data Extraction
 
+This is a **feature pipeline** task. Extracting structured fields from unstructured files is a Model-Independent Transformation (MIT): it produces reusable features that many models can later consume from the feature store, not features tied to one model. The lowest-cost feature pipeline is the one you don't have to create, so favour a clean, reusable schema over per-model shortcuts.
+
 ## Contract
 - **Input:** raw unstructured files (emails, PDFs, logs, transcripts, scraped HTML) and a target DataFrame schema (Pandas, Polars, PySpark).
-- **Output:** a populated Hopsworks feature group holding the structured data extracted from the files.
+- **Output:** a populated Hopsworks feature group holding the structured (reusable) features extracted from the files.
 - **Pre-condition:** the raw files are accessible and a target schema has been agreed with the developer.
 
 ## Steps
@@ -25,4 +27,4 @@ You first examine the unstructured text to identify and propose schemas for the 
 ## Next Steps
 
 - Create and write the target feature group: **hops-fg**.
-- For embeddings / similarity search over the extracted text, add an embedding index (**hops-fg** embeddings section) and serve via **hops-fv**.
+- For RAG over the extracted text, chunk it and compute vector embeddings (both are MITs run in the feature pipeline), store them in an embedding index (**hops-fg** embeddings section), and serve similarity (kNN) search via **hops-fv**.

@@ -5,7 +5,9 @@ description: Use when writing and deploying an interactive agent (e.g. a LlamaIn
 
 # Hopsworks Agent Deployments
 
-An agent deployment is a **server-only KServe deployment with no model attached** — you ship an entry script (or a package) that handles requests. Use it for interactive agents (LlamaIndex, custom LLM orchestration). For a scheduled, non-interactive coding agent, use **hops-agent-job** instead; for a model-backed predictor, use **hops-online-inference**.
+An agent deployment is a **server-only KServe deployment with no model attached** — you ship an entry script (or a package) that handles requests. Use it for interactive agents and LLM workflows (LlamaIndex, custom LLM orchestration). The agent *is* the **inference pipeline** of the AI system: it usually skips the training pipeline and calls a foundation LLM, and if it needs RAG it reads context from the feature store (write the RAG features in a separate **feature pipeline** — see hops-features). For a scheduled, non-interactive coding agent, use **hops-agent-job** instead; for a model-backed predictor, use **hops-online-inference**.
+
+Start with a deterministic **LLM workflow** (a fixed sequence of steps) and only graduate to an autonomous agent when the task is open-ended enough to require runtime planning over tools. Workflows are cheaper, lower-latency, and easier to make reliable.
 
 ## Contract
 - **Input:** an entry script (a `.py` file, or a directory containing a `pyproject.toml`).
@@ -21,6 +23,8 @@ hops agent list          # what agents already exist (confirms auth + serving re
 ## Write the entry script
 
 The script exposes a class with `predict` (and optional `init`) — same predictor contract as a model deployment, but no model is loaded. Keep heavy setup (LLM clients, indexes) in `__init__` so it runs once.
+
+**Log every step's inputs and outputs** (the user query, each RAG/tool call with its response, each LLM prompt and reply, and the final response). These traces are what you use later for error analysis, evals, and monitoring of the deployed agent. An agent built without trace logging cannot be debugged or improved.
 
 ```python
 # my_agent.py
@@ -74,4 +78,4 @@ print(deployment.predict(inputs={"prompt": "hello"}))
 - Scheduled/batch coding agent instead of a served one: **hops-agent-job**.
 - Model-backed online predictor: **hops-online-inference**.
 - Agent serving dependencies: [hops-environments](../hops-environments/SKILL.md) — clone an agent env and install requirements.
-- Give the agent feature-store access: **hops-fv** (online feature vectors).
+- Give the agent feature-store access for RAG: **hops-fv** (online feature vectors). Pass entity IDs (e.g. `user_id`) in the query so the agent can look up application state from the feature store.

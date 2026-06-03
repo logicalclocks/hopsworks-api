@@ -7,7 +7,13 @@ description: Use when writing Python code to monitor a Hopsworks feature store w
 
 The operate side of an FTI system: watch feature data for drift, validate it on
 ingestion, and alert when it breaks. Works on both feature groups (ingestion-time)
-and feature views (serving-time).
+and feature views (serving-time). Monitoring is built on logs, so the inference
+pipeline must log its inputs and outputs first (see Inference feature logging).
+
+**Drift vocabulary** — the kind of drift sets the reference/detection windows:
+- *Data ingestion drift*: a new batch differs from existing feature-group data. Detect on the **feature group**.
+- *Feature drift*: recent inference features differ from the training dataset. Detect on the **feature view** vs its training-dataset baseline.
+- *Concept drift*: the feature→label relationship changed. Not a distribution compare; compare predictions to outcomes (ROC AUC / MSE). Needs outcomes, not this skill's statistics.
 
 ## Contract
 - **Input:** an existing feature group or feature view.
@@ -157,6 +163,10 @@ Severities: `info`, `warning`, `critical`.
 
 ## Inference feature logging (serving-time monitoring)
 Enable on the feature view, then log served vectors and predictions for post-hoc drift.
+Log **both untransformed and transformed features**: untransformed feature data drives
+feature drift and debugging; transformed feature data drives model monitoring and SHAP.
+Predictions drive concept/prediction drift. Unify a request's inputs and outputs in one
+logging feature group so debugging and monitoring read from a single table.
 ```python
 fv = fs.create_feature_view(name="my_fv", query=query, logging_enabled=True)
 vector = fv.get_feature_vector(entry={"customer_id": 1}, logging_data=True)

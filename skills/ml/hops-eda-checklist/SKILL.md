@@ -13,6 +13,12 @@ is the *what to look for*; [hops-eda](../hops-eda/SKILL.md) is the *how to run i
 The bundled profiler (`fv-eda.py`) covers Section 1; the rest you reason through or
 extend the script.
 
+EDA sits between the feature pipeline and the training pipeline in the FTI
+architecture. You profile the reusable, model-independent features as they sit in
+the feature store, *before* model-dependent transformations (MDTs: scaling,
+one-hot encoding) are applied at training-read time. Findings here drive feature
+selection and split policy in the training pipeline.
+
 ## Key facts / rules
 
 ### 1. Dataset profile (the profiler covers this)
@@ -27,17 +33,19 @@ For large data, sample and use approximate statistics.
 - **Forecasting:** series length, frequency, gaps, seasonality hints, missing intervals, per-entity coverage.
 
 ### 3. Per-feature analysis
-- **Numerical:** missingness, distribution, outliers, target correlation, monotonic signals, temporal stability.
+- **Numerical:** missingness, distribution, outliers, predictive-power signals (target correlation, mutual information, monotonic trend, predictive power score), temporal stability.
 - **Categorical:** cardinality, rare categories, unseen-category risk, target rate by category, high-cardinality leakage.
 - **Temporal:** event ordering, feature timestamp vs label timestamp, lookahead risk, seasonality, recency.
 - **Text:** missingness, length distribution, language/encoding issues, potential PII, embedding/preprocessing need.
 - **Identifiers:** whether ID-like columns are accidentally predictive; warn if IDs are used directly as features; suggest grouped splits.
 
 ### 4. Leakage detection (the expensive failure)
-Check for:
+Leaky features are *infeasible* features: they carry information not available at
+prediction time, so a model that relies on them cannot reproduce its training
+performance in inference. Check for:
 - Features created after the label time, or that directly encode the label.
 - Status columns that are consequences of the outcome.
-- Aggregates / rolling windows computed with future data (no point-in-time correctness).
+- Aggregates / rolling windows computed with future data (no point-in-time correctness); for time-series splits, a missing gap between `train_end` and `test_start` lets rolling windows straddle the boundary.
 - Duplicate entities across the train/test split.
 - Target-derived encodings applied before splitting.
 - Temporal split violations.
