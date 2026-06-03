@@ -1,5 +1,5 @@
 ---
-name: hopsworks-batch-inference
+name: hops-batch-inference
 description: Use when writing Python or PySpark code for batch inference with Hopsworks. Auto-invoke when user wants to retrieve batch data from feature views, use spine groups for point-in-time joins, download models from the model registry for batch prediction, or build batch scoring pipelines.
 ---
 
@@ -356,7 +356,7 @@ import hopsworks
 from pyspark.sql import SparkSession
 
 # Spark Connect session with Delta extensions + DeltaCatalog (mandatory for
-# Hopsworks offline feature group reads/writes — see hops-pyspark skill).
+# Hopsworks offline feature group reads/writes — see hops-spark skill).
 spark = (
     SparkSession.builder.appName("batch_inference")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
@@ -446,10 +446,49 @@ model = joblib.load(f"{model_dir}/model.pkl")
 #    init_batch_scoring() is called automatically with the correct training_dataset_version
 fv = model_meta.get_feature_view(init=True, online=False)
 
-# 4. Score
+# 4. Score — drop identifier columns the FV carries (primary key + event time);
+#    they are not model inputs (same as the Pandas example above).
 batch_df = fv.get_batch_data(dataframe_type="pandas")
-predictions = model.predict(batch_df)
+feature_cols = [c for c in batch_df.columns if c not in ("customer_id", "event_time")]
+predictions = model.predict(batch_df[feature_cols])
 print(predictions)
+```
+
+---
+
+## Persisting Predictions
+
+Two distinct destinations — pick by purpose:
+
+**1. Log feature group (monitoring / audit / drift).** The idiomatic path: the
+feature view's prediction logging writes inputs + predictions to a *managed* log
+feature group. Enable it once at FV creation, then `log()` after each scoring run:
+
+```python
+# At FV creation (once):
+fv = fs.create_feature_view(name="...", query=query, labels=[...], logging_enabled=True)
+
+# After batch scoring:
+batch_df = fv.get_batch_data(dataframe_type="pandas")
+feature_cols = [c for c in batch_df.columns if c not in ("customer_id", "event_time")]
+predictions = model.predict(batch_df[feature_cols])
+
+fv.log(batch_df, predictions=predictions)   # -> managed log FG
+fv.materialize_log()                         # flush now (otherwise written periodically)
+
+# Read it back, optionally scoped to a model, for monitoring:
+logged = fv.read_log(model=model)            # also: start_time/end_time/filter
+```
+
+**2. Prediction feature group (downstream consumption).** When another pipeline
+reads the scores as features, write them to a normal FG instead (see **hops-fg**):
+
+```python
+preds_fg = fs.get_or_create_feature_group(
+    name="customer_spend_predictions", version=1,
+    primary_key=["customer_id"], event_time="event_time",
+)
+preds_fg.insert(predictions_df)   # predictions_df = keys + event_time + prediction column
 ```
 
 ---
@@ -471,3 +510,12 @@ print(predictions)
 | FV from model | `fv = model.get_feature_view(init=True, online=False)` |
 | Model metrics | `model.training_metrics` |
 | Model framework | `model.framework` |
+
+---
+
+## Next Steps
+
+- Log predictions for monitoring: this skill's "Persisting Predictions" (`fv.log`).
+- Train/register the model this scores: **hops-train**. Build the FV: **hops-fv**.
+- Need a live endpoint instead of batch: **hops-online-inference**.
+- PySpark for large offline reads/writes: **hops-spark**.
