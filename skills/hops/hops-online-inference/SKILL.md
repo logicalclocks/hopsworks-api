@@ -723,4 +723,5 @@ class Predict:
 
 - Train and register the model this serves: **hops-train**.
 - Build the online feature view it looks up: **hops-fv**.
+- Predictor dependencies: [hops-environments](../hops-environments/SKILL.md) — clone an inference env and install requirements.
 - Offline scoring instead of a live endpoint: **hops-batch-inference**.

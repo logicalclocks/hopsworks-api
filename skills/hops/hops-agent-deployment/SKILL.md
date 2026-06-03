@@ -73,4 +73,5 @@ print(deployment.predict(inputs={"prompt": "hello"}))
 
 - Scheduled/batch coding agent instead of a served one: **hops-agent-job**.
 - Model-backed online predictor: **hops-online-inference**.
+- Agent serving dependencies: [hops-environments](../hops-environments/SKILL.md) — clone an agent env and install requirements.
 - Give the agent feature-store access: **hops-fv** (online feature vectors).

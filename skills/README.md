@@ -28,6 +28,7 @@ into bucket folders:
 - [hops-online-inference](hops/hops-online-inference/SKILL.md) — KServe model deployment.
 - [hops-monitoring](hops/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 - [hops-job](hops/hops-job/SKILL.md) — jobs and Airflow DAGs.
+- [hops-environments](hops/hops-environments/SKILL.md) — clone a Python env, install custom libs.
 - [hops-app](hops/hops-app/SKILL.md) — Streamlit app deployments.
 - [hops-superset](hops/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 - [hops-agent-deployment](hops/hops-agent-deployment/SKILL.md) — served interactive agent.

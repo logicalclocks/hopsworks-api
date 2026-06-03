@@ -87,4 +87,5 @@ with DAG(
 ## Next Steps
 
 - What goes in the script: **hops-features** (feature pipeline), **hops-train** (training), **hops-batch-inference** (scoring).
+- Custom libraries for the job: [hops-environments](../hops-environments/SKILL.md) — clone a base env and install requirements.
 - Inspect runs: `hops job list`, `hops job info <name>`, `hops job logs <name>`, `hops job history <name>`.

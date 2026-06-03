@@ -71,22 +71,20 @@ st.bar_chart(df["amount"].value_counts().head(20))
 
 ## Your App uses Custom libraries
 
-If an app uses libraries that are not installed in `python-app-pipeline`, you need to clone the `python-app-pipline` Python environment, install the requirements (e.g., app-requirements.txt) in the cloned environment, and then create the app using the cloned environment. If no app-requirements.txt file exists, prompt the user to create one. You should also warn the user that installing the app-requirements.txt file in the user's cloned Python environment takes a couple of minutes.
+If the app needs libraries not in `python-app-pipeline`, clone that base env and
+install the app's `app-requirements.txt` into the clone (it takes a few minutes;
+warn the user, and prompt for a requirements file if none exists). Full workflow:
+[hops-environments](../hops-environments/SKILL.md).
 
 ```python
 env_api = project.get_environment_api()
-# Clone the base app env, then install the extra requirements into the CLONE.
 cloned_env = env_api.create_environment(
-    "my_cloned_env",                                                                                                                                                                        
-    description="Cloned from feature pipeline env",
-    base_environment_name="python-app-pipeline",                                                                                                                                        
-)                                                                
-cloned_env.install_requirements("Users/<username>/app-requirements.txt")  # takes a few minutes
+    "my_cloned_env", base_environment_name="python-app-pipeline",
+)
+cloned_env.install_requirements("Users/<username>/app-requirements.txt")
 ```
 
-Then create the app against the **cloned** env: pass `environment="my_cloned_env"`
-to `create_app(...)` below (not the base `python-app-pipeline`).
-     
+Then pass `environment="my_cloned_env"` to `create_app(...)` below — not the base.
 
 ### 2. Create and Run the App
 
