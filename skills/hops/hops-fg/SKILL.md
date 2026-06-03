@@ -7,6 +7,19 @@ When a user refers to tables, clarify that you interpret them as feature groups 
 
 # Hopsworks Feature Groups — Python SDK Best Practices
 
+## Verify State with the `hops` CLI (cheap pre/post-flight)
+
+Before writing Python, and to confirm results after, use the CLI. No Spark session needed:
+
+```bash
+hops fg list                              # is the name/version free? did it register?
+hops fg info <name> --version 1           # metadata: id, online flag, primary key, event_time
+hops fg features <name> --version 1       # schema with primary-key / partition flags
+hops fg preview <name> --version 1 --n 10 # first rows (flag is --n, not -n)
+```
+
+A feature group is registered server-side on its **first insert**, not at `get_or_create_feature_group(...)`. Until the first insert `fg.id` is `None` and `hops fg list` will not show it.
+
 ## Before Writing a Feature Pipeline — Ask the User
 
 Before creating a feature group, clarify these decisions with the user:
@@ -373,7 +386,7 @@ df = fg.filter((fg.amount > 100) & (fg.status == "active")).read(dataframe_type=
 Quick preview without reading the entire FG:
 
 ```python
-fg.show(n=10)  # prints first 10 rows
+print(fg.show(n=10))  # show() RETURNS a DataFrame, it does not print — wrap in print() in scripts
 ```
 
 ### Similarity Search (Embedding FGs)
@@ -396,18 +409,21 @@ results = fg.find_neighbors(
 
 ## Deleting Rows from a Feature Group
 
-To delete specific rows, pass a DataFrame containing only the primary key column(s) for the rows to remove:
+Pass a DataFrame identifying the rows to remove. For an **offline (Delta) FG with an `event_time`**, the merge key is the primary key **plus** the `event_time` column (plus any partition columns) — a primary-key-only DataFrame fails with `DeltaError: No field named <event_time>`. Include every key column:
 
 ```python
 import polars as pl
 
-# Build a DataFrame with just the primary key values to delete
-rows_to_delete = pl.DataFrame({"trans_id": [101, 202, 303]})
+# primary_key column(s) + event_time (+ partition columns, if any)
+rows_to_delete = pl.DataFrame({
+    "trans_id": [101, 202, 303],
+    "event_ts": ["2026-01-01", "2026-01-02", "2026-01-03"],
+})
 
 fg.commit_delete_record(rows_to_delete)
 ```
 
-The DataFrame must contain the primary key column(s) matching the FG's `primary_key`. Only matching rows are deleted.
+Only rows matching on all key columns are deleted.
 
 ---
 
@@ -463,12 +479,20 @@ derived_fg.materialization_job.run(await_termination=True)
 | Read (Polars) | `fg.read(dataframe_type="polars")` |
 | Read (time range) | `fg.read(start_time=..., end_time=..., dataframe_type="polars")` |
 | Read (filtered) | `fg.filter(fg.col > X).read(dataframe_type="polars")` |
-| Preview rows | `fg.show(n=10)` |
+| Preview rows | `print(fg.show(n=10))` (returns a DataFrame) |
 | Similarity search | `fg.find_neighbors(vector, k=5, filter=...)` |
-| Delete rows | `fg.commit_delete_record(df_with_primary_keys)` |
+| Delete rows | `fg.commit_delete_record(df)` (df = primary_key cols + event_time) |
 | Disable statistics | `statistics_config=False` |
 | Set provenance | `parents=[parent_fg1, parent_fg2]` |
 | Trigger materialization | `fg.materialization_job.run(await_termination=True)` |
 | Schedule materialization | `offline_backfill_every_hr=4` (at creation) |
 | Delete FG | `fg.delete()` |
 | Get FG | `fs.get_feature_group("name", version=1)` |
+
+---
+
+## Next Steps
+
+- Serve these features for training/inference: **hops-fv** (build a feature view over this FG).
+- Explore / query the data: **hops-data-discovery**, **hops-trino-sql**.
+- Schedule the pipeline as a recurring job: **hops-job**.
