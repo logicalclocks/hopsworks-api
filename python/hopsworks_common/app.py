@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import urllib.parse
 
 import humps
 from hopsworks_apigen import public
@@ -329,12 +330,14 @@ class App:
         if not token:
             return None
         _client = client.get_instance()
+        project = urllib.parse.quote(_client._project_name, safe="")
+        name = urllib.parse.quote(self._name, safe="")
         return (
             _client._base_url.rstrip("/")
             + "/hopsworks-api/pythonapp/"
-            + _client._project_name
+            + project
             + "/"
-            + self._name
+            + name
             + "/__public?t="
             + token
         )
@@ -344,7 +347,8 @@ class App:
     def make_public(self) -> str | None:
         """Make this Streamlit app reachable without a Hopsworks login.
 
-        Returns the share URL to give out.
+        Returns:
+            `str`. The share URL to give out.
 
         Danger:
             Anyone with the link can use the app with the app's own credentials,
@@ -467,6 +471,8 @@ class App:
         self._git_branch = updated._git_branch
         self._latest_commit = updated._latest_commit
         self._entrypoint_script = updated._entrypoint_script
+        self._public_access = updated._public_access
+        self._public_token = updated._public_token
         return self
 
     def _wait_for_serving(self) -> App:
