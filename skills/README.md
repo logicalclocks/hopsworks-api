@@ -25,6 +25,7 @@ into bucket folders:
 - [hops-train](hops/hops-train/SKILL.md) — train + register a model.
 - [hops-batch-inference](hops/hops-batch-inference/SKILL.md) — batch scoring + prediction logging.
 - [hops-online-inference](hops/hops-online-inference/SKILL.md) — KServe model deployment.
+- [hops-monitoring](hops/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 - [hops-job](hops/hops-job/SKILL.md) — jobs and Airflow DAGs.
 - [hops-app](hops/hops-app/SKILL.md) — Streamlit app deployments.
 - [hops-superset](hops/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.

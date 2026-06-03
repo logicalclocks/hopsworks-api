@@ -8,6 +8,7 @@ canonical list is `hops skills list --bucket hops`.
 - [hops-train](hops-train/SKILL.md) — Train a model from a feature view and register it.
 - [hops-batch-inference](hops-batch-inference/SKILL.md) — Batch scoring; persist/log predictions.
 - [hops-online-inference](hops-online-inference/SKILL.md) — Deploy a model (KServe) and serve online predictions.
+- [hops-monitoring](hops-monitoring/SKILL.md) — Statistics, feature/drift monitoring, Great Expectations validation, alerts, feature logging.
 - [hops-job](hops-job/SKILL.md) — Create, run, and schedule Hopsworks jobs (and Airflow DAGs).
 - [hops-app](hops-app/SKILL.md) — Build and manage Streamlit app deployments.
 - [hops-superset](hops-superset/SKILL.md) — Build Superset datasets, charts, and dashboards.
