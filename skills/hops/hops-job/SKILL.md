@@ -17,7 +17,8 @@ environment, schedules, and runs — everything `create` + `schedule` + `run` do
 separately, plus the environment selection `create` cannot do.
 
 ```bash
-hops job deploy feature_pipeline.py --name feature-pipeline \
+# Positional args are NAME then SCRIPT (a local script is uploaded for you).
+hops job deploy feature-pipeline feature_pipeline.py \
   --env python-feature-pipeline --cron @daily --run --wait
 ```
 
@@ -43,6 +44,7 @@ pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 
 Here is an example of an airflow program that runs a Hopsworks Job:
 
+```python
 import os
 from datetime import datetime
 from airflow import DAG
@@ -66,3 +68,11 @@ with DAG(
         job_name="hello",
         args="",
     )
+```
+
+---
+
+## Next Steps
+
+- What goes in the script: **hops-features** (feature pipeline), **hops-train** (training), **hops-batch-inference** (scoring).
+- Inspect runs: `hops job list`, `hops job info <name>`, `hops job logs <name>`, `hops job history <name>`.
