@@ -5,6 +5,11 @@ description: Mount or ingest a table from a supported datasource. Mount tables f
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
 
+## Contract
+- **Input:** a configured connector + a table from it.
+- **Output:** an external (on-demand) feature group, or a managed feature group ingested via DLTHub.
+- **Pre-condition:** the connector already exists (configured on the cluster).
+
 ## Smoke-test: what connectors exist
 
 ```bash

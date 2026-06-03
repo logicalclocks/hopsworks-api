@@ -1,10 +1,42 @@
 ---
 name: hops-superset
-description: Use when building Superset charts or dashboards inside Hopsworks via the Python SDK. Auto-invoke when the user wants to create Superset charts/dashboards/datasets, visualize a feature group in Superset, or interact with `project.get_superset_api()`.
+description: Use when building Superset charts or dashboards inside Hopsworks via the Python SDK. Auto-invoke when the user wants to create Superset charts/dashboards/datasets, visualize a feature group in Superset, or interact with `project.get_superset_api()`. Input an offline-materialized FG; output a published Superset dashboard + URL.
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 # Hopsworks Superset — Charts, Datasets, and Dashboards
+
+Render Hopsworks feature groups as Superset charts and dashboards via the Python
+SDK (`project.get_superset_api()`).
+
+## Contract
+
+- **Input:** an offline-materialized feature group (queryable in Trino).
+- **Output:** a published Superset dashboard (charts + datasets) and its URL.
+- **Pre-condition:** Superset enabled on the cluster, and the FG materialized to
+  the offline (Trino) store.
+
+## Smoke-test (cheap pre/post-flight)
+
+Confirm auth + Superset reachability before building anything — cheapest from the
+CLI, no Python:
+
+```bash
+hops superset dataset list      # auth + Superset reachable in one shot
+# or in Python: api.list_databases()  -> find the Trino DB id (see §2)
+```
+
+The `hops superset {dataset,chart,dashboard} {list,info,create,delete}` CLI is the
+quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
+`hops superset dashboard list` after building to verify the result.
+
+## Ask the user (only when state is ambiguous)
+
+- Which feature group (and version) to chart.
+- Which columns / metrics to visualize, and which chart types (see the viz_type
+  enum in §3).
+
+---
 
 Feature groups (FGs) are referenced in superset as either:
 delta.<project_name>_featurestore.<featuregroup_name>_<version>
@@ -49,16 +81,9 @@ api = project.get_superset_api()
 ```
 
 **Pre-condition / smoke-test.** Superset must be enabled on the cluster and the FG
-you chart must be materialized to the offline (Trino) store. Confirm reachability
-before building anything — cheapest from the CLI, no Python:
-
-```bash
-hops superset dataset list      # auth + Superset reachable in one shot
-# or in Python: api.list_databases()  -> find the Trino DB id (see §2)
-```
-
-The `hops superset {dataset,chart,dashboard} {list,info,create,delete}` CLI is the
-quickest path to list/inspect/clean up (delete takes `--yes`).
+you chart must be materialized to the offline (Trino) store. See the **Smoke-test**
+section above to confirm reachability (CLI: `hops superset dataset list`; Python:
+`api.list_databases()` → find the Trino DB id, see §2).
 
 Methods available on `api`:
 

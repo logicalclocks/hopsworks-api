@@ -1,10 +1,22 @@
 ---
 name: hops-job
-description: Use when creating, configuring, scheduling, or running Hopsworks jobs or Airflow jobs/DAGs/workflows.
+description: Use when creating, configuring, scheduling, or running Hopsworks jobs or Airflow jobs/DAGs/workflows. Input a script in HopsFS plus job config; output a created/scheduled job and its executions.
 ---
 
 # Creating Hopsworks Jobs
 
+Run a HopsFS-resident Python/PySpark script as a Hopsworks job — created, scheduled, executed, and (optionally) chained via Airflow.
+
+## Contract
+- **Input:** a script in HopsFS + job config (name, environment, schedule).
+- **Output:** a created/scheduled job + executions.
+- **Pre-condition:** the script is uploaded to HopsFS (`hops job deploy` uploads a local script for you).
+
+## Smoke-test (cheap pre/post-flight)
+```bash
+hops job list            # confirm state before; verify the job exists after
+hops job info <name>
+```
 
 Two equivalent interfaces:
 - `hops job ...` CLI — preferred for one-off creation and scripted operations as jobs.

@@ -1,6 +1,6 @@
 ---
 name: hops-train
-description: Use when training an ML model. Load training data from an existing feature view, train a model with an appropriate ML framework, evaluate it, and register the model and its evaluation (metrics, plots) in the Hopsworks model registry.
+description: Use when training an ML model. Load training data from an existing feature view, train a model with an appropriate ML framework, evaluate it, and register the model and its evaluation (metrics, plots) in the Hopsworks model registry. Input - a feature view; Output - a registered model.
 model: claude-sonnet-4-6
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
@@ -9,15 +9,27 @@ Train a model from a feature view and register it. This is the **T** of the
 FTI pattern: it consumes a feature view (already created by the F side) and
 produces a registered model the I side deploys.
 
+## Contract
+- **Input:** a feature view.
+- **Output:** a registered model (with metrics + plots) in the model registry.
+- **Pre-condition:** the feature view already exists (create it first with **hops-fv**).
+
+## Smoke-test (cheap pre/post-flight)
+```bash
+hops fv list                          # confirm the input FV exists before
+hops model list                       # confirm the model registered after
+```
+
+## Ask the user (only when state is ambiguous)
+The algorithm, metrics, and label are **task-specific** — pick them per problem.
+Everything below is the reusable shape, with one neutral example. Do not copy a
+specific algorithm or threshold blindly.
+
 **CLI vs SDK for this task:** training itself is SDK-only — write a `train.py`
 that uses the `hopsworks` Python SDK (the `hops` CLI has no `train`). The CLI
 does the surrounding steps: `hops fv list` / `hops td compute <fv> <v>` before,
 and running the script as a job after:
 `hops job deploy train.py --name train --env pandas-training-pipeline --run --wait`.
-
-The algorithm, metrics, and label are **task-specific** — pick them per problem.
-Everything below is the reusable shape, with one neutral example. Do not copy a
-specific algorithm or threshold blindly.
 
 ## 1. Load training data from the feature view
 

@@ -1,9 +1,22 @@
 ---
 name: hops-reqs
-description: Create a specification an ML system as a composition of datasources, feature pipelines, training pipelines, and batch inference pipelines or online inference pipelines. There will be an order relationship between the pipelines, some will be blocked-by other pipelines. Write down the specification as a markdown file in reqs/. Ask the user if they want to then implement the system. 
+description: Create a specification an ML system as a composition of datasources, feature pipelines, training pipelines, and batch inference pipelines or online inference pipelines. There will be an order relationship between the pipelines, some will be blocked-by other pipelines. Write down the specification as a markdown file in reqs/. Ask the user if they want to then implement the system. Input: a user description of an ML system; Output: a reqs/<ml-system-name>.md spec.
 ---
 
+# ML System Requirements
+
 This skill should be invoked when the user wants to build an ML system and the output should be to create the specification for the ML system that can then be implemented.
+
+## Contract
+- **Input:** a user description of the prediction problem, data sources, and ML-system type (batch or real-time).
+- **Output:** an ordered ML-system specification written to `reqs/<ml-system-name>.md` (feature → training → inference pipelines with blocked-by relationships, each linking the implementing skill).
+- **Pre-condition:** a Hopsworks project with discoverable data/feature groups (use hops CLI to suggest candidates).
+
+## Ask the user
+
+Use AskUserQuestion (step 1) for a description of the prediction problem, the data sources, and the ML-system type. Look at available features and datasources (use hops CLI) to suggest data that could be used. After writing the spec (step 5), ask the user whether to implement the system.
+
+## Steps
 
 1. Use AskUserQUestion for a description of the prediction problem, the data sources (all of them or specific sets of features), and the type of ML system (batch or real-time) to build. Look at available features and datasources (use hops CLI) to suggest data that could be used. - Prediction problem types include 
   - binary classification

@@ -1,9 +1,22 @@
 ---
 name: hops-features
-description: Create and schedule/run a feature pipeline program from additional user input. Build on the ML system requirements.
+description: Create and schedule/run a feature pipeline program from additional user input. Build on the ML system requirements. Input: ML-system requirements; Output: a reqs/*-pipeline.md spec.
 ---
 
+# Feature Pipeline
+
 This skill should be invoked when the user wants to create a feature pipeline program.
+
+## Contract
+- **Input:** the ML-system requirements (inputs, new features to compute, freshness/SLAs, framework preferences, dependencies).
+- **Output:** a feature-pipeline specification written as a local markdown file in `reqs/` (`reqs/feature-pipeline.md`, `reqs/training-pipeline.md`, or `reqs/inference-pipeline.md`).
+- **Pre-condition:** the ML-system requirements exist (see hops-reqs); data sources and feature groups are known.
+
+## Ask the user
+
+Use AskUserQuestion (step 3) about every aspect of the plan until you reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. Confirm the proposed deep modules and which modules they want tests for (step 4).
+
+## Steps
 
 1. The ML system requirements step should provide the inputs, and the new features that will be computed as outputs, and feature freshness requirements, SLAs (uptime in number of nines), preferred processing frameworks (for batch: DuckDB, Polars, Pandas, Sparks; for streaming: Spark Streaming), and any ideas for solutions. Check if the feature pipeline has dependencies on the outputs of other feature pipelines that should run before it and write down the dependencies.
 

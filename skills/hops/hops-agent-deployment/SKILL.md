@@ -7,13 +7,16 @@ description: Use when writing and deploying an interactive agent (e.g. a LlamaIn
 
 An agent deployment is a **server-only KServe deployment with no model attached** — you ship an entry script (or a package) that handles requests. Use it for interactive agents (LlamaIndex, custom LLM orchestration). For a scheduled, non-interactive coding agent, use **hops-agent-job** instead; for a model-backed predictor, use **hops-online-inference**.
 
-## Pre-condition / smoke-test
+## Contract
+- **Input:** an entry script (a `.py` file, or a directory containing a `pyproject.toml`).
+- **Output:** a served agent deployment (server-only KServe deployment, queryable endpoint).
+- **Pre-condition:** auth + serving reachable; the agent name and environment are valid (`[A-Za-z0-9_-]+`).
+
+## Smoke-test (cheap pre/post-flight)
 
 ```bash
 hops agent list          # what agents already exist (confirms auth + serving reachable)
 ```
-
-The `entry` is a `.py` file, or a directory containing a `pyproject.toml`. The agent name and environment must match `[A-Za-z0-9_-]+`.
 
 ## Write the entry script
 

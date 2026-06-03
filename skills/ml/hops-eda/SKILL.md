@@ -1,25 +1,18 @@
 ---
 name: hops-eda
-description: Exploratory Data Analysis before training an ML model
+description: Exploratory Data Analysis before training an ML model. Input: a feature view; Output: an EDA profile as eda-<ml-system>.md.
 ---
 
-## Usage
+# Exploratory Data Analysis
+
 This skill helps write a program to do EDA on training data for a model. The input will be a feature view and the output will be EDA over a subset or all of the data that will be used to train the model.
 
+## Contract
+- **Input:** a feature view (set of features), the prediction problem type, and a split strategy.
+- **Output:** an EDA profile written as `eda-<ml-system-name>.md` (text profile, optionally extended with target/leakage/per-feature analysis).
+- **Pre-condition:** the feature view already exists.
 
-## Expected Inputs
-
-- Feature View with set of features
-- Prediction problem type
-- Split strategy. Infer the split strategy (e.g., time-based for time-series data) but if it is unclear, then AskUserQuestion about the desired split strategy.
-  - random
-  - time-based
-  - grouped
-  - entity-based
-
-If the data is under say 10Bs, use Polars. If larger than 100GBs, prefer to use PySpark. If it between 10-100 GBs, make a judgement call on Polars vs PySpark.
-
-## Quick start: run the bundled profiler
+## Smoke-test (cheap pre/post-flight)
 
 This skill ships two ready profilers — start with them before writing anything, they cover the Section 1 profile (dtypes, semantic types, null %, unique counts, numeric stats, datetime ranges, missing-data summary):
 
@@ -32,6 +25,19 @@ python3 ~/.claude/skills/hops-eda/scripts/fv-eda-pyspark.py <fv_name> 1 > eda-<m
 ```
 
 The scripts print a text profile to stdout (no plots, no file unless you redirect). `start_time`/`end_time` require an `event_time` on the underlying FG. Then go deeper with the checklist below (target analysis, leakage, per-feature).
+
+## Ask the user (only when state is ambiguous)
+
+- Prediction problem type.
+- Split strategy. Infer the split strategy (e.g., time-based for time-series data) but if it is unclear, then AskUserQuestion about the desired split strategy.
+  - random
+  - time-based
+  - grouped
+  - entity-based
+
+If the data is under say 10Bs, use Polars. If larger than 100GBs, prefer to use PySpark. If it between 10-100 GBs, make a judgement call on Polars vs PySpark.
+
+## Steps
 
 ### 1. Run basic dataset profiling
 - Row count

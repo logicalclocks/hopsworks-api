@@ -7,6 +7,16 @@ description: Use when creating, configuring, scheduling, or running claude-code 
 
 An agent **job** is a set of instructions and a coding agent (claude code or codex) to execute them. An agent job can be run on a schedule or on-demand. 
 
+## Contract
+- **Input:** an entry/instructions script living in HopsFS (under `/hopsfs/...`).
+- **Output:** a created/scheduled coding-agent job (claude-code / codex), runnable on-demand or on a cron schedule.
+
+## Smoke-test (cheap pre/post-flight)
+
+```bash
+hops job list            # confirm state before; verify the job exists after
+```
+
 Two equivalent interfaces:
 - `hops job ...` CLI — preferred for one-off creation and scripted operations
 - `project.get_job_api()` Python SDK — preferred from inside a program / notebook / pipeline script that creates and runs the agent job

@@ -3,6 +3,7 @@ name: hops-app
 description: Use when writing Streamlit apps for Hopsworks or managing app
   deployments. Auto-invoke when user wants to create a Streamlit dashboard, deploy a
   Python app to Hopsworks, or access the feature store from a Streamlit application.
+  Input a Streamlit app.py + env + memory; output a running app and its URL.
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -11,6 +12,25 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ## Overview
 
 Hopsworks supports deploying **Streamlit** applications as managed apps. Apps are Python scripts backed by a Hopsworks job that runs the Streamlit server. Only Streamlit apps are currently supported.
+
+## Contract
+
+- **Input:** a Streamlit `app.py` + environment + memory.
+- **Output:** a running app and its URL.
+- **Pre-condition:** `app.py` is uploaded to HopsFS (project-relative path for the SDK, HopsFS-absolute for the CLI).
+
+## Smoke-test (cheap pre/post-flight)
+
+```bash
+hops app list                 # confirm state before; verify it is RUNNING/serving after
+```
+
+Full CLI surface is in **Manage Apps from the CLI** below.
+
+## Ask the user (only when state is ambiguous)
+
+- Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
+- What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
 
 ---
 

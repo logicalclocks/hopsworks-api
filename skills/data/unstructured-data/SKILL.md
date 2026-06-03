@@ -1,7 +1,16 @@
 ---
 name: unstructured-data
-description: Parses unstructured data from files and writes it to a feature group
+description: Parses unstructured data from files and writes it to a feature group. Input: raw files + a target schema; Output: a populated feature group.
 ---
+
+# Unstructured Data Extraction
+
+## Contract
+- **Input:** raw unstructured files (emails, PDFs, logs, transcripts, scraped HTML) and a target DataFrame schema (Pandas, Polars, PySpark).
+- **Output:** a populated Hopsworks feature group holding the structured data extracted from the files.
+- **Pre-condition:** the raw files are accessible and a target schema has been agreed with the developer.
+
+## Steps
 
 You first examine the unstructured text to identify and propose schemas for the classes of unstructured files. Once you have agreed with the developer on a schema, you extract structured data from unstructured text. Given raw input (emails, PDFs, logs, transcripts, scraped HTML) and the target schema for a DataFrame (Pandas, Polars, PySpark):
 
