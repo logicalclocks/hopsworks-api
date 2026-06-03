@@ -48,6 +48,18 @@ project = hopsworks.login()
 api = project.get_superset_api()
 ```
 
+**Pre-condition / smoke-test.** Superset must be enabled on the cluster and the FG
+you chart must be materialized to the offline (Trino) store. Confirm reachability
+before building anything — cheapest from the CLI, no Python:
+
+```bash
+hops superset dataset list      # auth + Superset reachable in one shot
+# or in Python: api.list_databases()  -> find the Trino DB id (see §2)
+```
+
+The `hops superset {dataset,chart,dashboard} {list,info,create,delete}` CLI is the
+quickest path to list/inspect/clean up (delete takes `--yes`).
+
 Methods available on `api`:
 
 | Area | Methods |
@@ -124,8 +136,8 @@ Rules:
 - Table name is `<fg_name>_<version>` — the version suffix is required.
 - The Trino DB connection in Superset defaults its catalog to `hive`, so you
   **must** fully qualify with `delta.` or the query resolves to the wrong catalog.
-- Trino database id varies per Hopsworks install. Use `api.list_databases()`
-  to look it up, or cache it (e.g. Trino DB id = 2 on project `af`).
+- Trino database id varies per Hopsworks install — never hardcode it. Always
+  resolve it with `api.list_databases()` / `find_trino_db_id(api)` below.
 
 ### Look up the Trino database id
 
@@ -626,7 +638,9 @@ https://<hopsworks-host>/hopsworks-api/superset/superset/dashboard/<id>/
 import json
 import hopsworks
 
-PROJECT_NAME = "af"
+# Columns below (state, age, …) are illustrative — swap for real ones from
+# `hops fg features <FG_NAME> --version <FG_VERSION>`.
+PROJECT_NAME = "<your_project>"        # don't hardcode; set to project.name after login
 FG_NAME, FG_VERSION = "customers", 1
 
 COUNT_METRIC = {
@@ -725,3 +739,11 @@ if __name__ == "__main__":
 | Create dashboard | `api.create_dashboard(dashboard_title=..., published=True, position_json=...)` |
 | Delete | `api.delete_chart(id)` / `api.delete_dataset(id)` / `api.delete_dashboard(id)` |
 | Paginate any list | `api._request("GET", f"/api/v1/{resource}/?q=(page:{p},page_size:100)")` |
+
+---
+
+## Next Steps
+
+- Get a feature group materialized offline to chart: **hops-fg**.
+- Inspect / query the underlying Trino table: **hops-trino-sql**, **hops-data-discovery**.
+- A custom interactive app instead of BI dashboards: **hops-app**.
