@@ -1,5 +1,5 @@
 ---
-name: hopsworks-online-inference
+name: hops-online-inference
 description: Use when writing code for model deployment, online inference, predictor scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to deploy models, write predictor.py files, retrieve precomputed features for serving, create on-demand transformation functions, or configure model serving.
 ---
 
@@ -65,12 +65,18 @@ model = mr.llm.create_model("my_llm", ...)
 
 ```python
 from hsml.resources import PredictorResources, Resources
-from hsml.scaling_config import PredictorScalingConfig
+from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
+
+# `script_file` must be a path INSIDE the Hopsworks filesystem, not a local path.
+# Upload predictor.py first (here, next to the model's files), then point at it.
+# A local path fails with HTTP 400 errorCode 240016 "Predictor script does not exist".
+script_dir = f"/Projects/{project.name}/Models/{model.name}/{model.version}/Files"
+project.get_dataset_api().upload("predictor.py", script_dir, overwrite=True)
 
 deployment = model.deploy(
     name="fraud_predictor",
     description="Real-time fraud detection",
-    script_file="predictor.py",       # required for Python/PyTorch
+    script_file=f"{script_dir}/predictor.py",   # Hopsworks path, not local
     resources=PredictorResources(
         requests=Resources(cores=1, memory=1024, gpus=0),
         limits=Resources(cores=2, memory=2048, gpus=0),
@@ -78,6 +84,8 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=3,
+        scale_metric=ScaleMetric.CONCURRENCY,   # required — omitting it fails with HTTP 422
+        target=70,                              # target concurrent requests per pod
     ),
     environment="inference-pipeline",  # Python environment name
 )
@@ -123,6 +131,8 @@ deployment.stop(await_stopped=120)
 # Delete
 deployment.delete()
 ```
+
+**CLI smoke-test:** `hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
 
 ---
 
@@ -595,7 +605,7 @@ deployment.start()
 ```python
 import hopsworks
 from hsml.resources import PredictorResources, Resources
-from hsml.scaling_config import PredictorScalingConfig
+from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
 
 # 1. Connect
 project = hopsworks.login()
@@ -614,10 +624,12 @@ model = mr.python.create_model(
 )
 model.save("./model_artifacts")
 
-# 3. Deploy with predictor script
+# 3. Deploy with predictor script (upload it to the Hopsworks FS first)
+script_dir = f"/Projects/{project.name}/Models/{model.name}/{model.version}/Files"
+project.get_dataset_api().upload("predictor.py", script_dir, overwrite=True)
 deployment = model.deploy(
     name="fraud_predictor",
-    script_file="predictor.py",
+    script_file=f"{script_dir}/predictor.py",
     resources=PredictorResources(
         requests=Resources(cores=1, memory=1024, gpus=0),
         limits=Resources(cores=2, memory=2048, gpus=0),
@@ -625,6 +637,7 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=5,
+        scale_metric=ScaleMetric.CONCURRENCY,  # required, else HTTP 422
         target=50,
     ),
 )
@@ -689,3 +702,11 @@ class Predict:
 | Attach to FG | `fs.get_or_create_feature_group(..., transformation_functions=[my_fn("col")])` |
 | Save TF to store | `fs.create_transformation_function(my_fn).save()` |
 | Get TF from store | `fs.get_transformation_function("name", version=1)` |
+
+---
+
+## Next Steps
+
+- Train and register the model this serves: **hops-train**.
+- Build the online feature view it looks up: **hops-fv**.
+- Offline scoring instead of a live endpoint: **hops-batch-inference**.
