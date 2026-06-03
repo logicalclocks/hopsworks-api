@@ -1,5 +1,5 @@
 ---
-name: hopsworks-train
+name: hops-train
 description: Use when training an ML model. Load training data from an existing feature view, train a model with an appropriate ML framework, evaluate it, and register the model and its evaluation (metrics, plots) in the Hopsworks model registry.
 model: claude-sonnet-4-6
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
@@ -31,12 +31,21 @@ import hopsworks
 project = hopsworks.login()
 fs = project.get_feature_store()
 
-fv = fs.get_feature_view(name="my_fv", version=1)
-# Reuse the training dataset produced by `hops td compute <fv> 1`:
-X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=1)
+fv = fs.get_feature_view(name="my_fv", version=1)  # no FV yet? create one first (skill: hops-fv)
+
+# Materialize a train/test split, then read it back BY ITS VERSION.
+# train_test_split() returns the new training-dataset version (it auto-increments).
+td_version, _ = fv.train_test_split(test_size=0.2)
+X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=td_version)
 ```
 
 Hints:
+- `get_train_test_split` only works on a dataset created BY a split call. A plain
+  dataset from `hops td compute <fv>` is read with
+  `fv.get_training_data(training_dataset_version=N)` — calling `get_train_test_split`
+  on it raises `Use feature_view.get_training_data instead`.
+- `hops td compute <fv>` ignores a version argument and auto-increments; read the
+  new version back from `hops td list <fv>` rather than hardcoding `1`.
 - `get_train_test_split` returns `(X_train, X_test, y_train, y_test)`; `y` is
   empty when the FV declares no label.
 - Retrieval-time transformations declared on the FV are applied automatically
@@ -44,7 +53,6 @@ Hints:
 - The FV's `select_all()` includes the serving key(s) and event time as columns.
   Drop them from the model inputs by name (e.g. `X_train.drop(columns=[key, event_time])`)
   — they are identifiers, not features.
-- To create a fresh split instead of reusing one: `fv.train_test_split(test_size=0.2)`.
 
 ## 2. Train
 
@@ -89,7 +97,7 @@ hw_model = mr.python.create_model(
     description="What this model predicts",
     input_example=X_train.head(1),
     feature_view=fv,                       # provenance link FV -> model
-    training_dataset_version=1,
+    training_dataset_version=td_version,    # the split materialized in step 1
 )
 hw_model.save(model_dir)                    # uploads the whole dir (model + plots)
 ```
@@ -107,5 +115,15 @@ Hints:
 
 ```bash
 hops job deploy train.py --name train --env pandas-training-pipeline --run --wait
-hops model list   # confirm the model registered
+hops model list                       # confirm the model registered
+hops model info <name> --version <v>  # metrics + description
 ```
+
+Non-interactive cleanup needs flags: `hops model delete <name> --yes`,
+`hops fv delete <name> --version <v> --yes --force` (a FV with training data
+needs `--force`).
+
+## Next Steps
+
+- Serve the model online: **hops-online-inference**. Batch scoring: **hops-batch-inference**.
+- Build or fix the feature view it trains on: **hops-fv**.
