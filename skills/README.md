@@ -22,6 +22,7 @@ into bucket folders:
 ## hops/ — feature store, training, inference, jobs, apps, agents
 - [hops-fg](hops/hops-fg/SKILL.md) — feature groups.
 - [hops-fv](hops/hops-fv/SKILL.md) — feature views, training data, online vectors.
+- [hops-transformations](hops/hops-transformations/SKILL.md) — built-in/custom/on-demand transforms + transformation store.
 - [hops-train](hops/hops-train/SKILL.md) — train + register a model.
 - [hops-batch-inference](hops/hops-batch-inference/SKILL.md) — batch scoring + prediction logging.
 - [hops-online-inference](hops/hops-online-inference/SKILL.md) — KServe model deployment.

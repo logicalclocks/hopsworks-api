@@ -288,233 +288,24 @@ neighbors = fv.find_neighbors(
 
 ## Transformations
 
-Transformations in feature views come in two types:
-
-1. **Model-dependent transformations** — use training statistics, applied during both training and inference
-2. **On-demand transformations** — compute features at runtime from request parameters, no statistics
-
-### Built-in Transformations
-
-Import from `hsfs.builtin_transformations`. All built-in transformations are model-dependent (they learn statistics from training data).
-
-A transformation **renames its output column** to `<fn>_<col>_` (e.g. `standard_scaler("past_total_spent")` → `standard_scaler_past_total_spent_`). The original column name is gone after transformation, so downstream code (training, serving) must reference the new name. This applies to built-ins as well as custom `@udf`s.
-
-**Scaling & Normalization:**
-
-| Function | Description |
-|---|---|
-| `min_max_scaler(feature)` | Scale to [0, 1] using training min/max |
-| `standard_scaler(feature)` | Standardize using training mean/stddev |
-| `robust_scaler(feature)` | Scale using median/IQR (outlier-robust) |
-
-**Distribution Transforms:**
-
-| Function | Description |
-|---|---|
-| `log_transform(feature)` | Natural log (values <= 0 become NaN) |
-| `quantile_transformer(feature)` | Map to uniform [0, 1] via training percentiles |
-| `rank_normalizer(feature)` | Percentile rank in training distribution |
-
-**Outlier Handling:**
-
-| Function | Description | Context |
-|---|---|---|
-| `winsorize(feature)` | Clip at percentile boundaries | `{"p_low": 5, "p_high": 95}` |
-
-**Binning / Discretization:**
-
-| Function | Description | Context |
-|---|---|---|
-| `equal_width_binner(feature)` | Equal-width bins (default 10) | `{"n_bins": 20}` |
-| `equal_frequency_binner(feature)` | Quartile-based bins (4 bins) | |
-| `quantile_binner(feature)` | Quantile-based bins | |
-
-**Encoding:**
-
-| Function | Description | Context |
-|---|---|---|
-| `label_encoder(feature)` | Categorical to integer (unseen -> -1) | |
-| `one_hot_encoder(feature)` | One-hot boolean columns (unseen -> all False) | |
-| `top_k_categorical_binner(feature)` | Group rare categories to "Other" | `{"top_n": 20, "other_label": "Rare"}` |
-
-**Imputation:**
-
-| Function | Description | Context |
-|---|---|---|
-| `impute_mean(feature)` | Fill NaN with training mean | |
-| `impute_median(feature)` | Fill NaN with training median | |
-| `impute_constant(feature)` | Fill NaN with constant | `{"value": -1.0}` |
-| `impute_mode(feature)` | Fill NaN with most frequent category | |
-| `impute_category(feature)` | Fill NaN with sentinel string | `{"value": "Unknown"}` |
-
-**Usage:**
+Transformations are the **T** in FTI. Two kinds:
+- **Model-dependent** — statistics-based (scalers, encoders, imputers), attached here via `transformation_functions=` on `create_feature_view`; applied at training and serving.
+- **On-demand** — computed at request time from `request_parameters`, attached at the feature group; auto-included when this FV selects them.
 
 ```python
 from hsfs.builtin_transformations import standard_scaler, label_encoder, impute_mean
 
 fv = fs.create_feature_view(
-    name="my_fv",
-    version=1,
-    query=query,
-    labels=["target"],
-    transformation_functions=[
-        impute_mean("age"),
-        standard_scaler("age"),
-        label_encoder("country"),
-    ],
+    name="my_fv", version=1, query=query, labels=["target"],
+    transformation_functions=[impute_mean("age"), standard_scaler("age"), label_encoder("country")],
 )
+# on-demand at serving:
+fv.get_feature_vector(entry={"user_id": 123}, request_parameters={"current_location": "NYC"})
 ```
 
-**Setting transformation context** (for built-ins that accept it):
+> A transform **renames its output** to `<fn>_<col>_`, and a udf is **frozen into the FV at create** (fixing it forces a new FV version + retrain). Custom udfs import from `hopsworks` (`from hopsworks import udf`), and a default-mode udf must run on **both** a scalar (online) and a Series (offline) or it 500s on the first online predict.
 
-```python
-from hsfs.builtin_transformations import winsorize, equal_width_binner
-
-w = winsorize("income")
-w.transformation_context = {"p_low": 5, "p_high": 95}
-
-b = equal_width_binner("score")
-b.transformation_context = {"n_bins": 20}
-
-fv = fs.create_feature_view(
-    name="my_fv",
-    query=query,
-    transformation_functions=[w, b],
-    ...
-)
-```
-
-### Custom Transformations — the `@udf` Decorator
-
-Define custom transformations using `@udf` from `hsfs`:
-
-```python
-from hsfs import udf
-```
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|---|---|---|
-| `return_type` | `type` or `list[type]` | Output type(s): `float`, `int`, `str`, `bool`, `datetime`, `date` |
-| `drop` | `str` or `list[str]` | Feature names to drop after transformation |
-| `mode` | `"default"`, `"python"`, `"pandas"` | Execution mode |
-
-### Execution Modes
-
-| Mode | Offline (Batch) | Online (Single Value) | Use Case |
-|---|---|---|---|
-| `"default"` | Receives `pd.Series`, returns `pd.Series` | Receives scalar, returns scalar | Best for most cases — auto-adapts |
-| `"pandas"` | Always `pd.Series` → `pd.Series` | Always `pd.Series` → `pd.Series` | Vectorized operations, Spark pandas UDF |
-| `"python"` | Always scalar → scalar | Always scalar → scalar | Simple per-row logic |
-
-> **A default-mode udf runs on BOTH a Series (offline) and a scalar (online).**
-> Training and `td compute` call it with a `pd.Series`; online serving
-> (`get_feature_vectors`) calls the **same body** with a single Python scalar. So
-> **never use Series-only methods** (`.clip`, `.fillna`, `.str`, `.between`,
-> `.where`, `.dt`) in a default-mode udf. They raise on the scalar and surface as
-> an **HTTP 500 on the first online predict** — invisible until then, because
-> training only exercises the offline (Series) path.
->
-> Use numpy ufuncs / plain arithmetic that accept both a scalar and a Series:
-> ```python
-> @udf(float, drop=["amount"])
-> def log1p_safe(amount):
->     import numpy as np
->     return np.log1p(np.maximum(amount, 0))   # works on a scalar AND a Series
-> ```
-> If you specifically need Series methods, set `mode="pandas"` (always a Series,
-> both paths). Either way, smoke-test the logic on both shapes **before** wiring
-> the FV:
-> ```python
-> import numpy as np, pandas as pd
-> logic = lambda x: np.log1p(np.maximum(x, 0))
-> assert logic(5.0) == logic(pd.Series([5.0])).iloc[0]   # scalar == offline path
-> ```
-
-### Custom UDF Examples
-
-**Simple transformation (no statistics):**
-
-```python
-@udf(float, drop=["amount"])
-def log_amount(amount):
-    import math
-    return math.log1p(amount) if amount > 0 else 0.0
-```
-
-**Transformation with training statistics:**
-
-```python
-from hsfs.transformation_statistics import TransformationStatistics
-
-stats = TransformationStatistics("price")
-
-@udf(float, drop=["price"])
-def z_score(price, statistics=stats):
-    return (price - statistics.price.mean) / statistics.price.stddev
-```
-
-Available statistics properties: `mean`, `stddev`, `min`, `max`, `percentiles`, `unique_values`, `histogram`, `count`, `completeness`, `distinctness`, `entropy`.
-
-**Transformation with context:**
-
-```python
-@udf(float)
-def apply_discount(price, context):
-    return price * (1 - context["discount_rate"])
-
-tf = apply_discount("price")
-tf.transformation_context = {"discount_rate": 0.1}
-```
-
-**Multiple outputs:**
-
-```python
-@udf([float, float], drop=["timestamp"])
-def time_features(timestamp):
-    import pandas as pd
-    hour = timestamp.hour if not isinstance(timestamp, pd.Series) else timestamp.dt.hour
-    day = timestamp.dayofweek if not isinstance(timestamp, pd.Series) else timestamp.dt.dayofweek
-    return hour, day
-```
-
-**Pandas mode (vectorized):**
-
-```python
-@udf(float, drop=["feature"], mode="pandas")
-def clip_outliers(feature: pd.Series) -> pd.Series:
-    return feature.clip(lower=0, upper=1000)
-```
-
-### Custom Output Column Names
-
-```python
-tf = log_amount("price")
-tf.alias("log_price")  # custom output name
-```
-
-> **A udf is frozen into the feature view at `fv create`.** The transform source
-> is bound to the FV version, not resolved live from the registry. Fixing a udf
-> means a new FV version → recompute training data → retrain → recreate the
-> deployment. And **renaming a udf renames its output columns** (`<fn>_<col>_`),
-> so even an identical-output rename forces a retrain to match the new names. A
-> transform defect is the most expensive thing to get wrong here — smoke-test the
-> scalar+Series logic above before `fv create`, not after.
-
-### On-Demand Transformations
-
-On-demand transformations compute features at inference time from request parameters. They **cannot** use training statistics.
-
-On-demand transformations are attached to features at the feature group level (not at the feature view level). They are automatically included in feature views that select those features.
-
-```python
-# When retrieving a feature vector, provide request_parameters
-vector = fv.get_feature_vector(
-    entry={"user_id": 123},
-    request_parameters={"current_location": "NYC"},
-)
-```
+**Full transformation reference** — built-in tables, the `@udf` decorator, execution modes, statistics, on-demand, and the transformation store: see [hops-transformations](../hops-transformations/SKILL.md).
 
 ---
 
@@ -747,7 +538,7 @@ batch_df = fv.get_batch_data(
 ```python
 import hopsworks
 from hsfs.builtin_transformations import standard_scaler, label_encoder, impute_mean
-from hsfs import udf
+from hopsworks import udf
 
 # 1. Connect
 project = hopsworks.login()

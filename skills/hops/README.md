@@ -5,6 +5,7 @@ canonical list is `hops skills list --bucket hops`.
 
 - [hops-fg](hops-fg/SKILL.md) — Create, insert into, read, and manage feature groups (Python SDK).
 - [hops-fv](hops-fv/SKILL.md) — Create and query feature views, training data, online feature vectors.
+- [hops-transformations](hops-transformations/SKILL.md) — Built-in / custom `@udf` / model-dependent / on-demand transforms and the transformation store.
 - [hops-train](hops-train/SKILL.md) — Train a model from a feature view and register it.
 - [hops-batch-inference](hops-batch-inference/SKILL.md) — Batch scoring; persist/log predictions.
 - [hops-online-inference](hops-online-inference/SKILL.md) — Deploy a model (KServe) and serve online predictions.

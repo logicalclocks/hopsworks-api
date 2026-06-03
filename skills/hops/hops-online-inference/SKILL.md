@@ -389,7 +389,7 @@ On-demand transformations compute features at request time. They are attached to
 ### Defining On-Demand Transformations
 
 ```python
-from hsfs import udf
+from hopsworks import udf
 
 # Simple on-demand feature
 @udf(float)
