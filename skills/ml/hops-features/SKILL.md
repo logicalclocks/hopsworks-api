@@ -1,5 +1,5 @@
 ---
-name: hops-feature-pipeline
+name: hops-features
 description: Create and schedule/run a feature pipeline program from additional user input. Build on the ML system requirements.
 ---
 
@@ -24,7 +24,12 @@ Is it a batch or streamining job? Do you need to first run a backfill job with s
 Will it be a simple job execution or a scheduled job (optionally with incremental reads from feature groups and/or data sources). Load hops-job skill.
 
 ## Sink
-One or more feature groups should be the sink of the feature pipelines.
+One or more feature groups should be the sink of the feature pipelines. Use the **hops-fg** skill to create and write them (online vs offline, schema, provenance). For external/source data, use **hops-data-sources**; for PySpark processing, **hops-spark**.
+
+## Next Steps
+
+- Implement the sink feature groups: **hops-fg**. Run on a schedule: **hops-job**.
+- Then build the view and train: **hops-fv**, **hops-train**. Overall plan: **hops-reqs**.
 
 # Data Processing Framework
 Which framework was chosen based on expected workload size, feature freshness requirements, and user preferences.

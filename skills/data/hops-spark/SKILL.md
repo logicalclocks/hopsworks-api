@@ -1,9 +1,11 @@
 ---
-name: hops-pyspark
+name: hops-spark
 description: Use whenever you write PySpark code in a Hopsworks terminal (terminal-spark) or any project that runs PySpark. Auto-invoke when the user writes `spark` or `pyspark`.
 ---
 
 # PySpark on Hopsworks (Spark Connect)
+
+This skill covers **PySpark** (Python), which is the common path on Hopsworks: interactively in the terminal-spark image (Spark Connect) and as `--type PYSPARK` jobs. For **JVM/Scala/Java Spark** packaged as a JAR, there is no Spark Connect session to build — submit it as a `--type SPARK` job via the **hops-job** skill (`hops job deploy <name> <app.jar> --type SPARK`); the Delta/catalog wiring below is configured cluster-side for those, not in user code.
 
 The terminal-spark image runs Spark in **Spark Connect** mode by default. The local Spark Connect server is started by the entrypoint and the connection URI is exported into the user's shell as `SPARK_REMOTE` (`sc://localhost:15002`). PySpark reads `SPARK_REMOTE` automatically, so user code must **not** hard-code `.remote("sc://localhost:15002")` — that path turns into a brittle smoke test that fails the moment the port shifts or the script is run inside a job pod (where the Connect server lives somewhere else).
 
@@ -68,3 +70,8 @@ Only when running outside the terminal-spark pod and pointing at a remote Spark 
 - `getOrCreate()` is fine; the image starts the Connect server before the user's first shell.
 - Do not pass `master(...)` — Spark Connect does not honour it and it's a leftover from spark-submit-style code.
 - Use `pyspark` from the venv (`PYSPARK_PYTHON` is preset), not a fresh `pip install pyspark` — that breaks the JAR/Python ABI Hopsworks bakes into the image.
+
+## See also
+
+- **hops-fg** / **hops-fv** — the `fg.read()` / `fg.insert()` paths this session powers.
+- **hops-job** — run a PySpark script as a scheduled Hopsworks job.
