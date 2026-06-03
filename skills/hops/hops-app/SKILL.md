@@ -261,6 +261,28 @@ def init_feature_view():
 fv = init_feature_view()
 ```
 
+### Cold Start: do not block the first render
+
+A common footgun: doing heavy work at the top of the script — `connect()`, `init_serving()`, or calling an online deployment — runs on every cold load and blocks the first paint, so the app shows RUNNING but the page appears to hang until everything is "fully loaded". Keep the top of the script cheap:
+
+- Wrap the connection and FV/serving handle in `@st.cache_resource` (above) so they initialize once, not per rerun.
+- Do not call an online deployment at import time. Trigger it from a button / form submit, and show `st.spinner(...)` so the wait is visible instead of looking frozen.
+- Guard against a not-yet-ready deployment: check `deployment.is_running()` before `predict`, and surface a message rather than blocking.
+
+```python
+@st.cache_resource
+def get_deployment():
+    return project.get_model_serving().get_deployment("fraud_predictor")
+
+if st.button("Score"):
+    dep = get_deployment()
+    if dep.is_running():
+        with st.spinner("Scoring…"):
+            st.write(dep.predict(inputs=[{"id": user_id}]))
+    else:
+        st.warning("Deployment is starting — try again shortly.")
+```
+
 ---
 
 ## Hopsworks look & feel
