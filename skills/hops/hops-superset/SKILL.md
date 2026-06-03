@@ -7,9 +7,9 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 # Hopsworks Superset — Charts, Datasets, and Dashboards
 
 Feature groups (FGs) are referenced in superset as either:
-delta.<project_name>_featuregroup.<featuregroup_name>_<version>
+delta.<project_name>_featurestore.<featuregroup_name>_<version>
 or
-hudi.<project_name>_featuregroup.<featuregroup_name>_<version>
+hudi.<project_name>_featurestore.<featuregroup_name>_<version>
 depending on whether they are a delta offline feature group or a hudi offline feature group.
 For example, the delta FG, transactions, in the jim project is referenced as:
 
