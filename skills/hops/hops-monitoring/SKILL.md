@@ -1,6 +1,6 @@
 ---
 name: hops-monitoring
-description: Use when writing Python code to monitor a Hopsworks feature store — descriptive statistics, feature/drift monitoring, Great Expectations data validation, alerts, and inference feature logging. Auto-invoke when the user wants to monitor feature drift, set up data quality checks, validate data on ingestion, configure alerts, compute statistics, or use Great Expectations with Hopsworks. Input: an existing feature group or feature view → Output: statistics config, monitoring config, expectation suite, or alert attached to it.
+description: Use when writing Python code to monitor a Hopsworks feature store with descriptive statistics, feature/drift monitoring, Great Expectations data validation, alerts, and inference feature logging. Auto-invoke when the user wants to monitor feature drift, set up data quality checks, validate data on ingestion, configure alerts, compute statistics, or use Great Expectations with Hopsworks.
 ---
 
 # Hopsworks Monitoring & Data Quality
@@ -39,6 +39,12 @@ hops fg stats <name> --compute     # recompute on current data
 - Statistics-only, or **drift detection** against a reference (rolling window / fixed
   value / training dataset)?
 - Hard gate on bad data (`validation_ingestion_policy="strict"`) or log-and-pass (`"always"`)?
+
+## Steps (generic, non-binding)
+1. Confirm what the cluster allows: statistics, validation, and alerts always work; feature monitoring needs the cluster service (see above).
+2. Enable statistics on the FG/FV if not already (`StatisticsConfig`).
+3. Attach the control you need: an expectation suite (validation), a monitoring config (drift), or an alert.
+4. Verify with the smoke-test or a `get_*` readback; wire an alert receiver if you want notifications.
 
 ## Statistics
 Descriptive statistics are computed on insert; they power monitoring and transformations.

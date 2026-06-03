@@ -1,6 +1,6 @@
 ---
 name: unstructured-data
-description: Parses unstructured data from files and writes it to a feature group. Input: raw files + a target schema; Output: a populated feature group.
+description: Parses unstructured data from files and writes it to a feature group.
 ---
 
 # Unstructured Data Extraction

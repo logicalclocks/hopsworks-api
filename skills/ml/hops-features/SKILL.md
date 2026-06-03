@@ -1,6 +1,6 @@
 ---
 name: hops-features
-description: Create and schedule/run a feature pipeline program from additional user input. Build on the ML system requirements. Input: ML-system requirements; Output: a reqs/*-pipeline.md spec.
+description: Create and schedule/run a feature pipeline program from additional user input. Build on the ML system requirements.
 ---
 
 # Feature Pipeline

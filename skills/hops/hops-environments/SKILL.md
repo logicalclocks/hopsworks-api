@@ -1,6 +1,6 @@
 ---
 name: hops-environments
-description: Use when a Hopsworks job, app, or deployment needs Python libraries that are not in a base environment — clone a base environment and install requirements or a wheel into the clone. Auto-invoke when the user hits a missing-package error in a job/app/deployment, asks to install custom dependencies, add a pip requirement, install a wheel, or pick which Python environment a workload should run in. Input: a base environment + a requirements.txt or wheel → Output: a cloned environment with the dependencies installed, ready to attach to a job/app/deployment.
+description: Use when a Hopsworks job, app, or deployment needs Python libraries that are not in a base environment. Clone a base environment and install requirements or a wheel into the clone. Auto-invoke when the user hits a missing-package error in a job/app/deployment, asks to install custom dependencies, add a pip requirement, install a wheel, or pick which Python environment a workload should run in.
 ---
 
 # Hopsworks Python Environments

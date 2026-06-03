@@ -1,6 +1,6 @@
 ---
 name: hops-eda
-description: Exploratory Data Analysis before training an ML model. Auto-invoke when the user wants to profile feature-view training data, check for leakage, or produce an EDA report before building a feature view or training. Input: a feature view → Output: an EDA profile written as eda-<ml-system>.md.
+description: Exploratory Data Analysis before training an ML model. Auto-invoke when the user wants to profile feature-view training data, check for leakage, or produce an EDA report before building a feature view or training.
 ---
 
 # Exploratory Data Analysis

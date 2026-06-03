@@ -1,6 +1,6 @@
 ---
 name: hops-fg
-description: Use when writing Python code that creates, inserts into, or manages tables or feature groups. Auto-invoke when user writes feature pipelines, feature engineering code, or asks about feature group best practices (online vs offline, batching, OOM, materialization, embeddings, statistics). Input→output: a DataFrame of computed features → a registered, populated Hopsworks feature group.
+description: Use when writing Python code that creates, inserts into, or manages tables or feature groups. Auto-invoke when user writes feature pipelines, feature engineering code, or asks about feature group best practices (online vs offline, batching, OOM, materialization, embeddings, statistics).
 ---
 
 When a user refers to tables, clarify that you interpret them as feature groups in Hopsworks.

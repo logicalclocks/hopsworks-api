@@ -1,6 +1,6 @@
 ---
 name: hops-reqs
-description: Create a specification an ML system as a composition of datasources, feature pipelines, training pipelines, and batch inference pipelines or online inference pipelines. There will be an order relationship between the pipelines, some will be blocked-by other pipelines. Write down the specification as a markdown file in reqs/. Ask the user if they want to then implement the system. Input: a user description of an ML system; Output: a reqs/<ml-system-name>.md spec.
+description: Create a specification an ML system as a composition of datasources, feature pipelines, training pipelines, and batch inference pipelines or online inference pipelines. There will be an order relationship between the pipelines, some will be blocked-by other pipelines. Write down the specification as a markdown file in reqs/. Ask the user if they want to then implement the system.
 ---
 
 # ML System Requirements

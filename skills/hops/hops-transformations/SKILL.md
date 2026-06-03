@@ -1,6 +1,6 @@
 ---
 name: hops-transformations
-description: Use when writing Python code for Hopsworks transformation functions — built-in transforms, custom @udf transforms, model-dependent (statistics-based) transforms, on-demand (request-time) transforms, and the transformation store. Auto-invoke when the user applies scaling/encoding/imputation to features, writes a @udf, creates on-demand features from request parameters, registers a transformation function, or asks how transformation renaming/execution modes work. Input: a feature and a transform → Output: a transformation function attached to a feature view (model-dependent) or feature group (on-demand), or saved in the transformation store.
+description: Use when writing Python code for Hopsworks transformation functions, including built-in transforms, custom @udf transforms, model-dependent (statistics-based) transforms, on-demand (request-time) transforms, and the transformation store. Auto-invoke when the user applies scaling/encoding/imputation to features, writes a @udf, creates on-demand features from request parameters, registers a transformation function, or asks how transformation renaming/execution modes work.
 ---
 
 # Hopsworks Transformations
@@ -27,6 +27,17 @@ hops transformation create --code "@udf(float)
 def x2(c): return c * 2" --version 1                        # register from inline source
 hops transformation create --file my_udf.py --version 1     # or from a .py file
 ```
+
+## Ask the user (only when state is ambiguous)
+- **Model-dependent** (learns training statistics) or **on-demand** (request-time, no statistics)?
+- A **built-in** transform, or a **custom `@udf`**?
+- For a custom udf: does the logic need Series-only methods? If so it must be `mode="pandas"` (see the online footgun below).
+
+## Steps (generic, non-binding)
+1. Pick the transform kind (built-in / custom `@udf` / on-demand).
+2. For a custom `@udf`: write it in a real `.py` file and smoke-test the scalar+Series logic before wiring anything.
+3. Attach it — to the **feature view** (model-dependent) or the **feature group** (on-demand) — or register it in the transformation store for reuse.
+4. Account for the output rename (`<fn>_<col>_`) downstream; if you changed a transform on an existing FV, recompute training data and recreate the deployment.
 
 ## The rename footgun (read first)
 A transformation **renames its output column** to `<fn>_<col>_`

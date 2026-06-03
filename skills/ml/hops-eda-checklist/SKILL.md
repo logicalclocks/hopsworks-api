@@ -1,6 +1,6 @@
 ---
 name: hops-eda-checklist
-description: The dimensions to cover when doing EDA on feature-view training data before training a model in Hopsworks — dataset profiling, target analysis, per-feature analysis, and leakage detection. Force into context when planning or reviewing EDA, deciding what to profile, or checking for label leakage and train/test contamination. Reference companion to the hops-eda action skill.
+description: The dimensions to cover when doing EDA on feature-view training data before training a model in Hopsworks, covering dataset profiling, target analysis, per-feature analysis, and leakage detection. Force into context when planning or reviewing EDA, deciding what to profile, or checking for label leakage and train/test contamination. Reference companion to the hops-eda action skill.
 ---
 
 # EDA Checklist (pre-training)
@@ -49,6 +49,10 @@ Check for:
 # Section-1 profile via the bundled profiler (see hops-eda for full usage)
 python3 ~/.claude/skills/hops-eda/scripts/fv-eda.py <fv_name> 1 > eda-<ml-system>.md
 ```
+
+## Docs
+- Hopsworks documentation: https://docs.hopsworks.ai
+- Point-in-time correct training data and splits: `python/hsfs/feature_view.py` in the hopsworks-api source.
 
 ## Related skills
 - [hops-eda](../hops-eda/SKILL.md) — runs the profiler and writes the EDA report (the action).

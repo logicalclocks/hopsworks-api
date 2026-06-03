@@ -1,6 +1,6 @@
 ---
 name: hops-fv
-description: Use when writing Python code that creates, queries, or manages Hopsworks feature views via the hsfs SDK. Auto-invoke when user builds feature views, selects features, applies transformations, creates training data, retrieves feature vectors, or asks about feature view best practices (labels, filters, joins, transformations, online serving, embeddings). Input: feature groups + a feature selection; Output: a feature view that serves training data and online/batch feature vectors.
+description: Use when writing Python code that creates, queries, or manages Hopsworks feature views via the hsfs SDK. Auto-invoke when user builds feature views, selects features, applies transformations, creates training data, retrieves feature vectors, or asks about feature view best practices (labels, filters, joins, transformations, online serving, embeddings).
 ---
 
 # Hopsworks Feature Views — Python SDK Best Practices
