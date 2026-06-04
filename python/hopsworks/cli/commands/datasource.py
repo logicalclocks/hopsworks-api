@@ -2,6 +2,10 @@
 
 The SDK does not expose a ``create_storage_connector``; we POST straight to
 ``/featurestores/{id}/storageconnectors`` via the authenticated REST client.
+The connector DTO is deserialized polymorphically (Jackson ``@JsonTypeInfo``
+keyed on a ``type`` property), so every create body must carry the subtype
+discriminator (e.g. ``"type": "featurestoreJdbcConnectorDTO"``). Omitting it
+deserializes into the base DTO and the backend 500s with a class-cast error.
 ``databases``/``tables``/``preview`` delegate to the SDK's ``DataSource``
 methods where available.
 """
@@ -141,6 +145,7 @@ def connector_create_jdbc(
     if password:
         args.append({"name": "password", "value": password})
     body = {
+        "type": "featurestoreJdbcConnectorDTO",
         "name": name,
         "storageConnectorType": "JDBC",
         "connectionString": url,
@@ -179,6 +184,7 @@ def connector_create_s3(
         description: Description.
     """
     body = {
+        "type": "featurestoreS3ConnectorDTO",
         "name": name,
         "storageConnectorType": "S3",
         "bucket": bucket,
@@ -231,6 +237,7 @@ def connector_create_snowflake(
         description: Description.
     """
     body = {
+        "type": "featurestoreSnowflakeConnectorDTO",
         "name": name,
         "storageConnectorType": "SNOWFLAKE",
         "url": url,
@@ -272,6 +279,7 @@ def connector_create_bigquery(
         description: Description.
     """
     body = {
+        "type": "featurestoreBigqueryConnectorDTO",
         "name": name,
         "storageConnectorType": "BIGQUERY",
         "queryProject": project_id,
@@ -346,6 +354,10 @@ def connector_create_mongodb(
             server negotiate the default.
         description: Free-form description shown in the data-source list.
     """
+    # No MongoDB storage-connector subtype was confirmed against the backend
+    # (the FeaturestoreConnectorType enum has no MONGODB, and the live cluster
+    # rejects it), so the ``type`` discriminator the other connectors carry is
+    # left out here until a Mongo-capable backend confirms the right value.
     body = {
         "name": name,
         "storageConnectorType": "MONGODB",

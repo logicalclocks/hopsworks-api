@@ -273,9 +273,42 @@ def test_datasource_create_jdbc_posts_body(mock_project):
     call = fake_client._send_request.call_args
     assert call.args[0] == "POST"
     body = json.loads(call.kwargs["data"])
+    # The Jackson polymorphic discriminator: without it the backend 500s with a
+    # class-cast error (it cannot tell which connector subtype to build).
+    assert body["type"] == "featurestoreJdbcConnectorDTO"
     assert body["storageConnectorType"] == "JDBC"
     assert body["connectionString"] == "jdbc:postgresql://host/db"
     assert {"name": "user", "value": "u"} in body["arguments"]
+
+
+def _create_connector_body(args: list[str]) -> dict:
+    """Invoke a ``datasource create`` command and return the POSTed JSON body."""
+    fake_client = mock.MagicMock()
+    fake_client._project_id = 119
+    with mock.patch("hopsworks_common.client.get_instance", return_value=fake_client):
+        result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 0, result.output
+    return json.loads(fake_client._send_request.call_args.kwargs["data"])
+
+
+def test_datasource_create_carries_type_discriminator(mock_project):
+    mock_project.get_feature_store.return_value.id = 67
+    s3 = _create_connector_body(
+        ["datasource", "create", "s3", "lake", "--bucket", "b"]
+    )
+    assert s3["type"] == "featurestoreS3ConnectorDTO"
+    sf = _create_connector_body(
+        [
+            "datasource", "create", "snowflake", "wh", "--url", "https://x",
+            "--user", "u", "--password", "p", "--database", "d",
+            "--schema", "s", "--warehouse", "w",
+        ]
+    )
+    assert sf["type"] == "featurestoreSnowflakeConnectorDTO"
+    bq = _create_connector_body(
+        ["datasource", "create", "bigquery", "bq", "--project-id", "proj"]
+    )
+    assert bq["type"] == "featurestoreBigqueryConnectorDTO"
 
 
 def test_datasource_delete_calls_rest(mock_project):
