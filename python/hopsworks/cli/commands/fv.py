@@ -37,7 +37,12 @@ def fv_list(ctx: click.Context) -> None:
                 item.get("id", "?"),
                 item.get("name", "?"),
                 item.get("version", "?"),
-                ", ".join(item.get("labels", []) or []) or "-",
+                ", ".join(
+                    f.get("name")
+                    for f in (item.get("features") or [])
+                    if f.get("label")
+                )
+                or "-",
                 output.first_line(item.get("description"), empty=""),
             ]
         )
@@ -109,8 +114,12 @@ def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
     if fs_id is None:
         return []
     try:
+        # ``expand=features`` so each item carries its feature list; the bare
+        # list endpoint omits it, which is why LABELS rendered blank.
         payload = rest.send_request(
-            "GET", rest.project_path("featurestores", fs_id, "featureview")
+            "GET",
+            rest.project_path("featurestores", fs_id, "featureview"),
+            query_params={"expand": ["features"]},
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list feature views: {exc}") from exc

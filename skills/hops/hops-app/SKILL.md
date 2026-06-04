@@ -245,6 +245,43 @@ fv = init_feature_view()
 
 ---
 
+## Hopsworks look & feel
+
+Apps render as a bare default Streamlit page unless you theme them. Drop in the
+Hopsworks palette so a shipped app reads as part of the platform — brand accents
+only, don't restyle every widget.
+
+`.streamlit/config.toml` (next to the app script):
+```toml
+[theme]
+primaryColor = "#1EB182"           # Hopsworks teal-green
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#1A1F2B"
+textColor = "#FAFAFA"
+font = "sans serif"
+```
+
+A brand header + accents, injected once at the top of the app:
+```python
+import streamlit as st
+
+st.set_page_config(page_title="My Hopsworks App", layout="wide")
+st.markdown(
+    """
+    <style>
+      .hw-band {background:linear-gradient(90deg,#0E1117,#1A1F2B);
+                border-left:6px solid #1EB182; padding:0.75rem 1rem;
+                border-radius:6px; margin-bottom:1rem;}
+      .hw-band h1 {color:#FAFAFA; margin:0; font-size:1.4rem;}
+      div[data-testid="stMetricValue"] {color:#1EB182;}
+      .stButton>button {background:#1EB182; color:#0E1117; border:none; font-weight:600;}
+    </style>
+    <div class="hw-band"><h1>⬡ My Hopsworks App</h1></div>
+    """,
+    unsafe_allow_html=True,
+)
+```
+
 ## Complete Example: Feature Monitoring Dashboard
 
 ```python
