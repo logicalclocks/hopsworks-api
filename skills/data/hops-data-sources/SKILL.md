@@ -10,7 +10,7 @@ Mounting and ingesting both build a feature pipeline's input side: an external f
 ## Contract
 - **Input:** a configured connector + a table from it.
 - **Output:** an external feature group (mounted in place), or a managed feature group ingested via DLTHub.
-- **Pre-condition:** the connector already exists (configured on the cluster).
+- **Pre-condition:** a connector exists. Create one with `hops datasource create <type>` (see below), or in the UI.
 - **Pick mount vs ingest:** mounting serves the offline store only. To load the online store or a vector index, ingest (an ETL path) instead.
 
 ## Smoke-test: what connectors exist
@@ -28,13 +28,13 @@ Use platform intelligence to (1) select the primary key and event_time columns a
 hops datasource infer-metadata <connector-name> <table> [--database <db>]
 ```
 
-If platform intelligence is not configured on the cluster, the command exits with a clear error — ask the cluster admin to set `PLATFORM_INTELLIGENCE_LLM_API_KEY` rather than guessing the metadata by hand.
+If platform intelligence is not configured on the cluster, the command exits with a clear error. Ask the cluster admin to set `PLATFORM_INTELLIGENCE_LLM_API_KEY` rather than guessing the metadata by hand.
 
 Programmatic equivalent: `data_source.infer_metadata()` on a `DataSource` returned by `data_source.get_tables()`; it raises `hopsworks.client.exceptions.PlatformIntelligenceException` (with `.reason` of `NOT_CONFIGURED` or `INFERENCE_FAILED`) on the same failure modes.
 
 ## Mount a table as an external feature group
 
-An external feature group leaves data in the source and queries it through the connector — no copy into Hopsworks. It is offline-only: reads serve training and batch inference. Set an `event_time` column so the feature store can read point-in-time correct snapshots and so polling can read a `start_time`/`end_time` range for backfill or incremental runs.
+An external feature group leaves data in the source and queries it through the connector, no copy into Hopsworks. It is offline-only: reads serve training and batch inference. Set an `event_time` column so the feature store can read point-in-time correct snapshots and so polling can read a `start_time`/`end_time` range for backfill or incremental runs.
 
 ```python
 import hopsworks
@@ -57,22 +57,62 @@ ext_fg = fs.create_external_feature_group(
 ext_fg.save()
 ```
 
+## Create a connector
+
+Connectors are not UI-only. Create one from the CLI; the subcommand sends the backend type discriminator for you:
+
+```bash
+hops datasource create jdbc <name> --url "jdbc:postgresql://host:5432/db" --user U --password P
+hops datasource create s3 <name> --bucket my-bucket --access-key AK --secret-key SK --region eu-north-1
+hops datasource create snowflake <name> --url https://acct.snowflakecomputing.com --user U --password P --database D --schema S --warehouse W
+hops datasource create bigquery <name> --project-id proj --dataset ds --key-path /path/key.json
+hops datasource delete <name> --yes
+```
+
 ## Ingest into a new feature group with DLTHub
 
-DLTHub is a data integration platform: use it when you need the data copied into Hopsworks — to populate the online store or a vector index, or when the source is an API/SaaS endpoint that does not mount well. Ingestion copies the source into a managed feature group and runs server-side in the `dlthub-ingestion-pipeline` environment (`dlt` is not installed in the interactive venv). You can attach a custom transform; the example just copies rows, but any Pandas-DataFrame transform works (these are model-independent transformations: keep model-specific encoding/scaling out, do it in a feature view at read time):
+DLTHub copies a source into a managed feature group for the cases mounting cannot serve: loading the online store or a vector index, or pulling from an API/SaaS/REST endpoint. Ingestion runs server-side in the `dlthub-ingestion-pipeline` environment, driven by a `SinkJobConfiguration` attached to a sink-enabled feature group. It is configuration plus a server job, not an in-process `dlt` call.
 
 ```python
+import hopsworks
+from hopsworks.core import SinkJobConfiguration
+from hopsworks.core.rest_endpoint import RestEndpointConfig
+
+project = hopsworks.login()
+fs = project.get_feature_store()
+
+fg = fs.create_feature_group(
+    name="events",
+    version=1,
+    primary_key=["id"],
+    data_source=fs.get_data_source("my_connector"),   # the source to pull from
+    sink_enabled=True,                                 # provision a sink job
+    sink_job_conf=SinkJobConfiguration(
+        write_mode="APPEND",
+        # REST sources: describe the endpoint to pull.
+        endpoint_config=RestEndpointConfig(relative_url="v1/events", query_params={"limit": 1000}),
+        # Optional custom transform: a SCRIPT PATH in HopsFS, not a local import.
+        transform_script_path="Resources/ingest/transform.py",
+    ),
+)
+fg.save()
+
+fg.sink_job.run()   # runs the ingestion job server-side (see hops-job to monitor)
+```
+
+The custom transform is a Python file uploaded to HopsFS and executed inside the ingestion environment, where `dlt` is installed. Write it as a script and point at it with `transform_script_path`; do not import `dlt` in your interactive session.
+
+```python
+# Resources/ingest/transform.py: runs in dlthub-ingestion-pipeline, not locally.
 import pandas as pd
 from dlt.destinations.impl.hopsworks_fg import HopsIngestionTransformer
 
 class MyTransformer(HopsIngestionTransformer):
     def transform(self, df: pd.DataFrame, context: dict) -> pd.DataFrame:
-        return df.copy()
-
-transformer = MyTransformer()
-# Wire the transformer into the DLT ingestion job (SinkJobConfiguration) and run it
-# as a Hopsworks job — see hops-job. The job materializes the source into the FG.
+        return df  # model-independent only; do encoding/scaling in a feature view
 ```
+
+`from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
 
 ## Next Steps
 
