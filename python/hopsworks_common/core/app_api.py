@@ -279,7 +279,8 @@ class AppApi:
     def _set_public(self, app_name: str, enabled: bool):
         """Enable or disable public (no-login) access for a Streamlit app.
 
-        On enable the response carries a one-time share URL.
+        On enable the response carries the share token (data-owner only); the
+        caller builds the share URL from it.
         """
         _client = client.get_instance()
         path_params = [

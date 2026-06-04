@@ -320,9 +320,10 @@ class App:
     @public
     @property
     def public_url(self) -> str | None:
-        """Public share URL, or None if the app is not public.
+        """Public share URL.
 
-        Only populated for data owners.
+        None when the app is not public, or when the caller is not a data owner
+        (only data owners receive the share token from the backend).
         """
         return self._build_public_url(self._public_token)
 
@@ -339,7 +340,7 @@ class App:
             + "/"
             + name
             + "/__public?t="
-            + token
+            + urllib.parse.quote(token, safe="")
         )
 
     @public
@@ -352,7 +353,8 @@ class App:
 
         Danger:
             Anyone with the link can use the app with the app's own credentials,
-            data access, and secrets. This is not read-only access.
+            data access, and secrets.
+            This is not read-only access.
             Only data owners can enable it, and only Streamlit apps are eligible.
         """
         _logger.info("Making app public: %s", self._name)
