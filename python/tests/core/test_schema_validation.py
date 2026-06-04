@@ -265,6 +265,35 @@ class BaseDataFrameTest:
 
     @pytest.mark.parametrize(
         "online_enabled",
+        [True, False],
+    )
+    def test_string_length_warning_only_when_online(
+        self, online_enabled, df, feature_group_data, caplog
+    ):
+        # An offline-only feature group still gets its varchar widened (harmless
+        # metadata), but must not log the "... in online table" warning, which
+        # is misleading noise when there is no online table.
+        feature_group_data.online_enabled = online_enabled
+        feature_group_data.columns = []
+        initial_features = [
+            Feature("primary_key", "int"),
+            Feature("event_time", "string"),
+            Feature("string_col", "string"),
+        ]
+        modified_df = self._modify_row(df, 0, string_col="a" * 301)
+
+        with caplog.at_level("WARNING"):
+            df_features = DataFrameValidator().validate_schema(
+                feature_group_data, modified_df, initial_features
+            )
+
+        # Widened either way (301 -> varchar(400)).
+        assert df_features[2].online_type == "varchar(400)"
+        # Warning only for an online feature group.
+        assert ("in online table" in caplog.text) is online_enabled
+
+    @pytest.mark.parametrize(
+        "online_enabled",
         [True],
     )
     def test_string_update_nonvarchar(self, online_enabled, df, feature_group_data):
