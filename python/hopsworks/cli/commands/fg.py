@@ -2,9 +2,10 @@
 
 Covers the full feature-group surface: ``list``, ``info``, ``preview``,
 ``features`` (reads) plus ``create``, ``create-external``, ``insert``,
-``derive``, ``delete``, ``stats``, ``search``, ``keywords``/``add-keyword``/
-``remove-keyword`` (writes). All operations go through the SDK in-process so
-Hopsworks domain logic is invoked directly, with no subprocess hop.
+``derive``, ``append-features``, ``delete``, ``stats``, ``search``,
+``keywords``/``add-keyword``/``remove-keyword`` (writes). All operations go
+through the SDK in-process so Hopsworks domain logic is invoked directly, with
+no subprocess hop.
 """
 
 from __future__ import annotations
@@ -651,6 +652,46 @@ def fg_derive(
         raise click.ClickException(f"Could not derive feature group: {exc}") from exc
 
     output.success("✓ Derived feature group %s from %s", name, base_fg)
+
+
+@fg_group.command("append-features")
+@click.argument("name")
+@click.option(
+    "--features",
+    "features_spec",
+    required=True,
+    help='New columns as comma-separated name:type pairs, e.g. "score:double,tier:string".',
+)
+@click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.pass_context
+def fg_append_features(
+    ctx: click.Context, name: str, features_spec: str, version: int | None
+) -> None:
+    """Append new columns to an existing feature group, in place.
+
+    Append-only schema evolution: it keeps the same feature group version so
+    downstream consumers are never disturbed. Existing columns cannot be
+    dropped, renamed, or retyped from here; that is a breaking change, so bump
+    to a new version instead. New columns cannot be primary or partition keys,
+    and existing rows are not backfilled (they read null until reinserted).
+    Feature views built on this feature group keep their old projection and do
+    not see the appended columns; create a new feature view to use them.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        features_spec: New columns as comma-separated ``name:type`` pairs.
+        version: Feature group version; defaults to latest.
+    """
+    fg = _get_fg(ctx, name, version)
+    features = _build_features(features_spec)
+    if not features:
+        raise click.UsageError("Provide at least one new column via --features.")
+    try:
+        fg.append_features(features)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Append failed: {exc}") from exc
+    output.success("✓ Appended %d feature(s) to %s", len(features), name)
 
 
 @fg_group.command("delete")

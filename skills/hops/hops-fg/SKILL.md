@@ -464,6 +464,43 @@ Only rows matching on all key columns are deleted.
 
 ---
 
+## Evolving the Schema
+
+Two cases, split by whether downstream consumers can be disturbed.
+
+**Add a column: append in place, same version.** Appending keeps the feature
+group version, so projects reading the FG downstream keep working.
+`get_or_create_feature_group` returns the existing FG and ignores a changed
+`features=` list, so re-running a pipeline never adds columns, and `fg.insert()`
+with extra columns fails with `Features are not compatible with Feature Group
+schema`. Append explicitly instead:
+
+```python
+from hsfs.feature import Feature
+
+fg.append_features([Feature("score", "double"), Feature("tier", "string")])
+```
+
+CLI: `hops fg append-features <name> --features "score:double,tier:string"`.
+
+Rules and consequences:
+- Append-only. New columns cannot be primary or partition keys.
+- Existing rows are not backfilled. They read null for the new column until reinserted.
+- Feature views over this FG keep their old projection and do not see the new columns. Build a new feature view (via `fg.select(...)`) to use them.
+
+**Drop a column, rename, or change a type: new version.** The backend rejects
+these in place: a feature group used downstream must not change shape under its
+consumers. Create the next version with the new schema and migrate readers to
+it:
+
+```python
+fg_v2 = fs.get_or_create_feature_group(name="my_fg", version=2, primary_key=[...], features=[...])
+```
+
+`hops fg delete` then recreate is data loss, not schema evolution. Reserve it for a throwaway FG that nothing reads yet.
+
+---
+
 ## Complete Feature Pipeline Template
 
 ```python
@@ -519,6 +556,8 @@ derived_fg.materialization_job.run(await_termination=True)
 | Preview rows | `print(fg.show(n=10))` (returns a DataFrame) |
 | Similarity search | `fg.find_neighbors(vector, k=5, filter=...)` |
 | Delete rows | `fg.commit_delete_record(df)` (df = primary_key cols + event_time) |
+| Add a column (same version) | `fg.append_features([Feature("c", "double")])` / `hops fg append-features <name> --features "c:double"` |
+| Drop/retype a column | not in place: create a new FG version |
 | Disable statistics | `statistics_config=False` |
 | Set provenance | `parents=[parent_fg1, parent_fg2]` |
 | Trigger materialization | `fg.materialization_job.run(await_termination=True)` |

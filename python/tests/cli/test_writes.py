@@ -40,6 +40,37 @@ def test_fg_delete_aborts_without_yes(mock_project):
     fg.delete.assert_not_called()
 
 
+# --- fg append-features ---------------------------------------------------
+
+
+def test_fg_append_features_parses_and_calls_sdk(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.name, fg.version = "txn", 1
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli,
+        ["fg", "append-features", "txn", "--features", "score:double,tier:string"],
+    )
+    assert result.exit_code == 0, result.output
+    fg.append_features.assert_called_once()
+    appended = fg.append_features.call_args.args[0]
+    assert [f.name for f in appended] == ["score", "tier"]
+    assert [f.type for f in appended] == ["double", "string"]
+
+
+def test_fg_append_features_rejects_bad_spec(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.name, fg.version = "txn", 1
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "append-features", "txn", "--features", "noType"]
+    )
+    assert result.exit_code != 0
+    fg.append_features.assert_not_called()
+
+
 # --- fg keywords / add / remove -------------------------------------------
 
 
