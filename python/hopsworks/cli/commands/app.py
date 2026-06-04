@@ -127,8 +127,11 @@ def app_url(ctx: click.Context, name: str) -> None:
 def app_logs(ctx: click.Context, name: str, stream: str) -> None:
     """Print stdout/stderr logs for the app's latest execution.
 
-    Avoids dropping to ``kubectl`` when a managed Streamlit app misbehaves.
-    One-shot: the backend exposes the latest execution's logs, not a live tail.
+    Reads the execution's log file, which the backend writes only when the
+    execution stops. While the app is still running that file does not exist,
+    and the backend rejects the request. A long-running Streamlit app is the
+    case where you most want logs, so this points at the live logs in the
+    Hopsworks UI instead of failing with an opaque error.
 
     Args:
         ctx: Click context.
@@ -136,9 +139,19 @@ def app_logs(ctx: click.Context, name: str, stream: str) -> None:
         stream: Which stream(s) to print: ``stdout``, ``stderr``, or ``both``.
     """
     a = _get_app(ctx, name)
+
+    if _app_is_running(a):
+        _report_running(name, a)
+        return
+
     try:
         logs = a.get_logs()
     except Exception as exc:  # noqa: BLE001
+        # Race: the app was running when the backend checked. The log file is
+        # written only on stop, so give the live-logs guidance, not a raw 400.
+        if _is_still_running_error(exc):
+            _report_running(name, a)
+            return
         raise click.ClickException(
             f"Could not read logs for app '{name}': {exc}"
         ) from exc
@@ -153,6 +166,53 @@ def app_logs(ctx: click.Context, name: str, stream: str) -> None:
     if stream in ("stderr", "both"):
         click.echo("=== stderr ===")
         click.echo(logs.get("stderr") or "(empty)")
+
+
+# Execution states in which the log file is not written yet, so the
+# execution-log endpoint returns a "still running" error (RESTCode 130010).
+_RUNNING_APP_STATES = frozenset(
+    {
+        "NEW",
+        "NEW_SAVING",
+        "SUBMITTED",
+        "ACCEPTED",
+        "RUNNING",
+        "INITIALIZING",
+        "STARTING_APP_MASTER",
+        "AGGREGATING_LOGS",
+        "DEPLOYING",
+    }
+)
+
+
+def _app_is_running(a: Any) -> bool:
+    """Whether the app's execution has not reached a final state."""
+    if getattr(a, "serving", False):
+        return True
+    return (getattr(a, "state", None) or "").upper() in _RUNNING_APP_STATES
+
+
+def _is_still_running_error(exc: Exception) -> bool:
+    """Whether ``exc`` is the backend's "execution still running" rejection."""
+    text = str(exc).lower()
+    return (
+        "130010" in text
+        or "still running" in text
+        or "execution state is invalid" in text
+    )
+
+
+def _report_running(name: str, a: Any) -> None:
+    """Explain that file logs wait for stop, and link the UI live logs."""
+    url = a.get_url()
+    msg = (
+        f"App '{name}' is still running; its execution log file is written "
+        f"only after it stops. View live logs in the Hopsworks UI: {url}"
+    )
+    if output.JSON_MODE:
+        output.print_json({"running": True, "message": msg, "url": url})
+        return
+    click.echo(msg)
 
 
 @app_group.command("create")
