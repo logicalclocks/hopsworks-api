@@ -288,7 +288,9 @@ class TestEnvVarsApi:
         client = MagicMock()
         client._send_request.side_effect = [
             _make_rest_api_error(EnvVar.NOT_FOUND_ERROR_CODE),  # get_env_var
-            _single_response("NEW_VAR", "v", visibility="PROJECT", project_id_scope=11),  # POST
+            _single_response(
+                "NEW_VAR", "v", visibility="PROJECT", project_id_scope=11
+            ),  # POST
         ]
         mocker.patch(
             "hopsworks_common.core.env_var_api.client.get_instance",
@@ -316,8 +318,12 @@ class TestEnvVarsApi:
         api = EnvVarsApi()
         client = MagicMock()
         client._send_request.side_effect = [
-            _single_response("EXISTING", "old", visibility="PRIVATE"),  # get_env_var returns hit
-            _single_response("EXISTING", "new", visibility="PROJECT", project_id_scope=11),  # PUT
+            _single_response(
+                "EXISTING", "old", visibility="PRIVATE"
+            ),  # get_env_var returns hit
+            _single_response(
+                "EXISTING", "new", visibility="PROJECT", project_id_scope=11
+            ),  # PUT
         ]
         mocker.patch(
             "hopsworks_common.core.env_var_api.client.get_instance",
