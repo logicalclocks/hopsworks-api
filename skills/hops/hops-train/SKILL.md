@@ -69,9 +69,18 @@ Hints:
   automatically to the returned frames, using statistics stored with the
   training dataset. The same MDTs run at inference time, so training and
   serving stay equivalent (no training/serving skew).
-- The FV's `select_all()` includes the serving key(s) and event time as columns.
-  Drop them from the model inputs by name (e.g. `X_train.drop(columns=[key, event_time])`)
-  — they are identifiers, not features.
+- Keep identifier columns (primary keys, event time) out of the model inputs.
+  They are leaky and break `fit` (a datetime column raises
+  `DTypePromotionError: DateTime64 could not be promoted by Float64`).
+  The clean fix is upstream: exclude them when you create the FV, with
+  `fg.select_except([pk, event_time])` or
+  `fg.select_all(include_primary_key=False, include_event_time=False)` (skill: hops-fv).
+- If you do pull keys/event time into a split (e.g. `get_train_test_split(primary_keys=True, event_time=True)`
+  to order a backtest plot), they come back **renamed** with a
+  `<project>_<fg>_<version>_` prefix (e.g. `newproj_eth_blocks_1_timestamp`), not their bare name.
+  Drop them by **suffix**, not exact name, before `fit`, or the prefixed
+  event-time column slips into the training matrix:
+  `X_train = X_train[[c for c in X_train.columns if not c.endswith(("_" + pk, "_" + event_time))]]`.
 
 ## 2. Train
 
