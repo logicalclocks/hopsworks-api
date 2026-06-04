@@ -171,7 +171,7 @@
 | python/hopsworks\_common/core/dashboard\_api.py                                  |       41 |       20 |     51% |41, 51-56, 68, 80, 96, 105, 121-126, 141-143 |
 | python/hopsworks\_common/core/dataset.py                                         |       31 |       14 |     55% |33-37, 41-44, 48, 52, 56, 60, 64 |
 | python/hopsworks\_common/core/dataset\_api.py                                    |      359 |      247 |     31% |106-168, 217-288, 300-366, 388, 405-408, 411, 422-426, 455, 470-471, 484, 497-499, 512, 556-580, 611-629, 655-664, 692-710, 736-754, 772-795, 827-846, 867-884, 900-915, 931-935, 964-1016, 1035, 1059, 1082-1094, 1107-1117, 1133-1149 |
-| python/hopsworks\_common/core/env\_var\_api.py                                   |       55 |        1 |     98% |       213 |
+| python/hopsworks\_common/core/env\_var\_api.py                                   |       59 |        1 |     98% |       252 |
 | python/hopsworks\_common/core/environment\_api.py                                |       41 |       22 |     46% |63-86, 108-113, 146-151, 163-173 |
 | python/hopsworks\_common/core/execution\_api.py                                  |       53 |       18 |     66% |65, 89-100, 105-111, 119-128, 131-141, 153-155 |
 | python/hopsworks\_common/core/flink\_cluster\_api.py                             |       93 |       63 |     32% |43, 76-88, 91-107, 136-147, 176-179, 208-211, 237-240, 268-277, 306-312, 338-357, 393-422, 464-476 |
@@ -208,7 +208,7 @@
 | python/hopsworks\_common/engine/environment\_engine.py                           |       38 |       27 |     29% |27-31, 34-38, 41-45, 48-74, 77-90 |
 | python/hopsworks\_common/engine/execution\_engine.py                             |      108 |       62 |     43% |57-80, 83-102, 119-144, 168, 181-195, 205-211, 218, 238 |
 | python/hopsworks\_common/engine/git\_engine.py                                   |       21 |        8 |     62% |     49-62 |
-| python/hopsworks\_common/env\_var.py                                             |       65 |        6 |     91% |90, 96, 104, 129, 132, 140 |
+| python/hopsworks\_common/env\_var.py                                             |       75 |        6 |     92% |106, 112, 120, 147, 150, 158 |
 | python/hopsworks\_common/environment.py                                          |       72 |       24 |     67% |63-66, 71, 81, 112-128, 159-175, 221, 224 |
 | python/hopsworks\_common/execution.py                                            |      140 |       23 |     84% |74, 80-82, 94, 124, 142, 148, 154, 160, 166, 172, 188, 193, 240, 253, 266, 285, 288, 291, 296-304 |
 | python/hopsworks\_common/flink\_cluster.py                                       |      121 |       66 |     45% |36-41, 44-62, 65-71, 96-122, 147, 178, 207, 234, 262, 305, 350, 375-378, 386, 392, 398, 404, 410, 416-419, 424-426 |
@@ -457,7 +457,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **35010** | **12373** | **65%** |           |
+| **TOTAL**                                                                        | **35024** | **12373** | **65%** |           |
 
 
 ## Setup coverage badge
