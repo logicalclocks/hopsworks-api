@@ -46,14 +46,25 @@ fs = project.get_feature_store()
 
 fv = fs.get_feature_view(name="my_fv", version=1)  # no FV yet? create one first (skill: hops-fv)
 
-# Materialize a train/test split, then read it back BY ITS VERSION.
-# Reading by training_dataset_version makes training data reproducible: the
-# version pins the feature-group commits and split seed, so every model
-# trained on it (and any later recreation) sees identical rows.
-# train_test_split() returns the new training-dataset version (it auto-increments).
-td_version, _ = fv.train_test_split(test_size=0.2)
-X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=td_version)
+# Two split methods. They are NOT interchangeable; pick by data size and
+# whether you need a reproducible, stored dataset.
+
+# A. In-memory (default for small/static data). Returns the four frames
+#    directly: no Spark, no stored version. Train right away.
+X_train, X_test, y_train, y_test = fv.train_test_split(test_size=0.2)
+
+# B. Materialized + versioned (large data, or a reproducible pinned dataset).
+#    create_train_test_split returns (version, Job) and runs an ASYNC PySpark
+#    job. The version pins the feature-group commits and split seed, so every
+#    model trained on it sees identical rows. Block on the job, then read back
+#    BY VERSION (the dataset 404s until the job finishes).
+# td_version, td_job = fv.create_train_test_split(
+#     test_size=0.2, write_options={"wait_for_job": True}
+# )
+# X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=td_version)
 ```
+
+> `train_test_split()` returns `(X_train, X_test, y_train, y_test)`, not a version. `create_train_test_split()` returns `(version, Job)`. Unpacking one as the other (`td_version, _ = fv.train_test_split(...)`) raises `ValueError: too many values to unpack`, and passing the `(version, Job)` tuple to `get_train_test_split` URL-encodes it into the path and 404s. For a static dataset, prefer the in-memory `train_test_split()`.
 
 Hints:
 - `get_train_test_split` only works on a dataset created BY a split call. A plain
@@ -69,6 +80,10 @@ Hints:
   automatically to the returned frames, using statistics stored with the
   training dataset. The same MDTs run at inference time, so training and
   serving stay equivalent (no training/serving skew).
+- Drop target-leaking columns: any value not known at prediction time.
+  Post-outcome signals (counts, views, reactions on the thing you predict) and
+  source-internal aggregates leak the label, and the store will not stop you.
+  Decide per column whether a draft/request would have it; if not, exclude it.
 - Keep identifier columns (primary keys, event time) out of the model inputs.
   They are leaky and break `fit` (a datetime column raises
   `DTypePromotionError: DateTime64 could not be promoted by Float64`).

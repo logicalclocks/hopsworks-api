@@ -86,7 +86,9 @@ cloned_env = env_api.create_environment(
 cloned_env.install_requirements("Users/<username>/app-requirements.txt")
 ```
 
-Then pass `environment="my_cloned_env"` to `create_app(...)` below — not the base.
+Then pass `environment="my_cloned_env"` to `create_app(...)` below, not the base.
+
+If the app loads a pickled model (e.g. scikit-learn via `joblib`), the base `python-app-pipeline` may ship a different scikit-learn than the one that pickled it, and the load fails. The base env has no library-introspection API (no `get_libraries`), so you cannot read its versions. Clone the base and pin the model's exact training versions (e.g. `scikit-learn==1.8.0` plus matching `numpy`/`scipy`/`joblib`) in the requirements file.
 
 ### 2. Create and Run the App
 
@@ -179,8 +181,12 @@ Apps run in a Python environment that provides pre-installed packages. The defau
 ```python
 env_api = project.get_environment_api()
 
-# Get or create environment
+# get_environment returns None for a missing environment, it does NOT raise.
+# Guard with `is None`; a try/except never fires and you hit
+# `AttributeError: 'NoneType' has no attribute 'install_requirements'`.
 env = env_api.get_environment("python-app-pipeline")
+if env is None:
+    env = env_api.create_environment("python-app-pipeline")
 
 # Install from requirements.txt
 env.install_requirements("Resources/requirements.txt", await_installation=True)

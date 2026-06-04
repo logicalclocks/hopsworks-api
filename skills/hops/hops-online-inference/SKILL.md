@@ -25,6 +25,10 @@ Hopsworks Model Serving deploys an online inference pipeline as an HTTP endpoint
 
 Library versions must match across the feature, training, and inference pipelines (e.g. the `joblib` used to pickle the model in training must be able to unpickle it here). The Hopsworks feature/training/inference base container images are version-aligned for this reason; if you customize an environment, install compatible versions.
 
+> **sklearn serving skew.** The KServe sklearn serving image pins a specific scikit-learn (e.g. 1.3.x). A model pickled with a different scikit-learn in your training venv (e.g. 1.8.x) can fail to unpickle on the KServe deployment. Either pin training to the serving image's scikit-learn, or deploy as a `python` deployment with a cloned environment that has your training versions plus your `predictor.py`. Batch and interactive inference run in your own environment, so they have no such skew.
+
+> **`get_model` defaults to v1, not latest.** `mr.get_model("name")` with no `version=` loads version 1 (with a warning), so a deployment keeps serving v1 after you register v2. Pass `version=` explicitly, or `mr.get_best_model("name", metric=..., direction=...)`.
+
 Supported frameworks:
 
 | Framework | Model Server | Requires predictor.py | Notes |
