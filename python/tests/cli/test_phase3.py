@@ -293,15 +293,26 @@ def _create_connector_body(args: list[str]) -> dict:
 
 def test_datasource_create_carries_type_discriminator(mock_project):
     mock_project.get_feature_store.return_value.id = 67
-    s3 = _create_connector_body(
-        ["datasource", "create", "s3", "lake", "--bucket", "b"]
-    )
+    s3 = _create_connector_body(["datasource", "create", "s3", "lake", "--bucket", "b"])
     assert s3["type"] == "featurestoreS3ConnectorDTO"
     sf = _create_connector_body(
         [
-            "datasource", "create", "snowflake", "wh", "--url", "https://x",
-            "--user", "u", "--password", "p", "--database", "d",
-            "--schema", "s", "--warehouse", "w",
+            "datasource",
+            "create",
+            "snowflake",
+            "wh",
+            "--url",
+            "https://x",
+            "--user",
+            "u",
+            "--password",
+            "p",
+            "--database",
+            "d",
+            "--schema",
+            "s",
+            "--warehouse",
+            "w",
         ]
     )
     assert sf["type"] == "featurestoreSnowflakeConnectorDTO"
