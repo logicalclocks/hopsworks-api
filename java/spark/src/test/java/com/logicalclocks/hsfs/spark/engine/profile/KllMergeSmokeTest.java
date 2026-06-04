@@ -24,11 +24,13 @@ import org.apache.datasketches.kll.KllDoublesSketch;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.functions;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -53,6 +55,27 @@ public class KllMergeSmokeTest {
   private static final String COL_NAME = "c_double";
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  /**
+   * Recreate a fresh SparkSession before every test.
+   *
+   * <p>The Spark test suite shares a single JVM-wide SparkContext. Other test classes
+   * (e.g. {@code TestStorageConnector}) register credential files via
+   * {@code SparkContext.addFile()} from JUnit {@code @TempDir} paths that JUnit deletes
+   * once those tests finish. Spark has no {@code removeFile}, so the stale registrations
+   * linger on the shared context; the first profiler test to run a real Spark job then
+   * fails in {@code Executor.updateDependencies} when it re-fetches the now-missing files.
+   * Starting each test from a clean SparkContext keeps these tests independent of that state.
+   */
+  @BeforeEach
+  void recreateSparkSession() {
+    if (SparkSession.getDefaultSession().isDefined()) {
+      SparkSession.getDefaultSession().get().stop();
+    }
+    SparkSession.clearActiveSession();
+    SparkSession.clearDefaultSession();
+    SparkEngine.setInstance(null);
+  }
 
   @Test
   void testMergedSketchMedianMatchesReference() throws Exception {

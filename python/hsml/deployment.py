@@ -28,6 +28,7 @@ from hsml.engine import serving_engine
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -284,7 +285,7 @@ class Deployment:
         )
 
     @public
-    def get_monitoring_configs(self):
+    def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
         """Get the feature monitoring configurations for the model deployed by this deployment.
 
         Delegates to the underlying model's ``get_monitoring_configs`` method.
@@ -318,7 +319,7 @@ class Deployment:
         start_date_time: int | str | None = None,
         end_date_time: int | str | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
-    ):
+    ) -> FeatureMonitoringConfig:
         """Create a model monitoring config bound to this deployment's model.
 
         Resolves the model's parent feature view from the registered provenance and

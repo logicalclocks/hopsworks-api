@@ -224,12 +224,14 @@ class TestWasserstein:
             compute(DET_2, REF_2, "WASSERSTEIN")
 
     def test_identical_distributions_zero(self):
+        pytest.importorskip("scipy")
         p = _norm([1, 3, 2])
         centres = np.array([0.5, 1.5, 2.5])
         result = compute(p, p, "WASSERSTEIN", bin_centres=centres)
         assert result == pytest.approx(0.0, abs=1e-9)
 
     def test_2bin_matches_scipy(self):
+        pytest.importorskip("scipy")
         from scipy.stats import wasserstein_distance
 
         centres = np.array([0.25, 0.75])

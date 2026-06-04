@@ -5163,19 +5163,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         )
 
         if self._id:
-            # Got from Hopsworks, deserialize features and storage connector
-            self._features = (
-                [
-                    (
-                        feature.Feature.from_response_json(feat)
-                        if isinstance(feat, dict)
-                        else feat
-                    )
-                    for feat in features
-                ]
-                if features
-                else None
-            )
+            # Got from Hopsworks, deserialize features and storage connector.
+            # self._features is already deserialized above (defaults to []).
             self.primary_key = (
                 [feat.name for feat in self._features if feat.primary is True]
                 if self._features
@@ -5697,13 +5686,11 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "features": self._features,
             "featurestoreId": self._feature_store_id,
             "dataFormat": self._data_format,
-            "path": self._path,
             "options": (
                 [{"name": k, "value": v} for k, v in self._options.items()]
                 if self._options
                 else None
             ),
-            "storageConnector": self._storage_connector.to_dict(),
             "type": "onDemandFeaturegroupDTO",
             "statisticsConfig": self._statistics_config,
             "eventTime": self._event_time,

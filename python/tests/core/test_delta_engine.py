@@ -295,7 +295,7 @@ class TestDeltaEngine:
         mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
 
         # Act
-        opts = engine._setup_delta_read_opts(alias, {"k": "v"})
+        opts = engine._setup_delta_read_opts(alias, read_options={"k": "v"})
 
         # Assert
         assert opts[engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT] == "t"

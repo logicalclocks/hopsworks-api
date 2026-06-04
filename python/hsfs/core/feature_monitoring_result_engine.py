@@ -271,27 +271,50 @@ class FeatureMonitoringResultEngine:
                 if self._is_monitoring_window_empty(ref_fds):
                     empty_reference_window = True
 
-        # Build fs_results only for FSCs whose feature was actually profiled.
-        # The JVM ColumnProfiler skips unprofilable types (timestamp/date/binary/complex), and
-        # schema evolution may add FG features after the FSCs were materialised — so FSCs can
-        # legitimately exceed the computed stats. Missing features are silently skipped here;
-        # the backend result validator accepts a subset of expected features.
+        # Build fs_results. Two modes:
+        #  - per-FSC mode: the config declares feature_statistics_configs (a column subset), so we
+        #    build one result per FSC whose feature was profiled, running statistics comparisons.
+        #    The JVM ColumnProfiler skips unprofilable types (timestamp/date/binary/complex), and
+        #    schema evolution may add FG features after the FSCs were materialised — so FSCs can
+        #    legitimately exceed the computed stats. Missing features are silently skipped here;
+        #    the backend result validator accepts a subset of expected features.
+        #  - all-features mode: the config has no FSCs (ingestion-FM backfill / no column subset
+        #    specified). There is nothing to compare against, but the backend still requires a
+        #    non-empty featureStatisticsResults, so emit one comparison-less result per profiled
+        #    feature (STATISTICS_COMPUTATION only).
         fs_results = []
-        for fs_config in fm_config.feature_statistics_configs:
-            det_fds = detection_stats_dict.get(fs_config.feature_name)
-            if det_fds is None:
-                continue
-            ref_fds = (
-                reference_stats_dict.get(fs_config.feature_name)
-                if reference_stats_dict is not None
-                else None
-            )
-            fs_result = self._run_feature_statistics_comparisons(
-                fs_config,
-                det_fds,
-                ref_fds,
-            )
-            fs_results.append(fs_result)
+        if fm_config.feature_statistics_configs:
+            for fs_config in fm_config.feature_statistics_configs:
+                det_fds = detection_stats_dict.get(fs_config.feature_name)
+                if det_fds is None:
+                    continue
+                ref_fds = (
+                    reference_stats_dict.get(fs_config.feature_name)
+                    if reference_stats_dict is not None
+                    else None
+                )
+                fs_result = self._run_feature_statistics_comparisons(
+                    fs_config,
+                    det_fds,
+                    ref_fds,
+                )
+                fs_results.append(fs_result)
+        else:
+            for feature_name, det_fds in detection_stats_dict.items():
+                ref_fds = (
+                    reference_stats_dict.get(feature_name)
+                    if reference_stats_dict is not None
+                    else None
+                )
+                fs_results.append(
+                    self._build_feature_statistics_result(
+                        feature_name=feature_name,
+                        detection_statistics=det_fds,
+                        reference_statistics=ref_fds,
+                        statistics_comparison_results=None,
+                        shifted_metric_names=set(),
+                    )
+                )
 
         # build fm result
         assert fm_config.id is not None

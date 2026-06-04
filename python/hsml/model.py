@@ -37,6 +37,7 @@ from hsml.schema import Schema
 
 if TYPE_CHECKING:
     from hsfs import feature_view
+    from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml import deployment, tag
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -603,7 +604,7 @@ class Model:
         return self._model_engine._get_training_dataset_provenance(model_instance=self)
 
     @public
-    def get_monitoring_configs(self):
+    def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
         """Get the feature monitoring configurations for this model version.
 
         Example:
@@ -650,7 +651,7 @@ class Model:
         start_date_time: int | str | None = None,
         end_date_time: int | str | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
-    ):
+    ) -> FeatureMonitoringConfig:
         """Create a model monitoring config for this model.
 
         Resolves this model's parent feature view via provenance and delegates to

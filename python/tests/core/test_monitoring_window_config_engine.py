@@ -241,25 +241,25 @@ class TestMonitoringWindowConfigEngine:
         # Act
         _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
-            feature_name=None,
+            feature_names=None,
             start_time=None,
             end_time=None,
         )
         _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
-            feature_name=DEFAULT_FEATURE_NAME,
+            feature_names=[DEFAULT_FEATURE_NAME],
             start_time=start_time,
             end_time=end_time,
         )
         _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
-            feature_name=None,
+            feature_names=None,
             start_time=start_time,
             end_time=None,
         )
         _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
-            feature_name=DEFAULT_FEATURE_NAME,
+            feature_names=[DEFAULT_FEATURE_NAME],
             start_time=None,
             end_time=end_time,
         )
@@ -367,13 +367,13 @@ class TestMonitoringWindowConfigEngine:
         # use as_of
         _ = config_engine._fetch_feature_view_data(
             entity=unit_test_fv,
-            feature_name=None,
+            feature_names=None,
             start_time=None,
             end_time=None,
         )
         _ = config_engine._fetch_feature_view_data(
             entity=unit_test_fv,
-            feature_name=DEFAULT_FEATURE_NAME,
+            feature_names=[DEFAULT_FEATURE_NAME],
             start_time=start_time,
             end_time=end_time,
         )
@@ -413,12 +413,14 @@ class TestMonitoringWindowConfigEngine:
         # Act
         config_engine_fg._fetch_entity_data_in_monitoring_window(
             entity=unit_test_fg,
+            feature_names=None,
             start_time=None,
             end_time=None,
             row_percentage=0.5,
         )
         config_engine_fv._fetch_entity_data_in_monitoring_window(
             entity=unit_test_fv,
+            feature_names=None,
             start_time=None,
             end_time=None,
             row_percentage=0.25,
@@ -429,9 +431,10 @@ class TestMonitoringWindowConfigEngine:
             [
                 call(
                     entity=unit_test_fg,
-                    feature_name=None,
+                    feature_names=None,
                     start_time=None,
                     end_time=None,
+                    model_filter=None,
                 ),
                 call().sample(fraction=0.5),
             ]
@@ -440,9 +443,10 @@ class TestMonitoringWindowConfigEngine:
             [
                 call(
                     entity=unit_test_fv,
-                    feature_name=None,
+                    feature_names=None,
                     start_time=None,
                     end_time=None,
+                    model_filter=None,
                 ),
                 call().sample(fraction=0.25),
             ]
