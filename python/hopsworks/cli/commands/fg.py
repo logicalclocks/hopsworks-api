@@ -979,13 +979,8 @@ def _build_features(spec: str | None) -> list[Any]:
         # after the second colon, so it may contain colons but not a comma,
         # which separates items. CLI-expressible types carry no inner colon.
         col, dtype, *desc = item.split(":", 2)
-        out.append(
-            Feature(
-                col.strip(),
-                dtype.strip(),
-                description=desc[0].strip() if desc else None,
-            )
-        )
+        description = desc[0].strip() if desc else None
+        out.append(Feature(col.strip(), dtype.strip(), description=description or None))
     return out
 
 

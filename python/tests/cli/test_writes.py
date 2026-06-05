@@ -55,16 +55,17 @@ def test_fg_append_features_parses_and_calls_sdk(mock_project):
             "append-features",
             "txn",
             "--features",
-            "score:double:Risk score,tier:string",
+            "score:double:Risk score,tier:string,extra:int:",
         ],
     )
     assert result.exit_code == 0, result.output
     fg.append_features.assert_called_once()
     appended = fg.append_features.call_args.args[0]
-    assert [f.name for f in appended] == ["score", "tier"]
-    assert [f.type for f in appended] == ["double", "string"]
-    # Optional per-column description: parsed for the first, None for the second.
-    assert [f.description for f in appended] == ["Risk score", None]
+    assert [f.name for f in appended] == ["score", "tier", "extra"]
+    assert [f.type for f in appended] == ["double", "string", "int"]
+    # Optional per-column description: parsed when given, None when omitted
+    # (no third field) or empty (a trailing colon).
+    assert [f.description for f in appended] == ["Risk score", None, None]
 
 
 def test_fg_append_features_rejects_bad_spec(mock_project):
