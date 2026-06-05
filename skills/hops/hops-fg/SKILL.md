@@ -105,6 +105,8 @@ fg = fs.get_or_create_feature_group(
 )
 ```
 
+**Always describe what you create.** Pass `description=` on the feature group and a `description=` on every `Feature(...)`. A feature group or column with no description shows as an empty envelope in the UI and is not discoverable in search. If the user gave none, write concise ones from what each feature means; never leave them blank.
+
 ### Key Parameters
 
 | Parameter | When to use |
@@ -507,7 +509,7 @@ from hsfs.feature import Feature
 fg.append_features([Feature("score", "double"), Feature("tier", "string")])
 ```
 
-CLI: `hops fg append-features <name> --features "score:double,tier:string"`.
+CLI: `hops fg append-features <name> --features "score:double:Risk score,tier:string"` — the spec is `name:type[:description]`, so set a description per column.
 
 Rules and consequences:
 - Append-only. New columns cannot be primary or partition keys.
@@ -551,7 +553,11 @@ derived_fg = fs.get_or_create_feature_group(
     description="Features derived from source_data for XYZ model",
     primary_key=["id"],
     event_time="event_ts",
-    features=[...],
+    features=[
+        Feature("id", "bigint", description="Entity id"),
+        Feature("event_ts", "timestamp", description="When the value was valid"),
+        # one Feature(..., description=...) per column — never leave a feature undescribed
+    ],
     online_enabled=True,        # ask user: online or offline?
     stream=True,
     parents=[source_fg],        # provenance

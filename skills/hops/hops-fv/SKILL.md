@@ -152,6 +152,8 @@ feature_view = fs.get_or_create_feature_view(
 )
 ```
 
+**Set a description.** Pass `description=` on the feature view so it is not an empty envelope in the UI. Per-feature descriptions come from the source feature groups, so describe the columns at the FG (see hops-fg), not here.
+
 > **The label must be in the query selection.** `labels=[...]` only marks which *already-selected* columns are targets; it does not add them. If the label is not in your `select(...)` (or is dropped by `select_except([...])`), create fails with `FeatureStoreException: Feature name '<label>' could not be found in query`. Select the label, then name it in `labels=`. (The examples above assume `is_fraud` is part of `query`.)
 
 ### Key Parameters

@@ -50,13 +50,21 @@ def test_fg_append_features_parses_and_calls_sdk(mock_project):
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
         cli,
-        ["fg", "append-features", "txn", "--features", "score:double,tier:string"],
+        [
+            "fg",
+            "append-features",
+            "txn",
+            "--features",
+            "score:double:Risk score,tier:string",
+        ],
     )
     assert result.exit_code == 0, result.output
     fg.append_features.assert_called_once()
     appended = fg.append_features.call_args.args[0]
     assert [f.name for f in appended] == ["score", "tier"]
     assert [f.type for f in appended] == ["double", "string"]
+    # Optional per-column description: parsed for the first, None for the second.
+    assert [f.description for f in appended] == ["Risk score", None]
 
 
 def test_fg_append_features_rejects_bad_spec(mock_project):

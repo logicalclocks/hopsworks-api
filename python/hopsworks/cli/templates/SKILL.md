@@ -64,7 +64,7 @@ hops fg create <name> --primary-key <cols> [flags]
 
 Flags:
 - `--primary-key <cols>` — comma-separated primary-key columns (required)
-- `--features "name:type,..."` — schema (bigint, double, boolean, timestamp, string, `array<float>`)
+- `--features "name:type[:description],..."` — schema (bigint, double, boolean, timestamp, string, `array<float>`); the optional third field is a per-column description
 - `--partition-key <cols>` — comma-separated partition columns
 - `--online` — enable online storage (Kafka + RonDB + Spark materialization)
 - `--event-time <col>` — event-time column for time-travel queries

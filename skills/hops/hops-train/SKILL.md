@@ -151,6 +151,8 @@ hw_model = mr.python.create_model(
 hw_model.save(model_dir)                    # uploads the whole dir (model + plots)
 ```
 
+**Set `description=`** on the model (and keep `metrics=`): an undescribed model is an empty envelope in the registry.
+
 Hints:
 - `save()` moves the local files into the registry; pass `keep_original_files=True`
   to also keep them locally.
