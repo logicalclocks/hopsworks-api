@@ -24,7 +24,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.json.JSONObject;
 
-import java.util.Map;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @NoArgsConstructor
@@ -49,7 +49,7 @@ public class FeatureDescriptiveStatistics extends RestDto<FeatureDescriptiveStat
   private Double sum;
   private Double mean;
   private Double stdDev;
-  private Map<String, Double> percentiles;
+  private List<Double> percentiles;
 
   // with exact uniqueness
   private Double distinctness;
