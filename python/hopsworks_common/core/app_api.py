@@ -286,6 +286,25 @@ class AppApi:
         headers = {"content-type": "application/json"}
         return _client._send_request("POST", path_params, headers=headers)
 
+    def _set_public(self, app_name: str, enabled: bool):
+        """Enable or disable public (no-login) access for a Streamlit app.
+
+        On enable the response carries the share token (data-owner only); the
+        caller builds the share URL from it.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "apps",
+            app_name,
+            "public",
+        ]
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST", path_params, headers=headers, data=json.dumps({"enabled": enabled})
+        )
+
     def _get_log(self, app_name: str, execution_id: int, log_type: str) -> dict:
         """Get stdout or stderr log metadata for an app execution."""
         _client = client.get_instance()
