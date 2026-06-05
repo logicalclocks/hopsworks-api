@@ -109,6 +109,37 @@ class TestFeature:
         assert feature_obj.original_name == "Bravo Col"
         assert feature_obj.name == "bravo_col"
 
+    def test_column_name_defaults_to_original_name(self):
+        # When no column_name is given, it should default to the pre-sanitization name.
+        f = feature.Feature(name="City")
+
+        assert f.name == "city"
+        assert f.column_name == "City"
+
+    def test_column_name_explicit_override(self):
+        # An explicit column_name takes precedence over the original name.
+        f = feature.Feature(name="city", column_name="City")
+
+        assert f.name == "city"
+        assert f.column_name == "City"
+
+    def test_column_name_in_to_dict(self):
+        f = feature.Feature(name="City")
+
+        d = f.to_dict()
+
+        assert d["name"] == "city"
+        assert d["columnName"] == "City"
+
+    def test_column_name_from_response_json(self, backend_fixtures):
+        # The backend sends columnName; it must survive the round-trip.
+        json = backend_fixtures["feature"]["get_with_column_name"]["response"]
+
+        f = feature.Feature.from_response_json(json)
+
+        assert f.name == "city"
+        assert f.column_name == "City"
+
     def test_get_fully_qualified_feature_name_without_prefix_and_without_use_fqn(self):
         # Arrange
         f = feature.Feature("feature_name")
