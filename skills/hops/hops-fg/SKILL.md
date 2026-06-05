@@ -56,6 +56,25 @@ Before creating a feature group, clarify these decisions with the user:
 
 ---
 
+## Feature data types & online-store constraints
+
+Pick a supported type up front: a write with an unsupported type fails, and retrying the same type just loops.
+
+**Supported feature types:**
+- Scalars: `int`, `bigint`, `float`, `double`, `boolean`, `string`, `date`, `timestamp`, `binary`.
+- Composite: `array<type>` and `struct<field:type,...>` — e.g. `array<float>`, `struct<lat:double,lon:double>`.
+- `decimal` is **not** supported. Use `double`, or `string` when you need exact precision.
+
+**Online store (`online_enabled=True`):**
+- Scalars map straight to RonDB. Strings become `varchar(n)`, auto-sized to the longest value seen (rounded up to 100) and widened on later inserts; very long text falls back to `text`.
+- Composite types (`array`, `struct`) **do** write online — they are stored Avro-encoded and decoded by the SDK on read. An online FG with an `array<float>` column is fine; you do not need to drop or flatten it.
+- For **similarity search**, declare the vector as `array<float>` **and** attach an `EmbeddingIndex` (see Vector Embeddings): the FG is then backed by the vector DB (OpenSearch) instead of RonDB. Without an embedding index an `array<float>` is stored data, not a searchable index.
+- Online is an upsert: one row per primary key, a new write for an existing key overwrites it.
+
+Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
+
+---
+
 ## Creating a Feature Group
 
 ```python
@@ -85,6 +104,8 @@ fg = fs.get_or_create_feature_group(
     # offline_backfill_every_hr=4,     # see "Materialization" section below
 )
 ```
+
+**Always describe what you create.** Pass `description=` on the feature group and a `description=` on every `Feature(...)`. A feature group or column with no description shows as an empty envelope in the UI and is not discoverable in search. If the user gave none, write concise ones from what each feature means; never leave them blank.
 
 ### Key Parameters
 
@@ -464,6 +485,13 @@ Only rows matching on all key columns are deleted.
 
 ---
 
+## Deleting a Feature Group
+
+**Confirm before deleting.** `fg.delete()` (CLI `hops fg delete <name> --version N --yes`) drops the feature group and all its data irreversibly; confirm the exact name and version with the user first.
+Never tear down a feature group you created as a side effect — temp or test ones included — unless the user asked; default to keeping resources.
+
+---
+
 ## Evolving the Schema
 
 Two cases, split by whether downstream consumers can be disturbed.
@@ -481,7 +509,7 @@ from hsfs.feature import Feature
 fg.append_features([Feature("score", "double"), Feature("tier", "string")])
 ```
 
-CLI: `hops fg append-features <name> --features "score:double,tier:string"`.
+CLI: `hops fg append-features <name> --features "score:double:Risk score,tier:string"` — the spec is `name:type[:description]`, so set a description per column.
 
 Rules and consequences:
 - Append-only. New columns cannot be primary or partition keys.
@@ -525,7 +553,11 @@ derived_fg = fs.get_or_create_feature_group(
     description="Features derived from source_data for XYZ model",
     primary_key=["id"],
     event_time="event_ts",
-    features=[...],
+    features=[
+        Feature("id", "bigint", description="Entity id"),
+        Feature("event_ts", "timestamp", description="When the value was valid"),
+        # one Feature(..., description=...) per column — never leave a feature undescribed
+    ],
     online_enabled=True,        # ask user: online or offline?
     stream=True,
     parents=[source_fg],        # provenance

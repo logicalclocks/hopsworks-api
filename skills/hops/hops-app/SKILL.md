@@ -33,6 +33,7 @@ Full CLI surface is in **Manage Apps from the CLI** below.
 
 - Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
+- **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
 ---
 

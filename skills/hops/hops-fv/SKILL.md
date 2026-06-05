@@ -65,6 +65,7 @@ rather than assuming `1`.
 - **Label column** — which selected feature is the prediction target (or none, for an unsupervised / retrieval view). It must be in the query selection.
 - **Which features** — which feature groups and columns to select, and how they join.
 - **Online vs offline source FGs** — whether the view needs online serving. If yes, every source feature group must be `online_enabled`; confirm before relying on `init_serving()`.
+- **Before deleting** — `fv.delete()` / `hops fv delete --yes --force` is irreversible; confirm the exact name and version with the user, and never tear down a feature view you created as a side effect (temp or test ones included) unless they asked.
 
 ---
 
@@ -150,6 +151,8 @@ feature_view = fs.get_or_create_feature_view(
     labels=["is_fraud"],
 )
 ```
+
+**Set a description.** Pass `description=` on the feature view so it is not an empty envelope in the UI. Per-feature descriptions come from the source feature groups, so describe the columns at the FG (see hops-fg), not here.
 
 > **The label must be in the query selection.** `labels=[...]` only marks which *already-selected* columns are targets; it does not add them. If the label is not in your `select(...)` (or is dropped by `select_except([...])`), create fails with `FeatureStoreException: Feature name '<label>' could not be found in query`. Select the label, then name it in `labels=`. (The examples above assume `is_fraud` is part of `query`.)
 

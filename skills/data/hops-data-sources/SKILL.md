@@ -69,6 +69,8 @@ hops datasource create bigquery <name> --project-id proj --dataset ds --key-path
 hops datasource delete <name> --yes
 ```
 
+**Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
+
 ## Ingest into a new feature group with DLTHub
 
 DLTHub copies a source into a managed feature group for the cases mounting cannot serve: loading the online store or a vector index, or pulling from an API/SaaS/REST endpoint. Ingestion runs server-side in the `dlthub-ingestion-pipeline` environment, driven by a `SinkJobConfiguration` attached to a sink-enabled feature group. It is configuration plus a server job, not an in-process `dlt` call.
