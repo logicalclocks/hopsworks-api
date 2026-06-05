@@ -284,7 +284,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
 @click.option(
     "--features",
     "features_spec",
-    help='Comma-separated schema, e.g. "id:bigint,amount:double".',
+    help='Comma-separated schema "name:type[:description]", e.g. "id:bigint:User id,amount:double".',
 )
 @click.option("--event-time", "event_time", help="Name of the event-time column.")
 @click.option(
@@ -319,7 +319,7 @@ def fg_create(
         name: Feature group name.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
-        features_spec: Comma-separated ``name:type`` pairs.
+        features_spec: Comma-separated ``name:type[:description]`` items.
         event_time: Event-time column name.
         partition_key: Comma-separated partition keys.
         online: Whether to enable the online store.
@@ -660,7 +660,7 @@ def fg_derive(
     "--features",
     "features_spec",
     required=True,
-    help='New columns as comma-separated name:type pairs, e.g. "score:double,tier:string".',
+    help='New columns "name:type[:description]", e.g. "score:double:Risk score,tier:string".',
 )
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
 @click.pass_context
@@ -680,7 +680,7 @@ def fg_append_features(
     Args:
         ctx: Click context.
         name: Feature group name.
-        features_spec: New columns as comma-separated ``name:type`` pairs.
+        features_spec: New columns as comma-separated ``name:type[:description]`` items.
         version: Feature group version; defaults to latest.
     """
     fg = _get_fg(ctx, name, version)
@@ -972,11 +972,15 @@ def _build_features(spec: str | None) -> list[Any]:
             continue
         if ":" not in item:
             raise click.BadParameter(
-                f"Feature '{item}' must be 'name:type'.",
+                f"Feature '{item}' must be 'name:type[:description]'.",
                 param_hint="--features",
             )
-        col, dtype = item.split(":", 1)
-        out.append(Feature(col.strip(), dtype.strip()))
+        # name:type[:description]; the description (optional) is everything
+        # after the second colon, so it may contain colons but not a comma,
+        # which separates items. CLI-expressible types carry no inner colon.
+        col, dtype, *desc = item.split(":", 2)
+        description = desc[0].strip() if desc else None
+        out.append(Feature(col.strip(), dtype.strip(), description=description or None))
     return out
 
 

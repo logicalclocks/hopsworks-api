@@ -51,6 +51,8 @@ hops agent stop my_agent
 hops agent delete my_agent --yes
 ```
 
+**Confirm before deleting.** `hops agent delete` tears down the served agent irreversibly; confirm the exact name with the user, and never tear down an agent you created as a side effect (temp or test ones included) unless they asked.
+
 `create` re-run uploads the latest code and rewrites the predictor; a running agent is left untouched (use `start`, or `restart` via the SDK, to roll onto new code).
 
 ## Deploy — SDK
