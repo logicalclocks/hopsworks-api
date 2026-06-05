@@ -35,6 +35,7 @@ quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
 - Which feature group (and version) to chart.
 - Which columns / metrics to visualize, and which chart types (see the viz_type
   enum in §3).
+- **Before deleting** — `api.delete_chart/dataset/dashboard(id)` / `hops superset ... delete --yes` is irreversible; confirm with the user which object to remove, and never delete one you created as a side effect (temp or test ones included) unless they asked.
 
 ---
 

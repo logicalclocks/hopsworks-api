@@ -178,6 +178,11 @@ Non-interactive cleanup needs flags: `hops model delete <name> --yes`,
 `hops fv delete <name> --version <v> --yes --force` (a FV with training data
 needs `--force`).
 
+**Confirm before deleting.** These remove the registered model or feature view
+irreversibly; confirm the exact name and version with the user, and never tear
+down a model or feature view you created as a side effect (temp or test ones
+included) unless they asked.
+
 ## Next Steps
 
 - Serve the model online: **hops-online-inference**. Batch scoring: **hops-batch-inference**.

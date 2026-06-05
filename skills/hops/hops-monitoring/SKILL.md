@@ -45,6 +45,7 @@ hops fg stats <name> --compute     # recompute on current data
 - Statistics-only, or **drift detection** against a reference (rolling window / fixed
   value / training dataset)?
 - Hard gate on bad data (`validation_ingestion_policy="strict"`) or log-and-pass (`"always"`)?
+- **Before deleting** — `config.delete()` removes the monitoring config; confirm with the user before deleting one you did not just create.
 
 ## Steps (generic, non-binding)
 1. Confirm what the cluster allows: statistics, validation, and alerts always work; feature monitoring needs the cluster service (see above).

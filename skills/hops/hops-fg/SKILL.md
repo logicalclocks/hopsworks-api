@@ -464,6 +464,13 @@ Only rows matching on all key columns are deleted.
 
 ---
 
+## Deleting a Feature Group
+
+**Confirm before deleting.** `fg.delete()` (CLI `hops fg delete <name> --version N --yes`) drops the feature group and all its data irreversibly; confirm the exact name and version with the user first.
+Never tear down a feature group you created as a side effect — temp or test ones included — unless the user asked; default to keeping resources.
+
+---
+
 ## Evolving the Schema
 
 Two cases, split by whether downstream consumers can be disturbed.
