@@ -6,9 +6,10 @@ ml/ — develop and operate ML systems with FTI pipeline architecture
 agents/ — develop and operate scheduled agents and agent deployments
 dashboards/ — design Streamlit apps and Superset dashboards
 data/ — data discovery, Trino SQL, storage connectors
+platform/ — cross-cutting platform knowledge (UI navigation), not tied to one FTI stage
 hops/ — legacy flat layout (superseded by the categorized folders above)
 deprecated/ — no longer used
-Every skill in ml/, agents/, dashboards/, data/ must have a reference in the top-level README.md. Skills in deprecated/ must not appear there.
+Every skill in ml/, agents/, dashboards/, data/, platform/ must have a reference in the top-level README.md. Skills in deprecated/ must not appear there.
 
 Each skill entry in the top-level README.md must link the skill name to its SKILL.md.
 

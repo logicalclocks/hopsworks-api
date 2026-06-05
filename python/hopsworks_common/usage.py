@@ -143,7 +143,7 @@ class MethodCounter:
 
 
 _logger = logging.getLogger(__name__)
-_handler = logging.StreamHandler(stream=sys.stdout)
+_handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(
     logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 )

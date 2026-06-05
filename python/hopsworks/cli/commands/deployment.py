@@ -45,7 +45,7 @@ def deployment_list(ctx: click.Context) -> None:
                 getattr(d, "model_name", "?"),
                 getattr(d, "model_version", "?"),
                 getattr(d, "serving_tool", "-"),
-                _deployment_status(d),
+                _deployment_status_live(d),
             ]
         )
     output.print_table(["ID", "NAME", "MODEL", "VERSION", "TOOL", "STATUS"], rows)
@@ -107,9 +107,9 @@ def deployment_status(ctx: click.Context, name: str) -> None:
 def _deployment_status(d: Any) -> str:
     """Return a best-effort status string without triggering a network call.
 
-    Deployment status in the SDK is lazy-loaded via ``.state``, which issues a
-    REST call. For the list view we avoid that — many deployments can be slow
-    — and fall back to any cached status attribute.
+    The no-network fallback used by ``_deployment_status_live`` when the live
+    ``get_state()`` call fails. Reads whatever status attribute the SDK already
+    cached on the deployment.
 
     Args:
         d: Deployment instance.
@@ -125,11 +125,11 @@ def _deployment_status(d: Any) -> str:
 
 
 def _deployment_status_live(d: Any) -> str:
-    """Status for a single deployment, fetching live state when available.
+    """Status for a deployment, fetching live state when available.
 
-    Unlike the list view, ``info`` can afford the REST call ``get_state()``
-    makes, so the Status reflects reality. The cached attributes are usually
-    empty (which rendered "-"); fall back to them only if the call fails.
+    Both ``list`` and ``info`` use this: ``get_state()`` issues a REST call so
+    the Status reflects reality. The cached attributes are usually empty (which
+    rendered "-"), so fall back to them only if the call fails.
 
     Args:
         d: Deployment instance.

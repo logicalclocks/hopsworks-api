@@ -210,3 +210,25 @@ class TestAppApiCreate:
             "my_app",
             "redeploy",
         ]
+
+    def test_set_public_enable_posts_to_backend(self, mock_client):
+        api = AppApi()
+        api._set_public("my_app", True)
+
+        assert mock_client._send_request.call_args.args[0] == "POST"
+        assert mock_client._send_request.call_args.args[1] == [
+            "project",
+            119,
+            "apps",
+            "my_app",
+            "public",
+        ]
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body == {"enabled": True}
+
+    def test_set_public_disable_sends_enabled_false(self, mock_client):
+        api = AppApi()
+        api._set_public("my_app", False)
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body == {"enabled": False}

@@ -61,10 +61,12 @@ class Feature:
         | None = None,
         on_demand: bool = False,
         use_fully_qualified_name=False,
+        column_name: str | None = None,
         **kwargs,
     ) -> None:
         self._original_name = name
         self._name = util.autofix_feature_name(name, warn=True)
+        self._column_name = column_name if column_name is not None else name
         self._type = type
         self._description = description
         self._primary = primary
@@ -113,6 +115,7 @@ class Feature:
             "featureGroupId": self._feature_group_id,
             "onDemand": self.on_demand,
             "useFullyQualifiedName": self._use_fully_qualified_name,
+            "columnName": self._column_name,
         }
 
     def _get_fully_qualified_feature_name(
@@ -186,6 +189,16 @@ class Feature:
     def original_name(self) -> str:
         """Original feature name before client-side sanitization."""
         return self._original_name
+
+    @public
+    @property
+    def column_name(self) -> str:
+        """Source column name in the external data source, preserving original casing."""
+        return self._column_name
+
+    @column_name.setter
+    def column_name(self, column_name: str) -> None:
+        self._column_name = column_name
 
     @public
     @property

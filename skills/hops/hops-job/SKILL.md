@@ -1,10 +1,24 @@
 ---
 name: hops-job
-description: Use when creating, configuring, scheduling, or running Hopsworks jobs or Airflow jobs/DAGs/workflows.
+description: Use when creating, configuring, scheduling, or running Hopsworks jobs or Airflow jobs/DAGs/workflows. Input a script in HopsFS plus job config; output a created/scheduled job and its executions.
 ---
 
 # Creating Hopsworks Jobs
 
+Run a HopsFS-resident Python/PySpark script as a Hopsworks job — created, scheduled, executed, and (optionally) chained via Airflow.
+
+A Hopsworks job is a **job orchestrator**: it schedules and runs a single program (one FTI pipeline — feature, training, or batch-inference). For a DAG of dependent programs you need a **workflow orchestrator** (Airflow, below). A single job is usually enough; reach for Airflow only when one program must run after another or fire on an event.
+
+## Contract
+- **Input:** a script in HopsFS + job config (name, environment, schedule).
+- **Output:** a created/scheduled job + executions.
+- **Pre-condition:** the script is uploaded to HopsFS (`hops job deploy` uploads a local script for you).
+
+## Smoke-test (cheap pre/post-flight)
+```bash
+hops job list            # confirm state before; verify the job exists after
+hops job info <name>
+```
 
 Two equivalent interfaces:
 - `hops job ...` CLI — preferred for one-off creation and scripted operations as jobs.
@@ -12,13 +26,20 @@ Two equivalent interfaces:
 
 ## Creating a job, with its environment
 
+Hopsworks does **automatic containerization**: you pick a base environment and it
+builds/reuses the container behind the scenes — no Dockerfile to write. One
+customized environment can back many jobs.
+
 `hops job deploy` is the one-shot: it uploads a local script, sets the Python
 environment, schedules, and runs — everything `create` + `schedule` + `run` do
 separately, plus the environment selection `create` cannot do.
 
 ```bash
-hops job deploy feature_pipeline.py --name feature-pipeline \
-  --env python-feature-pipeline --cron @daily --run --wait
+# Positional args are NAME then SCRIPT (a local script is uploaded for you).
+# --overwrite replaces the uploaded script so a re-run does not error on the
+# existing file; without it a second deploy of the same name fails.
+hops job deploy feature-pipeline feature_pipeline.py \
+  --env python-feature-pipeline --cron @daily --run --wait --overwrite
 ```
 
 Key fact: `hops job create` (and a bare job config) **cannot set the Python
@@ -39,10 +60,11 @@ pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 `pandas-inference-pipeline`) are deployment-only and cannot run as jobs.
 
 # Orchestrating Hopsworks Jobs with Airflow
-- When you want to chain Hopsworks jobs together or have a job triggered in response to an event like file landing in HopsFS, then write an Airflow DAG.
+- Airflow is the **workflow orchestrator**: it runs a DAG of jobs (tasks) with dependencies between them. Use it when you want to chain Hopsworks jobs together — e.g. derived-feature pipelines that run only after their upstream parents succeed — or trigger a job in response to an event like a file landing in HopsFS. One DAG to monitor beats five separate jobs. For a single pipeline, a plain scheduled job is enough.
 
 Here is an example of an airflow program that runs a Hopsworks Job:
 
+```python
 import os
 from datetime import datetime
 from airflow import DAG
@@ -66,3 +88,12 @@ with DAG(
         job_name="hello",
         args="",
     )
+```
+
+---
+
+## Next Steps
+
+- What goes in the script: **hops-features** (feature pipeline), **hops-train** (training), **hops-batch-inference** (scoring).
+- Custom libraries for the job: [hops-environments](../hops-environments/SKILL.md) — clone a base env and install requirements.
+- Inspect runs: `hops job list`, `hops job info <name>`, `hops job logs <name>`, `hops job history <name>`.
