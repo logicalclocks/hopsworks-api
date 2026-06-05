@@ -101,26 +101,38 @@ class ModelEngine:
         return None
 
     def _upload_additional_resources(self, model_instance):
-        if model_instance._input_example is not None:
-            input_example_path = os.path.join(os.getcwd(), "input_example.json")
-            input_example = util.input_example_to_json(model_instance._input_example)
+        # Stage these files in the system temp dir, not the CWD, so saving a
+        # model never leaves input_example.json / model_schema.json behind in
+        # the user's working directory.
+        if (
+            model_instance._input_example is not None
+            or model_instance._model_schema is not None
+        ):
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                if model_instance._input_example is not None:
+                    input_example_path = os.path.join(tmp_dir, "input_example.json")
+                    input_example = util.input_example_to_json(
+                        model_instance._input_example
+                    )
 
-            with open(input_example_path, "w+") as out:
-                json.dump(input_example, out, cls=util.NumpyEncoder)
+                    with open(input_example_path, "w+") as out:
+                        json.dump(input_example, out, cls=util.NumpyEncoder)
 
-            self._engine.upload(input_example_path, model_instance.version_path)
-            os.remove(input_example_path)
-            model_instance.input_example = None
-        if model_instance._model_schema is not None:
-            model_schema_path = os.path.join(os.getcwd(), "model_schema.json")
-            model_schema = model_instance._model_schema
+                    self._engine.upload(
+                        input_example_path, model_instance.version_path
+                    )
+                    model_instance.input_example = None
+                if model_instance._model_schema is not None:
+                    model_schema_path = os.path.join(tmp_dir, "model_schema.json")
+                    model_schema = model_instance._model_schema
 
-            with open(model_schema_path, "w+") as out:
-                out.write(model_schema.json())
+                    with open(model_schema_path, "w+") as out:
+                        out.write(model_schema.json())
 
-            self._engine.upload(model_schema_path, model_instance.version_path)
-            os.remove(model_schema_path)
-            model_instance.model_schema = None
+                    self._engine.upload(
+                        model_schema_path, model_instance.version_path
+                    )
+                    model_instance.model_schema = None
         return model_instance
 
     def _copy_or_move_hopsfs_model_item(
@@ -876,7 +888,7 @@ class ModelEngine:
         if self._dataset_api.path_exists(hdfs_resource_path):
             try:
                 resource = os.path.basename(resource)
-                tmp_dir = tempfile.TemporaryDirectory(dir=os.getcwd())
+                tmp_dir = tempfile.TemporaryDirectory()
                 local_resource_path = os.path.join(tmp_dir.name, resource)
                 self._engine.download(
                     hdfs_resource_path,
@@ -893,7 +905,7 @@ class ModelEngine:
         hdfs_resource_path = self._build_resource_path(model_instance, resource)
         if self._dataset_api.path_exists(hdfs_resource_path):
             try:
-                tmp_dir = tempfile.TemporaryDirectory(dir=os.getcwd())
+                tmp_dir = tempfile.TemporaryDirectory()
                 local_resource_path = os.path.join(tmp_dir.name, resource)
                 self._engine.download(
                     hdfs_resource_path,
