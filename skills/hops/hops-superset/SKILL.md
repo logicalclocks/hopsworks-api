@@ -122,12 +122,11 @@ api.update_dashboard(dashboard_id: int, **kwargs) -> dict
 api.delete_dashboard(dashboard_id: int) -> dict
 ```
 
-Raw requests (for paging, or endpoints the SDK doesn't wrap) go through
-`api._request("GET", "/api/v1/...")` — the same client, auth headers included.
+`_request(...)` is **internal** (underscore-prefixed, not `@public`): it carries no cross-release stability guarantee. Prefer the `@public` methods above (`list_*`, `create_*`, `get_*`, `update_*`, `delete_*`) as the supported surface. Reach for `api._request("GET", "/api/v1/...")` only for what the public API does not cover yet — paging, or endpoints the SDK doesn't wrap — knowing it may break on upgrade.
 
 ### Paging helper
 
-`list_*()` returns only the first page (~25 rows). Paginate manually:
+`list_*()` returns only the first page (~25 rows). There is no public paged-list method yet, so paginate via the internal `_request` (escape hatch — see the note above):
 
 ```python
 def list_all(api, resource):
