@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 if TYPE_CHECKING:
@@ -58,24 +59,33 @@ class AppApi:
 
     @public
     @usage.method_logger
-    def get_app(self, name: str) -> app.App:
+    def get_app(self, name: str) -> app.App | None:
         """Get an app by name.
 
         Parameters:
             name: Name of the app.
 
         Returns:
-            App object.
+            App object, or ``None`` if no app with that name exists, so a
+            reuse-if-exists guard does not have to catch a 404.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the app does not exist or the backend encounters an error.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error other than a 404.
         """
         from hopsworks_common import app
 
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "apps", name]
         headers = {"content-type": "application/json"}
-        response = _client._send_request("GET", path_params, headers=headers)
+        try:
+            response = _client._send_request("GET", path_params, headers=headers)
+        except RestAPIError as err:
+            if (
+                getattr(err.response, "status_code", None)
+                == RestAPIError.STATUS_CODE_NOT_FOUND
+            ):
+                return None
+            raise
         return app.App.from_response_json(response)
 
     @public

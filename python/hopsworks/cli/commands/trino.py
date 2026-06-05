@@ -222,6 +222,12 @@ def trino_query(
     _execute(ctx, sql, catalog, schema, limit)
 
 
+# ``hops trino sql ...`` is a natural guess (the skill calls it "Trino SQL",
+# and the top-level alias is ``hops sql``). Without this it failed with a bare
+# "No such command 'sql'". Register the same command under both names.
+trino_group.add_command(trino_query, name="sql")
+
+
 # region: discovery shortcuts ---------------------------------------------
 
 
