@@ -20,6 +20,9 @@ into bucket folders:
 - [hops-eda](ml/hops-eda/SKILL.md) — EDA before training.
 - [hops-eda-checklist](ml/hops-eda-checklist/SKILL.md) — reference: EDA dimensions (profiling, target, leakage).
 
+## platform/ — cross-cutting platform knowledge
+- [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
+
 ## hops/ — feature store, training, inference, jobs, apps, agents
 - [hops-fg](hops/hops-fg/SKILL.md) — feature groups.
 - [hops-fv](hops/hops-fv/SKILL.md) — feature views, training data, online vectors.

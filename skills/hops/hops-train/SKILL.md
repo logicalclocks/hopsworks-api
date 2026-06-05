@@ -151,6 +151,8 @@ hw_model = mr.python.create_model(
 hw_model.save(model_dir)                    # uploads the whole dir (model + plots)
 ```
 
+**Set `description=`** on the model (and keep `metrics=`): an undescribed model is an empty envelope in the registry.
+
 Hints:
 - `save()` moves the local files into the registry; pass `keep_original_files=True`
   to also keep them locally.
@@ -177,6 +179,11 @@ replaces the uploaded script so a re-run does not error on the existing file.
 Non-interactive cleanup needs flags: `hops model delete <name> --yes`,
 `hops fv delete <name> --version <v> --yes --force` (a FV with training data
 needs `--force`).
+
+**Confirm before deleting.** These remove the registered model or feature view
+irreversibly; confirm the exact name and version with the user, and never tear
+down a model or feature view you created as a side effect (temp or test ones
+included) unless they asked.
 
 ## Next Steps
 

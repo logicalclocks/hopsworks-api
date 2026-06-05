@@ -41,7 +41,7 @@ Is it a batch or streamining job? The same program should both backfill historic
 Will it be a simple job execution or a scheduled job (optionally with incremental reads from feature groups and/or data sources). Load hops-job skill.
 
 ## Sink
-One or more feature groups should be the sink of the feature pipelines. Use the **hops-fg** skill to create and write them (online vs offline, schema, provenance). For external/source data, use **hops-data-sources**; for PySpark processing, **hops-spark**.
+One or more feature groups should be the sink of the feature pipelines. Use the **hops-fg** skill to create and write them (online vs offline, schema, provenance). For external/source data, use **hops-data-sources**; for PySpark processing, **hops-spark**. Set a `description=` on each sink feature group and on every `Feature(...)`: undescribed features land as empty envelopes in the UI and are not discoverable.
 
 ## Next Steps
 

@@ -18,6 +18,7 @@ An **online inference pipeline** is one of the three FTI pipelines (Feature, Tra
 - **Resources:** CPU cores, memory, GPUs for the predictor (requests vs limits).
 - **Environment:** which Python environment the predictor runs in.
 - **Scaling:** min/max instances, scale-to-zero, and target concurrency (`ScaleMetric.CONCURRENCY`).
+- **Before deleting** — `deployment.delete()` / `hops deployment delete --yes` tears down the running endpoint irreversibly; confirm the exact name with the user, and never tear down a deployment you created as a side effect (temp or test ones included) unless they asked.
 
 ## Model Deployment Overview
 

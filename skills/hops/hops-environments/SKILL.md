@@ -77,6 +77,8 @@ env.delete()                               # remove the environment
 - Which base matches the workload (training vs inference vs app vs agent)?
 - Is there a `requirements.txt` already? If not, prompt for one before cloning —
   a clone with nothing to install is wasted minutes.
+- **Before deleting** — `env.delete()` is irreversible; confirm with the user, and
+  never delete an environment a job, app, or deployment still references.
 
 ## Caveats
 - **Clone and install each block for minutes.** Use `await_creation=False` /
