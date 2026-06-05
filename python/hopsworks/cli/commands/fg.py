@@ -2,9 +2,10 @@
 
 Covers the full feature-group surface: ``list``, ``info``, ``preview``,
 ``features`` (reads) plus ``create``, ``create-external``, ``insert``,
-``derive``, ``delete``, ``stats``, ``search``, ``keywords``/``add-keyword``/
-``remove-keyword`` (writes). All operations go through the SDK in-process so
-Hopsworks domain logic is invoked directly, with no subprocess hop.
+``derive``, ``append-features``, ``delete``, ``stats``, ``search``,
+``keywords``/``add-keyword``/``remove-keyword`` (writes). All operations go
+through the SDK in-process so Hopsworks domain logic is invoked directly, with
+no subprocess hop.
 """
 
 from __future__ import annotations
@@ -99,6 +100,11 @@ def fg_info(
     "--featurestore",
     help="Pin lookup to this feature store by name (for shared/ambiguous names).",
 )
+@click.option(
+    "--columns",
+    help="Comma-separated columns to show (projection); useful to skip wide "
+    "embedding/array columns.",
+)
 @click.pass_context
 def fg_preview(
     ctx: click.Context,
@@ -107,8 +113,13 @@ def fg_preview(
     n: int,
     online: bool,
     featurestore: str | None,
+    columns: str | None,
 ) -> None:
     """Show the first ``n`` rows of a feature group.
+
+    Wide array/struct columns (embeddings, nested arrays) are collapsed to a
+    ``[len=N] head…`` preview in the table view so one row stays one line; use
+    ``--columns`` to project, or ``--json`` for the untruncated values.
 
     Args:
         ctx: Click context.
@@ -117,6 +128,7 @@ def fg_preview(
         n: Number of rows to fetch.
         online: When True, read from the online store.
         featurestore: Pin lookup to this feature store by name.
+        columns: Optional comma-separated column projection.
     """
     fg = _get_fg(ctx, name, version, featurestore)
     try:
@@ -124,13 +136,22 @@ def fg_preview(
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
         raise click.ClickException(f"Could not read feature group: {exc}") from exc
 
+    if columns:
+        wanted = [c.strip() for c in columns.split(",") if c.strip()]
+        missing = [c for c in wanted if c not in df.columns]
+        if missing:
+            raise click.BadParameter(
+                f"Unknown column(s): {', '.join(missing)}", param_hint="--columns"
+            )
+        df = df[wanted]
+
     if output.JSON_MODE:
         output.print_json(df.to_dict(orient="records"))
         return
 
-    columns = list(df.columns)
-    rows = [[row[c] for c in columns] for _, row in df.iterrows()]
-    output.print_table(columns, rows)
+    cols = list(df.columns)
+    rows = [[_truncate_cell(row[c]) for c in cols] for _, row in df.iterrows()]
+    output.print_table(cols, rows)
 
 
 @fg_group.command("features")
@@ -633,6 +654,46 @@ def fg_derive(
     output.success("✓ Derived feature group %s from %s", name, base_fg)
 
 
+@fg_group.command("append-features")
+@click.argument("name")
+@click.option(
+    "--features",
+    "features_spec",
+    required=True,
+    help='New columns as comma-separated name:type pairs, e.g. "score:double,tier:string".',
+)
+@click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.pass_context
+def fg_append_features(
+    ctx: click.Context, name: str, features_spec: str, version: int | None
+) -> None:
+    """Append new columns to an existing feature group, in place.
+
+    Append-only schema evolution: it keeps the same feature group version so
+    downstream consumers are never disturbed. Existing columns cannot be
+    dropped, renamed, or retyped from here; that is a breaking change, so bump
+    to a new version instead. New columns cannot be primary or partition keys,
+    and existing rows are not backfilled (they read null until reinserted).
+    Feature views built on this feature group keep their old projection and do
+    not see the appended columns; create a new feature view to use them.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        features_spec: New columns as comma-separated ``name:type`` pairs.
+        version: Feature group version; defaults to latest.
+    """
+    fg = _get_fg(ctx, name, version)
+    features = _build_features(features_spec)
+    if not features:
+        raise click.UsageError("Provide at least one new column via --features.")
+    try:
+        fg.append_features(features)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Append failed: {exc}") from exc
+    output.success("✓ Appended %d feature(s) to %s", len(features), name)
+
+
 @fg_group.command("delete")
 @click.argument("name")
 @click.option(
@@ -699,7 +760,26 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
         to_dict = getattr(stats, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else {"stats": str(stats)})
         return
-    output.info("%s", stats)
+
+    fds = getattr(stats, "feature_descriptive_statistics", None)
+    if not fds:
+        output.info("%s", stats)
+        return
+    rows = [
+        [
+            getattr(s, "feature_name", "?"),
+            _stat_num(getattr(s, "count", None), as_int=True),
+            _stat_num(getattr(s, "completeness", None)),
+            _stat_num(getattr(s, "min", None)),
+            _stat_num(getattr(s, "max", None)),
+            _stat_num(getattr(s, "mean", None)),
+            _stat_num(getattr(s, "stddev", None)),
+        ]
+        for s in fds
+    ]
+    output.print_table(
+        ["FEATURE", "COUNT", "COMPLETE", "MIN", "MAX", "MEAN", "STDDEV"], rows
+    )
 
 
 @fg_group.command("search")
@@ -831,6 +911,39 @@ def fg_remove_keyword(
 
 
 # region Helpers
+
+
+def _stat_num(value: Any, as_int: bool = False) -> str:
+    """Format a single statistic for the table view; ``None`` renders as ``-``."""
+    if value is None:
+        return "-"
+    if as_int and isinstance(value, (int, float)):
+        return str(int(value))
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def _truncate_cell(value: Any, width: int = 60) -> str:
+    """Collapse a wide list/array cell to a length + head preview.
+
+    Embeddings and struct arrays would otherwise blow up the row; long scalars
+    are truncated to ``width``.
+    """
+    is_seq = isinstance(value, (list, tuple)) or (
+        hasattr(value, "tolist") and hasattr(value, "__len__")
+    )
+    if is_seq:
+        try:
+            seq = list(value)
+        except TypeError:
+            seq = None
+        if seq is not None:
+            head = ", ".join(str(x)[:12] for x in seq[:3])
+            tail = ", …" if len(seq) > 3 else ""
+            return f"[len={len(seq)}] {head}{tail}"
+    text = str(value)
+    return text if len(text) <= width else text[: width - 1] + "…"
 
 
 def _split_csv(value: str | None) -> list[str]:

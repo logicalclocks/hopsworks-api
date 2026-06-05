@@ -1,9 +1,17 @@
 ---
-name: hopsworks-fv
+name: hops-fv
 description: Use when writing Python code that creates, queries, or manages Hopsworks feature views via the hsfs SDK. Auto-invoke when user builds feature views, selects features, applies transformations, creates training data, retrieves feature vectors, or asks about feature view best practices (labels, filters, joins, transformations, online serving, embeddings).
 ---
 
 # Hopsworks Feature Views — Python SDK Best Practices
+
+A feature view defines a set of features from one or more feature groups, joined together via a Query. It is the read interface of the feature store — the V between F and T/I in the FTI pattern.
+
+## Contract
+
+- **Input:** one or more feature groups, a feature selection (`select`/`join`) forming a Query, an optional label column, and optional transformation functions.
+- **Output:** a named, versioned feature view that produces reproducible training datasets, online feature vectors for serving, and offline batch data.
+- **Pre-condition:** the source feature groups already exist. For online serving every feature group in the view must be `online_enabled` (sole exception: all-on-demand views). The label, if any, must be in the query selection.
 
 ## What Is a Feature View
 
@@ -13,13 +21,58 @@ A feature view defines a set of features from one or more feature groups, joined
 - Retrieving online feature vectors for model serving
 - Batch scoring with offline data
 
+It is metadata-only (stores no data) and is the feature store's mechanism for preventing training/serving skew: it returns the same ordered features and applies the same model-dependent (MDT) and on-demand (ODT) transformations in training and inference pipelines.
+
+---
+
+## Smoke-test
+
+Verify state with the `hops` CLI (cheap pre/post-flight):
+
+```bash
+hops fv list                                    # list feature views (id, name, version, labels)
+hops fv info <name> --version 1                 # metadata + schema; flags the label column
+hops td list <fv-name> --version 1              # training-dataset versions
+hops fv get <name> --version 1 --entry "pk=val" # one online feature vector, no Python
+```
+
+Non-interactive delete needs flags: `hops fv delete <name> --version 1 --yes --force`.
+
+### Build the view + training data from the CLI
+
+The whole F→T handoff can run from the CLI, no Python — this is what the terminal
+kickoff flow uses. Register any custom transforms first (the `--transform` flag
+resolves them **by name** from the transformation store, so an unregistered udf
+fails):
+
+```bash
+hops transformation create --file transformations.py            # register udfs first
+hops fv create <name> --feature-group <derived_fg>:1 \
+  --transform <fn>:<col> --labels <label>                       # --join "<fg> LEFT <on>" repeatable
+hops td compute <fv> <fv_version> --split "train:0.8,test:0.2"  # positional = FEATURE-VIEW version
+hops td list <fv>                                               # TD version auto-increments; read it back here
+```
+
+`hops fv create --feature-group` takes `name[:version]`; `--transform` and `--join`
+are repeatable. `hops td compute` takes the FV version as a required positional —
+the training-dataset version it writes auto-increments, so read it from `hops td list`
+rather than assuming `1`.
+
+---
+
+## Ask the user (only when state is ambiguous)
+
+- **Label column** — which selected feature is the prediction target (or none, for an unsupervised / retrieval view). It must be in the query selection.
+- **Which features** — which feature groups and columns to select, and how they join.
+- **Online vs offline source FGs** — whether the view needs online serving. If yes, every source feature group must be `online_enabled`; confirm before relying on `init_serving()`.
+
 ---
 
 ## Creating a Feature View
 
 ### 1. Build a Query (Feature Selection)
 
-Feature selection starts from feature groups. Use `select()`, `select_all()`, or `select_except()` on a feature group to create a Query, then join additional queries.
+Feature selection starts from a **root feature group** (often, but not necessarily, the one holding the label). From the root you can reach any feature group connected by a join key path; a feature group with no path from the root cannot be included. Use `select()`, `select_all()`, or `select_except()` on a feature group to create a Query, then join additional queries.
 
 ```python
 import hopsworks
@@ -98,6 +151,8 @@ feature_view = fs.get_or_create_feature_view(
 )
 ```
 
+> **The label must be in the query selection.** `labels=[...]` only marks which *already-selected* columns are targets; it does not add them. If the label is not in your `select(...)` (or is dropped by `select_except([...])`), create fails with `FeatureStoreException: Feature name '<label>' could not be found in query`. Select the label, then name it in `labels=`. (The examples above assume `is_fraud` is part of `query`.)
+
 ### Key Parameters
 
 | Parameter | Type | Description |
@@ -105,9 +160,9 @@ feature_view = fs.get_or_create_feature_view(
 | `name` | `str` | Feature view name |
 | `query` | `Query` | Query defining feature selection and joins |
 | `version` | `int` | Version number (auto-increments if None) |
-| `labels` | `list[str]` | Feature names used as prediction target. Excluded from feature vectors at inference |
+| `labels` | `list[str]` | Which *selected* features are the prediction target. Must be present in the query selection (`labels=` marks, it does not select). Excluded from feature vectors at inference |
 | `inference_helper_columns` | `list[str]` | Features not used in model but available during inference (e.g., for post-processing). Excluded from `get_feature_vector()`, available via `get_inference_helper()` |
-| `training_helper_columns` | `list[str]` | Features not in model schema but useful during training (e.g., for sampling). Excluded at inference time |
+| `training_helper_columns` | `list[str]` | Features not in model schema but useful during training (e.g., for sampling, or for slicing evaluation data by a sensitive attribute like gender to check for bias without training on it). Excluded at inference time |
 | `transformation_functions` | `list` | Model-dependent transformations (see below) |
 | `logging_enabled` | `bool` | Enable feature vector logging |
 
@@ -255,199 +310,24 @@ neighbors = fv.find_neighbors(
 
 ## Transformations
 
-Transformations in feature views come in two types:
-
-1. **Model-dependent transformations** — use training statistics, applied during both training and inference
-2. **On-demand transformations** — compute features at runtime from request parameters, no statistics
-
-### Built-in Transformations
-
-Import from `hsfs.builtin_transformations`. All built-in transformations are model-dependent (they learn statistics from training data).
-
-**Scaling & Normalization:**
-
-| Function | Description |
-|---|---|
-| `min_max_scaler(feature)` | Scale to [0, 1] using training min/max |
-| `standard_scaler(feature)` | Standardize using training mean/stddev |
-| `robust_scaler(feature)` | Scale using median/IQR (outlier-robust) |
-
-**Distribution Transforms:**
-
-| Function | Description |
-|---|---|
-| `log_transform(feature)` | Natural log (values <= 0 become NaN) |
-| `quantile_transformer(feature)` | Map to uniform [0, 1] via training percentiles |
-| `rank_normalizer(feature)` | Percentile rank in training distribution |
-
-**Outlier Handling:**
-
-| Function | Description | Context |
-|---|---|---|
-| `winsorize(feature)` | Clip at percentile boundaries | `{"p_low": 5, "p_high": 95}` |
-
-**Binning / Discretization:**
-
-| Function | Description | Context |
-|---|---|---|
-| `equal_width_binner(feature)` | Equal-width bins (default 10) | `{"n_bins": 20}` |
-| `equal_frequency_binner(feature)` | Quartile-based bins (4 bins) | |
-| `quantile_binner(feature)` | Quantile-based bins | |
-
-**Encoding:**
-
-| Function | Description | Context |
-|---|---|---|
-| `label_encoder(feature)` | Categorical to integer (unseen -> -1) | |
-| `one_hot_encoder(feature)` | One-hot boolean columns (unseen -> all False) | |
-| `top_k_categorical_binner(feature)` | Group rare categories to "Other" | `{"top_n": 20, "other_label": "Rare"}` |
-
-**Imputation:**
-
-| Function | Description | Context |
-|---|---|---|
-| `impute_mean(feature)` | Fill NaN with training mean | |
-| `impute_median(feature)` | Fill NaN with training median | |
-| `impute_constant(feature)` | Fill NaN with constant | `{"value": -1.0}` |
-| `impute_mode(feature)` | Fill NaN with most frequent category | |
-| `impute_category(feature)` | Fill NaN with sentinel string | `{"value": "Unknown"}` |
-
-**Usage:**
+Transformations on a feature view are the **T** in FTI. Two kinds:
+- **Model-dependent (MDT)** — statistics-based (scalers, encoders, imputers), specific to one model, attached here via `transformation_functions=` on `create_feature_view`; applied as the last step before the model, at both training and serving. Training-dataset statistics (mean, min/max, encoding maps) are stored with the training dataset, so `init_serving`/`init_batch_scoring` take a `training_dataset_version` to apply the exact same MDT at inference and avoid skew.
+- **On-demand (ODT)** — computed at request time from `request_parameters`, registered at the feature group (not the FV, since they also run in feature pipelines); auto-included when this FV selects them.
 
 ```python
 from hsfs.builtin_transformations import standard_scaler, label_encoder, impute_mean
 
 fv = fs.create_feature_view(
-    name="my_fv",
-    version=1,
-    query=query,
-    labels=["target"],
-    transformation_functions=[
-        impute_mean("age"),
-        standard_scaler("age"),
-        label_encoder("country"),
-    ],
+    name="my_fv", version=1, query=query, labels=["target"],
+    transformation_functions=[impute_mean("age"), standard_scaler("age"), label_encoder("country")],
 )
+# on-demand at serving:
+fv.get_feature_vector(entry={"user_id": 123}, request_parameters={"current_location": "NYC"})
 ```
 
-**Setting transformation context** (for built-ins that accept it):
+> A transform **renames its output** to `<fn>_<col>_`, and a udf is **frozen into the FV at create** (fixing it forces a new FV version + retrain). Custom udfs import from `hopsworks` (`from hopsworks import udf`), and a default-mode udf must run on **both** a scalar (online) and a Series (offline) or it 500s on the first online predict.
 
-```python
-from hsfs.builtin_transformations import winsorize, equal_width_binner
-
-w = winsorize("income")
-w.transformation_context = {"p_low": 5, "p_high": 95}
-
-b = equal_width_binner("score")
-b.transformation_context = {"n_bins": 20}
-
-fv = fs.create_feature_view(
-    name="my_fv",
-    query=query,
-    transformation_functions=[w, b],
-    ...
-)
-```
-
-### Custom Transformations — the `@udf` Decorator
-
-Define custom transformations using `@udf` from `hsfs`:
-
-```python
-from hsfs import udf
-```
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|---|---|---|
-| `return_type` | `type` or `list[type]` | Output type(s): `float`, `int`, `str`, `bool`, `datetime`, `date` |
-| `drop` | `str` or `list[str]` | Feature names to drop after transformation |
-| `mode` | `"default"`, `"python"`, `"pandas"` | Execution mode |
-
-### Execution Modes
-
-| Mode | Offline (Batch) | Online (Single Value) | Use Case |
-|---|---|---|---|
-| `"default"` | Receives `pd.Series`, returns `pd.Series` | Receives scalar, returns scalar | Best for most cases — auto-adapts |
-| `"pandas"` | Always `pd.Series` → `pd.Series` | Always `pd.Series` → `pd.Series` | Vectorized operations, Spark pandas UDF |
-| `"python"` | Always scalar → scalar | Always scalar → scalar | Simple per-row logic |
-
-### Custom UDF Examples
-
-**Simple transformation (no statistics):**
-
-```python
-@udf(float, drop=["amount"])
-def log_amount(amount):
-    import math
-    return math.log1p(amount) if amount > 0 else 0.0
-```
-
-**Transformation with training statistics:**
-
-```python
-from hsfs.transformation_statistics import TransformationStatistics
-
-stats = TransformationStatistics("price")
-
-@udf(float, drop=["price"])
-def z_score(price, statistics=stats):
-    return (price - statistics.price.mean) / statistics.price.stddev
-```
-
-Available statistics properties: `mean`, `stddev`, `min`, `max`, `percentiles`, `unique_values`, `histogram`, `count`, `completeness`, `distinctness`, `entropy`.
-
-**Transformation with context:**
-
-```python
-@udf(float)
-def apply_discount(price, context):
-    return price * (1 - context["discount_rate"])
-
-tf = apply_discount("price")
-tf.transformation_context = {"discount_rate": 0.1}
-```
-
-**Multiple outputs:**
-
-```python
-@udf([float, float], drop=["timestamp"])
-def time_features(timestamp):
-    import pandas as pd
-    hour = timestamp.hour if not isinstance(timestamp, pd.Series) else timestamp.dt.hour
-    day = timestamp.dayofweek if not isinstance(timestamp, pd.Series) else timestamp.dt.dayofweek
-    return hour, day
-```
-
-**Pandas mode (vectorized):**
-
-```python
-@udf(float, drop=["feature"], mode="pandas")
-def clip_outliers(feature: pd.Series) -> pd.Series:
-    return feature.clip(lower=0, upper=1000)
-```
-
-### Custom Output Column Names
-
-```python
-tf = log_amount("price")
-tf.alias("log_price")  # custom output name
-```
-
-### On-Demand Transformations
-
-On-demand transformations compute features at inference time from request parameters. They **cannot** use training statistics.
-
-On-demand transformations are attached to features at the feature group level (not at the feature view level). They are automatically included in feature views that select those features.
-
-```python
-# When retrieving a feature vector, provide request_parameters
-vector = fv.get_feature_vector(
-    entry={"user_id": 123},
-    request_parameters={"current_location": "NYC"},
-)
-```
+**Full transformation reference** — built-in tables, the `@udf` decorator, execution modes, statistics, on-demand, and the transformation store: see [hops-transformations](../hops-transformations/SKILL.md).
 
 ---
 
@@ -680,7 +560,7 @@ batch_df = fv.get_batch_data(
 ```python
 import hopsworks
 from hsfs.builtin_transformations import standard_scaler, label_encoder, impute_mean
-from hsfs import udf
+from hopsworks import udf
 
 # 1. Connect
 project = hopsworks.login()
@@ -782,3 +662,11 @@ batch_predictions = model.predict(batch_df)
 | Batch scoring | `fv.get_batch_data(start_time=..., end_time=...)` |
 | Similarity search | `fv.find_neighbors(embedding=[...], k=10)` |
 | Delete feature view | `fv.delete()` |
+
+---
+
+## Next Steps
+
+- Train a model on this view's training data: **hops-train**.
+- Batch scoring: **hops-batch-inference**. Online serving: **hops-online-inference**.
+- Need to create or fix the source feature groups first: **hops-fg**.

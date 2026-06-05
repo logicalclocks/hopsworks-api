@@ -9,6 +9,7 @@ Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import click
@@ -111,6 +112,107 @@ def app_url(ctx: click.Context, name: str) -> None:
         output.print_json({"url": url})
     else:
         click.echo(url)
+
+
+@app_group.command("logs")
+@click.argument("name")
+@click.option(
+    "--stream",
+    type=click.Choice(["stdout", "stderr", "both"]),
+    default="both",
+    show_default=True,
+    help="Which stream to print.",
+)
+@click.pass_context
+def app_logs(ctx: click.Context, name: str, stream: str) -> None:
+    """Print stdout/stderr logs for the app's latest execution.
+
+    Reads the execution's log file, which the backend writes only when the
+    execution stops. While the app is still running that file does not exist,
+    and the backend rejects the request. A long-running Streamlit app is the
+    case where you most want logs, so this points at the live logs in the
+    Hopsworks UI instead of failing with an opaque error.
+
+    Args:
+        ctx: Click context.
+        name: App name.
+        stream: Which stream(s) to print: ``stdout``, ``stderr``, or ``both``.
+    """
+    a = _get_app(ctx, name)
+
+    if _app_is_running(a):
+        _report_running(name, a)
+        return
+
+    try:
+        logs = a.get_logs()
+    except Exception as exc:  # noqa: BLE001
+        # Race: the app was running when the backend checked. The log file is
+        # written only on stop, so give the live-logs guidance, not a raw 400.
+        if _is_still_running_error(exc):
+            _report_running(name, a)
+            return
+        raise click.ClickException(
+            f"Could not read logs for app '{name}': {exc}"
+        ) from exc
+
+    if output.JSON_MODE:
+        output.print_json(logs if stream == "both" else {stream: logs.get(stream, "")})
+        return
+
+    if stream in ("stdout", "both"):
+        click.echo("=== stdout ===")
+        click.echo(logs.get("stdout") or "(empty)")
+    if stream in ("stderr", "both"):
+        click.echo("=== stderr ===")
+        click.echo(logs.get("stderr") or "(empty)")
+
+
+# Execution states in which the log file is not written yet, so the
+# execution-log endpoint returns a "still running" error (RESTCode 130010).
+_RUNNING_APP_STATES = frozenset(
+    {
+        "NEW",
+        "NEW_SAVING",
+        "SUBMITTED",
+        "ACCEPTED",
+        "RUNNING",
+        "INITIALIZING",
+        "STARTING_APP_MASTER",
+        "AGGREGATING_LOGS",
+        "DEPLOYING",
+    }
+)
+
+
+def _app_is_running(a: Any) -> bool:
+    """Whether the app's execution has not reached a final state."""
+    if getattr(a, "serving", False):
+        return True
+    return (getattr(a, "state", None) or "").upper() in _RUNNING_APP_STATES
+
+
+def _is_still_running_error(exc: Exception) -> bool:
+    """Whether ``exc`` is the backend's "execution still running" rejection."""
+    text = str(exc).lower()
+    return (
+        "130010" in text
+        or "still running" in text
+        or "execution state is invalid" in text
+    )
+
+
+def _report_running(name: str, a: Any) -> None:
+    """Explain that file logs wait for stop, and link the UI live logs."""
+    url = a.get_url()
+    msg = (
+        f"App '{name}' is still running; its execution log file is written "
+        f"only after it stops. View live logs in the Hopsworks UI: {url}"
+    )
+    if output.JSON_MODE:
+        output.print_json({"running": True, "message": msg, "url": url})
+        return
+    click.echo(msg)
 
 
 @app_group.command("create")
@@ -275,6 +377,7 @@ def app_create(
         create_kwargs["git_branch"] = git_branch
     if entrypoint_script is not None:
         create_kwargs["entrypoint_script"] = entrypoint_script
+    create_kwargs = _accepted_kwargs(apps.create_app, create_kwargs)
     try:
         a = apps.create_app(**create_kwargs)
     except Exception as exc:  # noqa: BLE001
@@ -376,6 +479,31 @@ def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted app %s", name)
+
+
+def _accepted_kwargs(fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Drop kwargs the callable's signature rejects, warning on each.
+
+    Guards ``hops app create`` against CLI/SDK drift: a deployed SDK older than
+    this CLI may not accept newer create_app params (app_kind,
+    entrypoint_command, app_port, git_*). A ``**kwargs`` signature accepts
+    everything, so nothing is dropped.
+    """
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return kwargs
+    if any(p.kind == p.VAR_KEYWORD for p in params):
+        return kwargs
+    accepted = {p.name for p in params}
+    dropped = [k for k in kwargs if k not in accepted]
+    if dropped:
+        output.warn(
+            "Installed SDK's create_app does not accept %s; ignoring "
+            "(CLI/SDK version drift).",
+            ", ".join(dropped),
+        )
+    return {k: v for k, v in kwargs.items() if k in accepted}
 
 
 def _get_app_api(ctx: click.Context) -> Any:
