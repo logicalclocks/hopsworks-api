@@ -33,5 +33,12 @@
     "response": {
       "name": "intt"
     }
+  },
+  "get_with_column_name": {
+    "response": {
+      "name": "city",
+      "type": "string",
+      "columnName": "City"
+    }
   }
 }
