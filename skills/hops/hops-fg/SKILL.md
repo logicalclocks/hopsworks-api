@@ -56,6 +56,25 @@ Before creating a feature group, clarify these decisions with the user:
 
 ---
 
+## Feature data types & online-store constraints
+
+Pick a supported type up front: a write with an unsupported type fails, and retrying the same type just loops.
+
+**Supported feature types:**
+- Scalars: `int`, `bigint`, `float`, `double`, `boolean`, `string`, `date`, `timestamp`, `binary`.
+- Composite: `array<type>` and `struct<field:type,...>` — e.g. `array<float>`, `struct<lat:double,lon:double>`.
+- `decimal` is **not** supported. Use `double`, or `string` when you need exact precision.
+
+**Online store (`online_enabled=True`):**
+- Scalars map straight to RonDB. Strings become `varchar(n)`, auto-sized to the longest value seen (rounded up to 100) and widened on later inserts; very long text falls back to `text`.
+- Composite types (`array`, `struct`) **do** write online — they are stored Avro-encoded and decoded by the SDK on read. An online FG with an `array<float>` column is fine; you do not need to drop or flatten it.
+- For **similarity search**, declare the vector as `array<float>` **and** attach an `EmbeddingIndex` (see Vector Embeddings): the FG is then backed by the vector DB (OpenSearch) instead of RonDB. Without an embedding index an `array<float>` is stored data, not a searchable index.
+- Online is an upsert: one row per primary key, a new write for an existing key overwrites it.
+
+Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
+
+---
+
 ## Creating a Feature Group
 
 ```python
