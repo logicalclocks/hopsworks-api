@@ -419,3 +419,56 @@ class TestApp:
         assert "my_app" in str(app)
         assert "RUNNING" in str(app)
         assert "True" in str(app)
+
+    def test_public_url_none_without_token(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        app = App(name="my_app", public_access=True, public_token=None)
+
+        # No token (e.g. not a data owner) -> no URL even when public.
+        assert app.public_url is None
+
+    def test_public_url_built_from_client_and_token(self, mocker):
+        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client.return_value._base_url = "https://myhost:443"
+        mock_client.return_value._project_name = "proj"
+
+        app = App(name="my app", public_access=True, public_token="tok en/+")
+
+        # base_url + project + app + token, with project/app/token URL-encoded.
+        assert app.public_url == (
+            "https://myhost:443/hopsworks-api/pythonapp/proj/my%20app"
+            "/__public?t=tok%20en%2F%2B"
+        )
+
+    def test_make_public_sets_state_and_returns_url(self, mocker):
+        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client.return_value._base_url = "https://myhost:443"
+        mock_client.return_value._project_name = "proj"
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+        mock_api.return_value._set_public.return_value = {"publicToken": "tok"}
+
+        app = App(name="my_app")
+        app._app_api = mock_api.return_value
+
+        url = app.make_public()
+
+        mock_api.return_value._set_public.assert_called_once_with("my_app", True)
+        assert app.public_access is True
+        assert (
+            url
+            == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/__public?t=tok"
+        )
+
+    def test_make_private_clears_state(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+
+        app = App(name="my_app", public_access=True, public_token="tok")
+        app._app_api = mock_api.return_value
+
+        app.make_private()
+
+        mock_api.return_value._set_public.assert_called_once_with("my_app", False)
+        assert app.public_access is False
+        assert app.public_url is None

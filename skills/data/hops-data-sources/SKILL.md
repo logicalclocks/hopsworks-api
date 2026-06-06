@@ -1,31 +1,123 @@
 ---
-name: connect-data-source
-description: Mount or ingest a table from a support datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, SAP, MongoDB, CRM, REST APIs).
+name: hops-data-sources
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, SAP, MongoDB, CRM, REST APIs).
 ---
 
-Prefer the hops CLI mounting or ingesting external tables using a datasource. Use hopsworks-api and Python programs if hops CLI is unsuccessful.
+Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
 
-Use platform intelligence to (1) select the primary key and event_time columns and (2) create descriptions for columns for the mounted or ingested feature group. This returns a suggested feature name (snake_case), an offline data type, a one-line description per column, iplus a suggested primary key and event-time column.
+Mounting and ingesting both build a feature pipeline's input side: an external feature group leaves data in the source (no copy, no copy-time MITs); a DLTHub ingest copies the source into a managed feature group. Mounting is the lower-cost path when the source already holds the data you want, since reuse beats rebuilding a pipeline.
+
+## Contract
+- **Input:** a configured connector + a table from it.
+- **Output:** an external feature group (mounted in place), or a managed feature group ingested via DLTHub.
+- **Pre-condition:** a connector exists. Create one with `hops datasource create <type>` (see below), or in the UI.
+- **Pick mount vs ingest:** mounting serves the offline store only. To load the online store or a vector index, ingest (an ETL path) instead.
+
+## Smoke-test: what connectors exist
+
+```bash
+hops datasource list                 # configured connectors
+hops datasource info <connector>     # detail for one
+```
+
+## Infer metadata (platform intelligence)
+
+Use platform intelligence to (1) select the primary key and event_time columns and (2) write column descriptions for the mounted/ingested feature group. It returns, per column, a suggested snake_case feature name, an offline data type, and a one-line description, plus a suggested primary key and event-time column.
 
 ```bash
 hops datasource infer-metadata <connector-name> <table> [--database <db>]
 ```
 
-If platform intelligence is not configured on the cluster, the command exits with a clear error — ask the cluster admin to set `PLATFORM_INTELLIGENCE_LLM_API_KEY` rather than guessing the metadata by hand.
+If platform intelligence is not configured on the cluster, the command exits with a clear error. Ask the cluster admin to set `PLATFORM_INTELLIGENCE_LLM_API_KEY` rather than guessing the metadata by hand.
 
-For programmatic use the equivalent Python is `data_source.infer_metadata()` on a `DataSource` returned by `data_source.get_tables()`; it raises `hopsworks.client.exceptions.PlatformIntelligenceException` (with `.reason` of `NOT_CONFIGURED` or `INFERENCE_FAILED`) on the same failure modes.
+Programmatic equivalent: `data_source.infer_metadata()` on a `DataSource` returned by `data_source.get_tables()`; it raises `hopsworks.client.exceptions.PlatformIntelligenceException` (with `.reason` of `NOT_CONFIGURED` or `INFERENCE_FAILED`) on the same failure modes.
 
-## DLTHub Ingestion
+## Mount a table as an external feature group
 
-You can define custom transformations when ingestion data to a feature group. Here is an example that just copies the data, but any Pandas DF transformations can be applied in the transform method:
+An external feature group leaves data in the source and queries it through the connector, no copy into Hopsworks. It is offline-only: reads serve training and batch inference. Set an `event_time` column so the feature store can read point-in-time correct snapshots and so polling can read a `start_time`/`end_time` range for backfill or incremental runs.
 
+```python
+import hopsworks
+
+project = hopsworks.login()
+fs = project.get_feature_store()
+
+ds = fs.get_data_source("my_connector")          # the configured connector
+table = ds.get_tables(database="my_db")[0]        # pick a table
+meta = table.infer_metadata()                     # PK / event_time / descriptions
+
+ext_fg = fs.create_external_feature_group(
+    name="customers_external",
+    version=1,
+    data_source=table,                            # the source table
+    primary_key=meta.primary_key,
+    event_time=meta.event_time,
+    online_enabled=False,
+)
+ext_fg.save()
+```
+
+## Create a connector
+
+Connectors are not UI-only. Create one from the CLI; the subcommand sends the backend type discriminator for you:
+
+```bash
+hops datasource create jdbc <name> --url "jdbc:postgresql://host:5432/db" --user U --password P
+hops datasource create s3 <name> --bucket my-bucket --access-key AK --secret-key SK --region eu-north-1
+hops datasource create snowflake <name> --url https://acct.snowflakecomputing.com --user U --password P --database D --schema S --warehouse W
+hops datasource create bigquery <name> --project-id proj --dataset ds --key-path /path/key.json
+hops datasource delete <name> --yes
+```
+
+**Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
+
+## Ingest into a new feature group with DLTHub
+
+DLTHub copies a source into a managed feature group for the cases mounting cannot serve: loading the online store or a vector index, or pulling from an API/SaaS/REST endpoint. Ingestion runs server-side in the `dlthub-ingestion-pipeline` environment, driven by a `SinkJobConfiguration` attached to a sink-enabled feature group. It is configuration plus a server job, not an in-process `dlt` call.
+
+```python
+import hopsworks
+from hopsworks.core import SinkJobConfiguration
+from hopsworks.core.rest_endpoint import RestEndpointConfig
+
+project = hopsworks.login()
+fs = project.get_feature_store()
+
+fg = fs.create_feature_group(
+    name="events",
+    version=1,
+    primary_key=["id"],
+    data_source=fs.get_data_source("my_connector"),   # the source to pull from
+    sink_enabled=True,                                 # provision a sink job
+    sink_job_conf=SinkJobConfiguration(
+        write_mode="APPEND",
+        # REST sources: describe the endpoint to pull.
+        endpoint_config=RestEndpointConfig(relative_url="v1/events", query_params={"limit": 1000}),
+        # Optional custom transform: a SCRIPT PATH in HopsFS, not a local import.
+        transform_script_path="Resources/ingest/transform.py",
+    ),
+)
+fg.save()
+
+fg.sink_job.run()   # runs the ingestion job server-side (see hops-job to monitor)
+```
+
+The custom transform is a Python file uploaded to HopsFS and executed inside the ingestion environment, where `dlt` is installed. Write it as a script and point at it with `transform_script_path`; do not import `dlt` in your interactive session.
+
+```python
+# Resources/ingest/transform.py: runs in dlthub-ingestion-pipeline, not locally.
 import pandas as pd
-
 from dlt.destinations.impl.hopsworks_fg import HopsIngestionTransformer
 
 class MyTransformer(HopsIngestionTransformer):
     def transform(self, df: pd.DataFrame, context: dict) -> pd.DataFrame:
-        return df.copy()
+        return df  # model-independent only; do encoding/scaling in a feature view
+```
 
+`from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
 
-transformer = MyTransformer()
+## Next Steps
+
+- Discover connectors/tables first: **hops-data-discovery**.
+- Work with the resulting feature group: **hops-fg** (read/insert), **hops-fv** (build a view).
+- Query the mounted table via SQL: **hops-trino-sql**.

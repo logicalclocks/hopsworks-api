@@ -8,6 +8,8 @@ invocation, caches the result on ``ctx.obj``, and surfaces a clean
 
 from __future__ import annotations
 
+import contextlib
+import sys
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -72,12 +74,18 @@ def get_project(ctx: click.Context) -> Project:
     try:
         # In internal mode pass ``internal=True`` so the SDK takes its own
         # ``REST_ENDPOINT`` + JWT path. Otherwise pass the user's API key.
-        project = auth.login(
-            host=cfg.host or "",
-            api_key_value=cfg.api_key,
-            project=cfg.project,
-            internal=cfg.internal,
-        )
+        #
+        # ``hopsworks.login()`` prints a "Logged in to project ..." banner to
+        # stdout. That belongs to interactive notebook use, not the CLI, where
+        # it corrupts ``--json`` output and piped data. Send it to stderr so
+        # stdout carries only the command payload.
+        with contextlib.redirect_stdout(sys.stderr):
+            project = auth.login(
+                host=cfg.host or "",
+                api_key_value=cfg.api_key,
+                project=cfg.project,
+                internal=cfg.internal,
+            )
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Login failed: {exc}") from exc
     obj["project"] = project

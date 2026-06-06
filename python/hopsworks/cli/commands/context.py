@@ -15,6 +15,7 @@ import click
 from hopsworks.cli import output, session
 from hopsworks.cli.commands import fv as fv_cmd
 from hopsworks.cli.commands import model as model_cmd
+from hopsworks.cli.commands import skills as skills_cmd
 
 
 @click.command("context")
@@ -157,36 +158,34 @@ def _render_markdown(
 
 
 def _render_guidance(out: Any) -> None:
-    """Append a static CLI-vs-skill routing guide.
+    """Append a CLI-vs-skill routing guide with a dynamic skill catalogue.
 
     The CLI is the primary interface; the SDK is the fallback for what the CLI
-    cannot do. Each row maps a task to its CLI command and/or the skill that
-    covers it, so an agent knows where to go without rediscovering it.
+    cannot do. The skill catalogue is read live from the shipped skills (via
+    ``hops skills``) so it never drifts from what is actually installed.
     """
     out("## Working in this project\n\n")
     out(
         "Primary interface: the `hops` CLI — explore and operate with it. Write "
         "Python with the `hopsworks` SDK for pipeline scripts that run as jobs or "
-        "deployments. Load the matching `hops-*` skill for SDK-heavy steps.\n\n"
+        "deployments. Load the matching skill for SDK-heavy steps; list them with "
+        "`hops skills list` or read one with `hops skills show <name>`.\n\n"
     )
-    out("| Task | CLI / skill |\n|---|---|\n")
-    out(
-        "| Explore data, list/preview FGs & FVs, ad-hoc SQL | `hops fg` / `hops fv` / `hops sql` |\n"
-    )
-    out(
-        "| Feature pipeline | write Python (skill: hops-features), run `hops job deploy --env python-feature-pipeline` |\n"
-    )
-    out(
-        "| Transforms + feature view | `hops transformation create`, `hops fv create` (skill: hops-fv) |\n"
-    )
-    out(
-        "| Train a model | `train.py` from the FV (skill: hops-train), run `hops job deploy --env pandas-training-pipeline` |\n"
-    )
-    out(
-        "| Online deployment | `hops deployment create --script <predictor> --env pandas-inference-pipeline` (skill: hops-online-inference) |\n"
-    )
-    out("| Batch inference | skill: hops-batch-inference |\n")
-    out("| Streamlit app | `hops app create` (skill: hops-app) |\n\n")
+
+    skills_dir = skills_cmd._skills_dir()
+    skills = skills_cmd._collect_skills(skills_dir) if skills_dir else []
+    if skills:
+        out("## Available skills\n\n")
+        out("| Bucket | Skill | When to use |\n|---|---|---|\n")
+        for skill in skills:
+            out(
+                f"| {skill['bucket']} | {skill['name']} | "
+                f"{output.first_line(skill['description'])} |\n"
+            )
+        out("\n")
+    else:
+        out("Run `hops skills list` to see available skills.\n\n")
+
     out(
         "The CLI sets job/deployment environments via `--env`; the SDK is the "
         "fallback for what the CLI cannot (custom job config). Imported feature "

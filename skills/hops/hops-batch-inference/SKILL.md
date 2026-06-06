@@ -1,17 +1,36 @@
 ---
-name: hopsworks-batch-inference
-description: Use when writing Python or PySpark code for batch inference with Hopsworks. Auto-invoke when user wants to retrieve batch data from feature views, use spine groups for point-in-time joins, download models from the model registry for batch prediction, or build batch scoring pipelines.
+name: hops-batch-inference
+description: Use when writing Python or PySpark code for batch inference with Hopsworks. Auto-invoke when user wants to retrieve batch data from feature views, use spine groups for point-in-time joins, download models from the model registry for batch prediction, or build batch scoring pipelines. Input feature view + registered model → output predictions, logged or persisted.
 ---
 
 # Hopsworks Batch Inference — Python SDK Best Practices
 
+## Contract
+- **Input:** a feature view + a registered model from the Model Registry.
+- **Output:** predictions, either logged (monitoring) or persisted (downstream consumption).
+- **Pre-condition:** the model is trained and registered; the feature view is materialized offline.
+
+## Smoke-test (cheap pre/post-flight)
+```bash
+hops model list             # confirm the model exists before scoring
+hops fv list                # confirm the feature view exists
+hops td list                # confirm a training dataset version exists for batch scoring
+```
+
+## Ask the user (only when state is ambiguous)
+- Which model version to score with (specific version vs best-by-metric).
+- The time range for the batch (full FV vs `start_time`/`end_time` window).
+- Persist vs log: write predictions to a prediction feature group, or log them for monitoring.
+
 ## Overview
+
+A batch inference pipeline is one of the three FTI pipelines (feature, training, inference): a separate program that runs on a schedule, makes non-time-critical predictions, and writes them to an inference store (a feature group, database, or object store) for asynchronous consumers. It defines a batch AI system. Log its inputs and predictions so you can monitor and debug it.
 
 Batch inference in Hopsworks follows this pattern:
 
 1. Download a trained model from the Model Registry
 2. Retrieve a batch of inference data from a Feature View
-3. Apply the model to produce predictions
+3. Apply model-dependent transformations (MDTs) and call the model to produce predictions
 
 Two approaches for retrieving batch data:
 - **`get_batch_data()`** — filter by event time range from offline feature store
@@ -97,7 +116,7 @@ print(model.model_schema)        # input/output schema (if set)
 
 ## Retrieving Batch Data with get_batch_data()
 
-`get_batch_data()` reads features from the offline feature store, optionally filtered by event time, and applies model-dependent transformations.
+`get_batch_data()` reads features from the offline feature store, optionally filtered by event time, and applies the model-dependent transformations (MDTs). The feature view applies the same filters and MDTs used at training time, so inference features match training features (no training/serving skew).
 
 ### Basic Usage
 
@@ -349,107 +368,44 @@ print(batch_df[["user_id", "prediction"]].head())
 
 ---
 
-## Complete Example: PySpark Batch Inference with Spine Group
-
-```python
-import hopsworks
-from pyspark.sql import SparkSession
-
-# Spark Connect session with Delta extensions + DeltaCatalog (mandatory for
-# Hopsworks offline feature group reads/writes — see hops-pyspark skill).
-spark = (
-    SparkSession.builder.appName("batch_inference")
-    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-    .config(
-        "spark.sql.catalog.spark_catalog",
-        "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-    )
-    .getOrCreate()
-)
-
-# 1. Connect
-project = hopsworks.login()
-mr = project.get_model_registry()
-fs = project.get_feature_store()
-
-# 2. Download model
-model_meta = mr.get_model("fraud_detector", version=1)
-model_dir = model_meta.download()
-
-# 3. Load model and broadcast to Spark executors
-import joblib
-model = joblib.load(f"{model_dir}/model.pkl")
-bc_model = spark.sparkContext.broadcast(model)
-
-# 4. Create spine with entities to score
-scoring_entities = spark.sql("""
-    SELECT user_id, current_timestamp() as prediction_time
-    FROM active_users
-    WHERE last_active > date_sub(current_date(), 1)
-""")
-
-spine_group = fs.get_or_create_spine_group(
-    name="daily_scoring_spine",
-    version=1,
-    primary_key=["user_id"],
-    event_time="prediction_time",
-    dataframe=scoring_entities,
-)
-
-# 5. Get feature view and retrieve batch data with spine
-fv = fs.get_feature_view("fraud_features_fv", version=1)
-fv.init_batch_scoring(training_dataset_version=1)
-
-batch_df = fv.get_batch_data(
-    spine=spine_group,
-    dataframe_type="spark",
-)
-
-# 6. Apply model using Spark UDF
-import pandas as pd
-from pyspark.sql.functions import pandas_udf
-from pyspark.sql.types import DoubleType
-
-@pandas_udf(DoubleType())
-def predict_udf(*features: pd.Series) -> pd.Series:
-    import numpy as np
-    X = np.column_stack([f.values for f in features])
-    return pd.Series(bc_model.value.predict_proba(X)[:, 1])
-
-feature_columns = [c for c in batch_df.columns if c != "user_id"]
-predictions_df = batch_df.withColumn(
-    "fraud_probability",
-    predict_udf(*[batch_df[c] for c in feature_columns])
-)
-
-predictions_df.show()
-```
+Two more complete pipelines — **PySpark with a spine group** and **scoring via model→feature-view provenance** — are in [references/examples.md](references/examples.md).
 
 ---
 
-## Complete Example: Using Model-Feature View Provenance
+## Persisting Predictions
+
+Two distinct destinations — pick by purpose:
+
+**1. Log feature group (monitoring / audit / drift).** The idiomatic path: the
+feature view's prediction logging writes inputs + predictions to a *managed* log
+feature group. Enable it once at FV creation, then `log()` after each scoring run:
 
 ```python
-import hopsworks
-import joblib
+# At FV creation (once):
+fv = fs.create_feature_view(name="...", query=query, labels=[...], logging_enabled=True)
 
-# 1. Connect
-project = hopsworks.login()
-mr = project.get_model_registry()
-
-# 2. Get model (linked to feature view at training time)
-model_meta = mr.get_model("fraud_detector", version=1)
-model_dir = model_meta.download()
-model = joblib.load(f"{model_dir}/model.pkl")
-
-# 3. Get the feature view directly from the model
-#    init_batch_scoring() is called automatically with the correct training_dataset_version
-fv = model_meta.get_feature_view(init=True, online=False)
-
-# 4. Score
+# After batch scoring:
 batch_df = fv.get_batch_data(dataframe_type="pandas")
-predictions = model.predict(batch_df)
-print(predictions)
+feature_cols = [c for c in batch_df.columns if c not in ("customer_id", "event_time")]
+predictions = model.predict(batch_df[feature_cols])
+
+fv.log(batch_df, predictions=predictions)   # -> managed log FG
+fv.materialize_log()                         # flush now (otherwise written periodically)
+
+# Read it back, optionally scoped to a model, for monitoring:
+logged = fv.read_log(model=model)            # also: start_time/end_time/filter
+```
+
+**2. Inference-store feature group (downstream consumption).** When dashboards or
+another pipeline read the scores, write them to a normal FG (the inference store)
+instead (see **hops-fg**):
+
+```python
+preds_fg = fs.get_or_create_feature_group(
+    name="customer_spend_predictions", version=1,
+    primary_key=["customer_id"], event_time="event_time",
+)
+preds_fg.insert(predictions_df)   # predictions_df = keys + event_time + prediction column
 ```
 
 ---
@@ -471,3 +427,12 @@ print(predictions)
 | FV from model | `fv = model.get_feature_view(init=True, online=False)` |
 | Model metrics | `model.training_metrics` |
 | Model framework | `model.framework` |
+
+---
+
+## Next Steps
+
+- Log predictions for monitoring: this skill's "Persisting Predictions" (`fv.log`).
+- Train/register the model this scores: **hops-train**. Build the FV: **hops-fv**.
+- Need a live endpoint instead of batch: **hops-online-inference**.
+- PySpark for large offline reads/writes: **hops-spark**.
