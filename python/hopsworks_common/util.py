@@ -218,6 +218,11 @@ def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$": "%Y%m%d%H%M%S",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})$": "%Y%m%d%H%M%S%f",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{6})Z$": "ISO",
+        # ISO-8601 without fractional seconds. The job scheduler injects
+        # HOPS_START_TIME / HOPS_END_TIME as e.g. ``2026-06-01T10:17:16Z`` (no
+        # microseconds), which the %f-mandatory pattern above rejects, so a
+        # plain fg.read() in a scheduled job blew up where it passed interactively.
+        r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$": "ISO",
     }
     normalized_date = (
         input_date.replace("/", "")

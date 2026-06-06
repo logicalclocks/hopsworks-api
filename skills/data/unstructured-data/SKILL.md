@@ -1,7 +1,18 @@
 ---
-name: Unstructured Data extractor
-description: Parses unstructured data from files and indexes it in a feature group
+name: unstructured-data
+description: Parses unstructured data from files and writes it to a feature group.
 ---
+
+# Unstructured Data Extraction
+
+This is a **feature pipeline** task. Extracting structured fields from unstructured files is a Model-Independent Transformation (MIT): it produces reusable features that many models can later consume from the feature store, not features tied to one model. The lowest-cost feature pipeline is the one you don't have to create, so favour a clean, reusable schema over per-model shortcuts.
+
+## Contract
+- **Input:** raw unstructured files (emails, PDFs, logs, transcripts, scraped HTML) and a target DataFrame schema (Pandas, Polars, PySpark).
+- **Output:** a populated Hopsworks feature group holding the structured (reusable) features extracted from the files.
+- **Pre-condition:** the raw files are accessible and a target schema has been agreed with the developer.
+
+## Steps
 
 You first examine the unstructured text to identify and propose schemas for the classes of unstructured files. Once you have agreed with the developer on a schema, you extract structured data from unstructured text. Given raw input (emails, PDFs, logs, transcripts, scraped HTML) and the target schema for a DataFrame (Pandas, Polars, PySpark):
 
@@ -12,4 +23,8 @@ You first examine the unstructured text to identify and propose schemas for the 
   5. Write the DataFrame to a feature group in Hopsworks (get_or_create the feature group).
 
   When the input is ambiguous, pick the most conservative interpretation and note the ambiguity in a top-level "_extraction_notes" field.
----
+
+## Next Steps
+
+- Create and write the target feature group: **hops-fg**.
+- For RAG over the extracted text, chunk it and compute vector embeddings (both are MITs run in the feature pipeline), store them in an embedding index (**hops-fg** embeddings section), and serve similarity (kNN) search via **hops-fv**.

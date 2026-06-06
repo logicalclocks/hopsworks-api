@@ -94,7 +94,8 @@ class EnvVarsApi:
     def get(self, name: str) -> str | None:
         """Return just the value of an env var, or ``None`` if missing.
 
-        Convenience wrapper around [`get_env_var`][hopsworks.core.env_var_api.EnvVarsApi.get_env_var].
+        Convenience wrapper around
+        [`get_env_var`][hopsworks.core.env_var_api.EnvVarsApi.get_env_var].
 
         Example:
             ```python
@@ -116,6 +117,8 @@ class EnvVarsApi:
         name: str,
         value: str | None = None,
         secret_name: str | None = None,
+        visibility: str | None = None,
+        project_id_scope: int | None = None,
     ) -> env_var.EnvVar:
         """Add a new account-level env var.
 
@@ -132,6 +135,10 @@ class EnvVarsApi:
             value: Variable value. Up to 8192 characters. Ignored when
                 ``secret_name`` is provided.
             secret_name: Name of an existing secret to back the env var with.
+            visibility: Visibility of the env var. Use ``PROJECT`` to share it
+                with a project, or ``PRIVATE`` to keep it account-scoped.
+            project_id_scope: Project ID scope for a project-shared env var.
+                Required when creating a project-shared env var.
 
         Returns:
             The created [`EnvVar`][hopsworks.env_var.EnvVar].
@@ -141,7 +148,15 @@ class EnvVarsApi:
                 ``ENV_VAR_INVALID_NAME``, ``ENV_VAR_VALUE_TOO_LARGE``, or
                 ``ENV_VAR_LIMIT_EXCEEDED`` (default cap is 64 vars per user).
         """
-        return self._upsert("POST", ["users", "envvars"], name, value, secret_name)
+        return self._upsert(
+            "POST",
+            ["users", "envvars"],
+            name,
+            value,
+            secret_name,
+            visibility,
+            project_id_scope,
+        )
 
     @public
     def update_env_var(
@@ -149,6 +164,8 @@ class EnvVarsApi:
         name: str,
         value: str | None = None,
         secret_name: str | None = None,
+        visibility: str | None = None,
+        project_id_scope: int | None = None,
     ) -> env_var.EnvVar:
         """Replace the value of an existing env var.
 
@@ -160,6 +177,9 @@ class EnvVarsApi:
             value: New value. Up to 8192 characters. Ignored when
                 ``secret_name`` is provided.
             secret_name: Name of an existing secret to repoint the env var to.
+            visibility: Visibility of the env var. Use ``PROJECT`` to share it
+                with a project, or ``PRIVATE`` to keep it account-scoped.
+            project_id_scope: Project ID scope for a project-shared env var.
 
         Returns:
             The updated [`EnvVar`][hopsworks.env_var.EnvVar].
@@ -168,7 +188,15 @@ class EnvVarsApi:
             hopsworks.client.exceptions.RestAPIError: ``ENV_VAR_NOT_FOUND``
                 if no env var with that name exists.
         """
-        return self._upsert("PUT", ["users", "envvars", name], name, value, secret_name)
+        return self._upsert(
+            "PUT",
+            ["users", "envvars", name],
+            name,
+            value,
+            secret_name,
+            visibility,
+            project_id_scope,
+        )
 
     @public
     def set_env_var(
@@ -176,6 +204,8 @@ class EnvVarsApi:
         name: str,
         value: str | None = None,
         secret_name: str | None = None,
+        visibility: str | None = None,
+        project_id_scope: int | None = None,
     ) -> env_var.EnvVar:
         """Upsert: create the env var if missing, else update its value.
 
@@ -190,14 +220,21 @@ class EnvVarsApi:
             name: Variable name.
             value: Variable value. Ignored when ``secret_name`` is provided.
             secret_name: Name of an existing secret to back the env var with.
+            visibility: Visibility of the env var. Use ``PROJECT`` to share it
+                with a project, or ``PRIVATE`` to keep it account-scoped.
+            project_id_scope: Project ID scope for a project-shared env var.
 
         Returns:
             The created or updated [`EnvVar`][hopsworks.env_var.EnvVar].
         """
         existing = self.get_env_var(name)
         if existing is None:
-            return self.create_env_var(name, value, secret_name)
-        return self.update_env_var(name, value, secret_name)
+            return self.create_env_var(
+                name, value, secret_name, visibility, project_id_scope
+            )
+        return self.update_env_var(
+            name, value, secret_name, visibility, project_id_scope
+        )
 
     def _upsert(
         self,
@@ -206,6 +243,8 @@ class EnvVarsApi:
         name: str,
         value: str | None = None,
         secret_name: str | None = None,
+        visibility: str | None = None,
+        project_id_scope: int | None = None,
     ) -> env_var.EnvVar:
         _client = client.get_instance()
         headers = {"content-type": "application/json"}
@@ -217,6 +256,10 @@ class EnvVarsApi:
             payload["secretName"] = secret_name
         else:
             payload["value"] = value
+        if visibility is not None:
+            payload["visibility"] = visibility
+        if project_id_scope is not None:
+            payload["projectIdScope"] = project_id_scope
         env_vars = env_var.EnvVar.from_response_json(
             _client._send_request(
                 method,

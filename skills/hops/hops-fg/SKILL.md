@@ -1,5 +1,5 @@
 ---
-name: hopsworks-fg
+name: hops-fg
 description: Use when writing Python code that creates, inserts into, or manages tables or feature groups. Auto-invoke when user writes feature pipelines, feature engineering code, or asks about feature group best practices (online vs offline, batching, OOM, materialization, embeddings, statistics).
 ---
 
@@ -7,7 +7,39 @@ When a user refers to tables, clarify that you interpret them as feature groups 
 
 # Hopsworks Feature Groups — Python SDK Best Practices
 
-## Before Writing a Feature Pipeline — Ask the User
+Writes computed features into a Hopsworks feature group — the storage backing the F (feature) stage of the FTI pattern.
+
+A feature pipeline applies **model-independent transformations (MITs)** and writes the resulting **untransformed, reusable** feature data to feature groups. Do NOT store model-dependent transformations (MDTs — e.g. scaling, one-hot encoding) in a feature group: those are applied later, in the feature view, when reading for training/inference. Storing MDT output makes the data non-reusable across models, can cause write amplification (a parameterized MDT like standardization rewrites every existing row), and breaks EDA on raw values. Reuse is the payoff: the lowest-cost feature pipeline is the one you don't have to create, so write features other models can also select.
+
+## Contract
+
+- **Input:** a DataFrame (Pandas/Polars/PySpark) of computed features, plus the target name/version and key columns.
+- **Output:** a feature group registered server-side (on first insert) and populated with rows; optionally online-enabled and materialized to the offline store.
+- **Pre-condition:** a Hopsworks project login and a feature store handle (`fs = project.get_feature_store()`); any parent FGs used for provenance already exist.
+
+## Smoke-test (cheap pre/post-flight)
+
+Before writing Python, and to confirm results after, use the CLI. No Spark session needed:
+
+```bash
+hops fg list                              # is the name/version free? did it register? (note the STORE column)
+hops fg info <name> --version 1           # metadata: id, online flag, primary key, event_time
+hops fg features <name> --version 1       # schema with primary-key / partition flags
+hops fg preview <name> --version 1 --n 10 # first rows (flag is --n, not -n)
+hops fg preview <name> --columns a,b,c    # project away wide embedding/array columns
+hops fg stats <name> --version 1          # null counts / ranges — spot bad data early
+```
+
+To preview an FG in a shared store from the CLI, pass `--featurestore <store>`
+(the STORE value from `hops fg list`).
+
+`hops fg list` shows a **STORE** column. Imported / public feature groups live in a
+**shared** store, not this project's own — that distinction matters when you read
+them (see "Reading from a shared store" below).
+
+A feature group is registered server-side on its **first insert**, not at `get_or_create_feature_group(...)`. Until the first insert `fg.id` is `None` and `hops fg list` will not show it.
+
+## Ask the user (before writing a feature pipeline)
 
 Before creating a feature group, clarify these decisions with the user:
 
@@ -19,6 +51,27 @@ Before creating a feature group, clarify these decisions with the user:
 2. **Does this FG derive from other FGs?** If so, pass `parents=[fg1, fg2, ...]` at creation time. This sets up explicit provenance/lineage tracking in the Hopsworks UI. Always pass the actual FeatureGroup objects, not names.
 
 3. **Data volume** — estimate row count × column count × avg bytes per value. This drives decisions on batching, statistics, and materialization (see below).
+
+4. **Time-series or not?** If features change over time, set `event_time` to the timestamp when the feature value was *valid* (not when the row was ingested). This is what lets the feature store build point-in-time correct training data (no future leakage, no stale values) via the feature view. Omit `event_time` only for immutable feature data.
+
+---
+
+## Feature data types & online-store constraints
+
+Pick a supported type up front: a write with an unsupported type fails, and retrying the same type just loops.
+
+**Supported feature types:**
+- Scalars: `int`, `bigint`, `float`, `double`, `boolean`, `string`, `date`, `timestamp`, `binary`.
+- Composite: `array<type>` and `struct<field:type,...>` — e.g. `array<float>`, `struct<lat:double,lon:double>`.
+- `decimal` is **not** supported. Use `double`, or `string` when you need exact precision.
+
+**Online store (`online_enabled=True`):**
+- Scalars map straight to RonDB. Strings become `varchar(n)`, auto-sized to the longest value seen (rounded up to 100) and widened on later inserts; very long text falls back to `text`.
+- Composite types (`array`, `struct`) **do** write online — they are stored Avro-encoded and decoded by the SDK on read. An online FG with an `array<float>` column is fine; you do not need to drop or flatten it.
+- For **similarity search**, declare the vector as `array<float>` **and** attach an `EmbeddingIndex` (see Vector Embeddings): the FG is then backed by the vector DB (OpenSearch) instead of RonDB. Without an embedding index an `array<float>` is stored data, not a searchable index.
+- Online is an upsert: one row per primary key, a new write for an existing key overwrites it.
+
+Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
 
 ---
 
@@ -51,6 +104,8 @@ fg = fs.get_or_create_feature_group(
     # offline_backfill_every_hr=4,     # see "Materialization" section below
 )
 ```
+
+**Always describe what you create.** Pass `description=` on the feature group and a `description=` on every `Feature(...)`. A feature group or column with no description shows as an empty envelope in the UI and is not discoverable in search. If the user gave none, write concise ones from what each feature means; never leave them blank.
 
 ### Key Parameters
 
@@ -342,6 +397,22 @@ df = fg.read(dataframe_type="polars")         # or "pandas", "spark", "numpy"
 df = fg.read(online=True, dataframe_type="polars")
 ```
 
+### Reading from a shared store
+
+An FG in a **shared** store (the STORE column from `hops fg list` — e.g. imported
+public tables) is NOT reachable through this project's default feature store
+handle: `project.get_feature_store().get_feature_group(name, version=1)` returns
+`None` for it. Pass the store name explicitly:
+
+```python
+shared_fs = project.get_feature_store(name="<that_store>")   # the STORE value
+fg = shared_fs.get_feature_group("<name>", version=1)
+df = fg.read(dataframe_type="polars")
+```
+
+In a job environment `fs.get_feature_groups()` / `get_all()` may be absent, so
+resolve the shared FG by store name as above rather than enumerating.
+
 ### Time-Filtered Read
 
 Read a slice by event time (requires `event_time` set on the FG):
@@ -373,7 +444,7 @@ df = fg.filter((fg.amount > 100) & (fg.status == "active")).read(dataframe_type=
 Quick preview without reading the entire FG:
 
 ```python
-fg.show(n=10)  # prints first 10 rows
+print(fg.show(n=10))  # show() RETURNS a DataFrame, it does not print — wrap in print() in scripts
 ```
 
 ### Similarity Search (Embedding FGs)
@@ -396,18 +467,65 @@ results = fg.find_neighbors(
 
 ## Deleting Rows from a Feature Group
 
-To delete specific rows, pass a DataFrame containing only the primary key column(s) for the rows to remove:
+Pass a DataFrame identifying the rows to remove. For an **offline (Delta) FG with an `event_time`**, the merge key is the primary key **plus** the `event_time` column (plus any partition columns) — a primary-key-only DataFrame fails with `DeltaError: No field named <event_time>`. Include every key column:
 
 ```python
 import polars as pl
 
-# Build a DataFrame with just the primary key values to delete
-rows_to_delete = pl.DataFrame({"trans_id": [101, 202, 303]})
+# primary_key column(s) + event_time (+ partition columns, if any)
+rows_to_delete = pl.DataFrame({
+    "trans_id": [101, 202, 303],
+    "event_ts": ["2026-01-01", "2026-01-02", "2026-01-03"],
+})
 
 fg.commit_delete_record(rows_to_delete)
 ```
 
-The DataFrame must contain the primary key column(s) matching the FG's `primary_key`. Only matching rows are deleted.
+Only rows matching on all key columns are deleted.
+
+---
+
+## Deleting a Feature Group
+
+**Confirm before deleting.** `fg.delete()` (CLI `hops fg delete <name> --version N --yes`) drops the feature group and all its data irreversibly; confirm the exact name and version with the user first.
+Never tear down a feature group you created as a side effect — temp or test ones included — unless the user asked; default to keeping resources.
+
+---
+
+## Evolving the Schema
+
+Two cases, split by whether downstream consumers can be disturbed.
+
+**Add a column: append in place, same version.** Appending keeps the feature
+group version, so projects reading the FG downstream keep working.
+`get_or_create_feature_group` returns the existing FG and ignores a changed
+`features=` list, so re-running a pipeline never adds columns, and `fg.insert()`
+with extra columns fails with `Features are not compatible with Feature Group
+schema`. Append explicitly instead:
+
+```python
+from hsfs.feature import Feature
+
+fg.append_features([Feature("score", "double"), Feature("tier", "string")])
+```
+
+CLI: `hops fg append-features <name> --features "score:double:Risk score,tier:string"` — the spec is `name:type[:description]`, so set a description per column.
+
+Rules and consequences:
+- Append-only. New columns cannot be primary or partition keys.
+- Existing rows are not backfilled. They read null for the new column until reinserted.
+- Feature views over this FG keep their old projection and do not see the new columns. Build a new feature view (via `fg.select(...)`) to use them.
+
+**Drop a column, rename, or change a type: new version.** The backend rejects
+these in place: a feature group used downstream must not change shape under its
+consumers. Create the next version with the new schema and migrate readers to
+it:
+
+```python
+fg_v2 = fs.get_or_create_feature_group(name="my_fg", version=2, primary_key=[...], features=[...])
+```
+
+`hops fg delete` then recreate is data loss, not schema evolution. Reserve it for a throwaway FG that nothing reads yet.
 
 ---
 
@@ -435,7 +553,11 @@ derived_fg = fs.get_or_create_feature_group(
     description="Features derived from source_data for XYZ model",
     primary_key=["id"],
     event_time="event_ts",
-    features=[...],
+    features=[
+        Feature("id", "bigint", description="Entity id"),
+        Feature("event_ts", "timestamp", description="When the value was valid"),
+        # one Feature(..., description=...) per column — never leave a feature undescribed
+    ],
     online_enabled=True,        # ask user: online or offline?
     stream=True,
     parents=[source_fg],        # provenance
@@ -463,12 +585,22 @@ derived_fg.materialization_job.run(await_termination=True)
 | Read (Polars) | `fg.read(dataframe_type="polars")` |
 | Read (time range) | `fg.read(start_time=..., end_time=..., dataframe_type="polars")` |
 | Read (filtered) | `fg.filter(fg.col > X).read(dataframe_type="polars")` |
-| Preview rows | `fg.show(n=10)` |
+| Preview rows | `print(fg.show(n=10))` (returns a DataFrame) |
 | Similarity search | `fg.find_neighbors(vector, k=5, filter=...)` |
-| Delete rows | `fg.commit_delete_record(df_with_primary_keys)` |
+| Delete rows | `fg.commit_delete_record(df)` (df = primary_key cols + event_time) |
+| Add a column (same version) | `fg.append_features([Feature("c", "double")])` / `hops fg append-features <name> --features "c:double"` |
+| Drop/retype a column | not in place: create a new FG version |
 | Disable statistics | `statistics_config=False` |
 | Set provenance | `parents=[parent_fg1, parent_fg2]` |
 | Trigger materialization | `fg.materialization_job.run(await_termination=True)` |
 | Schedule materialization | `offline_backfill_every_hr=4` (at creation) |
 | Delete FG | `fg.delete()` |
 | Get FG | `fs.get_feature_group("name", version=1)` |
+
+---
+
+## Next Steps
+
+- Serve these features for training/inference: **hops-fv** (build a feature view over this FG). The feature view, not the feature group, is where you attach MDTs and ODTs — it applies the same transformations in training and inference, preventing training/serving skew.
+- Explore / query the data: **hops-data-discovery**, **hops-trino-sql**.
+- Schedule the pipeline as a recurring job: **hops-job**.

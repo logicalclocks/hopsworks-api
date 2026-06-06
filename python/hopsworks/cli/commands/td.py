@@ -21,16 +21,32 @@ def td_group() -> None:
 
 @td_group.command("list")
 @click.argument("feature_view")
-@click.option("--version", type=int, help="Feature view version; defaults to latest.")
+@click.argument("fv_version", type=int, required=False)
+@click.option(
+    "--version",
+    "version_opt",
+    type=int,
+    help="Feature view version; same as the positional FV_VERSION. Defaults to latest.",
+)
 @click.pass_context
-def td_list(ctx: click.Context, feature_view: str, version: int | None) -> None:
+def td_list(
+    ctx: click.Context,
+    feature_view: str,
+    fv_version: int | None,
+    version_opt: int | None,
+) -> None:
     """List training dataset versions generated from a feature view.
+
+    The FV version can be given positionally (``td list <fv> 2``, matching
+    ``td compute``) or via ``--version``; the positional form wins.
 
     Args:
         ctx: Click context.
         feature_view: Feature view name.
-        version: Feature view version.
+        fv_version: Feature view version (positional, optional).
+        version_opt: Feature view version (``--version``, optional).
     """
+    version = fv_version if fv_version is not None else version_opt
     fs = session.get_feature_store(ctx)
     try:
         fv = fs.get_feature_view(feature_view, version=version)
@@ -51,10 +67,10 @@ def td_list(ctx: click.Context, feature_view: str, version: int | None) -> None:
                 getattr(td, "version", "?"),
                 getattr(td, "data_format", "-"),
                 getattr(td, "coalesce", "-"),
-                getattr(td, "train_split", "") or "",
+                _format_splits(td),
             ]
         )
-    output.print_table(["VERSION", "FORMAT", "COALESCE", "SPLIT"], rows)
+    output.print_table(["VERSION", "FORMAT", "COALESCE", "SPLITS"], rows)
 
 
 @td_group.command("compute")
@@ -243,6 +259,23 @@ def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
         return fs.get_feature_view(name, version=version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+
+
+def _format_splits(td: Any) -> str:
+    """Render every split as ``name:pct`` for the SPLITS column.
+
+    Distinguishes a multi-split TD from a single-split one. Metadata only (no
+    data read); row counts would need materializing each split.
+    """
+    splits = getattr(td, "splits", None) or []
+    if not splits:
+        return "-"
+    parts = []
+    for s in splits:
+        name = getattr(s, "name", "?")
+        pct = getattr(s, "percentage", None)
+        parts.append(f"{name}:{pct:g}" if pct is not None else str(name))
+    return "/".join(parts)
 
 
 def _parse_splits(spec: str | None) -> dict[str, float]:

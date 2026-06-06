@@ -45,6 +45,80 @@ def test_app_list_renders_rows(mock_project):
     assert "RUNNING" in result.output
 
 
+def test_app_logs_prints_streams(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash")
+    a.get_logs.return_value = {"stdout": "hello out", "stderr": "boom err"}
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "hello out" in result.output
+    assert "boom err" in result.output
+
+
+def test_app_logs_stderr_only(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash")
+    a.get_logs.return_value = {"stdout": "hello out", "stderr": "boom err"}
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash", "--stream", "stderr"])
+    assert result.exit_code == 0, result.output
+    assert "boom err" in result.output
+    assert "hello out" not in result.output
+
+
+def test_app_logs_running_points_to_ui(mock_project):
+    # A running app has no execution log file yet; the CLI must point at the UI
+    # live logs instead of hitting the endpoint that 400s (#11).
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash", state="RUNNING", serving=True)
+    a.get_url.return_value = "https://hopsworks.ai.local/p/119/apps"
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "still running" in result.output
+    assert "https://hopsworks.ai.local/p/119/apps" in result.output
+    a.get_logs.assert_not_called()
+
+
+def test_app_logs_handles_still_running_error(mock_project):
+    # Race: state looked final but the backend still rejected with 130010.
+    # Fall back to the same live-logs guidance, not a raw error.
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash", state="CREATED", serving=False)
+    a.get_url.return_value = "https://hopsworks.ai.local/p/119/apps"
+    a.get_logs.side_effect = RuntimeError(
+        "errorCode 130010 Job still running. Execution state is invalid."
+    )
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "still running" in result.output
+
+
+def test_app_create_drops_unsupported_kwargs(mock_project):
+    """Create stays resilient when the deployed SDK predates app_kind etc."""
+    apps = mock_project.get_app_api.return_value
+    created = _fake_app(name="legacy")
+
+    def old_create_app(
+        name,
+        app_path=None,
+        environment="python-app-pipeline",
+        memory=2048,
+        cores=1.0,
+        env_vars=None,
+    ):
+        return created
+
+    apps.create_app = old_create_app
+    result = CliRunner().invoke(
+        cli, ["app", "create", "legacy", "--path", "Resources/app.py"]
+    )
+    # would TypeError on app_kind without the signature filter
+    assert result.exit_code == 0, result.output
+
+
 def test_app_info_shows_url(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.get_app.return_value = _fake_app(
