@@ -596,10 +596,14 @@ def _monitoring_routes(a: Any) -> list[dict[str, str | None]]:
             match_type = route.get("matchType") or route.get("match_type")
         else:
             path = getattr(route, "path", None)
-            match_type = getattr(route, "matchType", None) or getattr(route, "match_type", None)
+            match_type = getattr(route, "matchType", None) or getattr(
+                route, "match_type", None
+            )
         if not path:
             continue
-        normalized.append({"path": str(path), "matchType": str(match_type) if match_type else None})
+        normalized.append(
+            {"path": str(path), "matchType": str(match_type) if match_type else None}
+        )
     return normalized
 
 
@@ -619,7 +623,7 @@ def _monitoring_routes_text(a: Any) -> str:
     for route in routes:
         text = route["path"]
         if route["matchType"]:
-            text = f'{text} ({route["matchType"]})'
+            text = f"{text} ({route['matchType']})"
         parts.append(text)
     return ", ".join(parts)
 
