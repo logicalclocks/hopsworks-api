@@ -4,7 +4,9 @@ Wraps the SDK's ``project.get_app_api()``: list, info, create, start, redeploy,
 stop, delete, plus a convenience ``url`` that prints the public serving URL.
 App scripts can either live in HopsFS or in a Git repository. File-backed
 Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
-``--entrypoint-script``; custom apps use ``--entrypoint-command``.
+``--entrypoint-script``; custom apps use ``--entrypoint-command``. App metadata
+can also carry monitoring config, and ``hops app info`` prints a short summary
+when it is present.
 """
 
 from __future__ import annotations
@@ -82,6 +84,7 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Latest commit", getattr(a, "latest_commit", None) or "-"],
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
+        ["Monitoring", _monitoring_summary(a)],
         ["Description", getattr(a, "description", None) or "-"],
         ["URL", getattr(a, "app_url", None) or "-"],
     ]
@@ -303,6 +306,9 @@ def app_create(
     start: bool,
 ) -> None:
     """Create a new app.
+
+    Monitoring is enabled by default in the backend. Route filters are optional
+    and narrow the traffic counted by Envoy.
 
     Args:
         ctx: Click context.
@@ -558,6 +564,32 @@ def _redeploy(a: Any, await_serving: bool = True) -> None:
         click.echo(url)
 
 
+def _monitoring_config(a: Any) -> Any:
+    return getattr(a, "monitoring_config", None) or getattr(a, "monitoringConfig", None)
+
+
+def _monitoring_summary(a: Any) -> str:
+    config = _monitoring_config(a)
+    if not config:
+        return "-"
+    if isinstance(config, dict):
+        enabled = config.get("enabled")
+        routes = config.get("routes")
+    else:
+        enabled = getattr(config, "enabled", None)
+        routes = getattr(config, "routes", None)
+    state = "enabled" if enabled is not False else "disabled"
+    if not routes:
+        return state
+    try:
+        route_count = len(routes)
+    except TypeError:
+        route_count = None
+    if route_count is None:
+        return f"{state}; routes configured"
+    return f"{state}; {route_count} route(s)"
+
+
 def _app_to_dict(a: Any) -> dict[str, Any]:
     source = _app_source(a)
     return {
@@ -578,6 +610,7 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
         "entrypoint_command": getattr(a, "entrypoint_command", None),
+        "monitoring": _monitoring_summary(a),
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
