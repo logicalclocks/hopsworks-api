@@ -35,7 +35,7 @@ Full CLI surface is in **Manage Apps from the CLI** below.
 - Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
 - Does the app come from **HopsFS or Git**? If Git, ask for `git_url`, `git_provider`, and (if needed) `git_branch` plus the entrypoint.
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
-- Does the app need **monitoring** narrowed to specific routes? Monitoring is enabled by default and routes are optional.
+- Does the app need **monitoring** narrowed to specific routes? Monitoring is enabled by default and routes are optional; `hops app info` shows the monitoring state and route list when present.
 - Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
 - **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
@@ -209,6 +209,22 @@ if app.serving:
 
 Monitoring is enabled by default. Leave routes empty to use the default ignored-path behavior, or add routes to narrow the signal.
 
+Monitoring config shape:
+
+```python
+monitoringConfig = {
+    "enabled": True,
+    "routes": [
+        {"path": "/api", "matchType": "prefix"},
+        {"path": "/predict", "matchType": "exact"},
+    ],
+}
+```
+
+- `enabled`: turns app monitoring on or off.
+- `routes`: optional list of monitored paths. If omitted or empty, Hopsworks uses the default ignored-path behavior.
+- `path`: absolute request path to include.
+- `matchType`: `prefix` or `exact`.
 - Streamlit ignores internal/static paths like `/_stcore/health`, `/_stcore/host-config`, `/_stcore/stream`, and `/static` by default.
 - Custom apps should leave framework noise like `/static`, `/docs`, `/openapi.json`, `/redoc`, and `/favicon.ico` out of the monitored routes unless you want them counted.
 
