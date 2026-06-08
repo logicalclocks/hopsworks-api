@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, output, session
+from hopsworks.cli import joinspec, lineage, output, session
 
 
 @click.group("fv")
@@ -77,6 +77,7 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
         ["Version", getattr(fv, "version", "?")],
         ["Labels", ", ".join(getattr(fv, "labels", []) or []) or "-"],
         ["Description", output.first_line(getattr(fv, "description", ""))],
+        ["Tags", output.format_mapping(output.read_tags(fv))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -121,6 +122,38 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
         )
 
 
+@fv_group.command("lineage")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version; defaults to latest.")
+@click.pass_context
+def fv_lineage(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show upstream and downstream lineage for a feature view.
+
+    Upstream covers the parent feature groups.
+    Downstream covers models generated from the feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Specific version; latest if omitted.
+    """
+    fs = session.get_feature_store(ctx)
+    try:
+        fv = fs.get_feature_view(name, version=version)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    label = f"feature view {getattr(fv, 'name', name)} v{getattr(fv, 'version', '?')}"
+    sections = [
+        (
+            "upstream",
+            "parent_feature_group",
+            lineage.fetch(fv.get_parent_feature_groups),
+        ),
+        ("downstream", "model", lineage.fetch(fv.get_models_provenance)),
+    ]
+    lineage.render(label, sections)
+
+
 def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
     """Fetch all feature views via raw REST.
 
@@ -160,6 +193,7 @@ def _fv_to_dict(fv: Any) -> dict[str, Any]:
         "version": getattr(fv, "version", None),
         "labels": list(getattr(fv, "labels", []) or []),
         "description": getattr(fv, "description", None),
+        "tags": output.read_tags(fv),
         "features": [
             {
                 "name": getattr(f, "name", None),

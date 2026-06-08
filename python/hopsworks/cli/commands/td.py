@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import lineage, output, session
 
 
 @click.group("td")
@@ -251,6 +251,66 @@ def td_delete(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted training dataset for %s", feature_view)
+
+
+@td_group.command("lineage")
+@click.argument("feature_view")
+@click.argument("fv_version", type=int, required=False)
+@click.option(
+    "--version",
+    "version_opt",
+    type=int,
+    help="Feature view version; same as the positional FV_VERSION. Defaults to latest.",
+)
+@click.option(
+    "--td-version",
+    type=int,
+    help="Training dataset version to trace downstream models for.",
+)
+@click.pass_context
+def td_lineage(
+    ctx: click.Context,
+    feature_view: str,
+    fv_version: int | None,
+    version_opt: int | None,
+    td_version: int | None,
+) -> None:
+    """Show lineage for training datasets of a feature view.
+
+    Training datasets inherit their upstream lineage from the parent feature
+    view (its parent feature groups).
+    Downstream covers models trained on the dataset; pass ``--td-version`` to
+    scope downstream models to a single training dataset version.
+
+    Args:
+        ctx: Click context.
+        feature_view: Feature view name.
+        fv_version: Feature view version (positional, optional).
+        version_opt: Feature view version (``--version``, optional).
+        td_version: Training dataset version to scope downstream models.
+    """
+    version = fv_version if fv_version is not None else version_opt
+    fv = _get_fv(ctx, feature_view, version)
+    td_suffix = f" td v{td_version}" if td_version is not None else ""
+    label = (
+        f"training datasets of feature view "
+        f"{getattr(fv, 'name', feature_view)} v{getattr(fv, 'version', '?')}{td_suffix}"
+    )
+    sections = [
+        (
+            "upstream",
+            "parent_feature_group",
+            lineage.fetch(fv.get_parent_feature_groups),
+        ),
+        (
+            "downstream",
+            "model",
+            lineage.fetch(
+                lambda: fv.get_models_provenance(training_dataset_version=td_version)
+            ),
+        ),
+    ]
+    lineage.render(label, sections)
 
 
 def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:

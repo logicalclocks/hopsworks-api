@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import lineage, output, session
 
 
 @click.group("model")
@@ -82,6 +82,7 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
         ["Created", getattr(model, "created", "-")],
         ["Metrics", _short_metrics(getattr(model, "training_metrics", {}) or {})],
         ["Description", output.first_line(getattr(model, "description", ""))],
+        ["Tags", output.format_mapping(output.read_tags(model))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -121,6 +122,7 @@ def _model_to_dict(model: Any) -> dict[str, Any]:
         "created": getattr(model, "created", None),
         "metrics": dict(getattr(model, "training_metrics", {}) or {}),
         "description": getattr(model, "description", None),
+        "tags": output.read_tags(model),
     }
 
 
@@ -294,6 +296,38 @@ def model_delete(ctx: click.Context, name: str, version: int, yes: bool) -> None
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted model %s v%s", name, version)
+
+
+@model_group.command("lineage")
+@click.argument("name")
+@click.option("--version", type=int, help="Model version; defaults to latest.")
+@click.pass_context
+def model_lineage(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show upstream lineage for a model.
+
+    Upstream covers the feature view and training dataset the model was
+    trained from.
+
+    Args:
+        ctx: Click context.
+        name: Model name.
+        version: Specific version; latest if omitted.
+    """
+    model = _get_model(ctx, name, version)
+    label = f"model {getattr(model, 'name', name)} v{getattr(model, 'version', '?')}"
+    sections = [
+        (
+            "upstream",
+            "feature_view",
+            lineage.fetch(model.get_feature_view_provenance),
+        ),
+        (
+            "upstream",
+            "training_dataset",
+            lineage.fetch(model.get_training_dataset_provenance),
+        ),
+    ]
+    lineage.render(label, sections)
 
 
 def _get_model(ctx: click.Context, name: str, version: int | None) -> Any:

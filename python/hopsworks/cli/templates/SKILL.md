@@ -45,7 +45,7 @@ hops project info                         # Current project details
 
 ```bash
 hops fg list                              # List all feature groups
-hops fg info <name> [--version N]         # Show details + schema
+hops fg info <name> [--version N]         # Show details + schema + tags
 hops fg preview <name> [--n 10]           # Preview data rows
 hops fg features <name>                   # List features with types
 hops fg stats <name> --compute            # Trigger statistics computation
@@ -53,8 +53,12 @@ hops fg search <name> --vector "0.1,..."  # KNN similarity search
 hops fg keywords <name>                   # List tags (aka keywords)
 hops fg add-keyword <name> <kw>           # Attach a keyword
 hops fg remove-keyword <name> <kw>        # Remove a keyword
+hops fg lineage <name> [--version N]      # Upstream/downstream lineage
 hops fg delete <name> --version N --yes   # Delete
 ```
+
+`lineage` shows parent feature groups, the storage connector, and the data
+source upstream, plus generated feature views and feature groups downstream.
 
 ### Create
 
@@ -112,6 +116,7 @@ hops fv info <name> [--version N]
 hops fv create <name> --feature-group <fg> [--join <spec>] [--transform <fn:col>]
 hops fv get <name> --entry "id=42,region=eu"       # Online vector lookup
 hops fv read <name> [--n 100] [--output data.parquet]
+hops fv lineage <name> [--version N]               # Parent FGs + generated models
 hops fv delete <name> --version N --yes
 ```
 
@@ -122,6 +127,7 @@ hops td list <fv> <fv-version>
 hops td compute <fv> <fv-version>                   # Materialize
 hops td compute <fv> <fv-version> --split "train:0.8,test:0.2"
 hops td read <fv> <fv-version> --td-version N [--split train] [--output train.parquet]
+hops td lineage <fv> <fv-version> [--td-version N]   # Parent FGs + trained models
 hops td delete <fv> <fv-version> [--td-version N] --yes
 ```
 
@@ -142,6 +148,7 @@ hops model list
 hops model info <name> [--version N]
 hops model register <name> <path> [flags]
 hops model download <name> [--version N] [--output dir]
+hops model lineage <name> [--version N]   # Upstream feature view + training dataset
 hops model delete <name> --version N --yes
 ```
 
@@ -162,6 +169,7 @@ hops deployment start <name> [--wait 600]
 hops deployment stop <name>
 hops deployment predict <name> --data '{"instances": [[1,2,3]]}'
 hops deployment logs <name> [--component predictor] [--tail 50]
+hops deployment lineage <name>                  # Served model + its FV/TD lineage
 hops deployment delete <name> --yes
 ```
 
