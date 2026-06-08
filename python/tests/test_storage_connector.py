@@ -2111,8 +2111,13 @@ class TestStorageConnectorToDict:
         assert d["sslKeystoreLocation"] == "test_ssl_keystore_location"
         assert d["sslKeystorePassword"] == "test_ssl_keystore_password"
         assert d["sslKeyPassword"] == "test_ssl_key_password"
-        assert d["sslEndpointIdentificationAlgorithm"] == "test_ssl_endpoint_identification_algorithm"
-        assert d["options"] == [{"name": "test_option_name", "value": "test_option_value"}]
+        assert (
+            d["sslEndpointIdentificationAlgorithm"]
+            == "test_ssl_endpoint_identification_algorithm"
+        )
+        assert d["options"] == [
+            {"name": "test_option_name", "value": "test_option_value"}
+        ]
 
     def test_kafka_external_flag_to_dict(self, backend_fixtures):
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
@@ -2204,7 +2209,9 @@ class TestStorageConnectorToDict:
         assert "hasClientSecret" not in d
 
     def test_unity_catalog_oauth_workspace_to_dict(self, backend_fixtures):
-        json = backend_fixtures["storage_connector"]["get_unity_catalog_oauth_workspace"]["response"]
+        json = backend_fixtures["storage_connector"][
+            "get_unity_catalog_oauth_workspace"
+        ]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
 
         d = sc.to_dict()
@@ -2215,7 +2222,9 @@ class TestStorageConnectorToDict:
         assert "hasClientSecret" not in d
 
     def test_unity_catalog_oauth_account_to_dict(self, backend_fixtures):
-        json = backend_fixtures["storage_connector"]["get_unity_catalog_oauth_account"]["response"]
+        json = backend_fixtures["storage_connector"]["get_unity_catalog_oauth_account"][
+            "response"
+        ]
         sc = storage_connector.StorageConnector.from_response_json(json)
 
         d = sc.to_dict()

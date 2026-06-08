@@ -3676,7 +3676,9 @@ class CRMAndAnalyticsConnector(StorageConnector):
         payload.update(
             {
                 "apiKey": self._api_key,
-                "crmType": self._crm_type.value if hasattr(self._crm_type, "value") else self._crm_type,
+                "crmType": self._crm_type.value
+                if hasattr(self._crm_type, "value")
+                else self._crm_type,
                 "username": self._username,
                 "password": self._password,
                 "domain": self._domain,
