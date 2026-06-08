@@ -84,17 +84,15 @@ class OnlineConfig:
             seen_columns = set()
             normalized_columns = []
             for col in idx:
-                if not isinstance(col, str):
+                if not isinstance(col, str) or not col.strip():
                     raise ValueError(
                         f"secondary_indexes[{i}] contains an invalid column name: {col!r}."
                     )
-                # Sanitize to the online table column names, which the backend
-                # derives from feature names (lower case, spaces to underscores).
-                normalized = util.autofix_feature_name(col.strip(), warn=True)
-                if not normalized:
-                    raise ValueError(
-                        f"secondary_indexes[{i}] contains an invalid column name: {col!r}."
-                    )
+                # Sanitize with the same input as the feature-creation path (lower
+                # case, spaces to underscores) so the index targets the real online
+                # table column. Do not strip first: a padded name like " user " must
+                # map to "_user_" to match the created column, not "user".
+                normalized = util.autofix_feature_name(col, warn=True)
                 if normalized in seen_columns:
                     raise ValueError(
                         f"secondary_indexes[{i}] contains duplicate column name: {normalized!r}."

@@ -153,6 +153,13 @@ class TestOnlineConfig:
 
         assert config.secondary_indexes == [["user_country", "city_name"]]
 
+    def test_secondary_indexes_padded_name_matches_feature_path(self):
+        # The feature-creation path maps " User " -> "_user_" (spaces become
+        # underscores, no strip); the index column must normalize identically.
+        config = OnlineConfig(secondary_indexes=[[" User "]])
+
+        assert config.secondary_indexes == [["_user_"]]
+
     def test_secondary_indexes_whitespace_only_rejected(self):
         with pytest.raises(ValueError, match="invalid column name"):
             OnlineConfig(secondary_indexes=[["   "]])
