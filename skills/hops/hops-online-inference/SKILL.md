@@ -1,13 +1,36 @@
 ---
-name: hopsworks-online-inference
-description: Use when writing code for model deployment, online inference, predictor scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to deploy models, write predictor.py files, retrieve precomputed features for serving, create on-demand transformation functions, or configure model serving.
+name: hops-online-inference
+description: Use when writing code for model deployment, online inference, predictor scripts, or on-demand transformations in Hopsworks. Auto-invoke when user wants to deploy models, write predictor.py files, retrieve precomputed features for serving, create on-demand transformation functions, or configure model serving. Input registered model + online feature view; output a running KServe endpoint.
 ---
 
 # Hopsworks Online Inference — Python SDK Best Practices
 
+An **online inference pipeline** is one of the three FTI pipelines (Feature, Training, Inference): a separate program that runs 24/7 behind a network endpoint, accepts prediction requests, builds feature vectors (precomputed features from the online store + on-demand + passed features), calls `model.predict`, and logs its inputs and outputs for monitoring and debugging. What you deploy is the pipeline, not the model alone. The model is one step inside it.
+
+## Contract
+
+- **Input:** a registered model + an online-serving feature view.
+- **Output:** a running KServe HTTP endpoint serving predictions.
+- **Pre-condition:** the model is registered in the model registry, and every feature group backing the feature view is `online_enabled` (unless all features are on-demand).
+
+## Ask the user (only when state is ambiguous)
+
+- **Resources:** CPU cores, memory, GPUs for the predictor (requests vs limits).
+- **Environment:** which Python environment the predictor runs in.
+- **Scaling:** min/max instances, scale-to-zero, and target concurrency (`ScaleMetric.CONCURRENCY`).
+- **Before deleting** — `deployment.delete()` / `hops deployment delete --yes` tears down the running endpoint irreversibly; confirm the exact name with the user, and never tear down a deployment you created as a side effect (temp or test ones included) unless they asked.
+
 ## Model Deployment Overview
 
-Hopsworks Model Serving deploys models as HTTP endpoints using KServe. Supported frameworks:
+Hopsworks Model Serving deploys an online inference pipeline as an HTTP endpoint using KServe. The endpoint exposes a **deployment API** (serving keys + request parameters + return type), which is the contract clients depend on. Keep it more stable than the model signature: as long as the deployment API is unchanged you can swap the model version or move a precomputed feature to an on-demand one without breaking clients.
+
+Library versions must match across the feature, training, and inference pipelines (e.g. the `joblib` used to pickle the model in training must be able to unpickle it here). The Hopsworks feature/training/inference base container images are version-aligned for this reason; if you customize an environment, install compatible versions.
+
+> **sklearn serving skew.** The KServe sklearn serving image pins a specific scikit-learn (e.g. 1.3.x). A model pickled with a different scikit-learn in your training venv (e.g. 1.8.x) can fail to unpickle on the KServe deployment. Either pin training to the serving image's scikit-learn, or deploy as a `python` deployment with a cloned environment that has your training versions plus your `predictor.py`. Batch and interactive inference run in your own environment, so they have no such skew.
+
+> **`get_model` defaults to v1, not latest.** `mr.get_model("name")` with no `version=` loads version 1 (with a warning), so a deployment keeps serving v1 after you register v2. Pass `version=` explicitly, or `mr.get_best_model("name", metric=..., direction=...)`.
+
+Supported frameworks:
 
 | Framework | Model Server | Requires predictor.py | Notes |
 |---|---|---|---|
@@ -65,12 +88,18 @@ model = mr.llm.create_model("my_llm", ...)
 
 ```python
 from hsml.resources import PredictorResources, Resources
-from hsml.scaling_config import PredictorScalingConfig
+from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
+
+# `script_file` must be a path INSIDE the Hopsworks filesystem, not a local path.
+# Upload predictor.py first (here, next to the model's files), then point at it.
+# A local path fails with HTTP 400 errorCode 240016 "Predictor script does not exist".
+script_dir = f"/Projects/{project.name}/Models/{model.name}/{model.version}/Files"
+project.get_dataset_api().upload("predictor.py", script_dir, overwrite=True)
 
 deployment = model.deploy(
     name="fraud_predictor",
     description="Real-time fraud detection",
-    script_file="predictor.py",       # required for Python/PyTorch
+    script_file=f"{script_dir}/predictor.py",   # Hopsworks path, not local
     resources=PredictorResources(
         requests=Resources(cores=1, memory=1024, gpus=0),
         limits=Resources(cores=2, memory=2048, gpus=0),
@@ -78,6 +107,8 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=3,
+        scale_metric=ScaleMetric.CONCURRENCY,   # required — omitting it fails with HTTP 422
+        target=70,                              # target concurrent requests per pod
     ),
     environment="inference-pipeline",  # Python environment name
 )
@@ -124,153 +155,68 @@ deployment.stop(await_stopped=120)
 deployment.delete()
 ```
 
+## Smoke-test
+
+**CLI smoke-test:** `hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with `hops deployment status <name>` (its own command) or the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
+
+### Deploy from the CLI (no Python)
+
+The whole deploy→serve→smoke loop runs from the CLI — this is what the terminal
+kickoff flow uses. The model must already be registered (`hops model list`):
+
+```bash
+hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline
+hops deployment start <name>
+hops deployment status <name>                                   # poll until READY
+hops deployment predict <name> --data '{"instances": [{ <one known-good row> }]}'
+hops deployment delete <name> --yes --force                    # delete prompts; --force skips the running check
+```
+
+A sane number back from `predict` (not an HTTP 500) confirms the udf runs on the
+scalar serving path. `create` requires the model name as the positional and the
+deployment name via `--name`; recreate over a stale deployment with
+`hops deployment delete <name> --yes --force` first (there is no TTY in a job/terminal).
+
+## Robustness and latency
+
+An online inference pipeline is a 24/7 operational service: make it robust to missing request parameters, missing or delayed precomputed features, and slow/failing third-party calls. Log errors to stdout/stderr (Hopsworks ships them to OpenSearch) and design fallbacks (impute from training statistics, use default or cached last-known values, or fall back to a simpler model) rather than letting the request fail. Set low timeouts on any network/feature lookups.
+
+Total latency is the sum of every step (feature lookup + ODTs + MDTs + `model.predict` + logging + network), so define an SLO (p99 latency, allowed downtime) on the deployment API. For the lowest latency use a single predictor container (a separate transformer container adds a network hop), keep ODTs as low-latency Python UDFs at request time, and rely on the asynchronous logging above.
+
 ---
 
 ## Writing predictor.py Files
 
 A predictor script must define a `Predict` class with `__init__` and `predict` methods.
 
-### Basic Predictor
+**Loading model files (important).** At serving time the model files mount under
+`MODEL_FILES_PATH`, NOT `ARTIFACT_FILES_PATH` — that variable points at the
+directory holding only the predictor script, so `joblib.load(ARTIFACT_FILES_PATH + "/model.pkl")`
+fails with `FileNotFoundError`. Use a resolver that searches the known mounts and
+call it from `__init__`:
 
 ```python
-# predictor.py
-import os
-import joblib
+import os, glob
 
-class Predict:
-    def __init__(self):
-        """Called once when the deployment starts.
-        
-        Load model, initialize feature view, set up resources here.
-        The model files are available in the current working directory.
-        """
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
-
-    def predict(self, inputs):
-        """Called for each inference request.
-        
-        Parameters:
-            inputs: List of input instances (list of lists)
-            
-        Returns:
-            dict with "predictions" key containing the results
-        """
-        return {"predictions": self.model.predict(inputs).tolist()}
+def load_model_file(name):
+    """Resolve a file saved alongside the model. Model files mount under
+    MODEL_FILES_PATH at serving time (ARTIFACT_FILES_PATH holds only this
+    script); fall back to the standard mount roots."""
+    for root in (os.environ.get("MODEL_FILES_PATH"),
+                 os.environ.get("ARTIFACT_FILES_PATH"),
+                 "/mnt/models", "/mnt/artifacts"):
+        if root:
+            hits = glob.glob(f"{root}/**/{name}", recursive=True)
+            if hits:
+                return hits[0]
+    raise FileNotFoundError(f"{name} not found under the model/artifact mounts")
 ```
 
-### Predictor with Feature Store Lookup
+Include this helper in each `predictor.py` below; the examples load with
+`joblib.load(load_model_file("model.pkl"))`.
 
-The most common pattern: look up precomputed features from the online feature store, then predict.
+Four concrete `predictor.py` skeletons — basic, feature-store lookup, on-demand features, and passed features — are in [references/predictors.md](references/predictors.md).
 
-```python
-# predictor.py
-import os
-import joblib
-import hopsworks
-
-class Predict:
-    def __init__(self):
-        # Load model
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
-        
-        # Connect to feature store
-        project = hopsworks.login()
-        fs = project.get_feature_store()
-        
-        # Initialize feature view for online serving
-        self.fv = fs.get_feature_view("fraud_features_fv", version=1)
-        self.fv.init_serving(training_dataset_version=1)
-
-    def predict(self, inputs):
-        """inputs: list of dicts with primary keys, e.g. [{"user_id": 123}]"""
-        # Look up precomputed features from online store
-        feature_vectors = self.fv.get_feature_vectors(
-            entry=inputs,
-            return_type="pandas",
-        )
-        
-        # Predict
-        predictions = self.model.predict(feature_vectors).tolist()
-        return {"predictions": predictions}
-```
-
-### Predictor with On-Demand Features
-
-Combine precomputed features with on-demand features computed at request time:
-
-```python
-# predictor.py
-import os
-import joblib
-import hopsworks
-
-class Predict:
-    def __init__(self):
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
-        
-        project = hopsworks.login()
-        fs = project.get_feature_store()
-        
-        self.fv = fs.get_feature_view("recommendation_fv", version=1)
-        self.fv.init_serving(training_dataset_version=1)
-
-    def predict(self, inputs):
-        """inputs: list of dicts with primary keys AND request parameters.
-        
-        Example: [{"user_id": 123, "query_text": "running shoes", "current_location": "NYC"}]
-        """
-        entries = []
-        request_params = []
-        
-        for inp in inputs:
-            # Separate primary keys from request parameters
-            entries.append({"user_id": inp["user_id"]})
-            request_params.append({
-                "query_text": inp.get("query_text", ""),
-                "current_location": inp.get("current_location", ""),
-            })
-        
-        # Get feature vectors with on-demand features computed
-        feature_vectors = self.fv.get_feature_vectors(
-            entry=entries,
-            request_parameters=request_params,
-            return_type="pandas",
-        )
-        
-        predictions = self.model.predict(feature_vectors).tolist()
-        return {"predictions": predictions}
-```
-
-### Predictor with Passed Features
-
-Provide feature values from the application that override or supplement stored features:
-
-```python
-# predictor.py
-class Predict:
-    def __init__(self):
-        # ... init model and feature view ...
-        pass
-
-    def predict(self, inputs):
-        """inputs: [{"user_id": 123, "session_duration": 45.2, "device": "mobile"}]"""
-        entries = []
-        passed = []
-        
-        for inp in inputs:
-            entries.append({"user_id": inp["user_id"]})
-            passed.append({
-                "session_duration": inp["session_duration"],
-                "device": inp["device"],
-            })
-        
-        vectors = self.fv.get_feature_vectors(
-            entry=entries,
-            passed_features=passed,
-            return_type="pandas",
-        )
-        return {"predictions": self.model.predict(vectors).tolist()}
-```
 
 ---
 
@@ -328,18 +274,18 @@ helpers = fv.get_inference_helper(
 
 ## On-Demand Transformation Functions
 
-On-demand transformations compute features at request time. They are attached to **feature groups** and automatically included in feature views that select those features.
+On-demand transformations (ODTs) compute features at request time from request parameters (and optionally precomputed features). They are registered on **feature groups** (not feature views) because they also run in feature pipelines, and they are automatically included in feature views that select those features. This is what keeps ODTs equivalent across offline (training/backfill) and online (serving) execution: the same versioned function and its source code is used in both, avoiding training/serving skew. Contrast with model-dependent transformations (MDTs), which are registered on the feature view, run after reading from the feature store, are specific to one model, and may use training-data statistics.
 
 ### Key Constraints
 
-- On-demand transformations **cannot** use training statistics (no `statistics` parameter)
+- On-demand transformations **cannot** use training statistics (no `statistics` parameter); that is what distinguishes an ODT from an MDT
 - On-demand transformations are `TransformationType.ON_DEMAND` (set automatically when attached to a feature group)
 - External feature groups do **not** support on-demand transformations
 
 ### Defining On-Demand Transformations
 
 ```python
-from hsfs import udf
+from hopsworks import udf
 
 # Simple on-demand feature
 @udf(float)
@@ -494,6 +440,8 @@ scaling = PredictorScalingConfig(
 
 ### Inference Logger
 
+An online inference pipeline should log its inputs and outputs so the deployment can be monitored and debugged. Logging the model inputs and predictions also gives you the feature/prediction data needed for monitoring drift and model performance over time. Hopsworks logs are written asynchronously so they do not add latency to the prediction response.
+
 ```python
 from hsml.inference_logger import InferenceLogger
 
@@ -569,7 +517,7 @@ deployment.start()
 ```python
 import hopsworks
 from hsml.resources import PredictorResources, Resources
-from hsml.scaling_config import PredictorScalingConfig
+from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
 
 # 1. Connect
 project = hopsworks.login()
@@ -588,10 +536,12 @@ model = mr.python.create_model(
 )
 model.save("./model_artifacts")
 
-# 3. Deploy with predictor script
+# 3. Deploy with predictor script (upload it to the Hopsworks FS first)
+script_dir = f"/Projects/{project.name}/Models/{model.name}/{model.version}/Files"
+project.get_dataset_api().upload("predictor.py", script_dir, overwrite=True)
 deployment = model.deploy(
     name="fraud_predictor",
-    script_file="predictor.py",
+    script_file=f"{script_dir}/predictor.py",
     resources=PredictorResources(
         requests=Resources(cores=1, memory=1024, gpus=0),
         limits=Resources(cores=2, memory=2048, gpus=0),
@@ -599,6 +549,7 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=5,
+        scale_metric=ScaleMetric.CONCURRENCY,  # required, else HTTP 422
         target=50,
     ),
 )
@@ -625,7 +576,7 @@ import hopsworks
 
 class Predict:
     def __init__(self):
-        self.model = joblib.load(os.environ["ARTIFACT_FILES_PATH"] + "/model.pkl")
+        self.model = joblib.load(load_model_file("model.pkl"))
         
         project = hopsworks.login()
         fs = project.get_feature_store()
@@ -663,3 +614,12 @@ class Predict:
 | Attach to FG | `fs.get_or_create_feature_group(..., transformation_functions=[my_fn("col")])` |
 | Save TF to store | `fs.create_transformation_function(my_fn).save()` |
 | Get TF from store | `fs.get_transformation_function("name", version=1)` |
+
+---
+
+## Next Steps
+
+- Train and register the model this serves: **hops-train**.
+- Build the online feature view it looks up: **hops-fv**.
+- Predictor dependencies: [hops-environments](../hops-environments/SKILL.md) — clone an inference env and install requirements.
+- Offline scoring instead of a live endpoint: **hops-batch-inference**.

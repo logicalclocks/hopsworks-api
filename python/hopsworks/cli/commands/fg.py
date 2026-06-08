@@ -2,9 +2,10 @@
 
 Covers the full feature-group surface: ``list``, ``info``, ``preview``,
 ``features`` (reads) plus ``create``, ``create-external``, ``insert``,
-``derive``, ``delete``, ``stats``, ``search``, ``keywords``/``add-keyword``/
-``remove-keyword`` (writes). All operations go through the SDK in-process so
-Hopsworks domain logic is invoked directly, with no subprocess hop.
+``derive``, ``append-features``, ``delete``, ``stats``, ``search``,
+``keywords``/``add-keyword``/``remove-keyword`` (writes). All operations go
+through the SDK in-process so Hopsworks domain logic is invoked directly, with
+no subprocess hop.
 """
 
 from __future__ import annotations
@@ -27,40 +28,51 @@ def fg_group() -> None:
 @fg_group.command("list")
 @click.pass_context
 def fg_list(ctx: click.Context) -> None:
-    """List all feature groups in the active project's feature store.
+    """List feature groups across every feature store the project can access.
+
+    Includes feature groups in shared feature stores (as the UI does). The
+    STORE column shows which feature store each one lives in.
 
     Args:
         ctx: Click context.
     """
-    fs = session.get_feature_store(ctx)
-    fgs = fs.get_feature_groups()
+    stores = session.get_accessible_feature_stores(ctx)
     rows = []
-    for fg in fgs:
-        rows.append(
-            [
-                getattr(fg, "id", "?"),
-                getattr(fg, "name", "?"),
-                getattr(fg, "version", "?"),
-                _fg_type_label(fg),
-                "yes" if getattr(fg, "online_enabled", False) else "no",
-            ]
-        )
-    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE"], rows)
+    for fs in stores:
+        for fg in fs.get_feature_groups():
+            rows.append(
+                [
+                    getattr(fg, "id", "?"),
+                    getattr(fg, "name", "?"),
+                    getattr(fg, "version", "?"),
+                    _fg_type_label(fg),
+                    "yes" if getattr(fg, "online_enabled", False) else "no",
+                    getattr(fs, "name", "?"),
+                ]
+            )
+    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE", "STORE"], rows)
 
 
 @fg_group.command("info")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
-def fg_info(ctx: click.Context, name: str, version: int | None) -> None:
+def fg_info(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
     """Print metadata for a single feature group.
 
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Specific version to inspect; latest if omitted.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     if output.JSON_MODE:
         output.print_json(_fg_to_dict(fg))
         return
@@ -84,11 +96,30 @@ def fg_info(ctx: click.Context, name: str, version: int | None) -> None:
 @click.option(
     "--online", is_flag=True, help="Read from the online store (default: offline)."
 )
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
+@click.option(
+    "--columns",
+    help="Comma-separated columns to show (projection); useful to skip wide "
+    "embedding/array columns.",
+)
 @click.pass_context
 def fg_preview(
-    ctx: click.Context, name: str, version: int | None, n: int, online: bool
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    n: int,
+    online: bool,
+    featurestore: str | None,
+    columns: str | None,
 ) -> None:
     """Show the first ``n`` rows of a feature group.
+
+    Wide array/struct columns (embeddings, nested arrays) are collapsed to a
+    ``[len=N] head…`` preview in the table view so one row stays one line; use
+    ``--columns`` to project, or ``--json`` for the untruncated values.
 
     Args:
         ctx: Click context.
@@ -96,35 +127,53 @@ def fg_preview(
         version: Specific version to read.
         n: Number of rows to fetch.
         online: When True, read from the online store.
+        featurestore: Pin lookup to this feature store by name.
+        columns: Optional comma-separated column projection.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     try:
         df = fg.read(online=online, dataframe_type="pandas").head(n)
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
         raise click.ClickException(f"Could not read feature group: {exc}") from exc
 
+    if columns:
+        wanted = [c.strip() for c in columns.split(",") if c.strip()]
+        missing = [c for c in wanted if c not in df.columns]
+        if missing:
+            raise click.BadParameter(
+                f"Unknown column(s): {', '.join(missing)}", param_hint="--columns"
+            )
+        df = df[wanted]
+
     if output.JSON_MODE:
         output.print_json(df.to_dict(orient="records"))
         return
 
-    columns = list(df.columns)
-    rows = [[row[c] for c in columns] for _, row in df.iterrows()]
-    output.print_table(columns, rows)
+    cols = list(df.columns)
+    rows = [[_truncate_cell(row[c]) for c in cols] for _, row in df.iterrows()]
+    output.print_table(cols, rows)
 
 
 @fg_group.command("features")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
 @click.pass_context
-def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
+def fg_features(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
     """List the schema of a feature group (name, type, primary key).
 
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Specific version to inspect.
+        featurestore: Pin lookup to this feature store by name.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, featurestore)
     rows = []
     for f in getattr(fg, "features", []) or []:
         rows.append(
@@ -139,12 +188,40 @@ def fg_features(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["NAME", "TYPE", "PK", "PARTITION", "DESCRIPTION"], rows)
 
 
-def _get_fg(ctx: click.Context, name: str, version: int | None) -> Any:
-    fs = session.get_feature_store(ctx)
-    try:
-        return fs.get_feature_group(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature group '{name}' not found: {exc}") from exc
+def _get_fg(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    featurestore: str | None = None,
+) -> Any:
+    """Resolve a feature group across the project's accessible feature stores.
+
+    Searches the project's own store first, then shared stores, so a shared
+    feature group resolves just like a local one. ``featurestore`` pins the
+    lookup to a single store by name when the same name exists in several.
+    """
+    stores = session.get_accessible_feature_stores(ctx)
+    if featurestore is not None:
+        stores = [s for s in stores if getattr(s, "name", None) == featurestore]
+        if not stores:
+            raise click.ClickException(
+                f"Feature store '{featurestore}' is not accessible from this project."
+            )
+    last_exc: Exception | None = None
+    for fs in stores:
+        try:
+            fg = fs.get_feature_group(name, version=version)
+        except Exception as exc:  # noqa: BLE001 - not in this store, try the next
+            last_exc = exc
+            continue
+        # The SDK returns None (rather than raising) when a store lacks the
+        # feature group; keep searching the remaining accessible stores.
+        if fg is not None:
+            return fg
+    suffix = f": {last_exc}" if last_exc else ""
+    raise click.ClickException(
+        f"Feature group '{name}' not found in any accessible feature store{suffix}"
+    )
 
 
 def _fg_type_label(fg: Any) -> str:
@@ -207,7 +284,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
 @click.option(
     "--features",
     "features_spec",
-    help='Comma-separated schema, e.g. "id:bigint,amount:double".',
+    help='Comma-separated schema "name:type[:description]", e.g. "id:bigint:User id,amount:double".',
 )
 @click.option("--event-time", "event_time", help="Name of the event-time column.")
 @click.option(
@@ -242,7 +319,7 @@ def fg_create(
         name: Feature group name.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
-        features_spec: Comma-separated ``name:type`` pairs.
+        features_spec: Comma-separated ``name:type[:description]`` items.
         event_time: Event-time column name.
         partition_key: Comma-separated partition keys.
         online: Whether to enable the online store.
@@ -577,6 +654,46 @@ def fg_derive(
     output.success("✓ Derived feature group %s from %s", name, base_fg)
 
 
+@fg_group.command("append-features")
+@click.argument("name")
+@click.option(
+    "--features",
+    "features_spec",
+    required=True,
+    help='New columns "name:type[:description]", e.g. "score:double:Risk score,tier:string".',
+)
+@click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.pass_context
+def fg_append_features(
+    ctx: click.Context, name: str, features_spec: str, version: int | None
+) -> None:
+    """Append new columns to an existing feature group, in place.
+
+    Append-only schema evolution: it keeps the same feature group version so
+    downstream consumers are never disturbed. Existing columns cannot be
+    dropped, renamed, or retyped from here; that is a breaking change, so bump
+    to a new version instead. New columns cannot be primary or partition keys,
+    and existing rows are not backfilled (they read null until reinserted).
+    Feature views built on this feature group keep their old projection and do
+    not see the appended columns; create a new feature view to use them.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        features_spec: New columns as comma-separated ``name:type[:description]`` items.
+        version: Feature group version; defaults to latest.
+    """
+    fg = _get_fg(ctx, name, version)
+    features = _build_features(features_spec)
+    if not features:
+        raise click.UsageError("Provide at least one new column via --features.")
+    try:
+        fg.append_features(features)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Append failed: {exc}") from exc
+    output.success("✓ Appended %d feature(s) to %s", len(features), name)
+
+
 @fg_group.command("delete")
 @click.argument("name")
 @click.option(
@@ -643,7 +760,26 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
         to_dict = getattr(stats, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else {"stats": str(stats)})
         return
-    output.info("%s", stats)
+
+    fds = getattr(stats, "feature_descriptive_statistics", None)
+    if not fds:
+        output.info("%s", stats)
+        return
+    rows = [
+        [
+            getattr(s, "feature_name", "?"),
+            _stat_num(getattr(s, "count", None), as_int=True),
+            _stat_num(getattr(s, "completeness", None)),
+            _stat_num(getattr(s, "min", None)),
+            _stat_num(getattr(s, "max", None)),
+            _stat_num(getattr(s, "mean", None)),
+            _stat_num(getattr(s, "stddev", None)),
+        ]
+        for s in fds
+    ]
+    output.print_table(
+        ["FEATURE", "COUNT", "COMPLETE", "MIN", "MAX", "MEAN", "STDDEV"], rows
+    )
 
 
 @fg_group.command("search")
@@ -777,6 +913,39 @@ def fg_remove_keyword(
 # region Helpers
 
 
+def _stat_num(value: Any, as_int: bool = False) -> str:
+    """Format a single statistic for the table view; ``None`` renders as ``-``."""
+    if value is None:
+        return "-"
+    if as_int and isinstance(value, (int, float)):
+        return str(int(value))
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def _truncate_cell(value: Any, width: int = 60) -> str:
+    """Collapse a wide list/array cell to a length + head preview.
+
+    Embeddings and struct arrays would otherwise blow up the row; long scalars
+    are truncated to ``width``.
+    """
+    is_seq = isinstance(value, (list, tuple)) or (
+        hasattr(value, "tolist") and hasattr(value, "__len__")
+    )
+    if is_seq:
+        try:
+            seq = list(value)
+        except TypeError:
+            seq = None
+        if seq is not None:
+            head = ", ".join(str(x)[:12] for x in seq[:3])
+            tail = ", …" if len(seq) > 3 else ""
+            return f"[len={len(seq)}] {head}{tail}"
+    text = str(value)
+    return text if len(text) <= width else text[: width - 1] + "…"
+
+
 def _split_csv(value: str | None) -> list[str]:
     if not value:
         return []
@@ -803,11 +972,15 @@ def _build_features(spec: str | None) -> list[Any]:
             continue
         if ":" not in item:
             raise click.BadParameter(
-                f"Feature '{item}' must be 'name:type'.",
+                f"Feature '{item}' must be 'name:type[:description]'.",
                 param_hint="--features",
             )
-        col, dtype = item.split(":", 1)
-        out.append(Feature(col.strip(), dtype.strip()))
+        # name:type[:description]; the description (optional) is everything
+        # after the second colon, so it may contain colons but not a comma,
+        # which separates items. CLI-expressible types carry no inner colon.
+        col, dtype, *desc = item.split(":", 2)
+        description = desc[0].strip() if desc else None
+        out.append(Feature(col.strip(), dtype.strip(), description=description or None))
     return out
 
 

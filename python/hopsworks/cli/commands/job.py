@@ -7,6 +7,10 @@ follows the same memoized-session pattern as the rest of the CLI.
 
 from __future__ import annotations
 
+import contextlib
+import os
+import shutil
+import tempfile
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -195,6 +199,134 @@ def job_create(
     output.success("✓ Created job %s", getattr(job, "name", name))
 
 
+@job_group.command("deploy")
+@click.argument("name")
+@click.argument("script")
+@click.option(
+    "--type",
+    "job_type",
+    type=click.Choice(
+        ["PYTHON", "PYSPARK", "SPARK", "DOCKER", "FLINK"], case_sensitive=False
+    ),
+    default="PYTHON",
+    show_default=True,
+    help="Job type.",
+)
+@click.option(
+    "--env",
+    "environment",
+    help="Python environment name (sets environmentName; otherwise the type default).",
+)
+@click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option(
+    "--cron",
+    help="Schedule (Quartz cron or @hourly/@daily/@weekly/@monthly shorthand).",
+)
+@click.option("--run", "do_run", is_flag=True, help="Run once after deploying.")
+@click.option(
+    "--wait", is_flag=True, help="With --run, block until the execution finishes."
+)
+@click.option(
+    "--upload-dir",
+    default=None,
+    help="HopsFS dir to upload a local script to (default: Resources/jobs/<name>).",
+)
+@click.option(
+    "--overwrite", is_flag=True, help="Overwrite the uploaded script if it exists."
+)
+@click.pass_context
+def job_deploy(
+    ctx: click.Context,
+    name: str,
+    script: str,
+    job_type: str,
+    environment: str | None,
+    app_args: str | None,
+    cron: str | None,
+    do_run: bool,
+    wait: bool,
+    upload_dir: str | None,
+    overwrite: bool,
+) -> None:
+    """Deploy a job end to end: upload, set environment, schedule, run.
+
+    One-shot for what ``create`` + ``schedule`` + ``run`` do separately, plus
+    the environment selection that ``create`` cannot set. ``SCRIPT`` is either
+    a local file (uploaded to HopsFS) or an existing HopsFS path.
+
+    Args:
+        ctx: Click context.
+        name: Job name (created or updated).
+        script: Local file to upload, or an existing HopsFS path.
+        job_type: One of PYTHON/PYSPARK/SPARK/DOCKER/FLINK.
+        environment: Python environment name; the type default if omitted.
+        app_args: Argument string passed to the job.
+        cron: Schedule; Quartz or a shorthand. No schedule if omitted.
+        do_run: Run once after deploying.
+        wait: With ``do_run``, block until the execution terminates.
+        upload_dir: HopsFS directory for a local script upload.
+        overwrite: Overwrite an existing uploaded script.
+    """
+    project = session.get_project(ctx)
+    api = project.get_job_api()
+
+    # 1. Resolve the app path — upload when a local file was given.
+    app_path = script
+    if os.path.isfile(script):
+        dataset = project.get_dataset_api()
+        dest_dir = upload_dir or f"Resources/jobs/{name}"
+        with contextlib.suppress(Exception):  # directory may already exist
+            dataset.mkdir(dest_dir)
+        try:
+            uploaded = dataset.upload(
+                local_path=script, upload_path=dest_dir, overwrite=overwrite
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Could not upload script: {exc}") from exc
+        app_path = uploaded or f"{dest_dir}/{os.path.basename(script)}"
+        output.success("✓ Uploaded %s -> %s", os.path.basename(script), app_path)
+
+    # 2. Build the config, including the environment the CLI otherwise can't set.
+    try:
+        config = api.get_configuration(job_type.upper())
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not load default config: {exc}") from exc
+    config["appPath"] = app_path
+    if app_args:
+        config["defaultArgs"] = app_args
+    if environment:
+        config["environmentName"] = environment
+
+    # 3. Create or update the job.
+    try:
+        job = api.create_job(name=name, config=config)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not deploy job: {exc}") from exc
+    output.success("✓ Deployed job %s (env=%s)", name, environment or "default")
+
+    # 4. Schedule.
+    if cron:
+        cron_expr = _expand_cron_alias(cron)
+        try:
+            job.schedule(cron_expression=cron_expr)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Schedule failed: {exc}") from exc
+        output.success("✓ Scheduled %s (%s)", name, cron_expr)
+
+    # 5. Run.
+    if do_run:
+        try:
+            execution = job.run(args=app_args, await_termination=wait)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Run failed: {exc}") from exc
+        output.success(
+            "✓ Started %s (execution #%s, state=%s)",
+            name,
+            getattr(execution, "id", "?"),
+            getattr(execution, "state", "?"),
+        )
+
+
 _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 
@@ -360,14 +492,39 @@ def job_stop(ctx: click.Context, name: str) -> None:
     type=int,
     help="Specific execution ID; defaults to the most recent.",
 )
+@click.option(
+    "--stdout",
+    "to_stdout",
+    is_flag=True,
+    help="Print the log content to the terminal instead of downloading log "
+    "directories into the working directory.",
+)
+@click.option(
+    "--tail",
+    type=int,
+    help="With --stdout, print only the last N lines of each stream.",
+)
 @click.pass_context
-def job_logs(ctx: click.Context, name: str, execution_id: int | None) -> None:
-    """Download stdout/stderr logs for a job execution.
+def job_logs(
+    ctx: click.Context,
+    name: str,
+    execution_id: int | None,
+    to_stdout: bool,
+    tail: int | None,
+) -> None:
+    """Read stdout/stderr logs for a job execution.
+
+    By default this downloads ``stdout.log`` / ``stderr.log`` into a
+    ``logs-job-<name>-exec-<id>_*`` directory in the working directory and
+    prints the paths. Pass ``--stdout`` to print the content to the terminal
+    instead, leaving no files behind.
 
     Args:
         ctx: Click context.
         name: Job name.
         execution_id: Specific execution; latest if omitted.
+        to_stdout: Print content to the terminal instead of downloading files.
+        tail: With ``--stdout``, keep only the last N lines of each stream.
     """
     executions = _executions(_get_job(ctx, name))
     if not executions:
@@ -379,6 +536,24 @@ def job_logs(ctx: click.Context, name: str, execution_id: int | None) -> None:
             raise click.ClickException(f"Execution #{execution_id} not found.")
         target = matches[0]
 
+    if to_stdout:
+        tmp = tempfile.mkdtemp(prefix="hops-joblogs-")
+        try:
+            stdout_path, stderr_path = target.download_logs(path=tmp)
+            out, err = _read_log(stdout_path, tail), _read_log(stderr_path, tail)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Could not read logs: {exc}") from exc
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        if output.JSON_MODE:
+            output.print_json({"stdout": out, "stderr": err})
+            return
+        output.info("=== stdout ===")
+        click.echo(out or "(empty)")
+        output.info("=== stderr ===")
+        click.echo(err or "(empty)")
+        return
+
     try:
         stdout_path, stderr_path = target.download_logs()
     except Exception as exc:  # noqa: BLE001
@@ -389,6 +564,7 @@ def job_logs(ctx: click.Context, name: str, execution_id: int | None) -> None:
         return
     output.info("stdout: %s", stdout_path or "<none>")
     output.info("stderr: %s", stderr_path or "<none>")
+    output.info("(downloaded to the working directory; use --stdout to print instead)")
 
 
 @job_group.command("history")
@@ -412,6 +588,25 @@ def job_history(ctx: click.Context, name: str) -> None:
         for e in executions
     ]
     output.print_table(["ID", "STATE", "FINAL", "SUBMITTED"], rows)
+
+
+# Quartz cron (sec min hour day-of-month month day-of-week) for the common
+# crontab shorthands. day-of-month and day-of-week are mutually exclusive in
+# Quartz, hence the `?` placeholder in one of the two.
+_CRON_ALIASES = {
+    "@hourly": "0 0 * * * ?",
+    "@daily": "0 0 0 * * ?",
+    "@midnight": "0 0 0 * * ?",
+    "@weekly": "0 0 0 ? * SUN",
+    "@monthly": "0 0 0 1 * ?",
+    "@yearly": "0 0 0 1 1 ?",
+    "@annually": "0 0 0 1 1 ?",
+}
+
+
+def _expand_cron_alias(cron: str) -> str:
+    """Translate ``@daily``-style shorthands to a Quartz cron expression."""
+    return _CRON_ALIASES.get(cron.strip().lower(), cron)
 
 
 @job_group.command("schedule")
@@ -494,7 +689,8 @@ def job_schedule(
     Args:
         ctx: Click context.
         name: Job name.
-        cron: Quartz cron expression.
+        cron: Quartz cron expression, or a shorthand (@hourly, @daily,
+            @midnight, @weekly, @monthly, @yearly).
         start_time: ISO timestamp for the first trigger.
         end_time: ISO timestamp for the last trigger.
         start_offset_seconds: Per-fire offset for ``HOPS_START_TIME``.
@@ -504,6 +700,7 @@ def job_schedule(
         max_catchup_runs: Upper bound on missed intervals to replay during catchup.
     """
     job = _get_job(ctx, name)
+    cron = _expand_cron_alias(cron)
     try:
         schedule = job.schedule(
             cron_expression=cron,
@@ -587,6 +784,17 @@ def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted job %s", name)
+
+
+def _read_log(path: str | None, tail: int | None) -> str:
+    """Read a downloaded log file, optionally keeping only the last ``tail`` lines."""
+    if not path or not os.path.isfile(path):
+        return ""
+    with open(path, encoding="utf-8", errors="replace") as fd:
+        lines = fd.readlines()
+    if tail is not None and tail >= 0:
+        lines = lines[-tail:]
+    return "".join(lines)
 
 
 def _get_job(ctx: click.Context, name: str) -> Any:

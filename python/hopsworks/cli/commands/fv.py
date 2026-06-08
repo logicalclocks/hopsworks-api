@@ -37,7 +37,12 @@ def fv_list(ctx: click.Context) -> None:
                 item.get("id", "?"),
                 item.get("name", "?"),
                 item.get("version", "?"),
-                ", ".join(item.get("labels", []) or []) or "-",
+                ", ".join(
+                    f.get("name")
+                    for f in (item.get("features") or [])
+                    if f.get("label")
+                )
+                or "-",
                 output.first_line(item.get("description"), empty=""),
             ]
         )
@@ -78,7 +83,7 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
     features = getattr(fv, "features", []) or []
     if features:
         output.info("")
-        output.info("Features:")
+        output.info("Features (source schema):")
         rows = [
             [
                 getattr(f, "name", "?"),
@@ -88,6 +93,32 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
             for f in features
         ]
         output.print_table(["NAME", "TYPE", "LABEL"], rows)
+
+    tfs = getattr(fv, "transformation_functions", []) or []
+    if tfs:
+        output.info("")
+        output.info(
+            "Transformations (rename the schema seen by training data / serving):"
+        )
+        rows = []
+        for tf in tfs:
+            udf = getattr(tf, "hopsworks_udf", None)
+            rows.append(
+                [
+                    getattr(udf, "function_name", "?") if udf else "?",
+                    _tf_inputs(udf),
+                    ", ".join(getattr(tf, "output_column_names", []) or []) or "-",
+                    ", ".join(getattr(udf, "dropped_features", []) or []) or "-"
+                    if udf
+                    else "-",
+                ]
+            )
+        output.print_table(["FUNCTION", "INPUT", "OUTPUT COLUMN", "DROPPED"], rows)
+        output.info("")
+        output.info(
+            "Training data and the model see the OUTPUT columns, not the source "
+            "names; DROPPED source columns are absent from the materialized TD."
+        )
 
 
 def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
@@ -109,8 +140,12 @@ def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
     if fs_id is None:
         return []
     try:
+        # ``expand=features`` so each item carries its feature list; the bare
+        # list endpoint omits it, which is why LABELS rendered blank.
         payload = rest.send_request(
-            "GET", rest.project_path("featurestores", fs_id, "featureview")
+            "GET",
+            rest.project_path("featurestores", fs_id, "featureview"),
+            query_params={"expand": ["features"]},
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list feature views: {exc}") from exc
@@ -133,7 +168,28 @@ def _fv_to_dict(fv: Any) -> dict[str, Any]:
             }
             for f in getattr(fv, "features", []) or []
         ],
+        "transformations": [
+            {
+                "function": getattr(
+                    getattr(tf, "hopsworks_udf", None), "function_name", None
+                ),
+                "input": _tf_inputs(getattr(tf, "hopsworks_udf", None)).split(", "),
+                "output_columns": list(getattr(tf, "output_column_names", []) or []),
+                "dropped": list(
+                    getattr(getattr(tf, "hopsworks_udf", None), "dropped_features", [])
+                    or []
+                ),
+            }
+            for tf in getattr(fv, "transformation_functions", []) or []
+        ],
     }
+
+
+def _tf_inputs(udf: Any) -> str:
+    """Comma-joined input feature names a transformation consumes."""
+    feats = getattr(udf, "transformation_features", None) or []
+    names = [getattr(f, "feature_name", None) or str(f) for f in feats]
+    return ", ".join(names) or "-"
 
 
 # region Write commands

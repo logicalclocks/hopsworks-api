@@ -15,6 +15,7 @@ import click
 from hopsworks.cli import output, session
 from hopsworks.cli.commands import fv as fv_cmd
 from hopsworks.cli.commands import model as model_cmd
+from hopsworks.cli.commands import skills as skills_cmd
 
 
 @click.command("context")
@@ -152,6 +153,46 @@ def _render_markdown(
                 f"v{getattr(d, 'model_version', '?')}\n"
             )
         out("\n")
+
+    _render_guidance(out)
+
+
+def _render_guidance(out: Any) -> None:
+    """Append a CLI-vs-skill routing guide with a dynamic skill catalogue.
+
+    The CLI is the primary interface; the SDK is the fallback for what the CLI
+    cannot do. The skill catalogue is read live from the shipped skills (via
+    ``hops skills``) so it never drifts from what is actually installed.
+    """
+    out("## Working in this project\n\n")
+    out(
+        "Primary interface: the `hops` CLI — explore and operate with it. Write "
+        "Python with the `hopsworks` SDK for pipeline scripts that run as jobs or "
+        "deployments. Load the matching skill for SDK-heavy steps; list them with "
+        "`hops skills list` or read one with `hops skills show <name>`.\n\n"
+    )
+
+    skills_dir = skills_cmd._skills_dir()
+    skills = skills_cmd._collect_skills(skills_dir) if skills_dir else []
+    if skills:
+        out("## Available skills\n\n")
+        out("| Bucket | Skill | When to use |\n|---|---|---|\n")
+        for skill in skills:
+            out(
+                f"| {skill['bucket']} | {skill['name']} | "
+                f"{output.first_line(skill['description'])} |\n"
+            )
+        out("\n")
+    else:
+        out("Run `hops skills list` to see available skills.\n\n")
+
+    out(
+        "The CLI sets job/deployment environments via `--env`; the SDK is the "
+        "fallback for what the CLI cannot (custom job config). Imported feature "
+        "groups may live in a shared store — `hops fg list` shows a STORE "
+        "column, and a pipeline reads a shared FG via "
+        '`get_feature_store(name="<that store>")`.\n\n'
+    )
 
 
 def _fg_summary(fg: Any) -> dict[str, Any]:

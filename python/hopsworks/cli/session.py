@@ -8,6 +8,8 @@ invocation, caches the result on ``ctx.obj``, and surfaces a clean
 
 from __future__ import annotations
 
+import contextlib
+import sys
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -72,12 +74,18 @@ def get_project(ctx: click.Context) -> Project:
     try:
         # In internal mode pass ``internal=True`` so the SDK takes its own
         # ``REST_ENDPOINT`` + JWT path. Otherwise pass the user's API key.
-        project = auth.login(
-            host=cfg.host or "",
-            api_key_value=cfg.api_key,
-            project=cfg.project,
-            internal=cfg.internal,
-        )
+        #
+        # ``hopsworks.login()`` prints a "Logged in to project ..." banner to
+        # stdout. That belongs to interactive notebook use, not the CLI, where
+        # it corrupts ``--json`` output and piped data. Send it to stderr so
+        # stdout carries only the command payload.
+        with contextlib.redirect_stdout(sys.stderr):
+            project = auth.login(
+                host=cfg.host or "",
+                api_key_value=cfg.api_key,
+                project=cfg.project,
+                internal=cfg.internal,
+            )
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Login failed: {exc}") from exc
     obj["project"] = project
@@ -100,3 +108,32 @@ def get_feature_store(ctx: click.Context) -> Any:
     fs = project.get_feature_store()
     obj["fs"] = fs
     return fs
+
+
+def get_accessible_feature_stores(ctx: click.Context) -> list[Any]:
+    """Return every feature store the project can access (own + shared).
+
+    Mirrors what the UI lists: the project's own feature store plus any shared
+    with it. The own store is placed first so callers can prefer it when a
+    feature group name is ambiguous. Cached on ``ctx.obj``.
+
+    Args:
+        ctx: Click context.
+
+    Returns:
+        A list of feature store objects, own store first, de-duplicated by id.
+    """
+    obj: dict[str, Any] = ctx.ensure_object(dict)
+    if obj.get("all_fs") is not None:
+        return obj["all_fs"]
+    own = get_feature_store(ctx)
+    from hsfs.core.feature_store_api import FeatureStoreApi
+
+    try:
+        stores = FeatureStoreApi().get_all()
+    except Exception:  # noqa: BLE001 - degrade to just the project store
+        stores = [own]
+    own_id = getattr(own, "id", None)
+    ordered = [own] + [s for s in stores if getattr(s, "id", None) != own_id]
+    obj["all_fs"] = ordered
+    return ordered

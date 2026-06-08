@@ -93,7 +93,11 @@ class DataFrameValidator:
             self._raise_validation_error(errors)
         elif is_string_length_exceeded:
             # If the feature group is not created and string lengths exceed default, adjust the string columns
-            df_features = self.increase_string_columns(column_lengths, df_features)
+            df_features = self.increase_string_columns(
+                column_lengths,
+                df_features,
+                online_enabled=getattr(feature_group, "online_enabled", False),
+            )
 
         return df_features
 
@@ -127,7 +131,9 @@ class DataFrameValidator:
         return None
 
     @staticmethod
-    def increase_string_columns(column_lengths: dict, dataframe_features):
+    def increase_string_columns(
+        column_lengths: dict, dataframe_features, online_enabled=True
+    ):
         def round_up_to_hundred(num):
             import math
 
@@ -138,9 +144,12 @@ class DataFrameValidator:
             if i_feature.name in column_lengths:
                 char_limit = round_up_to_hundred(column_lengths[i_feature.name])
                 i_feature.online_type = f"varchar({char_limit})"
-                logger.warning(
-                    f"Maximum string length for column {i_feature.name} increased to {char_limit} in online table."
-                )
+                # The widened length only matters for the online store; warning
+                # about it on an offline-only feature group is misleading noise.
+                if online_enabled:
+                    logger.warning(
+                        f"Maximum string length for column {i_feature.name} increased to {char_limit} in online table."
+                    )
         return dataframe_features
 
 

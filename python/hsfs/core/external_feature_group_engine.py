@@ -22,7 +22,7 @@ from hopsworks_common.client.exceptions import (
 )
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
-from hsfs.core import feature_group_base_engine
+from hsfs.core import arrow_flight_client, feature_group_base_engine
 
 
 if TYPE_CHECKING:
@@ -41,11 +41,8 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             if (
                 (feature_group.data_source.database and feature_group.data_source.table)
                 or feature_group.data_source.path is not None
-                or (
-                    feature_group.data_source.query
-                    and not engine.get_type().startswith("spark")
-                )
-            ):
+                or feature_group.data_source.query
+            ) and arrow_flight_client.supports([feature_group]):
                 # If the user provided a data source, we can use it to infer the schema
                 feature_group._features = [
                     feature.Feature.from_response_json(feat)

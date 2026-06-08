@@ -184,10 +184,13 @@ def _make_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
 # create a fresh connection regardless of prior auth state.
 _hw_connection = _make_connection
 
+# Logs go to stderr so stdout carries only a command's payload.
+# A library writing INFO to stdout breaks any caller that parses stdout (the
+# `hops` CLI `--json` output, shell pipelines): the banner lands in the data.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
-    stream=sys.stdout,
+    stream=sys.stderr,
 )
 
 

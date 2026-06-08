@@ -52,6 +52,40 @@ class TestApp:
         assert app.memory_requested == "2048Mi"
         assert app.app_path == "hdfs:///Projects/proj/Resources/app.py"
 
+    def test_from_response_json_preserves_app_metadata(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        json_data = {
+            "jobId": 42,
+            "name": "my_app",
+            "state": "RUNNING",
+            "serving": True,
+            "appPath": "hdfs:///Projects/proj/Resources/app.py",
+            "appKind": "CUSTOM",
+            "appPort": 8080,
+            "entrypointCommand": 'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"',
+            "description": "Custom FastAPI app",
+            "gitUrl": "https://github.com/org/repo.git",
+            "gitProvider": "GitHub",
+            "gitBranch": "main",
+            "latestCommit": "0123456789abcdef0123456789abcdef01234567",
+            "entrypointScript": "streamlitapp.py",
+        }
+
+        app = App.from_response_json(json_data)
+
+        assert app.app_path == "hdfs:///Projects/proj/Resources/app.py"
+        assert app.app_kind == "CUSTOM"
+        assert app.app_port == 8080
+        assert app.entrypoint_command == (
+            'python -m uvicorn my_app:app --host 0.0.0.0 --port "$APP_PORT"'
+        )
+        assert app.description == "Custom FastAPI app"
+        assert app.git_url == "https://github.com/org/repo.git"
+        assert app.git_provider == "GitHub"
+        assert app.git_branch == "main"
+        assert app.latest_commit == "0123456789abcdef0123456789abcdef01234567"
+        assert app.entrypoint_script == "streamlitapp.py"
+
     def test_from_response_json_list(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
         json_list = [
@@ -154,6 +188,30 @@ class TestApp:
             app.run(await_serving=True)
 
         assert "App failed to start" in str(e_info.value)
+
+    def test_redeploy_waits_for_serving(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.app.time.sleep")
+        mock_api = mocker.patch(
+            "hopsworks_common.core.app_api.AppApi",
+        )
+
+        not_serving = App(name="my_app", state="RUNNING", serving=False)
+        serving = App(
+            name="my_app",
+            state="RUNNING",
+            serving=True,
+            app_url="pythonapp/proj/my_app/",
+        )
+        mock_api.return_value.get_app.side_effect = [not_serving, serving]
+
+        app = App(name="my_app", state="STOPPED")
+        app._app_api = mock_api.return_value
+
+        result = app.redeploy(await_serving=True)
+
+        mock_api.return_value._redeploy.assert_called_once_with("my_app")
+        assert result._serving is True
 
     def test_stop(self, mocker):
         mocker.patch("hopsworks_common.client.get_instance")
@@ -361,3 +419,56 @@ class TestApp:
         assert "my_app" in str(app)
         assert "RUNNING" in str(app)
         assert "True" in str(app)
+
+    def test_public_url_none_without_token(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        app = App(name="my_app", public_access=True, public_token=None)
+
+        # No token (e.g. not a data owner) -> no URL even when public.
+        assert app.public_url is None
+
+    def test_public_url_built_from_client_and_token(self, mocker):
+        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client.return_value._base_url = "https://myhost:443"
+        mock_client.return_value._project_name = "proj"
+
+        app = App(name="my app", public_access=True, public_token="tok en/+")
+
+        # base_url + project + app + token, with project/app/token URL-encoded.
+        assert app.public_url == (
+            "https://myhost:443/hopsworks-api/pythonapp/proj/my%20app"
+            "/__public?t=tok%20en%2F%2B"
+        )
+
+    def test_make_public_sets_state_and_returns_url(self, mocker):
+        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client.return_value._base_url = "https://myhost:443"
+        mock_client.return_value._project_name = "proj"
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+        mock_api.return_value._set_public.return_value = {"publicToken": "tok"}
+
+        app = App(name="my_app")
+        app._app_api = mock_api.return_value
+
+        url = app.make_public()
+
+        mock_api.return_value._set_public.assert_called_once_with("my_app", True)
+        assert app.public_access is True
+        assert (
+            url
+            == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/__public?t=tok"
+        )
+
+    def test_make_private_clears_state(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
+
+        app = App(name="my_app", public_access=True, public_token="tok")
+        app._app_api = mock_api.return_value
+
+        app.make_private()
+
+        mock_api.return_value._set_public.assert_called_once_with("my_app", False)
+        assert app.public_access is False
+        assert app.public_url is None
