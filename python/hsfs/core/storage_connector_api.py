@@ -15,9 +15,10 @@
 #
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common import client
+from hopsworks_common import client, util
 from hsfs import decorators, storage_connector
 
 
@@ -70,7 +71,7 @@ class StorageConnectorApi:
                 "POST",
                 path_params,
                 headers=headers,
-                data=storage_connector_instance.json(),
+                data=json.dumps(storage_connector_instance, cls=util.Encoder),
             )
         )
 
@@ -101,7 +102,7 @@ class StorageConnectorApi:
                 "PUT",
                 path_params,
                 headers=headers,
-                data=storage_connector_instance.json(),
+                data=json.dumps(storage_connector_instance, cls=util.Encoder),
             )
         )
 

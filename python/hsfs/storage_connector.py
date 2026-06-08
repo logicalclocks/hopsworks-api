@@ -184,12 +184,6 @@ class StorageConnector(ABC):
             "type": self._DTO_TYPE.get(self.type),
         }
 
-    def json(self) -> str:
-        """Serialize the storage connector to a JSON string."""
-        import json
-
-        return json.dumps(self, cls=util.Encoder)
-
     @public
     def save(self) -> StorageConnector:
         """Persist this storage connector to the feature store.
