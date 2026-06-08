@@ -143,6 +143,33 @@ class TestOnlineConfig:
         with pytest.raises(ValueError, match="invalid column name"):
             OnlineConfig(secondary_indexes=[[42]])
 
+    def test_secondary_indexes_uppercase_normalized(self):
+        config = OnlineConfig(secondary_indexes=[["Country"]])
+
+        assert config.secondary_indexes == [["country"]]
+
+    def test_secondary_indexes_spaces_normalized(self):
+        config = OnlineConfig(secondary_indexes=[["User Country", "City Name"]])
+
+        assert config.secondary_indexes == [["user_country", "city_name"]]
+
+    def test_secondary_indexes_whitespace_only_rejected(self):
+        with pytest.raises(ValueError, match="invalid column name"):
+            OnlineConfig(secondary_indexes=[["   "]])
+
+    def test_secondary_indexes_duplicate_column_after_normalization_rejected(self):
+        with pytest.raises(ValueError, match="duplicate column name"):
+            OnlineConfig(secondary_indexes=[["country", "Country"]])
+
+    def test_secondary_indexes_duplicate_index_after_normalization_rejected(self):
+        with pytest.raises(ValueError, match="duplicate index definition"):
+            OnlineConfig(secondary_indexes=[["country"], ["Country"]])
+
+    def test_to_dict_secondary_indexes_normalized(self):
+        config = OnlineConfig(secondary_indexes=[["User Country"]])
+
+        assert config.to_dict()["secondaryIndexes"] == [["user_country"]]
+
     def test_secondary_indexes_setter_validates(self):
         config = OnlineConfig()
 

@@ -19,6 +19,7 @@ from typing import Any
 
 import humps
 from hopsworks_apigen import public
+from hopsworks_common import util
 
 
 INDEX_TYPE_HASH = "HASH"
@@ -73,6 +74,7 @@ class OnlineConfig:
                 f"secondary_indexes must be a list of column-name lists or None, "
                 f"got {type(value).__name__}."
             )
+        normalized_indexes = []
         seen_indexes = set()
         for i, idx in enumerate(value):
             if not isinstance(idx, list) or len(idx) == 0:
@@ -80,23 +82,33 @@ class OnlineConfig:
                     f"secondary_indexes[{i}] must be a non-empty list of column names."
                 )
             seen_columns = set()
+            normalized_columns = []
             for col in idx:
-                if not isinstance(col, str) or not col:
+                if not isinstance(col, str):
                     raise ValueError(
                         f"secondary_indexes[{i}] contains an invalid column name: {col!r}."
                     )
-                if col in seen_columns:
+                # Sanitize to the online table column names, which the backend
+                # derives from feature names (lower case, spaces to underscores).
+                normalized = util.autofix_feature_name(col.strip(), warn=True)
+                if not normalized:
                     raise ValueError(
-                        f"secondary_indexes[{i}] contains duplicate column name: {col!r}."
+                        f"secondary_indexes[{i}] contains an invalid column name: {col!r}."
                     )
-                seen_columns.add(col)
-            index_definition = tuple(idx)
+                if normalized in seen_columns:
+                    raise ValueError(
+                        f"secondary_indexes[{i}] contains duplicate column name: {normalized!r}."
+                    )
+                seen_columns.add(normalized)
+                normalized_columns.append(normalized)
+            index_definition = tuple(normalized_columns)
             if index_definition in seen_indexes:
                 raise ValueError(
-                    f"secondary_indexes contains duplicate index definition at position {i}: {idx!r}."
+                    f"secondary_indexes contains duplicate index definition at position {i}: {normalized_columns!r}."
                 )
             seen_indexes.add(index_definition)
-        return value
+            normalized_indexes.append(normalized_columns)
+        return normalized_indexes
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineConfig:
@@ -175,6 +187,7 @@ class OnlineConfig:
 
         Each element is a list of feature names that form one index.
         The backend names each index automatically as `idx_<col1>_<col2>_...`.
+        Feature names are sanitized to lower case with spaces replaced by underscores, matching the online table column names.
 
         Example:
             ```python
