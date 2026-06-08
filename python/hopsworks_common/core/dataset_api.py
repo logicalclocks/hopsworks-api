@@ -441,6 +441,7 @@ class DatasetApi:
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)
 
+    @public
     def get(self, path: str):
         """**Deprecated**.
 
@@ -470,6 +471,7 @@ class DatasetApi:
         except RestAPIError:
             return False
 
+    @public
     def path_exists(self, remote_path: str) -> bool:
         """**Deprecated**, use `exists` instead.
 
@@ -498,6 +500,7 @@ class DatasetApi:
         path_params = ["project", _client._project_id, "dataset", path]
         return _client._send_request("DELETE", path_params)
 
+    @public
     def rm(self, remote_path: str):
         """**Deprecated**, use `remove` instead.
 
@@ -1066,6 +1069,7 @@ class DatasetApi:
 
     # region Dataset Tags
 
+    @public
     def add(self, path: str, name: str, value: str):
         """**Deprecated**.
 
@@ -1093,6 +1097,7 @@ class DatasetApi:
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
+    @public
     def delete(self, path: str, name: str):
         """**Deprecated**.
 
@@ -1116,6 +1121,7 @@ class DatasetApi:
         ]
         _client._send_request("DELETE", path_params)
 
+    @public
     def get_tags(self, path: str, name: str | None = None) -> dict:
         """**Deprecated**.
 

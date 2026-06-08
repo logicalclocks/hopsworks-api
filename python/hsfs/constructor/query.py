@@ -681,7 +681,7 @@ class Query:
         """
         if self._filter is None:
             if isinstance(f, Filter):
-                self._filter = Logic.Single(left_f=f)
+                self._filter = Logic._Single(left_f=f)
             elif isinstance(f, Logic):
                 self._filter = f
             else:

@@ -669,6 +669,7 @@ class FeatureStore:
         """
         return self.get_online_data_source().storage_connector
 
+    @public
     @usage.method_logger
     def get_online_data_source(self) -> ds.DataSource:
         """Get the data source for the Online Feature Store of the respective project's feature store.
@@ -702,7 +703,7 @@ class FeatureStore:
         # Returns
             `list[tag.Tag]`: List of Tag objects.
         """
-        return tag.Tag.normalize(tags)
+        return tag.Tag._normalize(tags)
 
     @public
     @usage.method_logger
@@ -2265,6 +2266,7 @@ class FeatureStore:
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
 
+    @public
     def create_chart(
         self, title: str, description: str, url: str, job_id: int | None = None
     ) -> None:
@@ -2312,6 +2314,7 @@ class FeatureStore:
         )
         return ChartApi().create_chart(chart)
 
+    @public
     def get_charts(self) -> list[Chart]:
         """Get all charts in the feature store.
 
@@ -2332,6 +2335,7 @@ class FeatureStore:
         """
         return ChartApi().get_charts()
 
+    @public
     def get_chart(self, chart_id: int) -> Chart:
         """Get a chart by its ID.
 
@@ -2355,6 +2359,7 @@ class FeatureStore:
         """
         return ChartApi().get_chart(chart_id)
 
+    @public
     def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
         """Create a dashboard in the feature store.
 
@@ -2389,6 +2394,7 @@ class FeatureStore:
         )
         return DashboardApi().create_dashboard(dashboard)
 
+    @public
     def get_dashboards(self) -> list[Dashboard]:
         """Get all dashboards in the feature store.
 
@@ -2409,6 +2415,7 @@ class FeatureStore:
         """
         return DashboardApi().get_dashboards()
 
+    @public
     def get_dashboard(self, dashboard_id: int) -> Dashboard:
         """Get a dashboard by its ID.
 
@@ -2474,6 +2481,7 @@ class FeatureStore:
         """Name of the offline feature store database."""
         return self._offline_feature_store_name
 
+    @public
     @usage.method_logger
     def search(
         self,
@@ -2570,6 +2578,7 @@ class FeatureStore:
             global_search=global_search,
         )
 
+    @public
     @usage.method_logger
     def search_feature_groups(
         self,
@@ -2627,6 +2636,7 @@ class FeatureStore:
             global_search=global_search,
         )
 
+    @public
     @usage.method_logger
     def search_feature_views(
         self,
@@ -2684,6 +2694,7 @@ class FeatureStore:
             global_search=global_search,
         )
 
+    @public
     @usage.method_logger
     def search_training_datasets(
         self,
@@ -2741,6 +2752,7 @@ class FeatureStore:
             global_search=global_search,
         )
 
+    @public
     @usage.method_logger
     def search_features(
         self,

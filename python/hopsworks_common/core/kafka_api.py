@@ -388,6 +388,7 @@ class KafkaApi:
 
         return config
 
+    @public
     @usage.method_logger
     def get_subject(
         self,

@@ -25,9 +25,9 @@ from hsml.scaling_config import (
 
 class TestScalingConfig:
     def test_scale_metric_has_value(self):
-        assert ScaleMetric.has_value("CONCURRENCY")
-        assert ScaleMetric.has_value("RPS")
-        assert not ScaleMetric.has_value("BOGUS")
+        assert ScaleMetric._has_value("CONCURRENCY")
+        assert ScaleMetric._has_value("RPS")
+        assert not ScaleMetric._has_value("BOGUS")
 
     def test_predictor_scaling_config_accepts_scale_metric_string(self):
         sc = PredictorScalingConfig(min_instances=1, scale_metric="rps")

@@ -1671,7 +1671,7 @@ class Engine:
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        udf = hopsworks_udf.get_udf(online=online)
+        udf = hopsworks_udf._get_udf(online=online)
         if isinstance(dataframe, pd.DataFrame):
             if len(hopsworks_udf.return_types) > 1:
                 dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
@@ -1752,7 +1752,7 @@ class Engine:
 
         features = [dataframe[f] for f in hopsworks_udf.transformation_features]
         # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
-        output = hopsworks_udf.get_udf(online=online)(*features)
+        output = hopsworks_udf._get_udf(online=online)(*features)
         output_names = hopsworks_udf.output_column_names
         if len(hopsworks_udf.return_types) > 1:
             dataframe[output_names] = output.set_index(dataframe.index)

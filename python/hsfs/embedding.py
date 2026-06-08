@@ -164,14 +164,6 @@ class EmbeddingFeature:
         """str: The name of the embedding feature."""
         return self._name
 
-    @property
-    def dimenstion(self):
-        """The dimensionality of the embedding feature.
-
-        This one is excluded from the docs as the name is misspelled but kept to avoid breaking the API.
-        """
-        return self._dimension
-
     @public
     @property
     def dimension(self) -> int:

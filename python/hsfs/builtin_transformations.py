@@ -20,6 +20,7 @@ import contextlib
 
 import numpy as np
 import pandas as pd
+from hopsworks_apigen import public
 from hopsworks_common import constants
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_statistics import TransformationStatistics
@@ -28,6 +29,7 @@ from hsfs.transformation_statistics import TransformationStatistics
 feature_statistics = TransformationStatistics("feature")
 
 
+@public
 @udf(float, drop=["feature"])
 def min_max_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     min_val = statistics.feature.min
@@ -37,6 +39,7 @@ def min_max_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Seri
     return (feature - min_val) / (max_val - min_val)
 
 
+@public
 @udf(float, drop=["feature"])
 def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     mean = statistics.feature.mean
@@ -48,6 +51,7 @@ def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return (feature - mean) / stddev
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Robust scaling using median and IQR.
@@ -80,6 +84,7 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     return (scaled_feature - q2) / iqr
 
 
+@public
 @udf(int, drop=["feature"], mode="pandas")
 def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     unique_data = sorted(statistics.feature.unique_values)
@@ -95,6 +100,7 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     )
 
 
+@public
 @udf(bool, drop=["feature"], mode="pandas")
 def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Encode a categorical feature as a boolean one-hot DataFrame.
@@ -122,6 +128,7 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return one_hot.reindex(sorted(one_hot.columns), axis=1)
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def log_transform(feature: pd.Series) -> pd.Series:
     """Apply natural logarithm to a numeric feature.
@@ -143,6 +150,7 @@ def log_transform(feature: pd.Series) -> pd.Series:
     )
 
 
+@public
 @udf(int, drop=["feature"], mode="pandas")
 def equal_width_binner(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
@@ -200,6 +208,7 @@ def equal_width_binner(
     return binned.astype("Int64")
 
 
+@public
 @udf(int, drop=["feature"], mode="pandas")
 def equal_frequency_binner(
     feature: pd.Series, statistics=feature_statistics
@@ -260,6 +269,7 @@ def equal_frequency_binner(
     return binned.astype("Int64")
 
 
+@public
 @udf(int, drop=["feature"], mode="pandas")
 def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Discretize numeric values using quantile-based boundaries from training statistics.
@@ -319,6 +329,7 @@ def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return binned.astype("Int64")
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def quantile_transformer(
     feature: pd.Series, statistics=feature_statistics
@@ -369,6 +380,7 @@ def quantile_transformer(
     return pd.Series(result, index=feature.index)
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Replace each value with its percentile rank in the training distribution.
@@ -409,6 +421,7 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return pd.Series(result, index=feature.index)
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def winsorize(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
@@ -463,6 +476,7 @@ def winsorize(
     return pd.Series(clipped, index=feature.index)
 
 
+@public
 @udf(str, drop=["feature"], mode="pandas")
 def top_k_categorical_binner(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
@@ -526,6 +540,7 @@ def top_k_categorical_binner(
 # region Imputation
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def impute_mean(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Replace NaN values with the training mean for numeric features.
@@ -544,6 +559,7 @@ def impute_mean(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     return s if pd.isna(fill) else s.fillna(fill)
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def impute_median(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Replace NaN values with the training median (50th percentile) for numeric features.
@@ -563,6 +579,7 @@ def impute_median(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     return s if median is None or pd.isna(median) else s.fillna(median)
 
 
+@public
 @udf(float, drop=["feature"], mode="pandas")
 def impute_constant(
     feature: pd.Series,
@@ -592,6 +609,7 @@ def impute_constant(
     return feature.astype("float64").fillna(fill)
 
 
+@public
 @udf(str, drop=["feature"], mode="pandas")
 def impute_mode(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """Replace NaN values with the most frequent category from the training histogram for categorical features.
@@ -615,6 +633,7 @@ def impute_mode(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     return feature.where(feature.notna(), other=mode_value)
 
 
+@public
 @udf(str, drop=["feature"], mode="pandas")
 def impute_category(
     feature: pd.Series,

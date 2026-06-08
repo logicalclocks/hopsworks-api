@@ -260,12 +260,13 @@ class TransformationStatistics:
     def __init__(self, *features: str):
         self._features = features
         self.__dict__.update(
-            {feature: self.init_statistics(feature) for feature in features}
+            {feature: self._init_statistics(feature) for feature in features}
         )
 
-    def init_statistics(self, feature_name: str) -> FeatureTransformationStatistics:
+    def _init_statistics(self, feature_name: str) -> FeatureTransformationStatistics:
         return FeatureTransformationStatistics(feature_name=feature_name)
 
+    @public
     def set_statistics(
         self,
         feature_name: str,

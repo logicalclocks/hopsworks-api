@@ -175,6 +175,7 @@ class Links:
         """
         return self._faulty
 
+    @public
     def is_empty(self):
         return (
             len(self.accessible) == 0
@@ -200,6 +201,7 @@ class Links:
             f", {self._inaccessible!r}, {self._faulty!r})"
         )
 
+    @public
     @staticmethod
     def get_one_accessible_parent(links):
         if links is None:

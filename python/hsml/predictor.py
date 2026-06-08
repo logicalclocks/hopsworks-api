@@ -245,7 +245,7 @@ class Predictor(DeployableComponent):
         return PredictorResources(num_instances)
 
     @classmethod
-    def for_model(cls, model, **kwargs):
+    def _for_model(cls, model, **kwargs):
         kwargs["model_name"] = model.name
         kwargs["model_path"] = model.model_path
         kwargs["model_version"] = model.version
@@ -609,6 +609,7 @@ class Predictor(DeployableComponent):
     def env_vars(self, env_vars: dict[str, str] | None):
         self._env_vars = env_vars
 
+    @public
     @property
     def environment(self):
         """Name of the inference environment."""

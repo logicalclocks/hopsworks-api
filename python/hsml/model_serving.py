@@ -257,7 +257,7 @@ class ModelServing:
         if name is None:
             name = model._get_default_serving_name()
 
-        return Predictor.for_model(
+        return Predictor._for_model(
             model,
             name=name,
             serving_tool=serving_tool,
@@ -694,8 +694,9 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
 
     Returns the remote path of the runner script to use as `script_file`.
     """
-    from build import ProjectBuilder
     from build.env import DefaultIsolatedEnv
+
+    from build import ProjectBuilder
 
     pkg_name = _read_package_name(package_dir)
 

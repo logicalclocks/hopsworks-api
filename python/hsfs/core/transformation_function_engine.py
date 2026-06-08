@@ -352,7 +352,7 @@ class TransformationFunctionEngine:
             else:
                 features.append(feature_value)
 
-        transformed_result = udf.get_udf(online=online)(*features)
+        transformed_result = udf._get_udf(online=online)(*features)
 
         if (
             udf.execution_mode.get_current_execution_mode(online=online)

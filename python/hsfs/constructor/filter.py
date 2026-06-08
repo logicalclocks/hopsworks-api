@@ -63,18 +63,18 @@ class Filter:
 
     def __and__(self, other: Logic | Filter) -> Logic:
         if isinstance(other, Filter):
-            return Logic.And(left_f=self, right_f=other)
+            return Logic._And(left_f=self, right_f=other)
         if isinstance(other, Logic):
-            return Logic.And(left_f=self, right_l=other)
+            return Logic._And(left_f=self, right_l=other)
         raise TypeError(
             f"Operator `&` expected type `Filter` or `Logic`, got `{type(other)}`"
         )
 
     def __or__(self, other: Filter | Logic) -> Logic:
         if isinstance(other, Filter):
-            return Logic.Or(left_f=self, right_f=other)
+            return Logic._Or(left_f=self, right_f=other)
         if isinstance(other, Logic):
-            return Logic.Or(left_f=self, right_l=other)
+            return Logic._Or(left_f=self, right_l=other)
         raise TypeError(
             f"Operator `|` expected type `Filter` or `Logic`, got `{type(other)}`"
         )
@@ -162,7 +162,7 @@ class Logic:
         )
 
     @classmethod
-    def And(
+    def _And(
         cls,
         left_f: Filter | None = None,
         right_f: Filter | None = None,
@@ -172,7 +172,7 @@ class Logic:
         return cls(cls.AND, left_f, right_f, left_l, right_l)
 
     @classmethod
-    def Or(
+    def _Or(
         cls,
         left_f: Filter | None = None,
         right_f: Filter | None = None,
@@ -182,23 +182,23 @@ class Logic:
         return cls(cls.OR, left_f, right_f, left_l, right_l)
 
     @classmethod
-    def Single(cls, left_f: Filter) -> Logic:
+    def _Single(cls, left_f: Filter) -> Logic:
         return cls(cls.SINGLE, left_f)
 
     def __and__(self, other: Filter | Logic) -> Logic:
         if isinstance(other, Filter):
-            return Logic.And(left_l=self, right_f=other)
+            return Logic._And(left_l=self, right_f=other)
         if isinstance(other, Logic):
-            return Logic.And(left_l=self, right_l=other)
+            return Logic._And(left_l=self, right_l=other)
         raise TypeError(
             f"Operator `&` expected type `Filter` or `Logic`, got `{type(other)}`"
         )
 
     def __or__(self, other: Logic) -> Logic:
         if isinstance(other, Filter):
-            return Logic.Or(left_l=self, right_f=other)
+            return Logic._Or(left_l=self, right_f=other)
         if isinstance(other, Logic):
-            return Logic.Or(left_l=self, right_l=other)
+            return Logic._Or(left_l=self, right_l=other)
         raise TypeError(
             f"Operator `|` expected type `Filter` or `Logic`, got `{type(other)}`"
         )

@@ -109,6 +109,7 @@ class FullLoadConfig:
             initial_value=json_decamelized.get("initial_value"),
         )
 
+    @public
     @property
     def source_cursor_field(self) -> str | None:
         return self._source_cursor_field
@@ -117,6 +118,7 @@ class FullLoadConfig:
     def source_cursor_field(self, source_cursor_field: str | None) -> None:
         self._source_cursor_field = source_cursor_field
 
+    @public
     @property
     def initial_value(self) -> str | None:
         return self._initial_value
@@ -457,6 +459,7 @@ class SinkJobConfiguration:
     ) -> None:
         self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
 
+    @public
     @property
     def source_read_workers(self) -> int | None:
         return self._source_read_workers
@@ -465,6 +468,7 @@ class SinkJobConfiguration:
     def source_read_workers(self, source_read_workers: int | None) -> None:
         self._source_read_workers = source_read_workers
 
+    @public
     @property
     def data_processing_workers(self) -> int | None:
         return self._data_processing_workers
@@ -473,6 +477,7 @@ class SinkJobConfiguration:
     def data_processing_workers(self, data_processing_workers: int | None) -> None:
         self._data_processing_workers = data_processing_workers
 
+    @public
     @property
     def max_upload_batch_size_mb(self) -> int | None:
         return self._max_upload_batch_size_mb
@@ -481,6 +486,7 @@ class SinkJobConfiguration:
     def max_upload_batch_size_mb(self, max_upload_batch_size_mb: int | None) -> None:
         self._max_upload_batch_size_mb = max_upload_batch_size_mb
 
+    @public
     @property
     def sql_table_num_partitions(self) -> int | None:
         return self._sql_table_num_partitions
@@ -489,6 +495,7 @@ class SinkJobConfiguration:
     def sql_table_num_partitions(self, sql_table_num_partitions: int | None) -> None:
         self._sql_table_num_partitions = sql_table_num_partitions
 
+    @public
     @property
     def loading_config(self) -> LoadingConfig | dict | None:
         return self._loading_config
@@ -564,6 +571,7 @@ class SinkJobConfiguration:
                 f"got {type(write_mode).__name__}."
             )
 
+    @public
     @property
     def schedule_config(self) -> JobSchedule | None:
         return self._schedule_config

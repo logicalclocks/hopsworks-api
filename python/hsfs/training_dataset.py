@@ -996,7 +996,7 @@ class TrainingDataset(TrainingDatasetBase):
             td_dict["lookback"] = self._lookback.to_dict()
         if self._data_source:
             td_dict["dataSource"] = self._data_source.to_dict()
-        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             td_dict["tags"] = tags_dict
         return td_dict

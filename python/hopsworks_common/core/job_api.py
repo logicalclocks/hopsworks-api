@@ -139,6 +139,7 @@ class JobApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
+    @public
     @usage.method_logger
     def exists(self, name: str) -> bool:
         """Check if a job exists.
@@ -244,6 +245,7 @@ class JobApi:
             path_params,
         )
 
+    @public
     @usage.method_logger
     def create(
         self,
@@ -264,6 +266,7 @@ class JobApi:
             )
         )
 
+    @public
     @usage.method_logger
     def launch(self, name: str, args: str = None) -> None:
         _client = client.get_instance()
@@ -275,6 +278,7 @@ class JobApi:
         headers = {"content-type": "text/plain"}
         _client._send_request("POST", path_params, headers=headers, data=args)
 
+    @public
     @usage.method_logger
     def get(self, name: str) -> job.Job:
         _client = client.get_instance()
@@ -282,6 +286,7 @@ class JobApi:
 
         return job.Job.from_response_json(_client._send_request("GET", path_params))
 
+    @public
     @usage.method_logger
     def last_execution(self, job: job.Job) -> execution.Execution:
         _client = client.get_instance()
@@ -297,6 +302,7 @@ class JobApi:
             job=job,
         )
 
+    @public
     @usage.method_logger
     def create_or_update_schedule_job(
         self, name: str, schedule_config: dict[str, Any]
@@ -312,6 +318,7 @@ class JobApi:
             )
         )
 
+    @public
     @usage.method_logger
     def delete_schedule_job(self, name: str) -> None:
         _client = client.get_instance()

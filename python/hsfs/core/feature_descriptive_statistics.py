@@ -97,6 +97,7 @@ class FeatureDescriptiveStatistics:
             else json.loads(extended_statistics)
         )
 
+    @public
     def get_value(self, name):
         stat_name = name.lower()
         if stat_name not in self._SINGLE_VALUE_STATISTICS:

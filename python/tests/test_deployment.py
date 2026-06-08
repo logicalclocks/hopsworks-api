@@ -33,7 +33,7 @@ class TestDeployment:
             return_value=preds,
         )
         mock_from_predictor = mocker.patch(
-            "hsml.deployment.Deployment.from_predictor", return_value=preds[0]
+            "hsml.deployment.Deployment._from_predictor", return_value=preds[0]
         )
 
         # Act
@@ -53,7 +53,7 @@ class TestDeployment:
             return_value=pred,
         )
         mock_from_predictor = mocker.patch(
-            "hsml.deployment.Deployment.from_predictor", return_value=pred
+            "hsml.deployment.Deployment._from_predictor", return_value=pred
         )
 
         # Act
@@ -124,7 +124,7 @@ class TestDeployment:
         )
 
         # Act
-        deployment.Deployment.from_predictor(p)
+        deployment.Deployment._from_predictor(p)
 
         # Assert
         mock_deployment_init.assert_called_once_with(

@@ -85,6 +85,7 @@ class EnvironmentApi:
 
         return env
 
+    @public
     @usage.method_logger
     def get_environments(self) -> list[environment.Environment]:
         """Get all available environments in the project.

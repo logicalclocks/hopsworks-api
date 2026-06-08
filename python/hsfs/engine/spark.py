@@ -1863,7 +1863,7 @@ class Engine:
             ):
                 dropped_features.update(hopsworks_udf.output_column_names)
 
-            pandas_udf = hopsworks_udf.get_udf()
+            pandas_udf = hopsworks_udf._get_udf()
             output_col_name = hopsworks_udf.output_column_names[0]
 
             transformations.append(pandas_udf)

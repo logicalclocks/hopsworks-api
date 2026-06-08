@@ -496,6 +496,7 @@ def _prompt_project(valid_connection, project, is_saas):
             raise ProjectException(f"Could not find project {project}") from x
 
 
+@public
 def logout():
     """Cleans up and closes the connection for hopsworks."""
     global _hw_connection

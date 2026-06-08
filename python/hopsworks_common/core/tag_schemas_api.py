@@ -53,6 +53,7 @@ class TagSchemasApi:
     def _path() -> list[Any]:
         return ["tags"]
 
+    @public
     def list(self) -> dict[str, Any]:
         """List all registered tag schemas.
 
@@ -62,6 +63,7 @@ class TagSchemasApi:
         _client = client.get_instance()
         return _client._send_request("GET", self._path())
 
+    @public
     def get(self, name: str) -> dict[str, Any]:
         """Fetch a single tag schema by name.
 
@@ -80,6 +82,7 @@ class TagSchemasApi:
         _client = client.get_instance()
         return _client._send_request("GET", self._path() + [name])
 
+    @public
     def create(self, name: str, schema: dict | str) -> dict[str, Any]:
         """Register a new schematized tag.
 
@@ -150,6 +153,7 @@ class TagSchemasApi:
                 raise PermissionError(_ADMIN_HINT) from e
             raise
 
+    @public
     def delete(self, name: str) -> None:
         """Remove a tag schema from the registry.
 

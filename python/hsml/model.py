@@ -427,7 +427,7 @@ class Model:
         if name is None:
             name = self._get_default_serving_name()
 
-        predictor = Predictor.for_model(
+        predictor = Predictor._for_model(
             self,
             name=name,
             description=description,

@@ -30,6 +30,7 @@ class FlinkClusterApi:
     def __init__(self):
         self._job_api = job_api.JobApi()
 
+    @public
     @usage.method_logger
     def get_configuration(self) -> dict:
         """Get configuration for the Flink cluster.

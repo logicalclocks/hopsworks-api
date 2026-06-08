@@ -1738,7 +1738,7 @@ class FeatureView:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, path=location
             )
-        normalized_tags = tag.Tag.normalize(tags)
+        normalized_tags = tag.Tag._normalize(tags)
 
         td = training_dataset.TrainingDataset(
             name=self.name,
@@ -2035,7 +2035,7 @@ class FeatureView:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, path=location
             )
-        normalized_tags = tag.Tag.normalize(tags)
+        normalized_tags = tag.Tag._normalize(tags)
 
         td = training_dataset.TrainingDataset(
             name=self.name,
@@ -2328,7 +2328,7 @@ class FeatureView:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, path=location
             )
-        normalized_tags = tag.Tag.normalize(tags)
+        normalized_tags = tag.Tag._normalize(tags)
 
         td = training_dataset.TrainingDataset(
             name=self.name,
@@ -4784,7 +4784,7 @@ class FeatureView:
             "type": "featureViewDTO",
             "extraLogColumns": self._extra_log_columns,
         }
-        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             fv_dict["tags"] = tags_dict
         return fv_dict
@@ -4862,6 +4862,7 @@ class FeatureView:
     def version(self, version: int) -> None:
         self._version = version
 
+    @public
     @property
     def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """List of missing mandatory tags for the feature view."""
@@ -4985,7 +4986,7 @@ class FeatureView:
         return {
             transformation_function.hopsworks_udf.output_column_names[
                 0
-            ]: transformation_function.hopsworks_udf.get_udf()
+            ]: transformation_function.hopsworks_udf._get_udf()
             for transformation_function in self.transformation_functions
         }
 
@@ -4994,7 +4995,7 @@ class FeatureView:
     def on_demand_transformations(self) -> dict[str, Callable]:
         """Get On-Demand transformations as a dictionary mapping on-demand feature names to transformation function."""
         return {
-            feature.on_demand_transformation_function.hopsworks_udf.function_name: feature.on_demand_transformation_function.hopsworks_udf.get_udf()
+            feature.on_demand_transformation_function.hopsworks_udf.function_name: feature.on_demand_transformation_function.hopsworks_udf._get_udf()
             for feature in self.features
             if feature.on_demand_transformation_function
         }

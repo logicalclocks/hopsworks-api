@@ -743,6 +743,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_parent_feature_groups(self)
 
+    @public
     def get_storage_connector_provenance(self) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
@@ -778,6 +779,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
+    @public
     def get_storage_connector(self) -> sc.StorageConnector | None:
         """Get the storage connector using this feature group, based on explicit provenance.
 
@@ -2162,6 +2164,7 @@ class FeatureGroupBase:
         """Feature group id."""
         return self._id
 
+    @public
     @property
     def name(self) -> str | None:
         """Name of the feature group."""
@@ -2531,6 +2534,7 @@ class FeatureGroupBase:
     def online_enabled(self, online_enabled: bool) -> None:
         self._online_enabled = online_enabled
 
+    @public
     @property
     def storage_connector(self) -> sc.StorageConnector:
         """Get the storage connector.
@@ -4657,7 +4661,7 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
-        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             fg_meta_dict["tags"] = tags_dict
         return fg_meta_dict
@@ -4672,6 +4676,7 @@ class FeatureGroup(FeatureGroupBase):
             and self._time_travel_format.upper() != "NONE"
         )
 
+    @public
     def execute_odts(
         self,
         data: pd.DataFrame | pl.DataFrame | dict[str, Any],
@@ -4908,16 +4913,19 @@ class FeatureGroup(FeatureGroupBase):
             )
         self._offline_backfill_every_hr = new_offline_backfill_every_hr
 
+    @public
     @property
     def sink_enabled(self) -> bool:
         """Get whether sink is enabled for this feature group."""
         return self._sink_enabled
 
+    @public
     @property
     def sink_job(self) -> job.Job | None:
         """Return the sink job created for this feature group, if any."""
         return self._sink_job
 
+    @public
     @property
     def sink_job_conf(self) -> SinkJobConfiguration:
         """Sink job configuration object defining the settings for sink job of the feature group."""

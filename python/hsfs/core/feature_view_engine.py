@@ -91,7 +91,7 @@ class FeatureViewEngine:
         """Validate and normalize an `extra_filter` value before sending it.
 
         Accepts `None`, a `Filter`, or a `Logic`. A raw `Filter` is wrapped
-        in `Logic.Single` so the wire shape is always a `FilterLogicDTO`,
+        in `Logic._Single` so the wire shape is always a `FilterLogicDTO`,
         matching what the backend expects. Anything else raises `TypeError`
         with a clear message rather than failing later at JSON serialization.
         """
@@ -100,7 +100,7 @@ class FeatureViewEngine:
         if extra_filter is None:
             return None
         if isinstance(extra_filter, Filter):
-            return Logic.Single(left_f=extra_filter)
+            return Logic._Single(left_f=extra_filter)
         if isinstance(extra_filter, Logic):
             return extra_filter
         raise TypeError(

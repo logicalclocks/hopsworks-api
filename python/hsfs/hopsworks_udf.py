@@ -545,7 +545,7 @@ class HopsworksUdf:
 
         return scope
 
-    def python_udf_wrapper(self, rename_outputs) -> Callable:
+    def _python_udf_wrapper(self, rename_outputs) -> Callable:
         """Function that creates a dynamic wrapper function for the defined udf.
 
         The wrapper function would be used to specify column names, in spark engines and to localize timezones.
@@ -623,7 +623,7 @@ class HopsworksUdf:
         # returning executed function object
         return eval("wrapper", scope)
 
-    def pandas_udf_wrapper(self) -> Callable:
+    def _pandas_udf_wrapper(self) -> Callable:
         """Function that creates a dynamic wrapper function for the defined udf that renames the columns output by the UDF into specified column names.
 
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a pandas udf.
@@ -801,13 +801,13 @@ def renaming_wrapper(*args):
 
         return transformation_context
 
-    def update_return_type_one_hot(self):
+    def _update_return_type_one_hot(self):
         self._return_types = [
             self._return_types[0]
             for _ in range(len(self.transformation_statistics.feature.unique_values))
         ]
 
-    def get_udf(self, online: bool = False) -> Callable:
+    def _get_udf(self, online: bool = False) -> Callable:
         """Function that checks the current engine type, execution type and returns the appropriate UDF.
 
         If the execution mode is `"default"`:
@@ -836,11 +836,11 @@ def renaming_wrapper(*args):
             == UDFExecutionMode.PANDAS
         ):
             if engine.get_type() in ["python", "training"] or online:
-                return self.pandas_udf_wrapper()
+                return self._pandas_udf_wrapper()
             from pyspark.sql.functions import pandas_udf
 
             return pandas_udf(
-                f=self.pandas_udf_wrapper(),
+                f=self._pandas_udf_wrapper(),
                 returnType=self._create_pandas_udf_return_schema_from_list(),
             )
         if (
@@ -849,11 +849,11 @@ def renaming_wrapper(*args):
         ):
             if engine.get_type() in ["python", "training"] or online:
                 # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
-                return self.python_udf_wrapper(rename_outputs=False)
+                return self._python_udf_wrapper(rename_outputs=False)
             from pyspark.sql.functions import udf as pyspark_udf
 
             return pyspark_udf(
-                f=self.python_udf_wrapper(rename_outputs=True),
+                f=self._python_udf_wrapper(rename_outputs=True),
                 returnType=self._create_pandas_udf_return_schema_from_list(),
             )
         raise ValueError(
@@ -998,7 +998,7 @@ def renaming_wrapper(*args):
             else [f"col_{i}" for i in range(len(udf.return_types))]
         )
 
-        executable = udf.get_udf(online=online)
+        executable = udf._get_udf(online=online)
 
         executable.execute = executable.__call__
 
@@ -1200,7 +1200,7 @@ def renaming_wrapper(*args):
         """Get the output types of the UDF."""
         # Update the number of outputs for one hot encoder to match the number of unique values for the feature
         if self.function_name == "one_hot_encoder" and self.transformation_statistics:
-            self.update_return_type_one_hot()
+            self._update_return_type_one_hot()
         return self._return_types
 
     @public

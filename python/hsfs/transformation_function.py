@@ -330,6 +330,7 @@ class TransformationFunction:
 
         return output_col_names
 
+    @public
     def executor(
         self,
         statistics: TransformationStatistics
@@ -498,6 +499,7 @@ class TransformationFunction:
             statistics=statistics, context=context, online=online
         )
 
+    @public
     def execute(self, *args) -> Any:
         """Execute the transformation function directly with the provided arguments.
 

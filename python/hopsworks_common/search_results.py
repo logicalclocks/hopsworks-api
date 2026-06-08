@@ -115,11 +115,13 @@ class Highlights:
         """Highlighted source feature groups with the matched parts enwrapped in `<em>` tags."""
         return self._source_feature_groups
 
+    @public
     @property
     def raw_data(self) -> dict:
         """Raw highlights data."""
         return self._raw_data
 
+    @public
     def has_highlights(self) -> bool:
         """Check if there are any highlights.
 
@@ -226,6 +228,7 @@ class SearchResultItem:
         """Parent project of this resource."""
         return self._project
 
+    @public
     @property
     def raw_data(self):
         """Raw data from the search result."""

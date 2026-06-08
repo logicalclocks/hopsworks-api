@@ -195,6 +195,7 @@ class StorageConnector(ABC):
             A dictionary containing the configuration options for Spark.
         """
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -254,6 +255,7 @@ class StorageConnector(ABC):
     def _get_path(self, sub_path: str) -> None:
         return None
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to an external connector library.
 

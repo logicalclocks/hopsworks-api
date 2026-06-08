@@ -38,7 +38,7 @@ class ScaleMetric(Enum):
     RPS = "RPS"
 
     @classmethod
-    def has_value(cls, value):
+    def _has_value(cls, value):
         return any(member.value == value for member in cls)
 
     def __str__(self):
@@ -77,7 +77,7 @@ class ComponentScalingConfig(ABC):
         scale_metric = scale_metric
         if scale_metric:
             if isinstance(scale_metric, str):
-                if not ScaleMetric.has_value(scale_metric.upper()):
+                if not ScaleMetric._has_value(scale_metric.upper()):
                     raise ValueError(
                         f"Invalid scale_metric: {scale_metric}. Must be one of {[e.value for e in ScaleMetric]}"
                     )
@@ -253,7 +253,7 @@ class ComponentScalingConfig(ABC):
     @scale_metric.setter
     def scale_metric(self, scale_metric: ScaleMetric | str):
         if isinstance(scale_metric, str):
-            if not ScaleMetric.has_value(scale_metric.upper()):
+            if not ScaleMetric._has_value(scale_metric.upper()):
                 raise ValueError(
                     f"Invalid scale_metric: {scale_metric}. Must be one of {[e.value for e in ScaleMetric]}"
                 )

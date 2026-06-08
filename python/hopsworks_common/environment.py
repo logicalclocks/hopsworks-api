@@ -65,16 +65,19 @@ class Environment:
             return [cls(**env) for env in json_decamelized["items"]]
         return cls(**json_decamelized)
 
+    @public
     @property
     def python_version(self):
         """Python version of the environment."""
         return self._python_version
 
+    @public
     @property
     def name(self):
         """Name of the environment."""
         return self._name
 
+    @public
     @property
     def description(self):
         """Description of the environment."""

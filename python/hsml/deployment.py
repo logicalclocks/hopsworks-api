@@ -518,13 +518,13 @@ class Deployment:
         predictors = predictor_mod.Predictor.from_response_json(json_dict)
         if isinstance(predictors, list):
             return [
-                cls.from_predictor(predictor_instance)
+                cls._from_predictor(predictor_instance)
                 for predictor_instance in predictors
             ]
-        return cls.from_predictor(predictors)
+        return cls._from_predictor(predictors)
 
     @classmethod
-    def from_predictor(cls, predictor_instance):
+    def _from_predictor(cls, predictor_instance):
         return Deployment(
             predictor=predictor_instance,
             name=predictor_instance._name,
