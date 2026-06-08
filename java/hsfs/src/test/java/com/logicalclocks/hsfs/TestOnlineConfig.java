@@ -88,6 +88,33 @@ class TestOnlineConfig {
   }
 
   @Test
+  void testSecondaryIndexesLowerCased() throws Exception {
+    // The SDK lower-cases feature names (Feature, StreamFeatureGroup); secondary index
+    // columns must be lower-cased the same way so they match the online table columns.
+    OnlineConfig config = new OnlineConfig();
+    config.setSecondaryIndexes(Arrays.asList(
+        Arrays.asList("Country"),
+        Arrays.asList("User_Country", "City")));
+
+    List<List<String>> expected = Arrays.asList(
+        Arrays.asList("country"),
+        Arrays.asList("user_country", "city"));
+    Assert.assertEquals(expected, config.getSecondaryIndexes());
+
+    // and it survives a Jackson round-trip
+    OnlineConfig result = objectMapper.readValue(
+        objectMapper.writeValueAsString(config), OnlineConfig.class);
+    Assert.assertEquals(expected, result.getSecondaryIndexes());
+  }
+
+  @Test
+  void testSecondaryIndexesNullStaysNull() throws Exception {
+    OnlineConfig config = new OnlineConfig();
+    config.setSecondaryIndexes(null);
+    Assert.assertNull(config.getSecondaryIndexes());
+  }
+
+  @Test
   void testUnknownJsonPropertyIgnored() throws Exception {
     // @JsonIgnoreProperties(ignoreUnknown = true) must not throw on extra fields,
     // which is required for forward compatibility when a newer backend adds fields.

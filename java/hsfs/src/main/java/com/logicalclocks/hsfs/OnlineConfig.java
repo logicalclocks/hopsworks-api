@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -42,7 +43,6 @@ public class OnlineConfig {
   private PrimaryKeyIndexType primaryKeyIndexType;
 
   @Getter
-  @Setter
   private List<List<String>> secondaryIndexes;
 
   public OnlineConfig(List<String> onlineComments, String tableSpace) {
@@ -54,5 +54,15 @@ public class OnlineConfig {
     this.onlineComments = onlineComments;
     this.tableSpace = tableSpace;
     this.primaryKeyIndexType = primaryKeyIndexType;
+  }
+
+  // Lower-case the index column names to match the online table column names, which are
+  // derived from feature names that the SDK lower-cases (see Feature and StreamFeatureGroup).
+  public void setSecondaryIndexes(List<List<String>> secondaryIndexes) {
+    this.secondaryIndexes = secondaryIndexes == null ? null
+        : secondaryIndexes.stream()
+            .map(index -> index == null ? null
+                : index.stream().map(String::toLowerCase).collect(Collectors.toList()))
+            .collect(Collectors.toList());
   }
 }
