@@ -20,6 +20,8 @@ import logging
 import os
 import posixpath
 import re
+import shutil
+import tempfile
 import time
 import warnings
 from abc import ABC, abstractmethod
@@ -3359,14 +3361,42 @@ class SqlConnector(StorageConnector):
         if self._database_type == self.ORACLE:
             wallet_dir = self._prepare_wallet()
             if wallet_dir:
-                options["oracle.net.wallet_location"] = (
-                    f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
-                )
-                # For wallet-only connectors the URL is a TNS alias; the JDBC
-                # driver needs tns_admin to find tnsnames.ora inside the wallet.
-                options["oracle.net.tns_admin"] = wallet_dir
-                if self._wallet_password:
-                    options["oracle.net.wallet_password"] = self._wallet_password
+                jks = os.path.join(wallet_dir, "keystore.jks")
+                trust_jks = os.path.join(wallet_dir, "truststore.jks")
+                if os.path.isfile(jks) and os.path.isfile(trust_jks):
+                    # OCI wallets ship both ewallet.p12 (Oracle SSO format) and
+                    # keystore.jks / truststore.jks (standard Java KeyStore).
+                    # The SSO format requires oraclepki.jar + osdt_core.jar to
+                    # parse correctly; the JKS files work with the standard JVM.
+                    # sqlnet.ora contains WALLET_LOCATION which forces the driver
+                    # back to SSO, so point tns_admin at a stripped copy that
+                    # only has tnsnames.ora and SSL_SERVER_DN_MATCH.
+                    tns_dir = tempfile.mkdtemp(prefix="oracle_tns_")
+                    shutil.copy(
+                        os.path.join(wallet_dir, "tnsnames.ora"),
+                        os.path.join(tns_dir, "tnsnames.ora"),
+                    )
+                    with open(os.path.join(tns_dir, "sqlnet.ora"), "w") as f:
+                        f.write("SSL_SERVER_DN_MATCH=yes\n")
+                    options["oracle.net.tns_admin"] = tns_dir
+                    options["javax.net.ssl.keyStore"] = jks
+                    options["javax.net.ssl.trustStore"] = trust_jks
+                    if self._wallet_password:
+                        options["javax.net.ssl.keyStorePassword"] = (
+                            self._wallet_password
+                        )
+                        options["javax.net.ssl.trustStorePassword"] = (
+                            self._wallet_password
+                        )
+                else:
+                    # No JKS files — fall back to Oracle wallet (requires
+                    # oraclepki.jar + osdt_core.jar + osdt_cert.jar on classpath).
+                    options["oracle.net.tns_admin"] = wallet_dir
+                    options["oracle.net.wallet_location"] = (
+                        f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                    )
+                    if self._wallet_password:
+                        options["oracle.net.wallet_password"] = self._wallet_password
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
