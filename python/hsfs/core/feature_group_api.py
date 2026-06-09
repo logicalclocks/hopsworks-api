@@ -48,7 +48,7 @@ class FeatureGroupApi:
         Returns:
             updated metadata object of the feature group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -74,7 +74,7 @@ class FeatureGroupApi:
         "hsfs.feature_group.FeatureGroupBase", fallback_return=[]
     )
     def _get_feature_group_by_name(self, feature_store_id: int, name: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -94,7 +94,7 @@ class FeatureGroupApi:
     def _get_feature_group_by_version(
         self, feature_store_id: int, name: str, version: int
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -189,7 +189,7 @@ class FeatureGroupApi:
         Returns:
             feature group metadata object
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -227,7 +227,7 @@ class FeatureGroupApi:
         Returns:
             List of feature group metadata objects.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -260,7 +260,7 @@ class FeatureGroupApi:
         Parameters:
             feature_group_instance: metadata object of feature group to clear the content for
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -285,7 +285,7 @@ class FeatureGroupApi:
         Parameters:
             feature_group_instance: metadata object of feature group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -323,7 +323,7 @@ class FeatureGroupApi:
         Returns:
             FeatureGroup. The updated feature group metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -358,7 +358,7 @@ class FeatureGroupApi:
         Returns:
             The feature group commit metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -394,7 +394,7 @@ class FeatureGroupApi:
         Returns:
             The feature group commit metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -427,7 +427,7 @@ class FeatureGroupApi:
         Returns:
             The ingestion job metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -457,7 +457,7 @@ class FeatureGroupApi:
         Returns:
             The job metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -492,7 +492,7 @@ class FeatureGroupApi:
         Returns:
             The feature groups used to generate this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -530,7 +530,7 @@ class FeatureGroupApi:
         Returns:
             The storage connector used to generated this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -571,7 +571,7 @@ class FeatureGroupApi:
         Returns:
             The feature views generated using this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -612,7 +612,7 @@ class FeatureGroupApi:
         Returns:
             The feature groups generated using this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

@@ -1011,7 +1011,7 @@ class TestDeployment:
             "hopsworks_common.util.get_hostname_replaced_url", return_value="url"
         )
         mock_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance", return_value=mock_client
+            "hopsworks_common.client._get_instance", return_value=mock_client
         )
 
         # Act

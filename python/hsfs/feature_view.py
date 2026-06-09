@@ -4552,7 +4552,7 @@ class FeatureView:
         from hsfs.feature_logger_async import AsyncFeatureLogger
 
         return AsyncFeatureLogger(
-            project_id=int(client.get_instance()._project_id),
+            project_id=int(client._get_instance()._project_id),
             source="localhost",
             namespace=os.environ["HOPSWORKS_PROJECT_NAME"].replace("_", "-"),
             deployment_name=os.environ["DEPLOYMENT_NAME"],

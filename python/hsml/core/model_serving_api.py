@@ -35,7 +35,7 @@ class ModelServingApi:
         Returns:
             the model serving metadata
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         # Validate that there is a Models dataset in the connected project
         if not self._dataset_api.path_exists("Models"):
@@ -49,22 +49,22 @@ class ModelServingApi:
         """Load default configuration and set istio client for model serving."""
         # kserve installed
         is_kserve_installed = self._serving_api._is_kserve_installed()
-        client.set_kserve_installed(is_kserve_installed)
+        client._set_kserve_installed(is_kserve_installed)
 
         # istio client
         self._istio_init_if_available()
 
         # num instances limits
         num_instances_range = self._serving_api._get_num_instances_limits()
-        client.set_serving_num_instances_limits(num_instances_range)
+        client._set_serving_num_instances_limits(num_instances_range)
 
         # Knative domain
         knative_domain = self._serving_api._get_knative_domain()
-        client.set_knative_domain(knative_domain)
+        client._set_knative_domain(knative_domain)
 
     def _istio_init_if_available(self):
         """Initialize istio client if available."""
-        if client.is_kserve_installed():
+        if client._is_kserve_installed():
             # check existing istio client
             try:
                 if client.istio.get_instance() is not None:
@@ -101,7 +101,7 @@ class ModelServingApi:
                     port = https_port or endpoint.get_port(
                         INFERENCE_ENDPOINTS.PORT_NAME_HTTP
                     )
-                    _client = client.get_instance()
+                    _client = client._get_instance()
                     client.istio.init(
                         endpoint.get_any_host(),
                         port.number,

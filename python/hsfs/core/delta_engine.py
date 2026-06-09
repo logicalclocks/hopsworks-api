@@ -362,7 +362,7 @@ class DeltaEngine:
                 "Non-HopsFS storage connector detected, skipping HopsFS-specific delta-rs setup"
             )
             return
-        _client = client.get_instance()
+        _client = client._get_instance()
         if _client._is_external():
             _logger.debug("Setting up delta-rs for external client")
             os.environ["PEMS_DIR"] = _client.get_certs_folder()
@@ -396,7 +396,7 @@ class DeltaEngine:
             _logger.debug(f"Non-HopsFS storage, using location as-is: {location}")
             return location
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         location = self._feature_group.location.replace(
             "hopsfs:/", "hdfs:/"
         )  # deltars requires hdfs scheme

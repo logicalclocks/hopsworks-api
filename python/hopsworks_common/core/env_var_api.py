@@ -64,7 +64,7 @@ class EnvVarsApi:
         Returns:
             List of [`EnvVar`][hopsworks.env_var.EnvVar] objects, possibly empty.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         params = {"includeValue": "true" if include_value else "false"}
         return env_var.EnvVar.from_response_json(
             _client._send_request("GET", ["users", "envvars"], query_params=params)
@@ -86,7 +86,7 @@ class EnvVarsApi:
         Returns:
             The matching [`EnvVar`][hopsworks.env_var.EnvVar], or ``None``.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         env_vars = env_var.EnvVar.from_response_json(
             _client._send_request("GET", ["users", "envvars", name])
         )
@@ -248,7 +248,7 @@ class EnvVarsApi:
         visibility: str | None = None,
         project_id_scope: int | None = None,
     ) -> env_var.EnvVar:
-        _client = client.get_instance()
+        _client = client._get_instance()
         headers = {"content-type": "application/json"}
         if value is None and secret_name is None:
             raise ValueError("Either value or secret_name must be provided")
@@ -288,7 +288,7 @@ class EnvVarsApi:
             hopsworks.client.exceptions.RestAPIError: ``ENV_VAR_NOT_FOUND``
                 if no env var with that name exists.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         _client._send_request("DELETE", ["users", "envvars", name])
 
     @public
@@ -315,5 +315,5 @@ class EnvVarsApi:
             assert api.get_env_vars() == []
             ```
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         _client._send_request("DELETE", ["users", "envvars"])

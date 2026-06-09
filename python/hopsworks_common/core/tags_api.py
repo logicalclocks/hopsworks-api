@@ -59,7 +59,7 @@ class TagsApi:
             value: Value of the tag to be added.
             training_dataset_version: Version of the training dataset.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version) + [
             name
         ]
@@ -83,7 +83,7 @@ class TagsApi:
             name: Name of the tag to be removed.
             training_dataset_version: Version of the training dataset.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version) + [
             name
         ]
@@ -110,7 +110,7 @@ class TagsApi:
         Returns:
             Dict of tag name/values.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version)
 
         if name is not None:
@@ -125,7 +125,7 @@ class TagsApi:
 
     @usage._method_logger
     def get_path(self, metadata_instance, training_dataset_version=None):
-        _client = client.get_instance()
+        _client = client._get_instance()
         if hasattr(metadata_instance, "training_data"):
             # Only FeatureView has training_data method
             path = [

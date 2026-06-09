@@ -59,7 +59,7 @@ class FeatureMonitoringResultApi:
         Returns:
             the created feature monitoring result
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
         )
@@ -79,7 +79,7 @@ class FeatureMonitoringResultApi:
         Parameters:
             result_id: ID of the feature monitoring result to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
         )
@@ -105,7 +105,7 @@ class FeatureMonitoringResultApi:
         Returns:
             fetched feature monitoring results attached to the Feature Group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
         )
@@ -129,7 +129,7 @@ class FeatureMonitoringResultApi:
         Returns:
             fetched feature monitoring result attached to the Feature Group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
         )

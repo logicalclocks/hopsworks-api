@@ -47,7 +47,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -90,7 +90,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -133,7 +133,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -191,7 +191,7 @@ class TestStatisticsEngine:
             ]["response"]
         )
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -241,7 +241,7 @@ class TestStatisticsEngine:
             ]["response"]
         )
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -294,7 +294,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -339,7 +339,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -390,7 +390,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_warning = mocker.patch("warnings.warn")
@@ -436,7 +436,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
 
@@ -555,7 +555,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._profile_statistics")
         mock_split_statistics = mocker.patch("hsfs.split_statistics.SplitStatistics")
         mock_statistics_engine_save_statistics = mocker.patch(
@@ -588,7 +588,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._profile_statistics")
         mock_split_statistics = mocker.patch("hsfs.split_statistics.SplitStatistics")
         mock_statistics_engine_save_statistics = mocker.patch(
@@ -766,7 +766,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_statistics_api = mocker.patch("hsfs.core.statistics_api.StatisticsApi")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
@@ -794,7 +794,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_statistics_api = mocker.patch("hsfs.core.statistics_api.StatisticsApi")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")

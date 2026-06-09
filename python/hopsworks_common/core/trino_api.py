@@ -119,7 +119,7 @@ class TrinoApi:
         self._secret_api: secret_api.SecretsApi = secret_api.SecretsApi()
         self._project_api: project_api.ProjectApi = project_api.ProjectApi()
         if project is None:
-            _client = client.get_instance()
+            _client = client._get_instance()
             self.project_name = _client._project_name
         else:
             self.project_name = project.name
@@ -135,7 +135,7 @@ class TrinoApi:
             The original verify value if verification is handled by the caller or disabled.
         """
         if not client._is_external() and verify is True:
-            _client = client.get_instance()
+            _client = client._get_instance()
             return _client._get_ca_chain_path()
         return verify
 

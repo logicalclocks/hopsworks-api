@@ -83,7 +83,7 @@ class OpenSearchApi:
         Returns:
             A valid opensearch index name.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         return (_client._project_name + "_" + index).lower()
 
     @public
@@ -120,7 +120,7 @@ class OpenSearchApi:
             OPENSEARCH_CONFIG.USE_SSL: True,
             OPENSEARCH_CONFIG.VERIFY_CERTS: True,
             OPENSEARCH_CONFIG.SSL_ASSERT_HOSTNAME: False,
-            OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(),
+            OPENSEARCH_CONFIG.CA_CERTS: client._get_instance()._get_ca_chain_path(),
         }
 
     def _get_authorization_token(self, feature_store_id: int | None = None) -> str:
@@ -132,7 +132,7 @@ class OpenSearchApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         # Do not use feature store id for now since the backend is not yet updated to use it.
         path_params = ["elastic", "jwt", _client._project_id]
 

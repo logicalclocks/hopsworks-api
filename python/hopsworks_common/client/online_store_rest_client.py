@@ -259,12 +259,12 @@ class OnlineStoreRestClientSingleton:
                 f"Default RonDB Rest Server host and port: {url.host}:{url.port}"
             )
             _logger.debug(
-                f"Using CA Certs from Hopsworks Client: {client.get_instance()._get_ca_chain_path()}"
+                f"Using CA Certs from Hopsworks Client: {client._get_instance()._get_ca_chain_path()}"
             )
         return {
             self.HOST: url.host,
             self.PORT: url.port,
-            self.CA_CERTS: client.get_instance()._get_ca_chain_path(),
+            self.CA_CERTS: client._get_instance()._get_ca_chain_path(),
         }
 
     def _get_rondb_rest_server_endpoint(self) -> str:
@@ -338,7 +338,7 @@ class OnlineStoreRestClientSingleton:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Checking Hopsworks connection.")
         assert (
-            client.get_instance() is not None and client.get_instance()._connected
+            client._get_instance() is not None and client._get_instance()._connected
         ), """Hopsworks Client is not connected. Please connect to Hopsworks cluster
             via hopsworks.login before initialising the Online Store REST Client.
             """
@@ -354,7 +354,7 @@ class OnlineStoreRestClientSingleton:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Setting authentication for Online Store REST Client.")
         if client._is_external():
-            assert hasattr(client.get_instance()._auth, "_token"), (
+            assert hasattr(client._get_instance()._auth, "_token"), (
                 "External client must use API Key authentication. Contact your system administrator."
             )
             if _logger.isEnabledFor(logging.DEBUG):
@@ -362,7 +362,7 @@ class OnlineStoreRestClientSingleton:
                     "External Online Store REST Client : Setting authentication using Hopsworks Client API Key."
                 )
             self._auth = client.auth.OnlineStoreKeyAuth(
-                client.get_instance()._auth._token
+                client._get_instance()._auth._token
             )
         elif isinstance(optional_config, dict) and optional_config.get(
             self.API_KEY, False

@@ -86,7 +86,7 @@ def spark_df():
 
 @pytest.fixture
 def feature_group_data():
-    with mock.patch("hopsworks_common.client.get_instance"):
+    with mock.patch("hopsworks_common.client._get_instance"):
         engine.init("python")
     with mock.patch(
         "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
@@ -108,7 +108,7 @@ def feature_group_data():
 
 @pytest.fixture
 def feature_group_created():
-    with mock.patch("hopsworks_common.client.get_instance"):
+    with mock.patch("hopsworks_common.client._get_instance"):
         engine.init("python")
     return feature_group.FeatureGroup(
         name="test_existing_fg",

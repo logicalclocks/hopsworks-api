@@ -571,7 +571,7 @@ class TestUtil:
         mock_client = mocker.MagicMock()
         mock_client._base_url = base_url + "url"
         mock_client.replace_public_host = mocker.MagicMock(return_value=mock_url_parsed)
-        mocker.patch("hopsworks_common.client.get_instance", return_value=mock_client)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
 
         # Act
         url = util.get_hostname_replaced_url(sub_path)
@@ -833,7 +833,7 @@ class TestUtil:
 
     def test_get_job_url(self, mocker):
         # Arrange
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         hopsworks_common.util.get_job_url(href="1/2/3/4/5/6/7/8")
@@ -850,7 +850,7 @@ class TestUtil:
         # Arrange
         feature_store_id = 99
         feature_group_id = 10
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hopsworks_common.util.get_hostname_replaced_url"
         )

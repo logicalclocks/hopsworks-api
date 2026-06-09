@@ -200,7 +200,7 @@ class Client(base.Client):
                 .getOrCreate()
             )
 
-        hopsworks_common.client.get_connection()._provide_project()
+        hopsworks_common.client._get_connection()._provide_project()
 
     def download_certs(self):
         res = self._materialize_certs()

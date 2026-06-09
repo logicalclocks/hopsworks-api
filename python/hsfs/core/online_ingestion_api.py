@@ -49,7 +49,7 @@ class OnlineIngestionApi:
         Returns:
             OnlineIngestion: The created OnlineIngestion object with metadata from the backend.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -90,7 +90,7 @@ class OnlineIngestionApi:
         Returns:
             OnlineIngestion: The OnlineIngestion object(s) matching the query.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

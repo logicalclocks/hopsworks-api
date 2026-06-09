@@ -41,7 +41,7 @@ class ExpectationSuiteApi:
         Returns:
             the created expectation suite
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -74,7 +74,7 @@ class ExpectationSuiteApi:
         Returns:
             the updated expectation suite
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -112,7 +112,7 @@ class ExpectationSuiteApi:
         Returns:
             the expectation suite with updated metadata.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -147,7 +147,7 @@ class ExpectationSuiteApi:
         Parameters:
             expectation_suite_id: id of the Expectation Suite to delete
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -173,7 +173,7 @@ class ExpectationSuiteApi:
         Returns:
             fetched expectation suite attached to the FeatureG Group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

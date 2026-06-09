@@ -29,7 +29,7 @@ class FeatureStoreApi:
         Returns:
             the featurestore metadata
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "featurestores", identifier]
         return hsfs.feature_store.FeatureStore.from_response_json(
             _client._send_request("GET", path_params)
@@ -47,7 +47,7 @@ class FeatureStoreApi:
         Returns:
             a list of featurestore metadata objects
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "featurestores"]
         return [
             hsfs.feature_store.FeatureStore.from_response_json(fs)

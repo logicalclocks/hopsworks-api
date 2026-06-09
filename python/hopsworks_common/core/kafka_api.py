@@ -67,7 +67,7 @@ class KafkaApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["project", _client._project_id, "kafka", "topics"]
         data = {
@@ -125,7 +125,7 @@ class KafkaApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",
@@ -180,7 +180,7 @@ class KafkaApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "kafka", "topics"]
 
         return kafka_topic.KafkaTopic.from_response_json(
@@ -193,7 +193,7 @@ class KafkaApi:
         Parameters:
             name: Name of the topic.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -210,7 +210,7 @@ class KafkaApi:
             subject: Subject name of the schema.
             version: Version of the subject.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -256,7 +256,7 @@ class KafkaApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -302,7 +302,7 @@ class KafkaApi:
             subject: Subject name of the schema.
             version: Version of the subject.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -318,7 +318,7 @@ class KafkaApi:
         )
 
     def _get_broker_endpoints(self, externalListeners: bool = False):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -366,7 +366,7 @@ class KafkaApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
             constants.KAFKA_SSL_CONFIG.SSL_CA_LOCATION_CONFIG: _client._get_ca_chain_path(),
@@ -396,7 +396,7 @@ class KafkaApi:
         subject: str,
         version: str | int = "latest",
     ) -> dict[str, Any]:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

@@ -43,7 +43,7 @@ class ExpectationApi:
         Returns:
             expectation
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -71,7 +71,7 @@ class ExpectationApi:
         Returns:
             expectation
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -97,7 +97,7 @@ class ExpectationApi:
         Parameters:
             expectation_id: id of the Expectation to delete
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -122,7 +122,7 @@ class ExpectationApi:
         Returns:
             The expectation object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -146,7 +146,7 @@ class ExpectationApi:
         Returns:
             expectation
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

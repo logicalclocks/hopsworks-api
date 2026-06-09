@@ -53,7 +53,7 @@ class FeatureViewApi:
 
     @property
     def _client(self):
-        return client.get_instance()
+        return client._get_instance()
 
     @property
     def _base_path(self):
@@ -382,7 +382,7 @@ class FeatureViewApi:
         Returns:
             The feature groups used to generated this feature view.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             name,
             self._VERSION,
@@ -423,7 +423,7 @@ class FeatureViewApi:
         Returns:
             The models generated using this feature view.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             feature_view_name,
             self._VERSION,
@@ -450,7 +450,7 @@ class FeatureViewApi:
         feature_view_version: int,
         feature_logging_object: FeatureLogging = None,
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             feature_view_name,
             self._VERSION,
@@ -466,7 +466,7 @@ class FeatureViewApi:
         feature_view_name: str,
         feature_view_version: int,
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             feature_view_name,
             self._VERSION,
@@ -481,7 +481,7 @@ class FeatureViewApi:
         feature_view_name: str,
         feature_view_version: int,
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             feature_view_name,
             self._VERSION,
@@ -496,7 +496,7 @@ class FeatureViewApi:
         feature_view_name: str,
         feature_view_version: int,
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             feature_view_name,
             self._VERSION,
@@ -521,7 +521,7 @@ class FeatureViewApi:
         feature_view_name: str,
         feature_view_version: int,
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             feature_view_name,
             self._VERSION,
@@ -538,7 +538,7 @@ class FeatureViewApi:
         feature_view_version: int,
         transformed: bool = None,
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._base_path + [
             feature_view_name,
             self._VERSION,

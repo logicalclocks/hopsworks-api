@@ -89,7 +89,7 @@ class FlinkClusterApi:
         return self._create_cluster(name, config)
 
     def _create_cluster(self, name: str, config: dict):
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         config = util.validate_job_conf(config, _client._project_name)
 
@@ -134,7 +134,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -174,7 +174,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "jobs", job_id]
         headers = {"content-type": "application/json"}
         return _client._send_request(
@@ -206,7 +206,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "jobs"]
         headers = {"content-type": "application/json"}
         return _client._send_request(
@@ -235,7 +235,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "cluster"]
         headers = {"content-type": "application/json"}
         _client._send_request(
@@ -266,7 +266,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "hopsworks-api",
             "flinkmaster",
@@ -304,7 +304,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "jars"]
         headers = {"content-type": "application/json"}
         response = _client._send_request(
@@ -336,7 +336,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "hopsworks-api",
             "flinkmaster",
@@ -391,7 +391,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         # Submit execution
         if job_arguments:
             path_params = [
@@ -462,7 +462,7 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "hopsworks-api",
             "flinkmaster",

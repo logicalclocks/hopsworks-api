@@ -150,7 +150,7 @@ class Project:
         The home directory is located at `/Projects/<project_name>/Users/<username>`
         and is created automatically when a user joins a project.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if hasattr(_client, "_username") and _client._username:
             # External client stores the username directly
             username = _client._username
@@ -184,7 +184,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client.get_connection().get_feature_store(name)
+        return client._get_connection().get_feature_store(name)
 
     @public
     def get_model_registry(self) -> ModelRegistry:
@@ -205,7 +205,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client.get_connection().get_model_registry()
+        return client._get_connection().get_model_registry()
 
     @public
     def get_model_serving(self) -> ModelServing:
@@ -226,7 +226,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client.get_connection().get_model_serving()
+        return client._get_connection().get_model_serving()
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:
@@ -235,7 +235,7 @@ class Project:
         Returns:
             The Kafka Api handle.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if _client._is_external():
             _client.download_certs()
         return self._kafka_api
@@ -247,7 +247,7 @@ class Project:
         Returns:
             The OpenSearch Api handle.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if _client._is_external():
             _client.download_certs()
         return self._opensearch_api

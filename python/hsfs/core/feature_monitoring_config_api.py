@@ -60,7 +60,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             the created feature monitoring configuration
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
         )
@@ -83,7 +83,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             the updated feature monitoring configuration
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=fm_config._id,
@@ -105,7 +105,7 @@ class FeatureMonitoringConfigApi:
         Parameters:
             config_id: Id of the feature monitoring configuration to delete
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=config_id,
@@ -125,7 +125,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             fetched feature monitoring configuration attached to the Feature Group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=config_id,
@@ -147,7 +147,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             fetched feature monitoring configuration attached to the Feature Group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
             feature_name=feature_name,
@@ -173,7 +173,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             Fetched feature monitoring configuration attached to the Feature Group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
             name=name,
@@ -188,7 +188,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             Fetched feature monitoring configuration attached to the Feature Group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
             entity=True,
@@ -210,7 +210,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             Job object for the feature monitoring job
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
         )
@@ -230,7 +230,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             Job attached to the monitoring configuration
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=config_id,

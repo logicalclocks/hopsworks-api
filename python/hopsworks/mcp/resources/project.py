@@ -59,7 +59,7 @@ class ProjectResources:
         if ctx:
             await ctx.info("Listing all projects...")
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         projects = conn._get_projects()
         return Projects(
             projects=[
@@ -108,7 +108,7 @@ class ProjectResources:
         if ctx:
             await ctx.info(f"Retrieving project details for {name}...")
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         project = conn._get_project(name)
         return Project(
             name=project.name,

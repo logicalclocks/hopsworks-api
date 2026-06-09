@@ -2149,12 +2149,12 @@ class KafkaConnector(StorageConnector):
                 self.ca_chain_path,
                 self.client_cert_path,
                 self.client_key_path,
-            ) = client.get_instance()._write_pem(
+            ) = client._get_instance()._write_pem(
                 kafka_options["ssl.keystore.location"],
                 kafka_options["ssl.keystore.password"],
                 kafka_options["ssl.truststore.location"],
                 kafka_options["ssl.truststore.password"],
-                f"kafka_sc_{client.get_instance()._project_id}_{self._id}",
+                f"kafka_sc_{client._get_instance()._project_id}_{self._id}",
             )
             self._pem_files_created = True
 
@@ -2192,11 +2192,11 @@ class KafkaConnector(StorageConnector):
         # this option is not set and so the `not self._external_kafka` would return true
         # overwriting the user specified certificates
         if self._external_kafka is False:
-            ssl_truststore_location = client.get_instance()._get_jks_trust_store_path()
-            ssl_truststore_password = client.get_instance()._cert_key
-            ssl_keystore_location = client.get_instance()._get_jks_key_store_path()
-            ssl_keystore_password = client.get_instance()._cert_key
-            ssl_key_password = client.get_instance()._cert_key
+            ssl_truststore_location = client._get_instance()._get_jks_trust_store_path()
+            ssl_truststore_password = client._get_instance()._cert_key
+            ssl_keystore_location = client._get_instance()._get_jks_key_store_path()
+            ssl_keystore_password = client._get_instance()._cert_key
+            ssl_key_password = client._get_instance()._cert_key
         else:
             ssl_truststore_location = engine.get_instance()._add_file(
                 self._ssl_truststore_location, distribute=distribute
@@ -3202,12 +3202,12 @@ class OpenSearchConnector(StorageConnector):
 
         # Reuse the same truststore for both keystore and truststore inputs since
         # we only need a CA chain for server verification.
-        ca_chain_path, _, _ = client.get_instance()._write_pem(
+        ca_chain_path, _, _ = client._get_instance()._write_pem(
             local_trust_store_path,
             self._trust_store_password,
             local_trust_store_path,
             self._trust_store_password,
-            f"opensearch_sc_{client.get_instance()._project_id}_{self._id}",
+            f"opensearch_sc_{client._get_instance()._project_id}_{self._id}",
         )
 
         setattr(self, ca_attr, ca_chain_path)

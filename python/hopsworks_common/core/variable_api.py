@@ -52,7 +52,7 @@ class VariableApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["variables", variable]
         domain = _client._send_request("GET", path_params)
@@ -71,7 +71,7 @@ class VariableApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["variables", "versions"]
         resp = _client._send_request("GET", path_params)

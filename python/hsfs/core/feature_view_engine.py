@@ -1215,7 +1215,7 @@ class FeatureViewEngine:
     def _get_feature_view_url(self, fv: feature_view.FeatureView):
         path = (
             "/p/"
-            + str(client.get_instance()._project_id)
+            + str(client._get_instance()._project_id)
             + "/fs/"
             + str(fv.featurestore_id)
             + "/fv/"

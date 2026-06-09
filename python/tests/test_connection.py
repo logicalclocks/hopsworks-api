@@ -161,7 +161,7 @@ class TestProvideProject:
         hw_client._is_external.return_value = True
         hw_client.provide_project = MagicMock()
         mocker.patch(
-            "hopsworks_common.connection.client.get_instance", return_value=hw_client
+            "hopsworks_common.connection.client._get_instance", return_value=hw_client
         )
         return hw_client
 

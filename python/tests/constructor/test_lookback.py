@@ -45,7 +45,7 @@ def _patch_client(mocker):
     which look up the HTTP client. `Query.__init__` calls `engine.get_type()`.
     Mocking these avoids any network or engine-init work in unit tests.
     """
-    mocker.patch("hopsworks_common.client.get_instance")
+    mocker.patch("hopsworks_common.client._get_instance")
     mocker.patch("hsfs.engine.get_type", return_value="python")
 
 

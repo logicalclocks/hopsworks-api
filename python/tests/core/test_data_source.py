@@ -241,7 +241,7 @@ class TestDataSourceApiInferMetadata:
 
         # Act
         with patch(
-            "hsfs.core.data_source_api.client.get_instance",
+            "hsfs.core.data_source_api.client._get_instance",
             return_value=_StubClient(),
         ):
             result = api._infer_metadata(sc, preview_data)
@@ -287,7 +287,7 @@ class TestDataSourceApiInferMetadata:
         # Act / Assert
         with (
             patch(
-                "hsfs.core.data_source_api.client.get_instance",
+                "hsfs.core.data_source_api.client._get_instance",
                 return_value=MagicMock(
                     _project_id=1,
                     _send_request=MagicMock(
@@ -314,7 +314,7 @@ class TestDataSourceApiInferMetadata:
 
         with (
             patch(
-                "hsfs.core.data_source_api.client.get_instance",
+                "hsfs.core.data_source_api.client._get_instance",
                 return_value=MagicMock(
                     _project_id=1,
                     _send_request=MagicMock(
@@ -340,7 +340,7 @@ class TestDataSourceApiInferMetadata:
 
         with (
             patch(
-                "hsfs.core.data_source_api.client.get_instance",
+                "hsfs.core.data_source_api.client._get_instance",
                 return_value=MagicMock(
                     _project_id=1,
                     _send_request=MagicMock(

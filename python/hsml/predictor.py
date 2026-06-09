@@ -179,7 +179,7 @@ class Predictor(DeployableComponent):
     @classmethod
     def _validate_serving_tool(cls, serving_tool):
         if serving_tool is not None:
-            if client.is_saas_connection():
+            if client._is_saas_connection():
                 # only kserve supported in saasy hopsworks
                 if serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
                     raise ValueError(
@@ -216,7 +216,7 @@ class Predictor(DeployableComponent):
         # set kserve as default if it is available
         return (
             PREDICTOR.SERVING_TOOL_KSERVE
-            if client.is_kserve_installed()
+            if client._is_kserve_installed()
             else PREDICTOR.SERVING_TOOL_DEFAULT
         )
 
@@ -226,7 +226,7 @@ class Predictor(DeployableComponent):
             resources is not None
             and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
             and cls._get_raw_num_instances(resources) != 0
-            and client.is_scale_to_zero_required()
+            and client._is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
             raise ValueError(
@@ -239,7 +239,7 @@ class Predictor(DeployableComponent):
         num_instances = (
             0  # enable scale-to-zero by default if required
             if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-            and client.is_scale_to_zero_required()
+            and client._is_scale_to_zero_required()
             else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
         return PredictorResources(num_instances)
@@ -753,7 +753,7 @@ class Predictor(DeployableComponent):
             return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
 
         # Fallback to Hopsworks REST API path
-        hopsworks_client = client.get_instance()
+        hopsworks_client = client._get_instance()
         path_parts = serving._get_hopsworks_inference_path(
             hopsworks_client._project_id, self
         )

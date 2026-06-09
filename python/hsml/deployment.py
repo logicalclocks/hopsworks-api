@@ -438,7 +438,7 @@ class Deployment:
         """Get url to the deployment in Hopsworks."""
         path = (
             "/p/"
-            + str(client.get_instance()._project_id)
+            + str(client._get_instance()._project_id)
             + "/deployments/"
             + str(self.id)
         )

@@ -60,7 +60,7 @@ class EnvironmentApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",
@@ -106,7 +106,7 @@ class EnvironmentApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["project", _client._project_id, "python", "environments"]
         query_params = {"expand": ["libraries", "commands"]}
@@ -144,7 +144,7 @@ class EnvironmentApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["project", _client._project_id, "python", "environments", name]
         query_params = {"expand": ["libraries", "commands"]}
@@ -161,7 +161,7 @@ class EnvironmentApi:
         Parameters:
             name: Name of environment to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",

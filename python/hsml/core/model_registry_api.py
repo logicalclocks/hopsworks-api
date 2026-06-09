@@ -35,7 +35,7 @@ class ModelRegistryApi:
         Returns:
             the model registry metadata
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         model_registry_id = _client._project_id
         shared_registry_project_name = None

@@ -76,7 +76,7 @@ class ProjectTools:
         if ctx:
             await ctx.info(f"Changing to project {name}...")
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         if conn is None:
             raise ConnectionError("Not connected to Hopsworks.")
 
@@ -115,7 +115,7 @@ class ProjectTools:
             await ctx.info(f"Creating project {name}...")
 
         progress = 0
-        conn = client.get_connection()
+        conn = client._get_connection()
         task = asyncio.create_task(
             self._create_project(conn, name=name, description=description)
         )
@@ -151,7 +151,7 @@ class ProjectTools:
         if ctx:
             await ctx.info("Listing all projects...")
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         projects = conn._get_projects()
 
         return Projects(
@@ -203,7 +203,7 @@ class ProjectTools:
         if ctx:
             await ctx.info(f"Retrieving project details for {name}...")
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         project = conn._get_project(name)
         return Project(
             name=project.name,

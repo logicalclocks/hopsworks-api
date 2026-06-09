@@ -76,7 +76,7 @@ def _patch_client(
     client._is_external.return_value = is_external
     client.project_name = project_name
     client.get_certs_folder.return_value = certs
-    mocker.patch("hopsworks_common.client.get_instance", return_value=client)
+    mocker.patch("hopsworks_common.client._get_instance", return_value=client)
     return client
 
 

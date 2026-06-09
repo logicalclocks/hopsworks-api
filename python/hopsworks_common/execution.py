@@ -206,7 +206,7 @@ class Execution:
             and isinstance(self._monitoring, dict)
             and self._monitoring.get("appUrl")
         ):
-            _client = client.get_instance()
+            _client = client._get_instance()
             return (
                 _client._base_url.rstrip("/")
                 + "/hopsworks-api/"
@@ -293,7 +293,7 @@ class Execution:
     @public
     def get_url(self):
         """Get url to view execution details in Hopsworks UI."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path = (
             "/p/"
             + str(_client._project_id)

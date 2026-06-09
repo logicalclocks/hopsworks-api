@@ -42,7 +42,7 @@ class TestIstioInitIfAvailable:
     @pytest.fixture(autouse=True)
     def _istio_stubs(self, mocker):
         mocker.patch(
-            "hsml.core.model_serving_api.client.is_kserve_installed", return_value=True
+            "hsml.core.model_serving_api.client._is_kserve_installed", return_value=True
         )
         mocker.patch(
             "hsml.core.model_serving_api.client.istio.get_instance", return_value=None
@@ -51,7 +51,8 @@ class TestIstioInitIfAvailable:
 
     def test_skips_when_kserve_not_installed(self, mocker, api):
         mocker.patch(
-            "hsml.core.model_serving_api.client.is_kserve_installed", return_value=False
+            "hsml.core.model_serving_api.client._is_kserve_installed",
+            return_value=False,
         )
 
         api._istio_init_if_available()
@@ -112,7 +113,7 @@ class TestIstioInitIfAvailable:
         fake_client._project_name = "proj"
         fake_client._auth._token = "tok"
         mocker.patch(
-            "hsml.core.model_serving_api.client.get_instance", return_value=fake_client
+            "hsml.core.model_serving_api.client._get_instance", return_value=fake_client
         )
         api._serving_api._get_inference_endpoints.return_value = [
             _endpoint(
@@ -138,7 +139,7 @@ class TestIstioInitIfAvailable:
         fake_client._project_name = "proj"
         fake_client._auth._token = "tok"
         mocker.patch(
-            "hsml.core.model_serving_api.client.get_instance", return_value=fake_client
+            "hsml.core.model_serving_api.client._get_instance", return_value=fake_client
         )
         api._serving_api._get_inference_endpoints.return_value = [
             _endpoint(

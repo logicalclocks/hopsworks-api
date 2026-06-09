@@ -41,7 +41,7 @@ class StatisticsApi:
         stats: statistics.Statistics,
         training_dataset_version: int | None,
     ) -> statistics.Statistics | None:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._get_path(metadata_instance, training_dataset_version)
 
         headers = {"content-type": "application/json"}
@@ -81,7 +81,7 @@ class StatisticsApi:
             The statistics object, or `None` if not found.
         """
         # get statistics by entity + filters + sorts, including the feature descriptive statistics
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._get_path(metadata_instance, training_dataset_version)
 
         # single statistics
@@ -138,7 +138,7 @@ class StatisticsApi:
             A list of statistics objects, or `None` if not found.
         """
         # get all statistics by entity + filters + sorts, without the feature descriptive statistics
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._get_path(metadata_instance, training_dataset_version)
 
         # multiple statistics
@@ -180,7 +180,7 @@ class StatisticsApi:
         Returns:
             The job metadata object for the statistics computation job.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = self._get_path(metadata_instance, training_dataset_version) + [
             "compute"
         ]
@@ -202,7 +202,7 @@ class StatisticsApi:
         Returns:
             The API path as a list of path segments.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if isinstance(metadata_instance, feature_view.FeatureView):
             path = [
                 "project",

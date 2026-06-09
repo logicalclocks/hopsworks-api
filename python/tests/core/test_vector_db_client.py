@@ -29,7 +29,7 @@ class TestVectorDbClient:
     embedding_index = EmbeddingIndex("2249__embedding_default_embedding")
     embedding_index.add_embedding("f2", 3)
     embedding_index._col_prefix = ""
-    with mock.patch("hopsworks_common.client.get_instance"):
+    with mock.patch("hopsworks_common.client._get_instance"):
         fg = FeatureGroup("test_fg", 1, 99, id=1, embedding_index=embedding_index)
         f1 = Feature("f1", feature_group=fg, primary=True, type="int")
         f2 = Feature("f2", feature_group=fg, primary=True, type="int")

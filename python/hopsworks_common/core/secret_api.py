@@ -54,7 +54,7 @@ class SecretsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "users",
             "secrets",
@@ -80,7 +80,7 @@ class SecretsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         query_params = None
         if owner is None:
             path_params = [
@@ -151,7 +151,7 @@ class SecretsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         secret_config = {"name": name, "secret": value}
 
@@ -228,7 +228,7 @@ class SecretsApi:
         Parameters:
             name: Name of the secret.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "users",
             "secrets",

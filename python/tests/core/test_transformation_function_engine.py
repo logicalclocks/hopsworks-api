@@ -246,7 +246,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -279,7 +279,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_no_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -339,7 +339,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_train_test_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -398,7 +398,7 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_no_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -452,7 +452,7 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -513,7 +513,7 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = True
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -536,7 +536,7 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -562,7 +562,7 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
@@ -598,7 +598,7 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -624,7 +624,7 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -653,7 +653,7 @@ class TestTransformationFunctionEngine:
         def add_two(col1):
             return col1 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = True
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -694,7 +694,7 @@ class TestTransformationFunctionEngine:
         def add_two(col1):
             return col1 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker_engine._check_supported_dataframe.return_value = False
@@ -745,7 +745,7 @@ class TestTransformationFunctionEngine:
         def add_two(col1):
             return col1 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -788,7 +788,7 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -833,7 +833,7 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = True
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -886,7 +886,7 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -931,7 +931,7 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
@@ -978,7 +978,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1037,7 +1037,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1094,7 +1094,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1154,7 +1154,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1204,7 +1204,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1256,7 +1256,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1315,7 +1315,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1375,7 +1375,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -1426,7 +1426,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1486,7 +1486,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1551,7 +1551,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1619,7 +1619,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1686,7 +1686,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1754,7 +1754,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1821,7 +1821,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1882,7 +1882,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -1942,7 +1942,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -2007,7 +2007,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -2081,7 +2081,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -2143,7 +2143,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
@@ -2190,7 +2190,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -2231,7 +2231,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -2272,7 +2272,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -2319,7 +2319,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -2377,7 +2377,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 
@@ -2429,7 +2429,7 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
 

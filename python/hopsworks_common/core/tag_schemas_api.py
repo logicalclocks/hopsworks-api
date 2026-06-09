@@ -60,7 +60,7 @@ class TagSchemasApi:
         Returns:
             The raw schema-list payload from the backend.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request("GET", self._path())
 
     @public
@@ -79,7 +79,7 @@ class TagSchemasApi:
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request("GET", self._path() + [name])
 
     @public
@@ -139,7 +139,7 @@ class TagSchemasApi:
         else:
             raise ValueError("schema must be a dict or a JSON string")
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         try:
             return _client._send_request(
                 "POST",
@@ -170,7 +170,7 @@ class TagSchemasApi:
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         try:
             _client._send_request("DELETE", self._path() + [name])
         except RestAPIError as e:

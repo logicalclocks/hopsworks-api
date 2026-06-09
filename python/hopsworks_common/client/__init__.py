@@ -26,8 +26,8 @@ from hopsworks_common.constants import HOSTS
 _client: hopsworks.Client | external.Client | None = None
 
 
-@also_available_as("hopsworks.client.init")
-def init(
+@also_available_as("hopsworks.client._init")
+def _init(
     client_type: Literal["hopsworks", "external"],
     host: str | None = None,
     port: int | None = None,
@@ -59,16 +59,16 @@ def init(
         _client.provide_project(project)
 
 
-@also_available_as("hopsworks.client.get_instance")
-def get_instance() -> hopsworks.Client | external.Client:
+@also_available_as("hopsworks.client._get_instance")
+def _get_instance() -> hopsworks.Client | external.Client:
     global _client
     if not _client:
         raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
     return _client
 
 
-@also_available_as("hopsworks.client.stop")
-def stop() -> None:
+@also_available_as("hopsworks.client._stop")
+def _stop() -> None:
     global _client
     if _client:
         _client._close()
@@ -78,22 +78,22 @@ def stop() -> None:
     istio._client = None
 
 
-@also_available_as("hopsworks.client.is_saas_connection")
-def is_saas_connection() -> bool:
-    return get_instance()._host == HOSTS.SAAS_HOST
+@also_available_as("hopsworks.client._is_saas_connection")
+def _is_saas_connection() -> bool:
+    return _get_instance()._host == HOSTS.SAAS_HOST
 
 
 _kserve_installed = None
 
 
-@also_available_as("hopsworks.client.set_kserve_installed")
-def set_kserve_installed(kserve_installed):
+@also_available_as("hopsworks.client._set_kserve_installed")
+def _set_kserve_installed(kserve_installed):
     global _kserve_installed
     _kserve_installed = kserve_installed
 
 
-@also_available_as("hopsworks.client.is_kserve_installed")
-def is_kserve_installed() -> bool:
+@also_available_as("hopsworks.client._is_kserve_installed")
+def _is_kserve_installed() -> bool:
     global _kserve_installed
     return _kserve_installed
 
@@ -101,36 +101,36 @@ def is_kserve_installed() -> bool:
 _serving_num_instances_limits = None
 
 
-@also_available_as("hopsworks.client.set_serving_num_instances_limits")
-def set_serving_num_instances_limits(num_instances_range):
+@also_available_as("hopsworks.client._set_serving_num_instances_limits")
+def _set_serving_num_instances_limits(num_instances_range):
     global _serving_num_instances_limits
     _serving_num_instances_limits = num_instances_range
 
 
-@also_available_as("hopsworks.client.get_serving_num_instances_limits")
-def get_serving_num_instances_limits():
+@also_available_as("hopsworks.client._get_serving_num_instances_limits")
+def _get_serving_num_instances_limits():
     global _serving_num_instances_limits
     return _serving_num_instances_limits
 
 
-@also_available_as("hopsworks.client.is_scale_to_zero_required")
-def is_scale_to_zero_required():
+@also_available_as("hopsworks.client._is_scale_to_zero_required")
+def _is_scale_to_zero_required():
     # scale-to-zero is required for KServe deployments if the Hopsworks variable `kube_serving_min_num_instances`
     # is set to 0. Other possible values are -1 (unlimited num instances) or >1 num instances.
-    return get_serving_num_instances_limits()[0] == 0
+    return _get_serving_num_instances_limits()[0] == 0
 
 
 _knative_domain = None
 
 
-@also_available_as("hopsworks.client.get_knative_domain")
-def get_knative_domain():
+@also_available_as("hopsworks.client._get_knative_domain")
+def _get_knative_domain():
     global _knative_domain
     return _knative_domain
 
 
-@also_available_as("hopsworks.client.set_knative_domain")
-def set_knative_domain(knative_domain):
+@also_available_as("hopsworks.client._set_knative_domain")
+def _set_knative_domain(knative_domain):
     global _knative_domain
     _knative_domain = knative_domain
 
@@ -138,13 +138,13 @@ def set_knative_domain(knative_domain):
 _connection = None
 
 
-@also_available_as("hopsworks.client.get_connection")
-def get_connection():
+@also_available_as("hopsworks.client._get_connection")
+def _get_connection():
     return _connection
 
 
-@also_available_as("hopsworks.client.set_connection")
-def set_connection(connection):
+@also_available_as("hopsworks.client._set_connection")
+def _set_connection(connection):
     global _connection
     _connection = connection
 

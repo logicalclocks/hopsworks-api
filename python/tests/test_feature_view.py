@@ -74,7 +74,7 @@ class TestFeatureView:
             "project_id",
             return_value=99,
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi._get")
         json = backend_fixtures["feature_view"]["get"]["response"]
@@ -96,7 +96,7 @@ class TestFeatureView:
     def test_from_response_json_basic_info(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["feature_view"]["get_basic_info"]["response"]
 
         # Act
@@ -121,7 +121,7 @@ class TestFeatureView:
             "project_id",
             return_value=99,
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi._get")
         json = backend_fixtures["feature_view"]["get_transformations"]["response"]
@@ -166,7 +166,7 @@ class TestFeatureView:
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["feature_view"]["get_basic_info_deprecated"]["response"]
 
         # Act
@@ -195,7 +195,7 @@ class TestFeatureView:
         mocked_connection = mocker.MagicMock()
         mocked_connection.backend_version = version.__version__
         mocked_connection = mocker.patch(
-            "hopsworks_common.client.get_connection", return_value=mocked_connection
+            "hopsworks_common.client._get_connection", return_value=mocked_connection
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
@@ -225,7 +225,7 @@ class TestFeatureView:
         mocked_connection = mocker.MagicMock()
         mocked_connection.backend_version = version.__version__
         mocked_connection = mocker.patch(
-            "hopsworks_common.client.get_connection", return_value=mocked_connection
+            "hopsworks_common.client._get_connection", return_value=mocked_connection
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
@@ -241,7 +241,7 @@ class TestFeatureView:
 
     def test_label_column_name(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv = feature_view.FeatureView(
@@ -290,7 +290,7 @@ class TestFeatureView:
         # FeatureView.get_feature is a thin wrapper over Query.get_feature.
         # Verify the call routes through, the argument is forwarded
         # verbatim, and the query's return value is returned unchanged.
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         fv = feature_view.FeatureView(
             name="fv_name",
@@ -312,7 +312,7 @@ class TestFeatureView:
         # FeatureView.get_feature must surface a Query-level
         # FeatureStoreException unchanged — callers rely on the error
         # type to distinguish a missing feature from a real lookup result.
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         fv = feature_view.FeatureView(
             name="fv_name",
@@ -332,7 +332,7 @@ class TestFeatureView:
     def test_get_feature_propagates_ambiguity(self, mocker):
         # Same propagation contract for the ambiguous-name path so the
         # caller can prompt the user to pass a prefixed name.
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         fv = feature_view.FeatureView(
             name="fv_name",
@@ -351,7 +351,7 @@ class TestFeatureView:
 
     def test_transformed_feature_name(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv = feature_view.FeatureView(
@@ -411,7 +411,7 @@ class TestFeatureView:
 
     def test_untransformed_feature_names(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv = feature_view.FeatureView(
@@ -460,7 +460,7 @@ class TestFeatureView:
 
     def test_required_serving_key_names(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv = feature_view.FeatureView(
@@ -496,7 +496,7 @@ class TestFeatureView:
 
     def test_root_feature_group_event_time_column_name(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv = feature_view.FeatureView(
@@ -549,7 +549,7 @@ class TestFeatureViewExecuteOdts:
         )
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         @udf(int)
@@ -620,7 +620,7 @@ class TestFeatureViewExecuteOdts:
         )
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         @udf(int)
@@ -692,7 +692,7 @@ class TestFeatureViewExecuteOdts:
         import pandas as pd
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv = feature_view.FeatureView(
@@ -738,7 +738,7 @@ class TestFeatureViewExecuteOdts:
         )
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         @udf(int, mode=execution_mode)
@@ -816,7 +816,7 @@ class TestFeatureViewExecuteMdts:
         )
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         @udf(int)
@@ -880,7 +880,7 @@ class TestFeatureViewExecuteMdts:
         )
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         @udf(int)
@@ -950,7 +950,7 @@ class TestFeatureViewExecuteMdts:
         from hsfs.transformation_statistics import TransformationStatistics
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         stats = TransformationStatistics("feature")
@@ -1003,7 +1003,7 @@ class TestFeatureViewExecuteMdts:
         import pandas as pd
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv = feature_view.FeatureView(
@@ -1043,7 +1043,7 @@ class TestFeatureViewExecuteMdts:
         )
 
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         @udf(int, mode=execution_mode)

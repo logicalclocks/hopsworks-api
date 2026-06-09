@@ -40,7 +40,7 @@ _BREWER_METADATA_INFERENCE_FAILED = 520013
 
 class DataSourceApi:
     def _get_databases(self, storage_connector: sc.StorageConnector) -> list[str]:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -57,7 +57,7 @@ class DataSourceApi:
     def _get_crm_resources(
         self, storage_connector: sc.StorageConnector
     ) -> dsd.DataSourceData:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -75,7 +75,7 @@ class DataSourceApi:
     def _get_tables(
         self, storage_connector: sc.StorageConnector, database: str
     ) -> list[ds.DataSource]:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -121,7 +121,7 @@ class DataSourceApi:
         data_source: ds.DataSource,
         use_cached=True,
     ) -> dsd.DataSourceData:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -151,7 +151,7 @@ class DataSourceApi:
         data_source: ds.DataSource,
         use_cached=True,
     ) -> dsd.DataSourceData:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -172,7 +172,7 @@ class DataSourceApi:
         )
 
     def _get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -191,7 +191,7 @@ class DataSourceApi:
         )
 
     def _get_metadata(self, data_source: ds.DataSource) -> dict:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -212,7 +212,7 @@ class DataSourceApi:
         storage_connector: sc.StorageConnector,
         preview_data: dsd.DataSourceData,
     ) -> im.InferredMetadata:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

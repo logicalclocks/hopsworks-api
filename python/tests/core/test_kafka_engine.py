@@ -46,7 +46,7 @@ class TestKafkaEngine:
 
     def test_kafka_produce_buffer_error(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_print = mocker.patch("builtins.print")
 
         producer = mocker.Mock()
@@ -150,7 +150,7 @@ class TestKafkaEngine:
         mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -192,7 +192,7 @@ class TestKafkaEngine:
         mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -234,7 +234,7 @@ class TestKafkaEngine:
         mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -280,7 +280,7 @@ class TestKafkaEngine:
 
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
 
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -403,7 +403,7 @@ class TestKafkaEngine:
 
     def test_spark_get_kafka_config(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -445,7 +445,7 @@ class TestKafkaEngine:
 
     def test_spark_get_kafka_config_external_client(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = (
@@ -487,7 +487,7 @@ class TestKafkaEngine:
 
     def test_spark_get_kafka_config_internal_kafka(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = (
@@ -530,7 +530,7 @@ class TestKafkaEngine:
 
     def test_get_headers(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         fg = feature_group.FeatureGroup(
             id=111,
@@ -555,7 +555,7 @@ class TestKafkaEngine:
 
     def test_get_headers_online_ingestion(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_online_ingestion_api = mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi"
         )
@@ -590,7 +590,7 @@ class TestKafkaEngine:
 
     def test_get_headers_upsert_if_newer_true(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_online_ingestion_api = mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi"
         )
@@ -630,7 +630,7 @@ class TestKafkaEngine:
 
     def test_get_headers_upsert_if_newer_false(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_online_ingestion_api = mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi"
         )

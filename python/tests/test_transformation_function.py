@@ -237,7 +237,7 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks_common.client.get_connection", return_value=mocked_connection
+            "hopsworks_common.client._get_connection", return_value=mocked_connection
         )
 
         @udf(int)
@@ -977,7 +977,7 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks_common.client.get_connection", return_value=mocked_connection
+            "hopsworks_common.client._get_connection", return_value=mocked_connection
         )
 
         @udf([int])
@@ -1008,7 +1008,7 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks_common.client.get_connection", return_value=mocked_connection
+            "hopsworks_common.client._get_connection", return_value=mocked_connection
         )
 
         @udf([int])
@@ -1039,7 +1039,7 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks_common.client.get_connection", return_value=mocked_connection
+            "hopsworks_common.client._get_connection", return_value=mocked_connection
         )
 
         @udf([int])

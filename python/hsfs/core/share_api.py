@@ -76,7 +76,7 @@ class ShareApi:
             PermissionError: If the caller lacks Data Owner in the source project.
         """
         target_id = _resolve_target_project_id(target_project)
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -106,7 +106,7 @@ class ShareApi:
             target_project: Project name or numeric id whose share is being revoked.
         """
         target_id = _resolve_target_project_id(target_project)
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -150,7 +150,7 @@ class ShareApi:
             PermissionError: If the caller lacks Data Owner in the source project.
         """
         target_id = _resolve_target_project_id(target_project)
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -195,7 +195,7 @@ class ShareApi:
             PermissionError: If the caller lacks Data Owner in the source
                 project.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -235,7 +235,7 @@ class ShareApi:
             PermissionError: If the caller lacks Data Owner in the source
                 project.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -266,7 +266,7 @@ class ShareApi:
             target_project: Project name or numeric id whose share is being revoked.
         """
         target_id = _resolve_target_project_id(target_project)
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

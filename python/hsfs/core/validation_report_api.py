@@ -41,7 +41,7 @@ class ValidationReportApi:
         Returns:
             persisted validation report
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -72,7 +72,7 @@ class ValidationReportApi:
         Parameters:
             validation_report_id: ID of the validation report to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -92,7 +92,7 @@ class ValidationReportApi:
         Returns:
             latest validation report
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -120,7 +120,7 @@ class ValidationReportApi:
         Returns:
             validation report
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

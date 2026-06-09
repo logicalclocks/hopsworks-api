@@ -1057,7 +1057,7 @@ def renaming_wrapper(*args):
         Returns:
             Dictionary that contains all data required to json serialize the object.
         """
-        backend_version = client.get_connection().backend_version
+        backend_version = client._get_connection().backend_version
 
         return {
             "sourceCode": self._function_source,

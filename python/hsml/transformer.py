@@ -78,7 +78,7 @@ class Transformer(DeployableComponent):
         if (
             resources is not None
             and cls._get_raw_num_instances(resources) != 0
-            and client.is_scale_to_zero_required()
+            and client._is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
             raise ValueError(
@@ -90,7 +90,7 @@ class Transformer(DeployableComponent):
     def _get_default_num_instances(cls):
         return (
             0  # enable scale-to-zero by default if required
-            if client.is_scale_to_zero_required()
+            if client._is_scale_to_zero_required()
             else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
 

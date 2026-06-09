@@ -251,18 +251,18 @@ class TestEndpoint:
         is_kserve_installed=True,
     ):
         mocker.patch(
-            "hopsworks_common.client.get_serving_num_instances_limits",
+            "hopsworks_common.client._get_serving_num_instances_limits",
             return_value=num_instances,
         )
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required",
+            "hopsworks_common.client._is_scale_to_zero_required",
             return_value=force_scale_to_zero,
         )
         mocker.patch(
-            "hopsworks_common.client.is_saas_connection",
+            "hopsworks_common.client._is_saas_connection",
             return_value=is_saas_connection,
         )
         mocker.patch(
-            "hopsworks_common.client.is_kserve_installed",
+            "hopsworks_common.client._is_kserve_installed",
             return_value=is_kserve_installed,
         )

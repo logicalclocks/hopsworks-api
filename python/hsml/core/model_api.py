@@ -35,7 +35,7 @@ class ModelApi:
         Returns:
             updated metadata object of the model
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -74,7 +74,7 @@ class ModelApi:
         Returns:
             model metadata object
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -112,7 +112,7 @@ class ModelApi:
         Returns:
             model metadata object
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -148,7 +148,7 @@ class ModelApi:
         Parameters:
             model_instance: metadata object of model to delete
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -172,7 +172,7 @@ class ModelApi:
             name: name of the tag to be added
             value: value of the tag to be added
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -196,7 +196,7 @@ class ModelApi:
             model_instance: model instance to delete tag from
             name: name of the tag to be removed
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -221,7 +221,7 @@ class ModelApi:
         Returns:
             dict of tag name/values
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -251,7 +251,7 @@ class ModelApi:
         Returns:
             dict of tag name/value
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -284,7 +284,7 @@ class ModelApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -327,7 +327,7 @@ class ModelApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

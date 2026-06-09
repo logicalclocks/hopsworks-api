@@ -21,7 +21,7 @@ from hsfs.core.dashboard import Dashboard
 
 class DashboardApi:
     def _create_dashboard(self, dashboard: Dashboard) -> None:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -36,7 +36,7 @@ class DashboardApi:
         )
 
     def _get_dashboards(self) -> list[Dashboard]:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -52,7 +52,7 @@ class DashboardApi:
         )
 
     def _get_dashboard(self, dashboard_id: int) -> Dashboard:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -69,7 +69,7 @@ class DashboardApi:
         )
 
     def _update_dashboard(self, dashboard: Dashboard) -> None:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -85,7 +85,7 @@ class DashboardApi:
         )
 
     def _delete_dashboard(self, dashboard_id: int) -> None:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

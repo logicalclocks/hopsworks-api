@@ -45,7 +45,7 @@ class EnvironmentEngine:
         return command.status == "SUCCESS"
 
     def _poll_commands_library(self, environment_name, library_name):
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",
@@ -74,7 +74,7 @@ class EnvironmentEngine:
                 return None
 
     def _poll_commands_environment(self, environment_name):
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",

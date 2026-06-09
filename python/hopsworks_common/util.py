@@ -339,8 +339,8 @@ def get_hostname_replaced_url(sub_path: str) -> str:
     Returns:
         href url.
     """
-    href = urljoin(client.get_instance()._base_url, sub_path)
-    url_parsed = client.get_instance().replace_public_host(urlparse(href))
+    href = urljoin(client._get_instance()._base_url, sub_path)
+    url_parsed = client._get_instance().replace_public_host(urlparse(href))
     return url_parsed.geturl()
 
 
@@ -398,7 +398,7 @@ def get_job_url(href: str) -> str:
     project_id = url_splits[4]
     job_name = url_splits[6]
     ui_url = url._replace(path=f"p/{project_id}/jobs/named/{job_name}/executions")
-    ui_url = client.get_instance().replace_public_host(ui_url)
+    ui_url = client._get_instance().replace_public_host(ui_url)
     return ui_url.geturl()
 
 
@@ -444,7 +444,7 @@ def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) ->
 def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     sub_path = (
         "/p/"
-        + str(client.get_instance()._project_id)
+        + str(client._get_instance()._project_id)
         + "/fs/"
         + str(feature_store_id)
         + "/fg/"

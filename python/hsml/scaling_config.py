@@ -128,13 +128,13 @@ class ComponentScalingConfig(ABC):
             min_instances = (
                 0  # enable scale-to-zero by default if required
                 if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-                and client.is_scale_to_zero_required()
+                and client._is_scale_to_zero_required()
                 else SCALING_CONFIG.MIN_NUM_INSTANCES
             )
         if (
             serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
             and min_instances != 0
-            and client.is_scale_to_zero_required()
+            and client._is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
             raise ValueError(

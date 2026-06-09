@@ -288,7 +288,7 @@ class TestLoginUnit:
         # hopsworks.client gets overridden to the hopsworks/client/ subpackage
         # (which lacks stop()) once `from hopsworks.client import exceptions` runs.
         # create=True injects stop() into that subpackage namespace.
-        mocker.patch("hopsworks.client.stop", create=True)
+        mocker.patch("hopsworks.client._stop", create=True)
         mocker.patch("hopsworks._prompt_project", return_value=mock_project)
         mocker.patch("hopsworks._set_active_project")
         mocker.patch("hopsworks._initialize_module_apis")
@@ -468,7 +468,7 @@ class TestLoginUnit:
         mock_conn_factory = mocker.patch.object(
             hopsworks.Connection, "connection", return_value=mock_conn_instance
         )
-        mocker.patch("hopsworks.client.stop", create=True)
+        mocker.patch("hopsworks.client._stop", create=True)
         mocker.patch("hopsworks._initialize_module_apis")
         mock_prompt_project = mocker.patch("hopsworks._prompt_project")
 

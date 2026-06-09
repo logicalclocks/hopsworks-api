@@ -27,7 +27,7 @@ class TestProjectApiCreate:
         client_mock = Mock()
         client_mock._send_request.return_value = {}
         mocker.patch(
-            "hopsworks_common.core.project_api.client.get_instance",
+            "hopsworks_common.core.project_api.client._get_instance",
             return_value=client_mock,
         )
         return client_mock

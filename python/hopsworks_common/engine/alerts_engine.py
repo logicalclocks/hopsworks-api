@@ -63,7 +63,7 @@ class AlertsEngine:
         return receiver
 
     def _get_receiver(self, name):
-        _client = client.get_instance()
+        _client = client._get_instance()
         # should only wait for project receivers
         if not name.startswith(f"{_client._project_name}__"):
             name = f"{_client._project_name}__{name}"
@@ -119,7 +119,7 @@ class AlertsEngine:
         return route
 
     def _get_route(self, name: str, match: list[dict]):
-        _client = client.get_instance()
+        _client = client._get_instance()
         # should only wait for project receivers
         if not name.startswith(f"{_client._project_name}__"):
             name = f"{_client._project_name}__{name}"

@@ -166,7 +166,7 @@ class App:
             ```
         """
         if self._serving and self._app_url:
-            _client = client.get_instance()
+            _client = client._get_instance()
             return _client._base_url.rstrip("/") + "/hopsworks-api/" + self._app_url
         return None
 
@@ -330,7 +330,7 @@ class App:
     def _build_public_url(self, token: str | None) -> str | None:
         if not token:
             return None
-        _client = client.get_instance()
+        _client = client._get_instance()
         project = urllib.parse.quote(_client._project_name, safe="")
         name = urllib.parse.quote(self._name, safe="")
         return (
@@ -441,7 +441,7 @@ class App:
         Returns:
             The URL to the app page in the Hopsworks UI.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         return util.get_hostname_replaced_url(
             "/p/" + str(_client._project_id) + "/apps"
         )

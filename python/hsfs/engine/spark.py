@@ -635,7 +635,7 @@ class Engine:
             .option(
                 "checkpointLocation",
                 "/Projects/"
-                + client.get_instance()._project_name
+                + client._get_instance()._project_name
                 + "/Resources/"
                 + query_name
                 + "-checkpoint"

@@ -103,7 +103,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -419,7 +419,7 @@ class DatasetApi:
         }
 
     def _upload_request(self, params, path, file_name, chunk):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", "upload", path]
 
         # Flow configuration params are sent as form data
@@ -436,7 +436,7 @@ class DatasetApi:
         Returns:
             Dataset metadata.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)
@@ -496,7 +496,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         return _client._send_request("DELETE", path_params)
 
@@ -563,7 +563,7 @@ class DatasetApi:
             )
         if not target_project:
             raise ValueError("target_project must be a non-empty project name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "SHARE",
@@ -613,7 +613,7 @@ class DatasetApi:
         """
         if not target_project:
             raise ValueError("target_project must be a non-empty project name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "UNSHARE",
@@ -655,7 +655,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "create",
@@ -704,7 +704,7 @@ class DatasetApi:
                     f"{destination_path} already exists, set overwrite=True to overwrite it"
                 )
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", source_path]
         query_params = {
             "action": "copy",
@@ -748,7 +748,7 @@ class DatasetApi:
                     f"{destination_path} already exists, set overwrite=True to overwrite it"
                 )
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", source_path]
         query_params = {
             "action": "move",
@@ -827,7 +827,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         # Normalize path so we can check if the path refers to the root or not
         # That is needed as different backend entities are returned depending on if it is a top level dataset or a subdirectory
         normalized_path = os.path.normpath(path)
@@ -867,7 +867,7 @@ class DatasetApi:
         Returns:
             Count of Dataset or Inodes and objects.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -900,7 +900,7 @@ class DatasetApi:
         Returns:
             An object with `content` attribute containing the file content as bytes, or `None` if the file was not found.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",
@@ -931,7 +931,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
         headers = {"content-type": "application/json"}
         query_params = {"action": "PERMISSION", "permissions": permissions}
@@ -964,7 +964,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
 
         query_params = {"action": action}
@@ -1083,7 +1083,7 @@ class DatasetApi:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -1109,7 +1109,7 @@ class DatasetApi:
             path: Path to delete the tags.
             name: Name of the tag to be removed.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -1136,7 +1136,7 @@ class DatasetApi:
         Returns:
             Tag names and values.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

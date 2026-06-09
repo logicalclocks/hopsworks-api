@@ -25,7 +25,7 @@ from hopsworks_common import client
 @also_available_as("hopsworks.core.hosts_api.HostsApi", "hsfs.core.hosts_api.HostsApi")
 class HostsApi:
     def get(self) -> list[Any]:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "hosts",
         ]

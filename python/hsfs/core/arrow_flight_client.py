@@ -213,7 +213,7 @@ class ArrowFlightClient:
             return
         self._disabled_for_session: bool = False
 
-        self._client = client.get_instance()
+        self._client = client._get_instance()
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
             self._variable_api.get_service_discovery_domain()

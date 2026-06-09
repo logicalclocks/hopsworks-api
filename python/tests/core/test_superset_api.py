@@ -50,7 +50,7 @@ class TestSupersetApi:
         client_mock = Mock()
         client_mock._send_request.return_value = {"accessToken": "sess-tok"}
         mocker.patch(
-            "hopsworks_common.core.superset_api.client.get_instance",
+            "hopsworks_common.core.superset_api.client._get_instance",
             return_value=client_mock,
         )
         api._session_token = "sess-tok"
@@ -75,7 +75,7 @@ class TestSupersetApi:
         client_mock = Mock()
         client_mock._send_request.return_value = {"accessToken": "new-sess"}
         mocker.patch(
-            "hopsworks_common.core.superset_api.client.get_instance",
+            "hopsworks_common.core.superset_api.client._get_instance",
             return_value=client_mock,
         )
         resp = self._mock_response(json_data={"result": []})
@@ -155,7 +155,7 @@ class TestSupersetApi:
         client_mock = Mock()
         client_mock._send_request.return_value = {"accessToken": "sess-tok"}
         mocker.patch(
-            "hopsworks_common.core.superset_api.client.get_instance",
+            "hopsworks_common.core.superset_api.client._get_instance",
             return_value=client_mock,
         )
         api._session_token = "sess-tok"
@@ -182,7 +182,7 @@ class TestSupersetApi:
         client_mock = Mock()
         client_mock._send_request.return_value = {"accessToken": "new-sess"}
         mocker.patch(
-            "hopsworks_common.core.superset_api.client.get_instance",
+            "hopsworks_common.core.superset_api.client._get_instance",
             return_value=client_mock,
         )
 
@@ -203,7 +203,7 @@ class TestSupersetApi:
         client_mock = Mock()
         client_mock._send_request.return_value = {"accessToken": "new-sess"}
         mocker.patch(
-            "hopsworks_common.core.superset_api.client.get_instance",
+            "hopsworks_common.core.superset_api.client._get_instance",
             return_value=client_mock,
         )
 
@@ -232,7 +232,7 @@ class TestSupersetApi:
         client_mock = Mock()
         client_mock._send_request.return_value = {"accessToken": "original-sess"}
         mocker.patch(
-            "hopsworks_common.core.superset_api.client.get_instance",
+            "hopsworks_common.core.superset_api.client._get_instance",
             return_value=client_mock,
         )
         api._session_token = "original-sess"

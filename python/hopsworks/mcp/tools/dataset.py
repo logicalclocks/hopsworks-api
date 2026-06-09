@@ -127,7 +127,7 @@ class DatasetTools:
         if isinstance(limit, str):
             limit = int(limit)
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         project = conn._get_project(project_name)
         count, datasets = project.get_dataset_api()._list_dataset_path(
             "", dataset.Dataset, offset=offset, limit=limit
@@ -229,7 +229,7 @@ class DatasetTools:
         if isinstance(limit, str):
             limit = int(limit)
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         project = conn._get_project(project_name)
         count, files = project.get_dataset_api()._list_dataset_path(
             path, inode.Inode, offset=offset, limit=limit
@@ -290,7 +290,7 @@ class DatasetTools:
                 f"Creating directory at path {path} in project {project_name} ..."
             )
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         project = conn._get_project(project_name)
         project.get_dataset_api().mkdir(path=path)
 

@@ -16,7 +16,7 @@
 """Stable internal REST helper for SDK consumers (CLI and ``core/<entity>_api`` modules).
 
 The Hopsworks Python SDK already has an authenticated HTTP client at
-``hopsworks_common.client.get_instance()``, but its surface
+``hopsworks_common.client._get_instance()``, but its surface
 (``_send_request``, ``_project_id``) is private — the underscore prefix means
 callers shouldn't depend on it. Multiple call sites (the ``hops`` CLI's
 ``fv list``, ``connector list``, ``model list``, …) reach through anyway
@@ -29,7 +29,7 @@ This module exposes the bare minimum stable surface for those call sites:
 * :func:`_project_path` — build a ``project/<id>/...`` path tuple so callers
   don't reach into ``_project_id`` directly.
 
-Internal SDK consumers should import from here rather than ``client.get_instance()``
+Internal SDK consumers should import from here rather than ``client._get_instance()``
 directly so the underlying HTTP machinery can change shape without breaking
 external callers.
 """
@@ -57,7 +57,7 @@ def _project_path(*tail: Any) -> list[Any]:
         RuntimeError: When the SDK is not connected (``hopsworks.login``
             has not been called yet).
     """
-    instance = client.get_instance()
+    instance = client._get_instance()
     project_id = getattr(instance, "_project_id", None)
     if project_id is None:
         raise RuntimeError(
@@ -78,7 +78,7 @@ def _send_request(
     Wraps the SDK's internal client so per-call sites don't reach into
     ``_send_request`` directly. Auth, host normalization, TLS verification
     and base URL construction are all inherited from the active
-    :func:`hopsworks_common.client.get_instance` instance — the same one
+    :func:`hopsworks_common.client._get_instance` instance — the same one
     the rest of the SDK uses.
 
     Args:
@@ -97,7 +97,7 @@ def _send_request(
         hopsworks_common.client.exceptions.RestAPIError: When the backend
             returns a non-2xx response.
     """
-    instance = client.get_instance()
+    instance = client._get_instance()
     headers = None
     data = None
     if json_body is not None:

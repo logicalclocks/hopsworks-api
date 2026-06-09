@@ -138,7 +138,7 @@ class TestValidationReportEngine:
         feature_store_id = 99
         feature_group_id = 10
 
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hsfs.util.get_hostname_replaced_url"
         )

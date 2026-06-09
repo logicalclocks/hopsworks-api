@@ -31,7 +31,7 @@ class StorageConnectorApi:
     )
     def _get(self, feature_store_id: int, name: str) -> dict[str, Any]:
         """Returning response dict instead of initialized object."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -101,7 +101,7 @@ class StorageConnectorApi:
         Returns:
             Dict with keys ``access_token`` and ``expires_in_seconds``.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -116,7 +116,7 @@ class StorageConnectorApi:
     def _get_online_connector(
         self, feature_store_id: int
     ) -> storage_connector.OnlineStorageConnector:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -133,7 +133,7 @@ class StorageConnectorApi:
     def _get_kafka_connector(
         self, feature_store_id: int, external: bool = False
     ) -> storage_connector.KafkaConnector:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -163,7 +163,7 @@ class StorageConnectorApi:
         Returns:
             The feature groups generated using this storage connector.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -202,7 +202,7 @@ class StorageConnectorApi:
         Returns:
             The training datasets generated using this storage connector.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

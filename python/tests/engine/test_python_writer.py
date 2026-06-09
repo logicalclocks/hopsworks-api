@@ -28,8 +28,8 @@ from hsfs.engine import python
 class TestPythonWriter:
     def test_run_materialization_job(self, mocker, dataframe_fixture_times):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         avro_schema_mock = mocker.patch(
             "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema"
@@ -124,7 +124,7 @@ class TestPythonWriter:
 
     def _setup_kafka_mocks(self, mocker):
         """Common mock setup for _run_materialization_job tests."""
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
         mocker.patch("hsfs.core.kafka_engine._get_encoder_func")

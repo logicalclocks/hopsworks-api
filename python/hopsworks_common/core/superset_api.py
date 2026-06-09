@@ -107,7 +107,7 @@ class SupersetApi:
         if project is not None:
             self._project_id = project.id
         else:
-            _client = client.get_instance()
+            _client = client._get_instance()
             self._project_id = _client._project_id
         self._session_token: str | None = None
         self._csrf_token: str | None = None
@@ -129,7 +129,7 @@ class SupersetApi:
         return f"http://{SUPERSET_SERVICE_NAME}.{self._service_discovery_domain}:{SUPERSET_PORT}"
 
     def _get_session_token(self) -> str:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", self._project_id, "superset", "login"]
         resp = _client._send_request("GET", path_params)
         self._session_token = resp["accessToken"]

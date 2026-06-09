@@ -47,7 +47,7 @@ class ServingApi:
         Returns:
             Deployment metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -71,7 +71,7 @@ class ServingApi:
         Returns:
             Deployment metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving"]
         query_params = {"name": name}
 
@@ -95,7 +95,7 @@ class ServingApi:
         Returns:
             List of deployment metadata objects.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving"]
         query_params = {
             "model": model_name,
@@ -118,7 +118,7 @@ class ServingApi:
         Returns:
             Inference endpoints for the current project.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "inference", "endpoints"]
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
@@ -132,7 +132,7 @@ class ServingApi:
         Returns:
             Updated metadata object of the deployment.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving"]
         headers = {"content-type": "application/json"}
 
@@ -155,7 +155,7 @@ class ServingApi:
             deployment_instance: Metadata object of the deployment.
             action: Action to perform on the deployment (i.e., START or STOP).
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -171,7 +171,7 @@ class ServingApi:
         Parameters:
             deployment_instance: Metadata object of the deployment to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -191,7 +191,7 @@ class ServingApi:
         Returns:
             Predictor state.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -212,7 +212,7 @@ class ServingApi:
         Returns:
             Deployment with reset values.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving"]
         query_params = {"name": deployment_instance.name}
         deployment_json = _client._send_request(
@@ -257,7 +257,7 @@ class ServingApi:
         headers = {"content-type": "application/json"}
         if through_hopsworks:
             # use Hopsworks client
-            _client = client.get_instance()
+            _client = client._get_instance()
             path_params = self._get_hopsworks_inference_path(
                 _client._project_id, deployment_instance
             )
@@ -270,7 +270,7 @@ class ServingApi:
                 with_base_path_params = False
             else:
                 # fallback to Hopsworks client
-                _client = client.get_instance()
+                _client = client._get_instance()
                 path_params = self._get_hopsworks_inference_path(
                     _client._project_id, deployment_instance
                 )
@@ -324,7 +324,7 @@ class ServingApi:
         Returns:
             Whether kserve is installed.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["variables", "kube_kserve_installed"]
         kserve_installed = _client._send_request("GET", path_params)
         return (
@@ -338,7 +338,7 @@ class ServingApi:
         Returns:
             A list of [min_instances, max_instances].
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["variables", "kube_serving_min_num_instances"]
         min_instances = _client._send_request("GET", path_params)
@@ -357,7 +357,7 @@ class ServingApi:
         Returns:
             The knative domain name string.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["variables", "kube_knative_domain_name"]
         domain = _client._send_request("GET", path_params)
@@ -393,7 +393,7 @@ class ServingApi:
         Returns:
             Deployment logs.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

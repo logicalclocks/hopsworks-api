@@ -34,7 +34,7 @@ class HuggingFaceApi:
         pass
 
     def _base_path(self, model_registry_id: int) -> list:
-        _client = client.get_instance()
+        _client = client._get_instance()
         return [
             "project",
             _client._project_id,
@@ -82,7 +82,7 @@ class HuggingFaceApi:
         if selected_filenames:
             body["selectedFilenames"] = list(selected_filenames)
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request(
             "POST",
             self._base_path(model_registry_id),
@@ -100,7 +100,7 @@ class HuggingFaceApi:
         Returns:
             backend response describing the current job status
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request(
             "GET",
             self._base_path(model_registry_id) + ["status", job_id],
@@ -116,7 +116,7 @@ class HuggingFaceApi:
             job_id: id of the import job to cancel
             cleanup: when true, the backend deletes the partially downloaded model directory
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         query_params = {"cleanup": "true"} if cleanup else None
         _client._send_request(
             "DELETE",

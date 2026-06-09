@@ -428,7 +428,7 @@ class ModelEngine:
         keep_original_files=False,
         upload_configuration=None,
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         is_shared_registry = model_instance.shared_registry_project_name is not None
 

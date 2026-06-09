@@ -19,7 +19,7 @@ from hopsworks_common.project import Project
 
 class TestProject:
     def test_home_path_external_client(self, mocker):
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._username = "alice"
 
         project = Project(project_name="my_project")
@@ -27,7 +27,7 @@ class TestProject:
         assert project.home_path == "/Projects/my_project/Users/alice"
 
     def test_home_path_internal_client(self, mocker):
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         # Internal client has no _username attribute
         del mock_client.return_value._username
         mock_client.return_value._project_user.return_value = "my_project__bob"
@@ -37,7 +37,7 @@ class TestProject:
         assert project.home_path == "/Projects/my_project/Users/bob"
 
     def test_home_path_internal_client_username_with_double_underscore(self, mocker):
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         del mock_client.return_value._username
         mock_client.return_value._project_user.return_value = (
             "my_project__user__with__underscores"
@@ -48,7 +48,7 @@ class TestProject:
         assert project.home_path == "/Projects/my_project/Users/user__with__underscores"
 
     def test_home_path_external_client_empty_username_falls_back(self, mocker):
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._username = ""
         mock_client.return_value._project_user.return_value = "my_project__bob"
 

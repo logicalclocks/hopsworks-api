@@ -36,7 +36,7 @@ from hsfs.engine import python, spark
 from hsfs.transformation_function import TransformationType
 
 
-with mock.patch("hopsworks_common.client.get_instance"):
+with mock.patch("hopsworks_common.client._get_instance"):
     engine.init("python")
 
 
@@ -321,7 +321,7 @@ class TestFeatureGroup:
         self, mocker, backend_fixtures, dataframe_fixture_basic
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         json = backend_fixtures["feature_store"]["get"]["response"]
 
@@ -1450,7 +1450,7 @@ class TestExternalFeatureGroup:
 
     def test_upper_case_primary_key_event_time(self, mocker, backend_fixtures, caplog):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
         json = backend_fixtures["feature_store"]["get"]["response"]
 

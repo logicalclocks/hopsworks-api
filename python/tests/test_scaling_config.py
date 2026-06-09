@@ -49,7 +49,7 @@ class TestScalingConfig:
         self, mocker
     ):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=True
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=True
         )
 
         sc = PredictorScalingConfig.get_default_scaling_configuration(
@@ -74,7 +74,7 @@ class TestScalingConfig:
 
     def test_get_default_scaling_configuration_transformer_type(self, mocker):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=False
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
         )
 
         sc = PredictorScalingConfig.get_default_scaling_configuration(
@@ -86,7 +86,7 @@ class TestScalingConfig:
 
     def test_get_default_scaling_configuration_non_kserve_min_zero_raises(self, mocker):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=False
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
         )
 
         with pytest.raises(ValueError) as exc_info:
@@ -98,7 +98,7 @@ class TestScalingConfig:
 
     def test_get_default_scaling_configuration_kserve_requires_zero(self, mocker):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=True
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=True
         )
 
         with pytest.raises(ValueError) as exc_info:

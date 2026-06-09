@@ -507,7 +507,7 @@ def logout():
     if _is_connection_active():
         _hw_connection._close()
 
-    client.stop()
+    client._stop()
     _project_api = None
     _secrets_api = None
     _env_vars_api = None
@@ -628,7 +628,7 @@ def get_env_vars_api() -> env_var_api.EnvVarsApi:
 
 
 def _set_active_project(project):
-    _client = client.get_instance()
+    _client = client._get_instance()
     if _client._is_external():
         _client.provide_project(project.name)
 

@@ -40,7 +40,7 @@ class FeatureStoreActivityApi:
         Returns:
             List of feature store activities for the specified feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

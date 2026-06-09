@@ -526,7 +526,7 @@ class Model:
         """Get url to the model in Hopsworks."""
         path = (
             "/p/"
-            + str(client.get_instance()._project_id)
+            + str(client._get_instance()._project_id)
             + "/models/"
             + str(self.name)
             + "/"

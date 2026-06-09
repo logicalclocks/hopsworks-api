@@ -176,7 +176,7 @@ class Connection:
             A feature store handle object to perform operations on.
         """
         if not name:
-            name = client.get_instance()._project_name
+            name = client._get_instance()._project_name
         return self._feature_store_api._get(util.append_feature_store_suffix(name))
 
     @usage._method_logger
@@ -268,7 +268,7 @@ class Connection:
         Returns:
             A project handle object to perform operations on.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if not name and not _client._project_name:
             raise ValueError(
                 "No project name provided. Please provide a project name or"
@@ -277,7 +277,7 @@ class Connection:
         if not _client._project_name:
             self._provide_project(name)
         elif not name:
-            name = client.get_instance()._project_name
+            name = client._get_instance()._project_name
 
         return self._project_api._get_project(name)
 
@@ -345,7 +345,7 @@ class Connection:
             conn.connect()
             ```
         """
-        client.stop()
+        client._stop()
         self._connected = True
         finalizer = weakref.finalize(self, self._close)
         try:
@@ -378,7 +378,7 @@ class Connection:
 
             # init client
             if external:
-                client.init(
+                client._init(
                     "external",
                     self._host,
                     self._port,
@@ -391,12 +391,12 @@ class Connection:
                     self._api_key_value,
                 )
             else:
-                client.init(
+                client._init(
                     "hopsworks",
                     hostname_verification=self._hostname_verification,
                 )
 
-            client.set_connection(self)
+            client._set_connection(self)
             from hsfs.core import feature_store_api
             from hsml.core import model_registry_api, model_serving_api
 
@@ -422,7 +422,7 @@ class Connection:
 
     @_connected
     def _provide_project(self, name=None):
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         if name:
             self._project = name
@@ -474,7 +474,7 @@ class Connection:
 
         if OpenSearchClientSingleton._instance:
             OpenSearchClientSingleton._close_all()
-        client.stop()
+        client._stop()
         engine.stop()
         self._feature_store_api = None
         self._connected = False

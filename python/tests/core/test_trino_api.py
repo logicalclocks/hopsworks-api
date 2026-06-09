@@ -103,7 +103,7 @@ class TestTrinoApi:
         mocker.patch("hopsworks_common.core.trino_api.secret_api.SecretsApi")
         mocker.patch("hopsworks_common.core.trino_api.project_api.ProjectApi")
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=Mock(_project_name=mock_project.name),
         )
 
@@ -121,7 +121,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -267,7 +267,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -375,7 +375,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(

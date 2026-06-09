@@ -28,7 +28,7 @@ class TrainingDatasetApi:
     def _post(
         self, training_dataset_instance: training_dataset.TrainingDataset
     ) -> training_dataset.TrainingDataset:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -50,7 +50,7 @@ class TrainingDatasetApi:
         "hsfs.training_dataset.TrainingDataset", fallback_return=[]
     )
     def _get_all_training_datasets(self, name: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -67,7 +67,7 @@ class TrainingDatasetApi:
         "hsfs.training_dataset.TrainingDataset", fallback_return=None
     )
     def _get_training_dataset_by_version(self, name: str, version: int):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -98,7 +98,7 @@ class TrainingDatasetApi:
         with_label: bool,
         is_hive_query: bool,
     ) -> fs_query.FsQuery:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -128,7 +128,7 @@ class TrainingDatasetApi:
         Returns:
             The job metadata object for the compute job.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -170,7 +170,7 @@ class TrainingDatasetApi:
         Returns:
             FeatureGroup. The updated feature group metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -203,7 +203,7 @@ class TrainingDatasetApi:
         Returns:
             The serving prepared statement metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -227,7 +227,7 @@ class TrainingDatasetApi:
         Parameters:
             training_dataset_instance: The training dataset metadata object to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

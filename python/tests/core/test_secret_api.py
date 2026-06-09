@@ -36,11 +36,11 @@ def _patch_client(mocker, send_request_return):
     # which raises if _base_url is a MagicMock instead of a string.
     client_instance._base_url = "https://localhost"
     mocker.patch(
-        "hopsworks_common.core.secret_api.client.get_instance",
+        "hopsworks_common.core.secret_api.client._get_instance",
         return_value=client_instance,
     )
     mocker.patch(
-        "hopsworks_common.util.client.get_instance",
+        "hopsworks_common.util.client._get_instance",
         return_value=client_instance,
     )
     return client_instance
