@@ -177,7 +177,7 @@ class Connection:
         """
         if not name:
             name = client.get_instance()._project_name
-        return self._feature_store_api.get(util.append_feature_store_suffix(name))
+        return self._feature_store_api._get(util.append_feature_store_suffix(name))
 
     @usage.method_logger
     @connected

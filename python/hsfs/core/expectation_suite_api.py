@@ -32,7 +32,7 @@ class ExpectationSuiteApi:
         self._feature_group_id = feature_group_id
         self._variable_api = VariableApi()
 
-    def create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
+    def _create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Create an expectation suite attached to a Feature Group.
 
         Parameters:
@@ -65,7 +65,7 @@ class ExpectationSuiteApi:
             _client._send_request(method, path_params, headers=headers, data=payload)
         )
 
-    def update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
+    def _update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Update an expectation suite attached to a Feature Group.
 
         Parameters:
@@ -101,7 +101,7 @@ class ExpectationSuiteApi:
             _client._send_request(method, path_params, headers=headers, data=payload)
         )
 
-    def update_metadata(
+    def _update_metadata(
         self, expectation_suite: es.ExpectationSuite
     ) -> es.ExpectationSuite:
         """Update the metadata of an expectation suite attached to a Feature Group.
@@ -141,7 +141,7 @@ class ExpectationSuiteApi:
             _client._send_request(method, path_params, headers=headers, data=payload)
         )
 
-    def delete(self, expectation_suite_id: int) -> None:
+    def _delete(self, expectation_suite_id: int) -> None:
         """Delete the expectation suite attached to a Feature Group.
 
         Parameters:
@@ -167,7 +167,7 @@ class ExpectationSuiteApi:
 
         _client._send_request("DELETE", path_params)
 
-    def get(self) -> es.ExpectationSuite | None:
+    def _get(self) -> es.ExpectationSuite | None:
         """Get the expectation suite attached to a Feature Group.
 
         Returns:

@@ -221,7 +221,7 @@ class FeatureMonitoringConfigEngine:
                 "Cannot save a config that is already registered."
                 " Please use update() instead."
             )
-        return self._feature_monitoring_config_api.create(config)
+        return self._feature_monitoring_config_api._create(config)
 
     def _update(
         self, config: fmc.FeatureMonitoringConfig
@@ -243,7 +243,7 @@ class FeatureMonitoringConfigEngine:
                 "Cannot update a config that is not registered."
                 " Please use save() instead."
             )
-        return self._feature_monitoring_config_api.update(config)
+        return self._feature_monitoring_config_api._update(config)
 
     def _delete(self, config_id: int) -> None:
         """Deletes a feature monitoring config.
@@ -252,7 +252,7 @@ class FeatureMonitoringConfigEngine:
             config_id: int, required
                 The id of the feature monitoring config to delete.
         """
-        self._feature_monitoring_config_api.delete(config_id=config_id)
+        self._feature_monitoring_config_api._delete(config_id=config_id)
 
     def _get_feature_monitoring_configs(
         self,
@@ -293,19 +293,19 @@ class FeatureMonitoringConfigEngine:
         if name is not None:
             if not isinstance(name, str):
                 raise TypeError("name must be a string or None.")
-            return self._feature_monitoring_config_api.get_by_name(name=name)
+            return self._feature_monitoring_config_api._get_by_name(name=name)
         if feature_name is not None:
             if not isinstance(feature_name, str):
                 raise TypeError("feature_name must be a string or None.")
-            return self._feature_monitoring_config_api.get_by_feature_name(
+            return self._feature_monitoring_config_api._get_by_feature_name(
                 feature_name=feature_name
             )
         if config_id is not None:
             if not isinstance(config_id, int):
                 raise TypeError("config_id must be an integer or None.")
-            return self._feature_monitoring_config_api.get_by_id(config_id=config_id)
+            return self._feature_monitoring_config_api._get_by_id(config_id=config_id)
 
-        return self._feature_monitoring_config_api.get_by_entity()
+        return self._feature_monitoring_config_api._get_by_entity()
 
     def _trigger_monitoring_job(
         self,
@@ -351,7 +351,7 @@ class FeatureMonitoringConfigEngine:
         Returns:
             A list of result object describing the outcome of the monitoring.
         """
-        config = self._feature_monitoring_config_api.get_by_name(config_name)
+        config = self._feature_monitoring_config_api._get_by_name(config_name)
 
         assert config is not None, "Feature monitoring config not found."
 

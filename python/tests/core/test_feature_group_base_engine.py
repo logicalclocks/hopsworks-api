@@ -33,7 +33,7 @@ class TestFeatureGroupBaseEngine:
         fg_base_engine._delete(feature_group=None)
 
         # Assert
-        assert mock_fg_api.return_value.delete.call_count == 1
+        assert mock_fg_api.return_value._delete.call_count == 1
 
     def test_add_tag(self, mocker):
         # Arrange
@@ -113,7 +113,7 @@ class TestFeatureGroupBaseEngine:
         fg_base_engine._update_statistics_config(feature_group=None)
 
         # Assert
-        assert mock_fg_api.return_value.update_metadata.call_count == 1
+        assert mock_fg_api.return_value._update_metadata.call_count == 1
 
     def test_new_feature_list(self, mocker):
         # Arrange

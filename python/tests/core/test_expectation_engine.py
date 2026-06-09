@@ -38,7 +38,7 @@ class TestExpectationEngine:
         ge_expectation_engine._create(expectation=None)
 
         # Assert
-        assert mock_expectation_api.return_value.create.call_count == 1
+        assert mock_expectation_api.return_value._create.call_count == 1
 
     def test_update(self, mocker):
         # Arrange
@@ -59,7 +59,7 @@ class TestExpectationEngine:
         ge_expectation_engine._update(expectation=None)
 
         # Assert
-        assert mock_expectation_api.return_value.update.call_count == 1
+        assert mock_expectation_api.return_value._update.call_count == 1
 
     def test_get(self, mocker):
         # Arrange
@@ -81,7 +81,7 @@ class TestExpectationEngine:
         ge_expectation_engine._get(expectation_id=expectation_id)
 
         # Assert
-        assert mock_expectation_api.return_value.get.call_count == 1
+        assert mock_expectation_api.return_value._get.call_count == 1
 
     def test_delete(self, mocker):
         # Arrange
@@ -103,7 +103,7 @@ class TestExpectationEngine:
         ge_expectation_engine._delete(expectation_id)
 
         # Assert
-        assert mock_expectation_api.return_value.delete.call_count == 1
+        assert mock_expectation_api.return_value._delete.call_count == 1
 
     def test_check_for_id(self):
         # Arrange

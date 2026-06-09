@@ -25,7 +25,7 @@ class TrainingDatasetApi:
     def __init__(self, feature_store_id: int) -> None:
         self._feature_store_id = feature_store_id
 
-    def post(
+    def _post(
         self, training_dataset_instance: training_dataset.TrainingDataset
     ) -> training_dataset.TrainingDataset:
         _client = client.get_instance()
@@ -81,7 +81,7 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params, query_params),
         )
 
-    def get(
+    def _get(
         self, name: str, version: int | None
     ) -> training_dataset.TrainingDataset | list[training_dataset.TrainingDataset]:
         if version:
@@ -92,7 +92,7 @@ class TrainingDatasetApi:
             return self._get_all_training_datasets(name)
         return None
 
-    def get_query(
+    def _get_query(
         self,
         training_dataset_instance: training_dataset.TrainingDataset,
         with_label: bool,
@@ -114,7 +114,7 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params, query_params)
         )
 
-    def compute(
+    def _compute(
         self,
         training_dataset_instance: training_dataset.TrainingDataset,
         td_app_conf: training_dataset_job_conf.TrainingDatasetJobConf,
@@ -145,7 +145,7 @@ class TrainingDatasetApi:
             )
         )
 
-    def update_metadata(
+    def _update_metadata(
         self,
         training_dataset_instance: training_dataset.TrainingDataset,
         training_dataset_copy: training_dataset.TrainingDataset,
@@ -191,7 +191,7 @@ class TrainingDatasetApi:
             ),
         )
 
-    def get_serving_prepared_statement(
+    def _get_serving_prepared_statement(
         self, training_dataset_instance: training_dataset.TrainingDataset, batch: bool
     ) -> serving_prepared_statement.ServingPreparedStatement:
         """Get serving prepared statement metadata object for a training dataset.
@@ -219,7 +219,7 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params, query_params, headers=headers)
         )
 
-    def delete(
+    def _delete(
         self, training_dataset_instance: training_dataset.TrainingDataset
     ) -> None:
         """Delete the training dataset and materialized files in HopsFS.

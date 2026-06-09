@@ -42,9 +42,9 @@ class TestFeatureGroupApi:
         print(client_mock.side_effect)
 
         # Act
-        stream_fg = fg_api.get(feature_store_id, "stream_fg", version=1)
-        external_fg = fg_api.get(feature_store_id, "external_fg", version=1)
-        spine_fg = fg_api.get(feature_store_id, "spine_fg", version=1)
+        stream_fg = fg_api._get(feature_store_id, "stream_fg", version=1)
+        external_fg = fg_api._get(feature_store_id, "external_fg", version=1)
+        spine_fg = fg_api._get(feature_store_id, "spine_fg", version=1)
 
         # Assert
         assert isinstance(stream_fg, fg_mod.FeatureGroup)

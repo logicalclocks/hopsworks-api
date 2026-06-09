@@ -44,21 +44,21 @@ class ExpectationEngine:
 
     # CRUD operations
     def _create(self, expectation: GeExpectation) -> GeExpectation:
-        return self._expectation_api.create(expectation)
+        return self._expectation_api._create(expectation)
 
     def _update(self, expectation: GeExpectation) -> GeExpectation:
-        return self._expectation_api.update(expectation)
+        return self._expectation_api._update(expectation)
 
     def _get(self, expectation_id: int) -> GeExpectation | None:
-        return self._expectation_api.get(expectation_id)
+        return self._expectation_api._get(expectation_id)
 
     def _delete(self, expectation_id: int) -> None:
-        self._expectation_api.delete(expectation_id)
+        self._expectation_api._delete(expectation_id)
 
     # End of CRUD operations
 
     def _get_expectations_by_suite_id(self):
-        return self._expectation_api.get_expectations_by_suite_id()
+        return self._expectation_api._get_expectations_by_suite_id()
 
     def _check_for_id(self, expectation: GeExpectation) -> None:
         if expectation.id:

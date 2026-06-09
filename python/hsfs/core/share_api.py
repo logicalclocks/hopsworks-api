@@ -66,7 +66,7 @@ class ShareApi:
     def __init__(self, feature_store_id: int) -> None:
         self._feature_store_id = feature_store_id
 
-    def share_feature_store(self, target_project: str | int) -> None:
+    def _share_feature_store(self, target_project: str | int) -> None:
         """Share the entire feature store with another project.
 
         Parameters:
@@ -99,7 +99,7 @@ class ShareApi:
                 ) from e
             raise
 
-    def unshare_feature_store(self, target_project: str | int) -> None:
+    def _unshare_feature_store(self, target_project: str | int) -> None:
         """Revoke a feature-store-level share with another project.
 
         Parameters:
@@ -129,7 +129,7 @@ class ShareApi:
                 ) from e
             raise
 
-    def share_feature_group(
+    def _share_feature_group(
         self,
         feature_group_id: int,
         target_project: str | int,
@@ -178,7 +178,7 @@ class ShareApi:
                 ) from e
             raise
 
-    def list_feature_store_shares(self) -> list[dict]:
+    def _list_feature_store_shares(self) -> list[dict]:
         """List the projects this feature store has been shared with.
 
         Returns the ``items`` array from the backend's
@@ -215,7 +215,7 @@ class ShareApi:
         # Empty/no-shares may come back as the bare DTO with no items field.
         return resp.get("items") or []
 
-    def list_feature_group_shares(self, feature_group_id: int) -> list[dict]:
+    def _list_feature_group_shares(self, feature_group_id: int) -> list[dict]:
         """List the projects a single feature group has been shared with.
 
         Returns the ``items`` array from the backend's
@@ -256,7 +256,7 @@ class ShareApi:
             raise
         return resp.get("items") or []
 
-    def unshare_feature_group(
+    def _unshare_feature_group(
         self, feature_group_id: int, target_project: str | int
     ) -> None:
         """Revoke a feature-group-level share with another project.

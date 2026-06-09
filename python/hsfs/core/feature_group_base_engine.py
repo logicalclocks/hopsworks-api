@@ -39,7 +39,7 @@ class FeatureGroupBaseEngine:
         self._kafka_api = kafka_api.KafkaApi()
 
     def _delete(self, feature_group):
-        self._feature_group_api.delete(feature_group)
+        self._feature_group_api._delete(feature_group)
 
     def _add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
         """Attach a name/value tag to a feature group.
@@ -104,7 +104,7 @@ class FeatureGroupBaseEngine:
         Returns:
             The feature groups used to generate this feature group.
         """
-        links = self._feature_group_api.get_parent_feature_groups(feature_group)
+        links = self._feature_group_api._get_parent_feature_groups(feature_group)
         if not links.is_empty():
             return links
         return None
@@ -124,7 +124,7 @@ class FeatureGroupBaseEngine:
         Returns:
             The storage connector used to generated this feature group.
         """
-        links = self._feature_group_api.get_storage_connector_provenance(feature_group)
+        links = self._feature_group_api._get_storage_connector_provenance(feature_group)
         if not links.is_empty():
             return links
         return None
@@ -144,7 +144,7 @@ class FeatureGroupBaseEngine:
         Returns:
             The feature views generated using this feature group.
         """
-        links = self._feature_group_api.get_generated_feature_views(feature_group)
+        links = self._feature_group_api._get_generated_feature_views(feature_group)
         if not links.is_empty():
             return links
         return None
@@ -164,7 +164,7 @@ class FeatureGroupBaseEngine:
         Returns:
             The feature groups generated using this feature group.
         """
-        links = self._feature_group_api.get_generated_feature_groups(feature_group)
+        links = self._feature_group_api._get_generated_feature_groups(feature_group)
         if not links.is_empty():
             return links
         return None
@@ -175,7 +175,7 @@ class FeatureGroupBaseEngine:
         Parameters:
             feature_group: Metadata object of feature group.
         """
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, feature_group, "updateStatsConfig"
         )
 

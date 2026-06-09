@@ -297,7 +297,7 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Fetching storage connector for sql connection to Online Feature Store."
             )
-        self._online_connector = self._storage_connector_api.get_online_connector(
+        self._online_connector = self._storage_connector_api._get_online_connector(
             self._feature_store_id
         )
         self._connection_options = options
@@ -616,7 +616,7 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Retrieve MySQL connection details from the online storage connector."
             )
-        online_conn = self._storage_connector_api.get_online_connector(
+        online_conn = self._storage_connector_api._get_online_connector(
             self._feature_store_id
         )
         if _logger.isEnabledFor(logging.DEBUG):

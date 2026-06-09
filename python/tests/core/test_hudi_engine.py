@@ -46,8 +46,8 @@ class TestHudiEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.commit.call_count == 1
-        assert mock_fg_api.return_value.commit.call_args[0][1].validation_id == 10
+        assert mock_fg_api.return_value._commit.call_count == 1
+        assert mock_fg_api.return_value._commit.call_args[0][1].validation_id == 10
 
     def test_delete_record(self, mocker):
         # Arrange
@@ -70,7 +70,7 @@ class TestHudiEngine:
         h_engine._delete_record(delete_df=None, write_options={})
 
         # Assert
-        assert mock_fg_api.return_value.commit.call_count == 1
+        assert mock_fg_api.return_value._commit.call_count == 1
         assert (
             "hoodie.datasource.write.payload.class"
             in mock_hudi_engine_write_hudi_dataset.call_args[0][3]

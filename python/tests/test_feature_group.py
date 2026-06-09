@@ -1271,15 +1271,15 @@ class TestExternalFeatureGroup:
 
         # to mock delete we need get_expectation_suite to not return none
         mock_get_expectation_suite_api = mocker.patch(
-            "hsfs.core.expectation_suite_api.ExpectationSuiteApi.get",
+            "hsfs.core.expectation_suite_api.ExpectationSuiteApi._get",
             return_value=es,
         )
         mock_create_expectation_suite_api = mocker.patch(
-            "hsfs.core.expectation_suite_api.ExpectationSuiteApi.create",
+            "hsfs.core.expectation_suite_api.ExpectationSuiteApi._create",
             return_value=es,
         )
         mock_delete_expectation_suite_api = mocker.patch(
-            "hsfs.core.expectation_suite_api.ExpectationSuiteApi.delete"
+            "hsfs.core.expectation_suite_api.ExpectationSuiteApi._delete"
         )
 
         version_api = mocker.patch("hsfs.core.variable_api.VariableApi.get_version")
@@ -1313,7 +1313,7 @@ class TestExternalFeatureGroup:
         fg = feature_group.FeatureGroup.from_response_json(json)
 
         mock_update_expectation_suite_api = mocker.patch(
-            "hsfs.core.expectation_suite_api.ExpectationSuiteApi.update"
+            "hsfs.core.expectation_suite_api.ExpectationSuiteApi._update"
         )
 
         version_api = mocker.patch("hsfs.core.variable_api.VariableApi.get_version")

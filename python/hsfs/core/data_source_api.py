@@ -39,7 +39,7 @@ _BREWER_METADATA_INFERENCE_FAILED = 520013
 
 
 class DataSourceApi:
-    def get_databases(self, storage_connector: sc.StorageConnector) -> list[str]:
+    def _get_databases(self, storage_connector: sc.StorageConnector) -> list[str]:
         _client = client.get_instance()
         path_params = [
             "project",
@@ -54,7 +54,7 @@ class DataSourceApi:
 
         return _client._send_request("GET", path_params)
 
-    def get_crm_resources(
+    def _get_crm_resources(
         self, storage_connector: sc.StorageConnector
     ) -> dsd.DataSourceData:
         _client = client.get_instance()
@@ -72,7 +72,7 @@ class DataSourceApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_tables(
+    def _get_tables(
         self, storage_connector: sc.StorageConnector, database: str
     ) -> list[ds.DataSource]:
         _client = client.get_instance()
@@ -103,7 +103,7 @@ class DataSourceApi:
             return [result]
         return result
 
-    def get_no_sql_data(
+    def _get_no_sql_data(
         self,
         storage_connector: sc.StorageConnector,
         data_source: ds.DataSource,
@@ -171,7 +171,7 @@ class DataSourceApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
+    def _get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
             "project",
@@ -190,7 +190,7 @@ class DataSourceApi:
             _client._send_request("GET", path_params, query_params)
         )
 
-    def get_metadata(self, data_source: ds.DataSource) -> dict:
+    def _get_metadata(self, data_source: ds.DataSource) -> dict:
         _client = client.get_instance()
         path_params = [
             "project",
@@ -207,7 +207,7 @@ class DataSourceApi:
 
         return _client._send_request("GET", path_params, query_params)
 
-    def infer_metadata(
+    def _infer_metadata(
         self,
         storage_connector: sc.StorageConnector,
         preview_data: dsd.DataSourceData,

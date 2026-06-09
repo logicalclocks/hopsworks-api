@@ -703,7 +703,7 @@ class TestQuery:
         mock_fs_query.hudi_cached_feature_groups = []
 
         mocker.patch(
-            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
             return_value=mock_fs_query,
         )
 
@@ -729,7 +729,7 @@ class TestQuery:
         mock_fs_query.hudi_cached_feature_groups = []
 
         mocker.patch(
-            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
             return_value=mock_fs_query,
         )
 
@@ -783,7 +783,7 @@ class TestQuery:
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
         mocker.patch(
-            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
             return_value=mock_fs_query,
         )
 
@@ -813,7 +813,7 @@ class TestQuery:
             return mock_fs_query
 
         mocker.patch(
-            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
             side_effect=capture_limit,
         )
 

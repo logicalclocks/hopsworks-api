@@ -47,7 +47,7 @@ class ExpectationSuiteEngine:
         return self._create(expectation_suite)
 
     def _create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
-        saved_suite = self._expectation_suite_api.create(expectation_suite)
+        saved_suite = self._expectation_suite_api._create(expectation_suite)
 
         url = self._get_expectation_suite_url()
         print(f"Attached expectation suite to Feature Group, edit it at {url}")
@@ -55,7 +55,7 @@ class ExpectationSuiteEngine:
         return saved_suite
 
     def _update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
-        saved_suite = self._expectation_suite_api.update(expectation_suite)
+        saved_suite = self._expectation_suite_api._update(expectation_suite)
 
         url = self._get_expectation_suite_url()
         print(f"Updated expectation suite attached to Feature Group, edit it at {url}")
@@ -65,7 +65,7 @@ class ExpectationSuiteEngine:
     def _update_metadata(
         self, expectation_suite: es.ExpectationSuite
     ) -> es.ExpectationSuite:
-        return self._expectation_suite_api.update_metadata(expectation_suite)
+        return self._expectation_suite_api._update_metadata(expectation_suite)
 
     def _update_metadata_from_fields(
         self,
@@ -79,7 +79,7 @@ class ExpectationSuiteEngine:
         expectations: list[GeExpectation],
         **kwargs,
     ) -> None:
-        self._expectation_suite_api.update_metadata(
+        self._expectation_suite_api._update_metadata(
             es.ExpectationSuite(
                 id=id,
                 expectation_suite_name=expectation_suite_name,
@@ -93,10 +93,10 @@ class ExpectationSuiteEngine:
         )
 
     def _get(self) -> es.ExpectationSuite | None:
-        return self._expectation_suite_api.get()
+        return self._expectation_suite_api._get()
 
     def _delete(self, expectation_suite_id: int) -> None:
-        self._expectation_suite_api.delete(expectation_suite_id=expectation_suite_id)
+        self._expectation_suite_api._delete(expectation_suite_id=expectation_suite_id)
         self._expectation_engine = None
 
     def _get_expectation_suite_url(self) -> str:

@@ -65,7 +65,7 @@ class FeatureViewApi:
             "featureview",
         ]
 
-    def post(
+    def _post(
         self, feature_view_obj: feature_view.FeatureView
     ) -> feature_view.FeatureView:
         headers = {"content-type": "application/json"}
@@ -78,7 +78,7 @@ class FeatureViewApi:
             )
         )
 
-    def update(self, feature_view_obj: feature_view.FeatureView) -> None:
+    def _update(self, feature_view_obj: feature_view.FeatureView) -> None:
         headers = {"content-type": "application/json"}
         self._client._send_request(
             self._PUT,
@@ -89,7 +89,7 @@ class FeatureViewApi:
         )
 
     @decorators.catch_not_found("hsfs.feature_view.FeatureView", fallback_return=[])
-    def get_by_name(self, name: str) -> list[feature_view.FeatureView]:
+    def _get_by_name(self, name: str) -> list[feature_view.FeatureView]:
         """Get a feature view from the backend using its name.
 
         Parameters:
@@ -122,7 +122,7 @@ class FeatureViewApi:
             raise e
 
     @decorators.catch_not_found("hsfs.feature_view.FeatureView", fallback_return=None)
-    def get_by_name_version(self, name: str, version: int) -> feature_view.FeatureView:
+    def _get_by_name_version(self, name: str, version: int) -> feature_view.FeatureView:
         """Get a feature view from the backend using both name and version.
 
         Parameters:
@@ -154,7 +154,7 @@ class FeatureViewApi:
                 ) from e
             raise e
 
-    def get_all(
+    def _get_all(
         self, latest_version_only: bool = True, with_features: bool = False
     ) -> list[dict[str, Any]]:
         path = self._base_path
@@ -169,19 +169,19 @@ class FeatureViewApi:
             query_params={"expand": ["features"]} if with_features else None,
         )["items"]
 
-    def delete_by_name(self, name: str, force: bool = False) -> None:
+    def _delete_by_name(self, name: str, force: bool = False) -> None:
         path = self._base_path + [name]
         query_params = {"force": force} if force else {}
         self._client._send_request(self._DELETE, path, query_params)
 
-    def delete_by_name_version(
+    def _delete_by_name_version(
         self, name: str, version: int, force: bool = False
     ) -> None:
         path = self._base_path + [name, self._VERSION, version]
         query_params = {"force": force} if force else {}
         self._client._send_request(self._DELETE, path, query_params)
 
-    def get_batch_query(
+    def _get_batch_query(
         self,
         name: str,
         version: int,
@@ -233,7 +233,7 @@ class FeatureViewApi:
             )
         )
 
-    def get_serving_prepared_statement(
+    def _get_serving_prepared_statement(
         self,
         name: str,
         version: int,
@@ -272,13 +272,13 @@ class FeatureViewApi:
             self._client._send_request("GET", path, query_params, headers=headers)
         )
 
-    def create_training_dataset(
+    def _create_training_dataset(
         self,
         name: str,
         version: int,
         training_dataset_obj: training_dataset.TrainingDataset,
     ) -> training_dataset.TrainingDataset:
-        path = self.get_training_data_base_path(name, version)
+        path = self._get_training_data_base_path(name, version)
         headers = {"content-type": "application/json"}
         return training_dataset_obj.update_from_response_json(
             self._client._send_request(
@@ -286,30 +286,32 @@ class FeatureViewApi:
             )
         )
 
-    def get_training_dataset_by_version(
+    def _get_training_dataset_by_version(
         self, name: str, version: int, training_dataset_version: int
     ) -> training_dataset.TrainingDataset:
-        path = self.get_training_data_base_path(name, version, training_dataset_version)
+        path = self._get_training_data_base_path(
+            name, version, training_dataset_version
+        )
         return training_dataset.TrainingDataset.from_response_json_single(
             self._client._send_request("GET", path)
         )
 
-    def get_training_datasets(
+    def _get_training_datasets(
         self, name: str, version: int
     ) -> list[training_dataset.TrainingDataset]:
-        path = self.get_training_data_base_path(name, version)
+        path = self._get_training_data_base_path(name, version)
         return training_dataset.TrainingDataset.from_response_json(
             self._client._send_request("GET", path)
         )
 
-    def compute_training_dataset(
+    def _compute_training_dataset(
         self,
         name: str,
         version: int,
         training_dataset_version: int,
         td_app_conf: training_dataset_job_conf.TrainingDatasetJobConf,
     ) -> job.Job:
-        path = self.get_training_data_base_path(
+        path = self._get_training_data_base_path(
             name, version, training_dataset_version
         ) + [self._COMPUTE]
         headers = {"content-type": "application/json"}
@@ -319,30 +321,32 @@ class FeatureViewApi:
             )
         )
 
-    def delete_training_data(self, name: str, version: int) -> None:
-        path = self.get_training_data_base_path(name, version)
+    def _delete_training_data(self, name: str, version: int) -> None:
+        path = self._get_training_data_base_path(name, version)
         return self._client._send_request("DELETE", path)
 
-    def delete_training_data_version(
+    def _delete_training_data_version(
         self, name: str, version: int, training_dataset_version: int
     ) -> None:
-        path = self.get_training_data_base_path(name, version, training_dataset_version)
+        path = self._get_training_data_base_path(
+            name, version, training_dataset_version
+        )
         return self._client._send_request("DELETE", path)
 
-    def delete_training_dataset_only(self, name: str, version: int) -> None:
-        path = self.get_training_data_base_path(name, version) + [self._DATA]
+    def _delete_training_dataset_only(self, name: str, version: int) -> None:
+        path = self._get_training_data_base_path(name, version) + [self._DATA]
         return self._client._send_request("DELETE", path)
 
-    def delete_training_dataset_only_version(
+    def _delete_training_dataset_only_version(
         self, name: str, version: int, training_dataset_version: int
     ) -> None:
-        path = self.get_training_data_base_path(
+        path = self._get_training_data_base_path(
             name, version, training_dataset_version
         ) + [self._DATA]
 
         return self._client._send_request("DELETE", path)
 
-    def get_training_data_base_path(
+    def _get_training_data_base_path(
         self, name: str, version: int, training_data_version: int | None = None
     ) -> list[str | int]:
         if training_data_version:
@@ -361,7 +365,7 @@ class FeatureViewApi:
             self._TRAINING_DATASET,
         ]
 
-    def get_parent_feature_groups(
+    def _get_parent_feature_groups(
         self, name: str, version: int
     ) -> explicit_provenance.Links:
         """Get the parents of this feature view, based on explicit provenance.
@@ -398,7 +402,7 @@ class FeatureViewApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
-    def get_models_provenance(
+    def _get_models_provenance(
         self,
         feature_view_name: str,
         feature_view_version: int,
@@ -440,7 +444,7 @@ class FeatureViewApi:
             training_dataset_version=training_dataset_version,
         )
 
-    def enable_feature_logging(
+    def _enable_feature_logging(
         self,
         feature_view_name: str,
         feature_view_version: int,
@@ -457,7 +461,7 @@ class FeatureViewApi:
         data = feature_logging_object.json() if feature_logging_object else {}
         _client._send_request("PUT", path_params, {}, headers=headers, data=data)
 
-    def pause_feature_logging(
+    def _pause_feature_logging(
         self,
         feature_view_name: str,
         feature_view_version: int,
@@ -472,7 +476,7 @@ class FeatureViewApi:
         ]
         return _client._send_request("POST", path_params, {})
 
-    def resume_feature_logging(
+    def _resume_feature_logging(
         self,
         feature_view_name: str,
         feature_view_version: int,
@@ -487,7 +491,7 @@ class FeatureViewApi:
         ]
         return _client._send_request("POST", path_params, {})
 
-    def materialize_feature_logging(
+    def _materialize_feature_logging(
         self,
         feature_view_name: str,
         feature_view_version: int,
@@ -512,7 +516,7 @@ class FeatureViewApi:
     @decorators.catch_not_found(
         "hsfs.core.feature_logging.FeatureLogging", fallback_return=None
     )
-    def get_feature_logging(
+    def _get_feature_logging(
         self,
         feature_view_name: str,
         feature_view_version: int,
@@ -528,7 +532,7 @@ class FeatureViewApi:
             _client._send_request("GET", path_params, {})
         )
 
-    def delete_feature_logs(
+    def _delete_feature_logs(
         self,
         feature_view_name: str,
         feature_view_version: int,

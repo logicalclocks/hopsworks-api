@@ -644,7 +644,7 @@ class Engine:
         stat_api = statistics_api.StatisticsApi(
             metadata_instance.feature_store_id, metadata_instance.ENTITY_TYPE
         )
-        job = stat_api.compute(metadata_instance)
+        job = stat_api._compute(metadata_instance)
         print(
             f"Statistics Job started successfully, you can follow the progress at \n{util.get_job_url(job.href)}"
         )
@@ -1158,7 +1158,7 @@ class Engine:
         # Setup job for ingestion
         # Configure Hopsworks ingestion job
         print("Configuring ingestion job...")
-        ingestion_job = self._feature_group_api.ingestion(feature_group, app_options)
+        ingestion_job = self._feature_group_api._ingestion(feature_group, app_options)
 
         # Upload dataframe into Hopsworks
         print("Uploading Pandas dataframe...")
@@ -1498,7 +1498,7 @@ class Engine:
 
         if feature_view_obj:
             fv_api = feature_view_api.FeatureViewApi(feature_view_obj.featurestore_id)
-            td_job = fv_api.compute_training_dataset(
+            td_job = fv_api._compute_training_dataset(
                 feature_view_obj.name,
                 feature_view_obj.version,
                 training_dataset.version,
@@ -1508,7 +1508,7 @@ class Engine:
             td_api = training_dataset_api.TrainingDatasetApi(
                 training_dataset.feature_store_id
             )
-            td_job = td_api.compute(training_dataset, td_app_conf)
+            td_job = td_api._compute(training_dataset, td_app_conf)
         print(
             f"Training dataset job started successfully, you can follow the progress at \n{util.get_job_url(td_job.href)}"
         )
@@ -1569,7 +1569,7 @@ class Engine:
     def _update_table_schema(
         self, feature_group: FeatureGroup | ExternalFeatureGroup
     ) -> None:
-        _job = self._feature_group_api.update_table_schema(feature_group)
+        _job = self._feature_group_api._update_table_schema(feature_group)
         _job._wait_for_job(await_termination=True)
 
     def _get_app_options(

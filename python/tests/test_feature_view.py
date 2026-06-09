@@ -76,7 +76,7 @@ class TestFeatureView:
         )
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi.get")
+        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi._get")
         json = backend_fixtures["feature_view"]["get"]["response"]
         # Act
         fv = feature_view.FeatureView.from_response_json(json)
@@ -123,7 +123,7 @@ class TestFeatureView:
         )
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi.get")
+        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi._get")
         json = backend_fixtures["feature_view"]["get_transformations"]["response"]
         # Act
         fv = feature_view.FeatureView.from_response_json(json)

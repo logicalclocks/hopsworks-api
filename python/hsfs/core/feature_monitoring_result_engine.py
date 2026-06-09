@@ -153,7 +153,7 @@ class FeatureMonitoringResultEngine:
         Returns:
             Saved Feature monitoring result.
         """
-        return self._feature_monitoring_result_api.create(
+        return self._feature_monitoring_result_api._create(
             result,
         )
 
@@ -181,7 +181,7 @@ class FeatureMonitoringResultEngine:
             with_statistics=with_statistics,
         )
 
-        return self._feature_monitoring_result_api.get_by_config_id(
+        return self._feature_monitoring_result_api._get_by_config_id(
             config_id=config_id,
             query_params=query_params,
         )
@@ -221,7 +221,7 @@ class FeatureMonitoringResultEngine:
                 "Only one of config_id or config_name can be provided to fetch feature monitoring results."
             )
         if config_name is not None and isinstance(config_name, str):
-            config = self._feature_monitoring_config_api.get_by_name(config_name)
+            config = self._feature_monitoring_config_api._get_by_name(config_name)
             if not isinstance(config, fmc.FeatureMonitoringConfig):
                 return []
             config_id = config._id

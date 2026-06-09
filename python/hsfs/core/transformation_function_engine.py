@@ -77,7 +77,7 @@ class TransformationFunctionEngine:
         Parameters:
             transformation_fn_instance: The transformation function to be saved into the feature store.
         """
-        self._transformation_function_api.register_transformation_fn(
+        self._transformation_function_api._register_transformation_fn(
             transformation_fn_instance
         )
 
@@ -100,7 +100,7 @@ class TransformationFunctionEngine:
             A transformation function if name and version is provided.
             A list of transformation functions if only name is provided.
         """
-        return self._transformation_function_api.get_transformation_fn(name, version)
+        return self._transformation_function_api._get_transformation_fn(name, version)
 
     def _get_transformation_fns(
         self,
@@ -111,7 +111,7 @@ class TransformationFunctionEngine:
             A list of transformation functions.
         """
         transformation_fn_instances = (
-            self._transformation_function_api.get_transformation_fn(
+            self._transformation_function_api._get_transformation_fn(
                 name=None, version=None
             )
         )
@@ -383,7 +383,7 @@ class TransformationFunctionEngine:
         Parameters:
             transformation_function_instance: The transformation function to be removed from the feature store.
         """
-        self._transformation_function_api.delete(transformation_function_instance)
+        self._transformation_function_api._delete(transformation_function_instance)
 
     @staticmethod
     def _compute_transformation_fn_statistics(

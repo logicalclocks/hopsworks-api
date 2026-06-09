@@ -30,7 +30,7 @@ class ValidationResultApi:
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
 
-    def get_validation_history(
+    def _get_validation_history(
         self,
         expectation_id: int,
         query_params: dict[str, str] = None,

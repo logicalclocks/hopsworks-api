@@ -74,7 +74,9 @@ class TestFeatureStore:
         fg = feature_group_mod.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
         )
-        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.get", return_value=fg)
+        mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._get", return_value=fg
+        )
 
         # Act
         fg_res = fs.get_feature_group("test_feature_group_name")
@@ -167,7 +169,7 @@ class TestFeatureStore:
         json = backend_fixtures["feature_store"]["get"]["response"]
         fs = feature_store_mod.FeatureStore.from_response_json(json)
         mocker.patch(
-            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name_version",
+            "hsfs.core.feature_view_api.FeatureViewApi._get_by_name_version",
             return_value=None,
         )
 
@@ -183,7 +185,7 @@ class TestFeatureStore:
         json = backend_fixtures["feature_store"]["get"]["response"]
         fs = feature_store_mod.FeatureStore.from_response_json(json)
         mocker.patch(
-            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name", return_value=[]
+            "hsfs.core.feature_view_api.FeatureViewApi._get_by_name", return_value=[]
         )
 
         # Act
@@ -200,7 +202,7 @@ class TestFeatureStore:
         json = backend_fixtures["feature_store"]["get"]["response"]
         fs = feature_store_mod.FeatureStore.from_response_json(json)
         mocker.patch(
-            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name_version",
+            "hsfs.core.feature_view_api.FeatureViewApi._get_by_name_version",
             return_value=None,
         )
 

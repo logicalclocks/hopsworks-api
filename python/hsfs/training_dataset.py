@@ -909,7 +909,7 @@ class TrainingDataset(TrainingDatasetBase):
             util.JobWarning,
             stacklevel=1,
         )
-        self._training_dataset_api.delete(self)
+        self._training_dataset_api._delete(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -1144,7 +1144,7 @@ class TrainingDataset(TrainingDatasetBase):
         """Set of primary key names that is used as keys in input dict object for `get_serving_vector` method."""
         if self._serving_keys is None or len(self._serving_keys) == 0:
             self._serving_keys = util.build_serving_keys_from_prepared_statements(
-                self._training_dataset_api.get_serving_prepared_statement(
+                self._training_dataset_api._get_serving_prepared_statement(
                     entity=self, batch=False
                 ),
                 feature_store_id=self._feature_store_id,

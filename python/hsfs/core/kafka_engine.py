@@ -149,7 +149,7 @@ def _get_headers(
     if feature_group.online_enabled:
         # setup online ingestion id
         online_ingestion_instance = (
-            online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
+            online_ingestion_api.OnlineIngestionApi()._create_online_ingestion(
                 feature_group, online_ingestion.OnlineIngestion(num_entries=num_entries)
             )
         )
@@ -281,8 +281,10 @@ def _get_kafka_config(
         write_options = {}
     external = client._is_external() and not write_options.get("internal_kafka", False)
 
-    storage_connector = storage_connector_api.StorageConnectorApi().get_kafka_connector(
-        feature_store_id, external
+    storage_connector = (
+        storage_connector_api.StorageConnectorApi()._get_kafka_connector(
+            feature_store_id, external
+        )
     )
 
     if engine == "spark":

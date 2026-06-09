@@ -183,7 +183,7 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        feature_group_object = self._feature_group_api.get(self.id, name, version)
+        feature_group_object = self._feature_group_api._get(self.id, name, version)
         if feature_group_object:
             feature_group_object.feature_store = self
             util.check_missing_mandatory_tags(
@@ -216,10 +216,10 @@ class FeatureStore:
         try:
             from hsfs.core.feature_store_api import FeatureStoreApi
 
-            for store in FeatureStoreApi().get_all():
+            for store in FeatureStoreApi()._get_all():
                 if getattr(store, "id", None) == self.id:
                     continue
-                if self._feature_group_api.get(store.id, name, version):
+                if self._feature_group_api._get(store.id, name, version):
                     return store.name
         except Exception:  # noqa: BLE001 - hint is best-effort, never fatal
             return None
@@ -267,9 +267,9 @@ class FeatureStore:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if name:
-            feature_group_object = self._feature_group_api.get(self.id, name, None)
+            feature_group_object = self._feature_group_api._get(self.id, name, None)
         else:
-            feature_group_object = self._feature_group_api.get_all(self.id)
+            feature_group_object = self._feature_group_api._get_all(self.id)
         for fg_object in feature_group_object:
             fg_object.feature_store = self
         return feature_group_object
@@ -333,7 +333,7 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        feature_group_object = self._feature_group_api.get(
+        feature_group_object = self._feature_group_api._get(
             self.id,
             name,
             version,
@@ -438,7 +438,7 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        training_dataset_object = self._training_dataset_api.get(name, version)
+        training_dataset_object = self._training_dataset_api._get(name, version)
         if training_dataset_object:
             util.check_missing_mandatory_tags(
                 training_dataset_object.missing_mandatory_tags
@@ -465,7 +465,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._training_dataset_api.get(name, None)
+        return self._training_dataset_api._get(name, None)
 
     @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
     @public
@@ -521,7 +521,7 @@ class FeatureStore:
             `DataSource`. Data source object.
         """
         return ds.DataSource(
-            storage_connector=self._storage_connector_api.get(self._id, name)
+            storage_connector=self._storage_connector_api._get(self._id, name)
         )
 
     @public
@@ -553,7 +553,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id).share_feature_store(target_project)
+        share_api.ShareApi(self._id)._share_feature_store(target_project)
 
     @public
     @usage.method_logger
@@ -581,7 +581,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._id).list_feature_store_shares()
+        return share_api.ShareApi(self._id)._list_feature_store_shares()
 
     @public
     @usage.method_logger
@@ -601,7 +601,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id).unshare_feature_store(target_project)
+        share_api.ShareApi(self._id)._unshare_feature_store(target_project)
 
     @public
     def sql(
@@ -688,7 +688,9 @@ class FeatureStore:
             `DataSource`. JDBC data source to the Online Feature Store.
         """
         return ds.DataSource(
-            storage_connector=self._storage_connector_api.get_online_connector(self._id)
+            storage_connector=self._storage_connector_api._get_online_connector(
+                self._id
+            )
         )
 
     def _normalize_tags(
@@ -1126,7 +1128,7 @@ class FeatureStore:
         Returns:
             The feature group metadata object.
         """
-        feature_group_object = self._feature_group_api.get(self.id, name, version)
+        feature_group_object = self._feature_group_api._get(self.id, name, version)
         if not feature_group_object:
             if not data_source:
                 data_source = ds.DataSource(
@@ -1658,7 +1660,7 @@ class FeatureStore:
         Returns:
             The spine group metadata object.
         """
-        spine = self._feature_group_api.get(self.id, name, version)
+        spine = self._feature_group_api._get(self.id, name, version)
         if spine:
             spine.dataframe = dataframe
             spine.feature_store = self
@@ -2314,7 +2316,7 @@ class FeatureStore:
             url=url,
             job=Job(id=job_id) if job_id else None,
         )
-        return ChartApi().create_chart(chart)
+        return ChartApi()._create_chart(chart)
 
     @public
     def get_charts(self) -> list[Chart]:
@@ -2335,7 +2337,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return ChartApi().get_charts()
+        return ChartApi()._get_charts()
 
     @public
     def get_chart(self, chart_id: int) -> Chart:
@@ -2359,7 +2361,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return ChartApi().get_chart(chart_id)
+        return ChartApi()._get_chart(chart_id)
 
     @public
     def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
@@ -2394,7 +2396,7 @@ class FeatureStore:
             name=name,
             charts=charts,
         )
-        return DashboardApi().create_dashboard(dashboard)
+        return DashboardApi()._create_dashboard(dashboard)
 
     @public
     def get_dashboards(self) -> list[Dashboard]:
@@ -2415,7 +2417,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return DashboardApi().get_dashboards()
+        return DashboardApi()._get_dashboards()
 
     @public
     def get_dashboard(self, dashboard_id: int) -> Dashboard:
@@ -2439,7 +2441,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return DashboardApi().get_dashboard(dashboard_id)
+        return DashboardApi()._get_dashboard(dashboard_id)
 
     @public
     @property

@@ -42,7 +42,7 @@ class TestValidationResultEngine:
 
         # Assert
         assert (
-            mock_validation_result_api.return_value.get_validation_history.call_count
+            mock_validation_result_api.return_value._get_validation_history.call_count
             == 1
         )
 

@@ -20,7 +20,7 @@ from hsfs import feature_store_activity as fsa_mod
 
 
 class FeatureStoreActivityApi:
-    def get_feature_group_activities(
+    def _get_feature_group_activities(
         self,
         feature_store_id: int,
         feature_group_id: int,

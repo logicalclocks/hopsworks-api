@@ -250,7 +250,7 @@ class StorageConnector(ABC):
 
     def refetch(self) -> None:
         """Refetch storage connector."""
-        self._storage_connector_api.refetch(self)
+        self._storage_connector_api._refetch(self)
 
     def _get_path(self, sub_path: str) -> None:
         return None
@@ -281,7 +281,7 @@ class StorageConnector(ABC):
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        links = self._storage_connector_api.get_feature_groups_provenance(self)
+        links = self._storage_connector_api._get_feature_groups_provenance(self)
         if not links.is_empty():
             return links
         return None
@@ -324,7 +324,7 @@ class StorageConnector(ABC):
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        links = self._storage_connector_api.get_training_datasets_provenance(self)
+        links = self._storage_connector_api._get_training_datasets_provenance(self)
         if not links.is_empty():
             return links
         return None
@@ -372,7 +372,7 @@ class StorageConnector(ABC):
         """
         if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching databases.")
-        return self._data_source_api.get_databases(self)
+        return self._data_source_api._get_databases(self)
 
     @public
     def get_tables(self, database: str | None = None) -> list[ds.DataSource]:
@@ -444,13 +444,13 @@ class StorageConnector(ABC):
                     "Please provide a database name."
                 )
         if self.type == StorageConnector.CRM:
-            data: DataSourceData = self._data_source_api.get_crm_resources(self)
+            data: DataSourceData = self._data_source_api._get_crm_resources(self)
             return [
                 ds.DataSource(table=resource, storage_connector=self)
                 for resource in (data.supported_resources or [])
             ]
 
-        return self._data_source_api.get_tables(self, database)
+        return self._data_source_api._get_tables(self, database)
 
     @public
     def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
@@ -482,7 +482,7 @@ class StorageConnector(ABC):
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
-        return self._data_source_api.get_data(data_source)
+        return self._data_source_api._get_data(data_source)
 
     @public
     def get_metadata(self, data_source: ds.DataSource) -> dict:
@@ -508,7 +508,7 @@ class StorageConnector(ABC):
         """
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             raise ValueError("This connector type does not support fetching metadata.")
-        return self._data_source_api.get_metadata(data_source)
+        return self._data_source_api._get_metadata(data_source)
 
     @public
     def infer_metadata(
@@ -545,18 +545,18 @@ class StorageConnector(ABC):
         """
         if preview_data is None:
             preview_data = self.get_data(data_source)
-        return self._data_source_api.infer_metadata(self, preview_data)
+        return self._data_source_api._infer_metadata(self, preview_data)
 
     def _get_no_sql_data(
         self, data_source: ds.DataSource, use_cached=True
     ) -> DataSourceData:
-        data: DataSourceData = self._data_source_api.get_no_sql_data(
+        data: DataSourceData = self._data_source_api._get_no_sql_data(
             self, data_source, use_cached
         )
 
         while data.schema_fetch_in_progress:
             time.sleep(3)
-            data = self._data_source_api.get_no_sql_data(self, data_source)
+            data = self._data_source_api._get_no_sql_data(self, data_source)
             _logger.info("Schema fetch in progress...")
 
         if data.schema_fetch_failed:
@@ -1057,7 +1057,7 @@ class RedshiftConnector(StorageConnector):
             `DataFrame`.
         """
         # refetch to update temporary credentials
-        self._storage_connector_api.refetch(self)
+        self._storage_connector_api._refetch(self)
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -1075,7 +1075,7 @@ class RedshiftConnector(StorageConnector):
     @public
     def refetch(self) -> None:
         """Refetch storage connector in order to retrieve updated temporary credentials."""
-        self._storage_connector_api.refetch(self)
+        self._storage_connector_api._refetch(self)
 
 
 @public
@@ -3653,7 +3653,7 @@ def _resolve_uc_spark_options(
     from hsfs.core import storage_connector_api  # avoid circular import
 
     api = storage_connector_api.StorageConnectorApi()
-    bearer_resp = api.get_uc_bearer(connector._featurestore_id, connector._name)
+    bearer_resp = api._get_uc_bearer(connector._featurestore_id, connector._name)
     bearer = bearer_resp.get("access_token") or bearer_resp.get("accessToken")
     expires_in = int(
         bearer_resp.get("expires_in_seconds")

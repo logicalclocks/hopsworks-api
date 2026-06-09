@@ -307,7 +307,7 @@ class StatisticsEngine:
             Statistics metadata containing a list of single feature descriptive statistics.
         """
         computation_timestamp = util.convert_event_time_to_timestamp(computation_time)
-        return self._statistics_api.get(
+        return self._statistics_api._get(
             metadata_instance,
             feature_names=feature_names,
             computation_time=computation_timestamp,
@@ -337,7 +337,7 @@ class StatisticsEngine:
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
         """
-        return self._statistics_api.get_all(
+        return self._statistics_api._get_all(
             metadata_instance,
             feature_names=feature_names,
             computation_time=computation_time,
@@ -372,7 +372,7 @@ class StatisticsEngine:
         """
         start_commit_time = util.convert_event_time_to_timestamp(start_commit_time)
         end_commit_time = util.convert_event_time_to_timestamp(end_commit_time)
-        return self._statistics_api.get(
+        return self._statistics_api._get(
             metadata_instance,
             start_commit_time=start_commit_time,
             end_commit_time=end_commit_time,
@@ -431,13 +431,13 @@ class StatisticsEngine:
     ) -> statistics.Statistics:
         # metadata_instance can be feature group or training dataset
         if feature_view_obj:
-            stats = self._statistics_api.post(
+            stats = self._statistics_api._post(
                 feature_view_obj,
                 stats=stats,
                 training_dataset_version=metadata_instance.version,
             )
         else:
-            stats = self._statistics_api.post(
+            stats = self._statistics_api._post(
                 metadata_instance, stats=stats, training_dataset_version=None
             )
         return stats

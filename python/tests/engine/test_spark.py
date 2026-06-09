@@ -1233,12 +1233,12 @@ class TestSpark:
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         spark_engine = spark.Engine()
 
@@ -1361,12 +1361,12 @@ class TestSpark:
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         spark_engine = spark.Engine()
 
@@ -1493,12 +1493,12 @@ class TestSpark:
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         spark_engine = spark.Engine()
 
@@ -1621,12 +1621,12 @@ class TestSpark:
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         spark_engine = spark.Engine()
 
@@ -1892,12 +1892,12 @@ class TestSpark:
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         spark_engine = spark.Engine()
 
@@ -1989,14 +1989,14 @@ class TestSpark:
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json_data = backend_fixtures["storage_connector"]["get_kafka_external"][
             "response"
         ]
         sc = storage_connector.StorageConnector.from_response_json(json_data)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         spark_engine = spark.Engine()
 
@@ -2063,14 +2063,14 @@ class TestSpark:
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json_data = backend_fixtures["storage_connector"]["get_kafka_external"][
             "response"
         ]
         sc = storage_connector.StorageConnector.from_response_json(json_data)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         spark_engine = spark.Engine()
 

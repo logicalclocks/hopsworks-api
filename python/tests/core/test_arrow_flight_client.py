@@ -44,7 +44,7 @@ class TestArrowFlightClient:
         json_query = backend_fixtures["fs_query"]["get_basic_info"]["response"]
         q = fs_query.FsQuery.from_response_json(json_query)
         mocker.patch(
-            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
             return_value=q,
         )
 
@@ -60,7 +60,7 @@ class TestArrowFlightClient:
             "project_id",
             return_value=99,
         )
-        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi.get")
+        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi._get")
         fv = feature_view.FeatureView.from_response_json(json_fv)
         json_td = backend_fixtures["training_dataset"]["get_basic_info"]["response"]
         td = training_dataset.TrainingDataset.from_response_json(json_td)[0]
@@ -70,7 +70,7 @@ class TestArrowFlightClient:
             return_value=td,
         )
         mocker.patch(
-            "hsfs.core.feature_view_api.FeatureViewApi.get_training_dataset_by_version",
+            "hsfs.core.feature_view_api.FeatureViewApi._get_training_dataset_by_version",
             return_value=td,
         )
 

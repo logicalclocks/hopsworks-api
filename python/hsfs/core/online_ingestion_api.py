@@ -32,7 +32,7 @@ class OnlineIngestionApi:
     interacting with the Hopsworks backend.
     """
 
-    def create_online_ingestion(
+    def _create_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         online_ingestion_instance: online_ingestion.OnlineIngestion,
@@ -71,7 +71,7 @@ class OnlineIngestionApi:
             feature_group=feature_group_instance,
         )
 
-    def get_online_ingestion(
+    def _get_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         query_params: dict[str, str] | None = None,

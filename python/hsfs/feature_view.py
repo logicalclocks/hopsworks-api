@@ -336,7 +336,7 @@ class FeatureView:
         """
         if not isinstance(feature_store_id, int):
             raise ValueError("`feature_store_id` should be an integer.")
-        FeatureViewApi(feature_store_id).delete_by_name_version(
+        FeatureViewApi(feature_store_id)._delete_by_name_version(
             feature_view_name, feature_view_version, force
         )
 
@@ -5067,7 +5067,7 @@ class FeatureView:
             or len(self._serving_keys) == 0
         ):
             self._serving_keys = util.build_serving_keys_from_prepared_statements(
-                self._feature_view_engine._feature_view_api.get_serving_prepared_statement(
+                self._feature_view_engine._feature_view_api._get_serving_prepared_statement(
                     name=self.name,
                     version=self.version,
                     batch=False,

@@ -126,7 +126,7 @@ class TestTransformationFunctionEngine:
         tf_engine._save(transformation_fn_instance=tf)
 
         # Assert
-        assert mock_tf_api.return_value.register_transformation_fn.call_count == 1
+        assert mock_tf_api.return_value._register_transformation_fn.call_count == 1
 
     def test_get_transformation_fn(self, mocker):
         # Arrange
@@ -162,13 +162,13 @@ class TestTransformationFunctionEngine:
 
         transformations = [tf1, tf2]
 
-        mock_tf_api.return_value.get_transformation_fn.return_value = transformations
+        mock_tf_api.return_value._get_transformation_fn.return_value = transformations
 
         # Act
         result = tf_engine._get_transformation_fn(name=None, version=None)
 
         # Assert
-        assert mock_tf_api.return_value.get_transformation_fn.call_count == 1
+        assert mock_tf_api.return_value._get_transformation_fn.call_count == 1
         assert result == transformations
 
     def test_get_transformation_fns(self, mocker):
@@ -205,13 +205,13 @@ class TestTransformationFunctionEngine:
 
         transformations = [tf1, tf2]
 
-        mock_tf_api.return_value.get_transformation_fn.return_value = transformations
+        mock_tf_api.return_value._get_transformation_fn.return_value = transformations
 
         # Act
         result = tf_engine._get_transformation_fns()
 
         # Assert
-        assert mock_tf_api.return_value.get_transformation_fn.call_count == 1
+        assert mock_tf_api.return_value._get_transformation_fn.call_count == 1
         assert result == transformations
 
     def test_delete(self, mocker):
@@ -240,7 +240,7 @@ class TestTransformationFunctionEngine:
         tf_engine._delete(transformation_function_instance=tf1)
 
         # Assert
-        assert mock_tf_api.return_value.delete.call_count == 1
+        assert mock_tf_api.return_value._delete.call_count == 1
 
     def test_compute_transformation_fn_statistics(self, mocker):
         # Arrange

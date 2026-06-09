@@ -70,7 +70,7 @@ class ValidationResultEngine:
             end_validation_time=end_validation_time,
         )
 
-        history = self._validation_result_api.get_validation_history(
+        history = self._validation_result_api._get_validation_history(
             expectation_id=expectation_id, query_params=query_params
         )
 

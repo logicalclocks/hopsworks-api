@@ -65,7 +65,7 @@ class TrainingDatasetEngine:
                 stacklevel=1,
             )
 
-        updated_instance = self._training_dataset_api.post(training_dataset)
+        updated_instance = self._training_dataset_api._post(training_dataset)
         td_job = engine.get_instance()._write_training_dataset(
             training_dataset, features, user_write_options, self.OVERWRITE
         )
@@ -98,7 +98,7 @@ class TrainingDatasetEngine:
         )
 
     def _query(self, training_dataset, online, with_label, is_hive_query):
-        fs_query = self._training_dataset_api.get_query(
+        fs_query = self._training_dataset_api._get_query(
             training_dataset, with_label, is_hive_query
         )
 
@@ -162,6 +162,6 @@ class TrainingDatasetEngine:
         Parameters:
             training_dataset: The training dataset whose statistics config to update.
         """
-        self._training_dataset_api.update_metadata(
+        self._training_dataset_api._update_metadata(
             training_dataset, training_dataset, "updateStatsConfig"
         )

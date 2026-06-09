@@ -42,7 +42,7 @@ class TestValidationReportEngine:
         vr_engine._save(validation_report=None)
 
         # Assert
-        assert mock_vr_api.return_value.create.call_count == 1
+        assert mock_vr_api.return_value._create.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -73,7 +73,7 @@ class TestValidationReportEngine:
         vr_engine._get_last()
 
         # Assert
-        assert mock_vr_api.return_value.get_last.call_count == 1
+        assert mock_vr_api.return_value._get_last.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -105,7 +105,7 @@ class TestValidationReportEngine:
         vr_engine._get_all()
 
         # Assert
-        assert mock_vr_api.return_value.get_all.call_count == 1
+        assert mock_vr_api.return_value._get_all.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -131,7 +131,7 @@ class TestValidationReportEngine:
         vr_engine._delete(validation_report_id=validation_report_id)
 
         # Assert
-        assert mock_vr_api.return_value.delete.call_count == 1
+        assert mock_vr_api.return_value._delete.call_count == 1
 
     def test_get_validation_report_url(self, mocker):
         # Arrange

@@ -147,7 +147,7 @@ class TestKafkaEngine:
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mock_client = mocker.patch("hopsworks_common.client.get_instance")
@@ -167,7 +167,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
         assert result == {
@@ -189,7 +189,7 @@ class TestKafkaEngine:
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
         mock_client = mocker.patch("hopsworks_common.client.get_instance")
@@ -209,7 +209,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is True
         )
         assert result == {
@@ -231,7 +231,7 @@ class TestKafkaEngine:
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mock_client = mocker.patch("hopsworks_common.client.get_instance")
@@ -252,7 +252,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
         assert result == {
@@ -276,7 +276,7 @@ class TestKafkaEngine:
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
 
@@ -298,7 +298,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
         assert result == {
@@ -413,7 +413,7 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
@@ -436,10 +436,10 @@ class TestKafkaEngine:
             "user_opt": "ABC",
         }
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_count == 1
+            mock_storage_connector_api.return_value._get_kafka_connector.call_count == 1
         )
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
 
@@ -456,7 +456,7 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         # Act
@@ -478,10 +478,10 @@ class TestKafkaEngine:
             "user_opt": "ABC",
         }
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_count == 1
+            mock_storage_connector_api.return_value._get_kafka_connector.call_count == 1
         )
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is True
         )
 
@@ -498,7 +498,7 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         # Act
@@ -521,10 +521,10 @@ class TestKafkaEngine:
             "internal_kafka": True,
         }
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_count == 1
+            mock_storage_connector_api.return_value._get_kafka_connector.call_count == 1
         )
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
 
@@ -561,7 +561,9 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["online_ingestion"]["get"]["response"]
         oi = online_ingestion.OnlineIngestion.from_response_json(json)
-        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
 
         fg = feature_group.FeatureGroup(
             id=111,
@@ -594,7 +596,9 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["online_ingestion"]["get"]["response"]
         oi = online_ingestion.OnlineIngestion.from_response_json(json)
-        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
 
         fg = feature_group.FeatureGroup(
             id=111,
@@ -632,7 +636,9 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["online_ingestion"]["get"]["response"]
         oi = online_ingestion.OnlineIngestion.from_response_json(json)
-        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
 
         fg = feature_group.FeatureGroup(
             id=111,

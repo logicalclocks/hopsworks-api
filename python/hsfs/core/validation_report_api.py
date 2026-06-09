@@ -32,7 +32,7 @@ class ValidationReportApi:
         self._feature_group_id = feature_group_id
         self._variable_api = VariableApi()
 
-    def create(self, validation_report: ValidationReport) -> ValidationReport:
+    def _create(self, validation_report: ValidationReport) -> ValidationReport:
         """Create an validation report attached to a featuregroup.
 
         Parameters:
@@ -66,7 +66,7 @@ class ValidationReportApi:
             _client._send_request("PUT", path_params, headers=headers, data=payload)
         )
 
-    def delete(self, validation_report_id: int) -> None:
+    def _delete(self, validation_report_id: int) -> None:
         """Delete the validation report attached to a featuregroup.
 
         Parameters:
@@ -86,7 +86,7 @@ class ValidationReportApi:
 
         _client._send_request("DELETE", path_params)
 
-    def get_last(self) -> ValidationReport:
+    def _get_last(self) -> ValidationReport:
         """Gets the latest Validation Report of a featuregroup.
 
         Returns:
@@ -114,7 +114,7 @@ class ValidationReportApi:
             _client._send_request("GET", path_params, query_params, headers=headers)
         )
 
-    def get_all(self) -> list[ValidationReport] | ValidationReport:
+    def _get_all(self) -> list[ValidationReport] | ValidationReport:
         """Get the validation report attached to a featuregroup.
 
         Returns:

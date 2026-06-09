@@ -81,7 +81,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group.embedding_index, feature_group._features
         )
 
-        self._feature_group_api.save(feature_group)
+        self._feature_group_api._save(feature_group)
 
     def _insert(
         self,
@@ -146,7 +146,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
         copy_feature_group.columns = features
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
@@ -189,7 +189,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
         copy_feature_group.description = description
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
@@ -202,6 +202,6 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         """
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "deprecate", deprecate
         )

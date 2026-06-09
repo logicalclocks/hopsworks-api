@@ -346,7 +346,7 @@ class TestRedshiftConnector:
         )
 
         mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
-        mocker.patch("hsfs.core.storage_connector_api.StorageConnectorApi.refetch")
+        mocker.patch("hsfs.core.storage_connector_api.StorageConnectorApi._refetch")
         mock_engine_read = mocker.patch("hsfs.engine.spark.Engine._read")
 
         query = "select * from table"
@@ -1540,7 +1540,7 @@ class TestOracleConnector:
             password="tiger",
         )
         mock_get_tables = mocker.patch.object(
-            sc._data_source_api, "get_tables", return_value=[]
+            sc._data_source_api, "_get_tables", return_value=[]
         )
 
         sc.get_tables()
@@ -1561,7 +1561,7 @@ class TestOracleConnector:
             password="tiger",
         )
         mock_get_tables = mocker.patch.object(
-            sc._data_source_api, "get_tables", return_value=[]
+            sc._data_source_api, "_get_tables", return_value=[]
         )
 
         sc.get_tables("SH")
@@ -1906,7 +1906,7 @@ class TestMongoDBConnector:
             database="sample_mflix",
         )
         mock_get_tables = mocker.patch.object(
-            sc._data_source_api, "get_tables", return_value=[]
+            sc._data_source_api, "_get_tables", return_value=[]
         )
 
         sc.get_tables()

@@ -159,7 +159,7 @@ class Chart:
         """
         from hsfs.core.chart_api import ChartApi
 
-        ChartApi().delete_chart(self.id)
+        ChartApi()._delete_chart(self.id)
 
     def update(self) -> None:
         """Update the chart in the feature store.
@@ -171,4 +171,4 @@ class Chart:
         """
         from hsfs.core.chart_api import ChartApi
 
-        ChartApi().update_chart(self)
+        ChartApi()._update_chart(self)

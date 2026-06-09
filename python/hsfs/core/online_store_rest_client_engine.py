@@ -242,7 +242,7 @@ class OnlineStoreRestClientEngine:
         payload["entries"] = entry
         payload["passedFeatures"] = passed_features
 
-        response = self._online_store_rest_client_api.get_single_raw_feature_vector(
+        response = self._online_store_rest_client_api._get_single_raw_feature_vector(
             payload=payload
         )
         if return_type != self.RETURN_TYPE_RESPONSE_JSON:
@@ -319,7 +319,7 @@ class OnlineStoreRestClientEngine:
                 "If some entries do not have passed features, pass an empty dict for those entries."
             )
 
-        response = self._online_store_rest_client_api.get_batch_raw_feature_vectors(
+        response = self._online_store_rest_client_api._get_batch_raw_feature_vectors(
             payload=payload
         )
 

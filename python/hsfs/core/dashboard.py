@@ -93,7 +93,7 @@ class Dashboard:
         """
         from hsfs.core.dashboard_api import DashboardApi
 
-        DashboardApi().delete_dashboard(self.id)
+        DashboardApi()._delete_dashboard(self.id)
 
     def update(self) -> None:
         """Update the dashboard in the feature store.
@@ -105,4 +105,4 @@ class Dashboard:
         """
         from hsfs.core.dashboard_api import DashboardApi
 
-        DashboardApi().update_dashboard(self)
+        DashboardApi()._update_dashboard(self)

@@ -910,7 +910,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id).share_feature_group(
+        share_api.ShareApi(self._feature_store_id)._share_feature_group(
             self._id, target_project, features=features
         )
 
@@ -932,7 +932,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._feature_store_id).list_feature_group_shares(
+        return share_api.ShareApi(self._feature_store_id)._list_feature_group_shares(
             self._id
         )
 
@@ -953,7 +953,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id).unshare_feature_group(
+        share_api.ShareApi(self._feature_store_id)._unshare_feature_group(
             self._id, target_project
         )
 
@@ -2109,7 +2109,7 @@ class FeatureGroupBase:
             latest_ingestion = fg.get_latest_online_ingestion()
             ```
         """
-        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
+        return online_ingestion_api.OnlineIngestionApi()._get_online_ingestion(
             self, query_params={"filter_by": "LATEST"}
         )
 
@@ -2134,7 +2134,7 @@ class FeatureGroupBase:
             ingestion = fg.get_online_ingestion(123)
             ```
         """
-        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
+        return online_ingestion_api.OnlineIngestionApi()._get_online_ingestion(
             self, query_params={"filter_by": f"ID:{id}"}
         )
 
@@ -2149,7 +2149,7 @@ class FeatureGroupBase:
     def feature_store(self) -> feature_store_mod.FeatureStore:
         """Feature store to which the feature group belongs."""
         if self._feature_store is None:
-            self._feature_store = feature_store_api.FeatureStoreApi().get(
+            self._feature_store = feature_store_api.FeatureStoreApi()._get(
                 self._feature_store_id
             )
         return self._feature_store

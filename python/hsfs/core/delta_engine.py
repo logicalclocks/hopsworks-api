@@ -170,7 +170,7 @@ class DeltaEngine:
                 dataset, write_options=write_options, operation=operation
             )
         fg_commit.validation_id = validation_id
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _register_temporary_table(
         self,
@@ -309,7 +309,7 @@ class DeltaEngine:
         fg_commit = self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
         location = self._feature_group.prepare_spark_location()

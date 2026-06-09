@@ -44,7 +44,7 @@ class StorageConnectorApi:
 
         return _client._send_request("GET", path_params, query_params=query_params)
 
-    def get(
+    def _get(
         self, feature_store_id: int, name: str
     ) -> storage_connector.StorageConnector:
         """Get storage connector with name.
@@ -63,7 +63,7 @@ class StorageConnectorApi:
             )
         return None
 
-    def refetch(
+    def _refetch(
         self, storage_connector_instance: storage_connector.StorageConnector
     ) -> storage_connector.StorageConnector:
         """Refetch the storage connector from Hopsworks, updating temporary credentials.
@@ -81,7 +81,7 @@ class StorageConnectorApi:
             )
         )
 
-    def get_uc_bearer(
+    def _get_uc_bearer(
         self,
         feature_store_id: int,
         name: str,
@@ -113,7 +113,7 @@ class StorageConnectorApi:
         ]
         return _client._send_request("GET", path_params)
 
-    def get_online_connector(
+    def _get_online_connector(
         self, feature_store_id: int
     ) -> storage_connector.OnlineStorageConnector:
         _client = client.get_instance()
@@ -130,7 +130,7 @@ class StorageConnectorApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_kafka_connector(
+    def _get_kafka_connector(
         self, feature_store_id: int, external: bool = False
     ) -> storage_connector.KafkaConnector:
         _client = client.get_instance()
@@ -149,7 +149,7 @@ class StorageConnectorApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def get_feature_groups_provenance(self, storage_connector_instance) -> Links:
+    def _get_feature_groups_provenance(self, storage_connector_instance) -> Links:
         """Get the generated feature groups using this storage connector, based on explicit provenance.
 
         These feature groups can be accessible or inaccessible. Explicit
@@ -189,7 +189,7 @@ class StorageConnectorApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
-    def get_training_datasets_provenance(self, storage_connector_instance) -> Links:
+    def _get_training_datasets_provenance(self, storage_connector_instance) -> Links:
         """Get the generated training datasets using this storage connector, based on explicit provenance.
 
         These training datasets can be accessible or inaccessible.

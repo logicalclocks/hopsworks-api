@@ -26,7 +26,7 @@ class TransformationFunctionApi:
     def __init__(self, feature_store_id: int) -> None:
         self._feature_store_id = feature_store_id
 
-    def register_transformation_fn(
+    def _register_transformation_fn(
         self,
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> transformation_function.TransformationFunction:
@@ -60,7 +60,7 @@ class TransformationFunctionApi:
     @decorators.catch_not_found(
         "hsfs.transformation_function.TransformationFunction", fallback_return=None
     )
-    def get_transformation_fn(
+    def _get_transformation_fn(
         self, name: str | None, version: int | None
     ) -> (
         transformation_function.TransformationFunction
@@ -96,7 +96,7 @@ class TransformationFunctionApi:
             _client._send_request("GET", path_params, query_params)
         )
 
-    def delete(
+    def _delete(
         self,
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> None:

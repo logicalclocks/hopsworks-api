@@ -35,7 +35,7 @@ class TestPythonWriter:
             "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema"
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
         avro_schema = (
@@ -141,7 +141,7 @@ class TestPythonWriter:
             return_value=["", ""],
         )
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 

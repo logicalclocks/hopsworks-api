@@ -109,9 +109,9 @@ class Query:
         self._check_read_supported(online)
 
         if online:
-            fs_query = self._query_constructor_api.construct_query(self)
+            fs_query = self._query_constructor_api._construct_query(self)
             sql_query = self._to_string(fs_query, online)
-            online_conn = self._storage_connector_api.get_online_connector(
+            online_conn = self._storage_connector_api._get_online_connector(
                 self._feature_store_id
             )
         else:
@@ -119,9 +119,9 @@ class Query:
 
             if engine.get_instance()._is_flyingduck_query_supported(self, read_options):
                 # The FlyingDuck (Hopsworks Query Service) payload is build in the backend
-                sql_query = self._query_constructor_api.construct_query(self, hqs=True)
+                sql_query = self._query_constructor_api._construct_query(self, hqs=True)
             else:
-                fs_query = self._query_constructor_api.construct_query(self)
+                fs_query = self._query_constructor_api._construct_query(self)
                 sql_query = self._to_string(fs_query, online)
                 # Register on demand feature groups as temporary tables
                 if isinstance(self._left_feature_group, fg_mod.SpineGroup):
@@ -840,7 +840,7 @@ class Query:
         Returns:
             The string representation of the Query.
         """
-        fs_query = self._query_constructor_api.construct_query(self)
+        fs_query = self._query_constructor_api._construct_query(self)
 
         return self._to_string(fs_query, online, arrow_flight)
 
@@ -856,7 +856,7 @@ class Query:
         return fs_query.query
 
     def __str__(self) -> str:
-        return self._query_constructor_api.construct_query(self)
+        return self._query_constructor_api._construct_query(self)
 
     def _get_signature(self, fs_query: FsQuery, asof: bool = False) -> str | None:
         if fs_query.pit_query is not None:

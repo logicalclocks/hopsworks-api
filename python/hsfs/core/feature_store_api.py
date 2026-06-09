@@ -20,7 +20,7 @@ from hopsworks_common import client
 
 
 class FeatureStoreApi:
-    def get(self, identifier: int | str) -> hsfs.feature_store.FeatureStore:
+    def _get(self, identifier: int | str) -> hsfs.feature_store.FeatureStore:
         """Get feature store with specific id or name.
 
         Parameters:
@@ -35,7 +35,7 @@ class FeatureStoreApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_all(self) -> list[hsfs.feature_store.FeatureStore]:
+    def _get_all(self) -> list[hsfs.feature_store.FeatureStore]:
         """Get every feature store accessible from the current project.
 
         Includes the project's own feature store and any feature stores

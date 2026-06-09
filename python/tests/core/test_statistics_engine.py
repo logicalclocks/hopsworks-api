@@ -663,8 +663,8 @@ class TestStatisticsEngine:
         )
 
         # Assert
-        assert mock_statistics_api.return_value.get.call_count == 1
-        assert mock_statistics_api.return_value.get_all.call_count == 0
+        assert mock_statistics_api.return_value._get.call_count == 1
+        assert mock_statistics_api.return_value._get_all.call_count == 0
 
     def test_get_all(self, mocker):
         # Arrange
@@ -683,8 +683,8 @@ class TestStatisticsEngine:
         )
 
         # Assert
-        assert mock_statistics_api.return_value.get_all.call_count == 1
-        assert mock_statistics_api.return_value.get.call_count == 0
+        assert mock_statistics_api.return_value._get_all.call_count == 1
+        assert mock_statistics_api.return_value._get.call_count == 0
 
     def test_get_by_time_window(self, mocker):
         # Arrange
@@ -703,8 +703,8 @@ class TestStatisticsEngine:
         )
 
         # Assert
-        assert mock_statistics_api.return_value.get.call_count == 1
-        assert mock_statistics_api.return_value.get_all.call_count == 0
+        assert mock_statistics_api.return_value._get.call_count == 1
+        assert mock_statistics_api.return_value._get_all.call_count == 0
 
     def test_get_by_time_window_stats_not_found(self, mocker):
         # Arrange
@@ -717,7 +717,7 @@ class TestStatisticsEngine:
         not_found_response.status_code = 404
 
         mocker.patch(
-            "hsfs.core.statistics_api.StatisticsApi.get",
+            "hsfs.core.statistics_api.StatisticsApi._get",
             side_effect=exceptions.RestAPIError("url", not_found_response),
         )
 
@@ -745,7 +745,7 @@ class TestStatisticsEngine:
         bad_request_response.status_code = 400
 
         mocker.patch(
-            "hsfs.core.statistics_api.StatisticsApi.get",
+            "hsfs.core.statistics_api.StatisticsApi._get",
             side_effect=exceptions.RestAPIError("url", bad_request_response),
         )
 
@@ -787,8 +787,8 @@ class TestStatisticsEngine:
         )
 
         # Assert
-        assert mock_statistics_api.return_value.post.call_count == 1
-        assert mock_statistics_api.return_value.post.call_args[0][0] == td
+        assert mock_statistics_api.return_value._post.call_count == 1
+        assert mock_statistics_api.return_value._post.call_args[0][0] == td
 
     def test_save_statistics_fv(self, mocker):
         # Arrange
@@ -821,8 +821,8 @@ class TestStatisticsEngine:
         s_engine._save_statistics(stats=None, metadata_instance=td, feature_view_obj=fv)
 
         # Assert
-        assert mock_statistics_api.return_value.post.call_count == 1
-        assert mock_statistics_api.return_value.post.call_args[0][0] == fv
+        assert mock_statistics_api.return_value._post.call_count == 1
+        assert mock_statistics_api.return_value._post.call_args[0][0] == fv
 
     def test_profile_unique_values(self, mocker):
         # Arrange

@@ -26,9 +26,9 @@ DEFAULT_DESCRIPTION = "A feature monitoring configuration for unit test."
 DEFAULT_NAME = "test_monitoring_config"
 DEFAULT_FEATURE_NAME = "monitored_feature"
 DEFAULT_FEATURE_MONITORING_CONFIG_CREATE_API = (
-    "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi.create"
+    "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi._create"
 )
-DEFAULT_FEATURE_MONITORING_CONFIG_SETUP_JOB_API = "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi.setup_feature_monitoring_job"
+DEFAULT_FEATURE_MONITORING_CONFIG_SETUP_JOB_API = "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi._setup_feature_monitoring_job"
 DEFAULT_FEATURE_STORE_ID = 67
 DEFAULT_FEATURE_GROUP_ID = 13
 DEFAULT_FEATURE_VIEW_NAME = "feature_view_unittest"

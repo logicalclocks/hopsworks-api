@@ -43,5 +43,5 @@ class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         # need to save dataframe during save since otherwise it will be lost
         dataframe = feature_group.dataframe
-        self._feature_group_api.save(feature_group)
+        self._feature_group_api._save(feature_group)
         feature_group.dataframe = dataframe

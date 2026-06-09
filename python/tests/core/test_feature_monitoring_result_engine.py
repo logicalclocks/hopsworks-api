@@ -36,7 +36,7 @@ DEFAULT_SPECIFIC_VALUE = 2.01
 DEFAULT_DIFFERENCE = 6.5
 
 FEATURE_MONITORING_RESULT_CREATE_API = (
-    "hsfs.core.feature_monitoring_result_api.FeatureMonitoringResultApi.create"
+    "hsfs.core.feature_monitoring_result_api.FeatureMonitoringResultApi._create"
 )
 GET_JOB_API = "hsfs.core.job_api.JobApi.get"
 LAST_EXECUTION_API = "hsfs.core.job_api.JobApi.last_execution"
@@ -52,7 +52,7 @@ class TestFeatureMonitoringResultEngine:
         end_time = "2022-02-02 20:20:20"
 
         mock_result_api = mocker.patch(
-            "hsfs.core.feature_monitoring_result_api.FeatureMonitoringResultApi.get_by_config_id",
+            "hsfs.core.feature_monitoring_result_api.FeatureMonitoringResultApi._get_by_config_id",
         )
 
         result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
@@ -89,7 +89,7 @@ class TestFeatureMonitoringResultEngine:
         end_time = "2022-02-02 02:02:02"
 
         mock_result_api = mocker.patch(
-            "hsfs.core.feature_monitoring_result_api.FeatureMonitoringResultApi.get_by_config_id",
+            "hsfs.core.feature_monitoring_result_api.FeatureMonitoringResultApi._get_by_config_id",
         )
 
         result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(

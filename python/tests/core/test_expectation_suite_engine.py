@@ -44,7 +44,7 @@ class TestExpectationSuiteEngine:
         es_engine._create(expectation_suite=None)
 
         # Assert
-        assert mock_es_api.return_value.create.call_count == 1
+        assert mock_es_api.return_value._create.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -76,7 +76,7 @@ class TestExpectationSuiteEngine:
         es_engine._update(expectation_suite=None)
 
         # Assert
-        assert mock_es_api.return_value.update.call_count == 1
+        assert mock_es_api.return_value._update.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -110,7 +110,7 @@ class TestExpectationSuiteEngine:
         )
 
         # Assert
-        assert mock_es_api.return_value.create.call_count == 1
+        assert mock_es_api.return_value._create.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -135,7 +135,7 @@ class TestExpectationSuiteEngine:
         es_engine._get()
 
         # Assert
-        assert mock_es_api.return_value.get.call_count == 1
+        assert mock_es_api.return_value._get.call_count == 1
 
     def test_delete(self, mocker):
         # Arrange
@@ -156,7 +156,7 @@ class TestExpectationSuiteEngine:
         es_engine._delete(expectation_suite_id=expectation_suite_id)
 
         # Assert
-        assert mock_es_api.return_value.delete.call_count == 1
+        assert mock_es_api.return_value._delete.call_count == 1
 
     def test_get_expectation_suite_url(self, mocker):
         # Arrange

@@ -2284,7 +2284,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        mock_fg_api.return_value.ingestion.return_value.job = job.Job(
+        mock_fg_api.return_value._ingestion.return_value.job = job.Job(
             1, "test_job", None, None, None, None
         )
 
@@ -2301,7 +2301,7 @@ class TestPython:
         )
 
         # Assert
-        assert mock_fg_api.return_value.ingestion.call_count == 1
+        assert mock_fg_api.return_value._ingestion.call_count == 1
         assert mock_dataset_api.return_value.upload_feature_group.call_count == 1
         assert mock_execution_api.return_value._start.call_count == 1
         assert mock_get_url.call_count == 1
@@ -3180,8 +3180,8 @@ class TestPython:
             str(e_info.value)
             == "Currently only query based training datasets are supported by the Python engine"
         )
-        assert mock_fv_api.return_value.compute_training_dataset.call_count == 0
-        assert mock_td_api.return_value.compute.call_count == 0
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 0
+        assert mock_td_api.return_value._compute.call_count == 0
         assert mock_python_engine_wait_for_job.call_count == 0
 
     def test_write_training_dataset_query_td(self, mocker, backend_fixtures):
@@ -3194,7 +3194,7 @@ class TestPython:
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
 
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
-        mock_td_api.return_value.compute.return_value = mock_job
+        mock_td_api.return_value._compute.return_value = mock_job
         mocker.patch("hsfs.util.get_job_url")
 
         python_engine = python.Engine()
@@ -3225,8 +3225,8 @@ class TestPython:
         )
 
         # Assert
-        assert mock_fv_api.return_value.compute_training_dataset.call_count == 0
-        assert mock_td_api.return_value.compute.call_count == 1
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 0
+        assert mock_td_api.return_value._compute.call_count == 1
         assert mock_job._wait_for_job.call_count == 1
 
     def test_write_training_dataset_query_fv(self, mocker, backend_fixtures):
@@ -3236,7 +3236,7 @@ class TestPython:
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_job = mocker.patch("hsfs.core.job.Job")
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_fv_api.return_value.compute_training_dataset.return_value = mock_job
+        mock_fv_api.return_value._compute_training_dataset.return_value = mock_job
 
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
         mocker.patch("hsfs.util.get_job_url")
@@ -3277,8 +3277,8 @@ class TestPython:
         )
 
         # Assert
-        assert mock_fv_api.return_value.compute_training_dataset.call_count == 1
-        assert mock_td_api.return_value.compute.call_count == 0
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 1
+        assert mock_td_api.return_value._compute.call_count == 0
         assert mock_job._wait_for_job.call_count == 1
 
     def test_return_dataframe_type_default(self):
@@ -3434,7 +3434,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        mock_fg_api.return_value.update_table_schema.return_value.job = job.Job(
+        mock_fg_api.return_value._update_table_schema.return_value.job = job.Job(
             1, "test_job", None, None, None, None
         )
 
@@ -3443,7 +3443,7 @@ class TestPython:
 
         # Assert
         assert result is None
-        assert mock_fg_api.return_value.update_table_schema.call_count == 1
+        assert mock_fg_api.return_value._update_table_schema.call_count == 1
 
     def test_get_app_options(self, mocker):
         # Arrange
@@ -3524,7 +3524,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
@@ -3589,7 +3589,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
@@ -3650,7 +3650,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
@@ -3714,7 +3714,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 

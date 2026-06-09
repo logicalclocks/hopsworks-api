@@ -311,7 +311,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         if overwrite:
-            self._feature_group_api.delete_content(feature_group)
+            self._feature_group_api._delete_content(feature_group)
 
         return (
             engine.get_instance()._save_dataframe(
@@ -327,7 +327,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
     def _delete(self, feature_group):
-        self._feature_group_api.delete(feature_group)
+        self._feature_group_api._delete(feature_group)
 
     def _commit_details(self, feature_group, wallclock_time, limit):
         if (
@@ -340,7 +340,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         wallclock_timestamp = util.convert_event_time_to_timestamp(wallclock_time)
 
-        feature_group_commits = self._feature_group_api.get_commit_details(
+        feature_group_commits = self._feature_group_api._get_commit_details(
             feature_group, wallclock_timestamp, limit
         )
         commit_details = {}
@@ -411,7 +411,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def _sql(self, query, feature_store_name, dataframe_type, online, read_options):
         if online and self._online_conn is None:
-            self._online_conn = self._storage_connector_api.get_online_connector(
+            self._online_conn = self._storage_connector_api._get_online_connector(
                 self._feature_store_id
             )
         return engine.get_instance()._sql(
@@ -427,7 +427,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # the user object in corrupted state
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.columns = features
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
@@ -474,7 +474,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.description = description
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
@@ -489,7 +489,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.topic_name = topic_name
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
@@ -504,7 +504,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.notification_topic_name = notification_topic_name
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
@@ -518,7 +518,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             deprecate: The new deprecation status to set on the feature group.
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "deprecate", deprecate
         )
 
@@ -691,7 +691,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             if feature_group.data_source
             else None
         )
-        new_fg = self._feature_group_api.save(feature_group)
+        new_fg = self._feature_group_api._save(feature_group)
         if (
             pre_save_rest_endpoint
             and new_fg.data_source
@@ -737,7 +737,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if enabled is not None:
             copy_feature_group.ttl_enabled = enabled
 
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 

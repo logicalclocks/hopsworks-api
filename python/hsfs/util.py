@@ -214,7 +214,7 @@ def build_serving_keys_from_prepared_statements(
     serving_keys = set()
     fg_api = feature_group_api.FeatureGroupApi()
     for statement in prepared_statements:
-        fg = fg_api.get_by_id(feature_store_id, statement.feature_group_id)
+        fg = fg_api._get_by_id(feature_store_id, statement.feature_group_id)
         for param in statement.prepared_statement_parameters:
             serving_keys.add(
                 serving_key.ServingKey(

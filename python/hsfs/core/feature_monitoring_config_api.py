@@ -48,7 +48,7 @@ class FeatureMonitoringConfigApi:
         self._feature_view_name = feature_view_name
         self._feature_view_version = feature_view_version
 
-    def create(
+    def _create(
         self,
         fm_config: fmc.FeatureMonitoringConfig,
     ) -> fmc.FeatureMonitoringConfig:
@@ -61,7 +61,7 @@ class FeatureMonitoringConfigApi:
             the created feature monitoring configuration
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
         )
 
@@ -71,7 +71,7 @@ class FeatureMonitoringConfigApi:
             _client._send_request("POST", path_params, headers=headers, data=payload)
         )
 
-    def update(
+    def _update(
         self,
         fm_config: fmc.FeatureMonitoringConfig,
     ) -> fmc.FeatureMonitoringConfig:
@@ -84,7 +84,7 @@ class FeatureMonitoringConfigApi:
             the updated feature monitoring configuration
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=fm_config._id,
         )
@@ -96,7 +96,7 @@ class FeatureMonitoringConfigApi:
             _client._send_request("PUT", path_params, headers=headers, data=payload)
         )
 
-    def delete(
+    def _delete(
         self,
         config_id: int,
     ) -> None:
@@ -106,14 +106,14 @@ class FeatureMonitoringConfigApi:
             config_id: Id of the feature monitoring configuration to delete
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=config_id,
         )
 
         _client._send_request("DELETE", path_params)
 
-    def get_by_id(
+    def _get_by_id(
         self,
         config_id: int,
     ) -> fmc.FeatureMonitoringConfig | None:
@@ -126,7 +126,7 @@ class FeatureMonitoringConfigApi:
             fetched feature monitoring configuration attached to the Feature Group
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=config_id,
         )
@@ -135,7 +135,7 @@ class FeatureMonitoringConfigApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_by_feature_name(
+    def _get_by_feature_name(
         self,
         feature_name: str,
     ) -> fmc.FeatureMonitoringConfig | None:
@@ -148,7 +148,7 @@ class FeatureMonitoringConfigApi:
             fetched feature monitoring configuration attached to the Feature Group
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
             feature_name=feature_name,
         )
@@ -161,7 +161,7 @@ class FeatureMonitoringConfigApi:
         "hsfs.core.feature_monitoring_config.FeatureMonitoringConfig",
         fallback_return=[],
     )
-    def get_by_name(
+    def _get_by_name(
         self,
         name: str,
     ) -> fmc.FeatureMonitoringConfig | None:
@@ -174,7 +174,7 @@ class FeatureMonitoringConfigApi:
             Fetched feature monitoring configuration attached to the Feature Group.
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
             name=name,
         )
@@ -182,14 +182,14 @@ class FeatureMonitoringConfigApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_by_entity(self) -> list[fmc.FeatureMonitoringConfig]:
+    def _get_by_entity(self) -> list[fmc.FeatureMonitoringConfig]:
         """Get all Feature Monitoring Configurations attached to a Feature Name.
 
         Returns:
             Fetched feature monitoring configuration attached to the Feature Group.
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
             entity=True,
         )
@@ -198,7 +198,7 @@ class FeatureMonitoringConfigApi:
             _client._send_request("GET", path_params)
         )
 
-    def setup_feature_monitoring_job(
+    def _setup_feature_monitoring_job(
         self,
         config_name: str,
     ) -> Job:
@@ -211,14 +211,14 @@ class FeatureMonitoringConfigApi:
             Job object for the feature monitoring job
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
         )
         path_params.extend(["setup", config_name])
 
         return Job.from_response_json(_client._send_request("POST", path_params))
 
-    def trigger_feature_monitoring_job(
+    def _trigger_feature_monitoring_job(
         self,
         config_id: int,
     ) -> Job:
@@ -231,7 +231,7 @@ class FeatureMonitoringConfigApi:
             Job attached to the monitoring configuration
         """
         _client = client.get_instance()
-        path_params = self.build_path_params(
+        path_params = self._build_path_params(
             project_id=_client._project_id,
             config_id=config_id,
         )
@@ -239,7 +239,7 @@ class FeatureMonitoringConfigApi:
 
         return Job.from_response_json(_client._send_request("POST", path_params))
 
-    def build_path_params(
+    def _build_path_params(
         self,
         project_id: int,
         feature_name: str | None = None,

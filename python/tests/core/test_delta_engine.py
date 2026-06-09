@@ -421,7 +421,9 @@ class TestDeltaEngine:
         spark = mock.Mock()
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, spark, None)
-        mock_commit = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mock_commit = mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._commit"
+        )
         mocker.patch.object(engine, "_write_delta_dataset", return_value=mock.Mock())
 
         # Act
@@ -438,7 +440,9 @@ class TestDeltaEngine:
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
-        mock_commit = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mock_commit = mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._commit"
+        )
         mocker.patch.object(engine, "_write_delta_rs_dataset", return_value=mock.Mock())
 
         # Act
@@ -1467,7 +1471,7 @@ class TestDeltaEngine:
         spark = mock.Mock()
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, spark, None)
-        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi._commit")
         write_mock = mocker.patch.object(
             engine, "_write_delta_dataset", return_value=mock.Mock()
         )
@@ -1489,7 +1493,7 @@ class TestDeltaEngine:
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
-        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi._commit")
         write_mock = mocker.patch.object(
             engine, "_write_delta_rs_dataset", return_value=mock.Mock()
         )

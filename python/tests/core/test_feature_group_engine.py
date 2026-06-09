@@ -394,7 +394,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
-        assert mock_fg_api.return_value.delete_content.call_count == 0
+        assert mock_fg_api.return_value._delete_content.call_count == 0
         assert mock_validate_schema.called == should_validate_schema
 
     def test_insert_storage(self, mocker):
@@ -437,7 +437,7 @@ class TestFeatureGroupEngine:
             )
 
         # Assert
-        assert mock_fg_api.return_value.delete_content.call_count == 0
+        assert mock_fg_api.return_value._delete_content.call_count == 0
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
         assert (
             str(e_info.value) == "Online storage is not enabled for this feature group."
@@ -490,7 +490,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.delete_content.call_count == 0
+        assert mock_fg_api.return_value._delete_content.call_count == 0
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
         assert tf_engine_patch._apply_transformation_functions.call_count == 1
 
@@ -534,7 +534,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.delete_content.call_count == 0
+        assert mock_fg_api.return_value._delete_content.call_count == 0
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
 
     def test_insert_ge_report(self, mocker):
@@ -593,7 +593,7 @@ class TestFeatureGroupEngine:
             )
 
         # Assert
-        assert mock_fg_api.return_value.delete_content.call_count == 0
+        assert mock_fg_api.return_value._delete_content.call_count == 0
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
 
     def test_insert_overwrite(self, mocker):
@@ -635,7 +635,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.delete_content.call_count == 1
+        assert mock_fg_api.return_value._delete_content.call_count == 1
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
 
     def test_delete(self, mocker):
@@ -663,7 +663,7 @@ class TestFeatureGroupEngine:
         fg_engine._delete(feature_group=fg)
 
         # Assert
-        assert mock_fg_api.return_value.delete.call_count == 1
+        assert mock_fg_api.return_value._delete.call_count == 1
 
     def test_commit_details(self, mocker):
         # Arrange
@@ -694,7 +694,7 @@ class TestFeatureGroupEngine:
             fg_engine._commit_details(feature_group=fg, wallclock_time=None, limit=None)
 
         # Assert
-        assert mock_fg_api.return_value.get_commit_details.call_count == 0
+        assert mock_fg_api.return_value._get_commit_details.call_count == 0
         assert (
             str(e_info.value)
             == "commit_details can only be used on time travel enabled feature groups"
@@ -729,7 +729,7 @@ class TestFeatureGroupEngine:
             fg_engine._commit_details(feature_group=fg, wallclock_time=None, limit=None)
 
         # Assert
-        assert mock_fg_api.return_value.get_commit_details.call_count == 0
+        assert mock_fg_api.return_value._get_commit_details.call_count == 0
         assert (
             str(e_info.value)
             == "commit_details can only be used on time travel enabled feature groups"
@@ -763,7 +763,7 @@ class TestFeatureGroupEngine:
         fg_engine._commit_details(feature_group=fg, wallclock_time=None, limit=None)
 
         # Assert
-        assert mock_fg_api.return_value.get_commit_details.call_count == 1
+        assert mock_fg_api.return_value._get_commit_details.call_count == 1
 
     def test_commit_details_time_travel_format_hudi_fg_commit(self, mocker):
         # Arrange
@@ -794,7 +794,7 @@ class TestFeatureGroupEngine:
         fg_commit = feature_group_commit.FeatureGroupCommit(
             commitid=1, rows_inserted=2, rows_updated=3, rows_deleted=4
         )
-        mock_fg_api.return_value.get_commit_details.return_value = [fg_commit]
+        mock_fg_api.return_value._get_commit_details.return_value = [fg_commit]
         mock_util_get_hudi_datestr_from_timestamp.return_value = "123"
 
         # Act
@@ -803,7 +803,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.get_commit_details.call_count == 1
+        assert mock_fg_api.return_value._get_commit_details.call_count == 1
         assert result == {
             1: {
                 "committedOn": "123",
@@ -954,7 +954,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_sc_api.return_value.get_online_connector.call_count == 0
+        assert mock_sc_api.return_value._get_online_connector.call_count == 0
 
     def test_sql_online(self, mocker):
         # Arrange
@@ -980,7 +980,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_sc_api.return_value.get_online_connector.call_count == 1
+        assert mock_sc_api.return_value._get_online_connector.call_count == 1
 
     def test_update_features_metadata(self, mocker):
         # Arrange
@@ -1007,7 +1007,7 @@ class TestFeatureGroupEngine:
         fg_engine._update_features_metadata(feature_group=fg, features=None)
 
         # Assert
-        assert mock_fg_api.return_value.update_metadata.call_count == 1
+        assert mock_fg_api.return_value._update_metadata.call_count == 1
 
     def test_update_features(self, mocker):
         # Arrange
@@ -1097,7 +1097,7 @@ class TestFeatureGroupEngine:
         fg_engine._update_description(feature_group=fg, description=None)
 
         # Assert
-        assert mock_fg_api.return_value.update_metadata.call_count == 1
+        assert mock_fg_api.return_value._update_metadata.call_count == 1
 
     def test_get_subject(self, mocker):
         # Arrange
@@ -1564,7 +1564,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.save.call_count == 1
+        assert mock_fg_api.return_value._save.call_count == 1
         assert f.primary is False
         assert f.partition is False
         assert f.hudi_precombine_key is False
@@ -1598,7 +1598,7 @@ class TestFeatureGroupEngine:
             fg._id = 10
             return fg
 
-        mock_fg_api.return_value.save.side_effect = _save_side_effect
+        mock_fg_api.return_value._save.side_effect = _save_side_effect
 
         storage_connector = CRMAndAnalyticsConnector(
             id=1,
@@ -1660,7 +1660,7 @@ class TestFeatureGroupEngine:
             fg._id = 10
             return fg
 
-        mock_fg_api.return_value.save.side_effect = _save_side_effect
+        mock_fg_api.return_value._save.side_effect = _save_side_effect
 
         storage_connector = CRMAndAnalyticsConnector(
             id=1,
@@ -1725,7 +1725,7 @@ class TestFeatureGroupEngine:
             fg._id = 10
             return fg
 
-        mock_fg_api.return_value.save.side_effect = _save_side_effect
+        mock_fg_api.return_value._save.side_effect = _save_side_effect
 
         storage_connector = CRMAndAnalyticsConnector(
             id=1,
@@ -1804,7 +1804,7 @@ class TestFeatureGroupEngine:
             fg._id = 10
             return fg
 
-        mock_fg_api.return_value.save.side_effect = _save_side_effect
+        mock_fg_api.return_value._save.side_effect = _save_side_effect
 
         fg = feature_group.FeatureGroup(
             name="fg",
@@ -1868,7 +1868,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.save.call_count == 1
+        assert mock_fg_api.return_value._save.call_count == 1
         assert f.primary is False
         assert f.partition is False
         assert f.hudi_precombine_key is False
@@ -1914,7 +1914,7 @@ class TestFeatureGroupEngine:
             hudi_precombine_key="f",
             time_travel_format="HUDI",
         )
-        mock_fg_api.return_value.save.return_value = fg
+        mock_fg_api.return_value._save.return_value = fg
 
         # Act
         fg_engine._save_feature_group_metadata(
@@ -1922,7 +1922,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.save.call_count == 1
+        assert mock_fg_api.return_value._save.call_count == 1
         assert f.primary is True
         assert f.partition is True
         assert f.hudi_precombine_key is True
@@ -2077,7 +2077,7 @@ class TestFeatureGroupEngine:
             partition_key=[],
             features=[],
         )
-        mock_fg_api.return_value.save.return_value = fg
+        mock_fg_api.return_value._save.return_value = fg
 
         # Act
         fg_engine._save_feature_group_metadata(
@@ -2087,7 +2087,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.save.call_count == 1
+        assert mock_fg_api.return_value._save.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -2138,7 +2138,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.save.call_count == 1
+        assert mock_fg_api.return_value._save.call_count == 1
         assert f.primary is False
         assert f.partition is False
         assert f.hudi_precombine_key is False
@@ -2196,7 +2196,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.save.call_count == 1
+        assert mock_fg_api.return_value._save.call_count == 1
         job_conf = fg._deltastreamer_jobconf
         write_opts = job_conf._options
         option_names = [opt["name"] for opt in write_opts]

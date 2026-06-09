@@ -159,7 +159,7 @@ class TestFeatureViewEngine:
         fv_engine._save(fv)
 
         # Assert
-        assert mock_fv_api.return_value.post.call_count == 1
+        assert mock_fv_api.return_value._post.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -196,7 +196,7 @@ class TestFeatureViewEngine:
         fv_engine._save(fv)
 
         # Assert
-        assert mock_fv_api.return_value.post.call_count == 1
+        assert mock_fv_api.return_value._post.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -239,7 +239,7 @@ class TestFeatureViewEngine:
         fv_engine._save(fv)
 
         # Assert
-        assert mock_fv_api.return_value.post.call_count == 1
+        assert mock_fv_api.return_value._post.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -284,7 +284,7 @@ class TestFeatureViewEngine:
             and fv._features[0].label
             and fv._features[0].feature_group.id == label_fg_id
         )
-        assert mock_fv_api.return_value.post.call_count == 1
+        assert mock_fv_api.return_value._post.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -320,7 +320,7 @@ class TestFeatureViewEngine:
 
         # Assert
         assert str(e_info.value) == msg
-        assert mock_fv_api.return_value.post.call_count == 0
+        assert mock_fv_api.return_value._post.call_count == 0
 
     def test_save_label_unique_col(self, mocker):
         _query = fg1.select_all().join(fg4.select_all())
@@ -414,14 +414,14 @@ class TestFeatureViewEngine:
             labels=[],
         )
 
-        mock_fv_api.return_value.get_by_name.return_value = [fv, fv1]
+        mock_fv_api.return_value._get_by_name.return_value = [fv, fv1]
 
         # Act
         result = fv_engine._get(name="test")
 
         # Assert
-        assert mock_fv_api.return_value.get_by_name_version.call_count == 0
-        assert mock_fv_api.return_value.get_by_name.call_count == 1
+        assert mock_fv_api.return_value._get_by_name_version.call_count == 0
+        assert mock_fv_api.return_value._get_by_name.call_count == 1
         assert len(result) == 2
 
     def test_get_name_version(self, mocker):
@@ -442,14 +442,14 @@ class TestFeatureViewEngine:
             labels=[],
         )
 
-        mock_fv_api.return_value.get_by_name.return_value = fv
+        mock_fv_api.return_value._get_by_name.return_value = fv
 
         # Act
         fv_engine._get(name="test", version=1)
 
         # Assert
-        assert mock_fv_api.return_value.get_by_name_version.call_count == 1
-        assert mock_fv_api.return_value.get_by_name.call_count == 0
+        assert mock_fv_api.return_value._get_by_name_version.call_count == 1
+        assert mock_fv_api.return_value._get_by_name.call_count == 0
 
     def test_delete_name(self, mocker):
         # Arrange
@@ -465,8 +465,8 @@ class TestFeatureViewEngine:
         fv_engine._delete(name="test")
 
         # Assert
-        assert mock_fv_api.return_value.delete_by_name_version.call_count == 0
-        assert mock_fv_api.return_value.delete_by_name.call_count == 1
+        assert mock_fv_api.return_value._delete_by_name_version.call_count == 0
+        assert mock_fv_api.return_value._delete_by_name.call_count == 1
 
     def test_delete_name_version(self, mocker):
         # Arrange
@@ -482,8 +482,8 @@ class TestFeatureViewEngine:
         fv_engine._delete(name="test", version=1)
 
         # Assert
-        assert mock_fv_api.return_value.delete_by_name_version.call_count == 1
-        assert mock_fv_api.return_value.delete_by_name.call_count == 0
+        assert mock_fv_api.return_value._delete_by_name_version.call_count == 1
+        assert mock_fv_api.return_value._delete_by_name.call_count == 0
 
     def test_get_batch_query(self, mocker):
         # Arrange
@@ -513,7 +513,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_api.return_value.get_batch_query.call_count == 1
+        assert mock_fv_api.return_value._get_batch_query.call_count == 1
 
     def test_get_batch_query_with_extra_filter(self, mocker):
         # Arrange
@@ -552,8 +552,8 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_api.return_value.get_batch_query.call_count == 1
-        call_kwargs = mock_fv_api.return_value.get_batch_query.call_args
+        assert mock_fv_api.return_value._get_batch_query.call_count == 1
+        call_kwargs = mock_fv_api.return_value._get_batch_query.call_args
         forwarded = call_kwargs[1]["extra_filter"]
         # Use the public Logic API instead of reaching into `_left_f` /
         # `_type` so the assertion is stable across internal refactors.
@@ -656,7 +656,7 @@ class TestFeatureViewEngine:
             hudi_cached_feature_groups=None,
             pit_query=None,
         )
-        mock_qc_api.return_value.construct_query.return_value = _fs_query
+        mock_qc_api.return_value._construct_query.return_value = _fs_query
 
         # Act
         result = fv_engine._get_batch_query_string(
@@ -665,8 +665,8 @@ class TestFeatureViewEngine:
 
         # Assert
         assert result == "query"
-        assert mock_fv_api.return_value.get_batch_query.call_count == 1
-        assert mock_qc_api.return_value.construct_query.call_count == 1
+        assert mock_fv_api.return_value._get_batch_query.call_count == 1
+        assert mock_qc_api.return_value._construct_query.call_count == 1
 
     def test_get_batch_query_string_pit_query(self, mocker):
         # Arrange
@@ -696,7 +696,7 @@ class TestFeatureViewEngine:
             pit_query="pit_query",
         )
 
-        mock_qc_api.return_value.construct_query.return_value = _fs_query
+        mock_qc_api.return_value._construct_query.return_value = _fs_query
 
         # Act
         result = fv_engine._get_batch_query_string(
@@ -705,8 +705,8 @@ class TestFeatureViewEngine:
 
         # Assert
         assert result == "pit_query"
-        assert mock_fv_api.return_value.get_batch_query.call_count == 1
-        assert mock_qc_api.return_value.construct_query.call_count == 1
+        assert mock_fv_api.return_value._get_batch_query.call_count == 1
+        assert mock_qc_api.return_value._construct_query.call_count == 1
 
     def test_create_training_dataset(self, mocker):
         # Arrange
@@ -2366,7 +2366,7 @@ class TestFeatureViewEngine:
             query=query,
         )
         # Setting feature view schema
-        mock_fv_api.return_value.get_training_dataset_by_version.return_value = td
+        mock_fv_api.return_value._get_training_dataset_by_version.return_value = td
 
         # Act
         result = fv_engine._get_training_dataset_metadata(
@@ -2374,7 +2374,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_api.return_value.get_training_dataset_by_version.call_count == 1
+        assert mock_fv_api.return_value._get_training_dataset_by_version.call_count == 1
         assert result == td
 
     def test_create_training_data_metadata(self, mocker):
@@ -2406,7 +2406,7 @@ class TestFeatureViewEngine:
         fv.schema = "schema"
         fv.transformation_functions = None
 
-        mock_fv_api.return_value.create_training_dataset.return_value = td
+        mock_fv_api.return_value._create_training_dataset.return_value = td
 
         # Act
         _ = fv_engine._create_training_data_metadata(
@@ -2414,7 +2414,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_api.return_value.create_training_dataset.call_count == 1
+        assert mock_fv_api.return_value._create_training_dataset.call_count == 1
 
     def test_delete_training_data(self, mocker):
         # Arrange
@@ -2438,8 +2438,8 @@ class TestFeatureViewEngine:
         fv_engine._delete_training_data(feature_view_obj=fv, training_data_version=None)
 
         # Assert
-        assert mock_fv_api.return_value.delete_training_data_version.call_count == 0
-        assert mock_fv_api.return_value.delete_training_data.call_count == 1
+        assert mock_fv_api.return_value._delete_training_data_version.call_count == 0
+        assert mock_fv_api.return_value._delete_training_data.call_count == 1
 
     def test_delete_training_data_version(self, mocker):
         # Arrange
@@ -2463,8 +2463,8 @@ class TestFeatureViewEngine:
         fv_engine._delete_training_data(feature_view_obj=fv, training_data_version=1)
 
         # Assert
-        assert mock_fv_api.return_value.delete_training_data_version.call_count == 1
-        assert mock_fv_api.return_value.delete_training_data.call_count == 0
+        assert mock_fv_api.return_value._delete_training_data_version.call_count == 1
+        assert mock_fv_api.return_value._delete_training_data.call_count == 0
 
     def test_delete_training_dataset_only(self, mocker):
         # Arrange
@@ -2491,10 +2491,10 @@ class TestFeatureViewEngine:
 
         # Assert
         assert (
-            mock_fv_api.return_value.delete_training_dataset_only_version.call_count
+            mock_fv_api.return_value._delete_training_dataset_only_version.call_count
             == 0
         )
-        assert mock_fv_api.return_value.delete_training_dataset_only.call_count == 1
+        assert mock_fv_api.return_value._delete_training_dataset_only.call_count == 1
 
     def test_delete_training_dataset_only_version(self, mocker):
         # Arrange
@@ -2521,10 +2521,10 @@ class TestFeatureViewEngine:
 
         # Assert
         assert (
-            mock_fv_api.return_value.delete_training_dataset_only_version.call_count
+            mock_fv_api.return_value._delete_training_dataset_only_version.call_count
             == 1
         )
-        assert mock_fv_api.return_value.delete_training_dataset_only.call_count == 0
+        assert mock_fv_api.return_value._delete_training_dataset_only.call_count == 0
 
     def test_get_batch_data(self, mocker):
         # Arrange

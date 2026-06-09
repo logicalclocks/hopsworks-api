@@ -113,7 +113,7 @@ class HudiEngine:
             dataset, save_mode, operation, write_options
         )
         fg_commit.validation_id = validation_id
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _delete_record(self, delete_df, write_options):
         write_options[self.PAYLOAD_CLASS_OPT_KEY] = self.PAYLOAD_CLASS_OPT_VAL
@@ -121,7 +121,7 @@ class HudiEngine:
         fg_commit = self._write_hudi_dataset(
             delete_df, "append", self.HUDI_UPSERT, write_options
         )
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _register_temporary_table(self, hudi_fg_alias, read_options):
         location = self._feature_group.prepare_spark_location()
