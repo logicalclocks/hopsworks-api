@@ -250,9 +250,9 @@ class ModelServing:
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
-            tracing: Tracing configuration for the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            tracing: Tracing configuration for the predictor.
 
         Returns:
             The predictor metadata object.
