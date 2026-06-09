@@ -184,7 +184,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection().get_feature_store(name)
+        return client._get_connection()._get_feature_store(name)
 
     @public
     def get_model_registry(self) -> ModelRegistry:
@@ -205,7 +205,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection().get_model_registry()
+        return client._get_connection()._get_model_registry()
 
     @public
     def get_model_serving(self) -> ModelServing:
@@ -226,7 +226,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection().get_model_serving()
+        return client._get_connection()._get_model_serving()
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:

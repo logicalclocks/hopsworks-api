@@ -55,3 +55,43 @@ class TestProject:
         project = Project(project_name="my_project")
 
         assert project.home_path == "/Projects/my_project/Users/bob"
+
+    # Regression: get_feature_store / get_model_registry / get_model_serving
+    # delegate to the (internal) Connection. Those Connection methods are now
+    # private (_get_feature_store, ...), so a spec'd Connection mock makes a call
+    # to the old public name raise AttributeError — catching a stale-call regression.
+    def test_get_feature_store_delegates_to_connection(self, mocker):
+        from hopsworks_common.connection import Connection
+
+        conn = mocker.MagicMock(spec=Connection)
+        conn._get_feature_store.return_value = "FS"
+        mocker.patch("hopsworks_common.client._get_connection", return_value=conn)
+
+        project = Project(project_name="my_project")
+
+        assert project.get_feature_store("fs_name") == "FS"
+        conn._get_feature_store.assert_called_once_with("fs_name")
+
+    def test_get_model_registry_delegates_to_connection(self, mocker):
+        from hopsworks_common.connection import Connection
+
+        conn = mocker.MagicMock(spec=Connection)
+        conn._get_model_registry.return_value = "MR"
+        mocker.patch("hopsworks_common.client._get_connection", return_value=conn)
+
+        project = Project(project_name="my_project")
+
+        assert project.get_model_registry() == "MR"
+        conn._get_model_registry.assert_called_once()
+
+    def test_get_model_serving_delegates_to_connection(self, mocker):
+        from hopsworks_common.connection import Connection
+
+        conn = mocker.MagicMock(spec=Connection)
+        conn._get_model_serving.return_value = "MS"
+        mocker.patch("hopsworks_common.client._get_connection", return_value=conn)
+
+        project = Project(project_name="my_project")
+
+        assert project.get_model_serving() == "MS"
+        conn._get_model_serving.assert_called_once()

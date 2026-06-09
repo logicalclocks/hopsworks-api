@@ -205,7 +205,7 @@ class TestProvideProject:
         conn._provide_project()
 
         conn._variable_api._get_data_science_profile_enabled.assert_not_called()
-        conn._model_serving_api.load_default_configuration.assert_not_called()
+        conn._model_serving_api._load_default_configuration.assert_not_called()
 
     def test_loads_default_configuration_when_profile_enabled(
         self, conn, client_instance
@@ -215,7 +215,7 @@ class TestProvideProject:
 
         conn._provide_project()
 
-        conn._model_serving_api.load_default_configuration.assert_called_once()
+        conn._model_serving_api._load_default_configuration.assert_called_once()
 
     def test_skips_default_configuration_when_profile_disabled(
         self, conn, client_instance
@@ -225,14 +225,14 @@ class TestProvideProject:
 
         conn._provide_project()
 
-        conn._model_serving_api.load_default_configuration.assert_not_called()
+        conn._model_serving_api._load_default_configuration.assert_not_called()
 
     def test_missing_serving_scope_is_swallowed(self, conn, client_instance, capsys):
         # 403 + 320004 means the API key lacks the SERVING scope; model serving is disabled
         # but login must still succeed.
         client_instance._project_name = "proj"
         conn._variable_api._get_data_science_profile_enabled.return_value = True
-        conn._model_serving_api.load_default_configuration.side_effect = (
+        conn._model_serving_api._load_default_configuration.side_effect = (
             self._make_rest_error(status_error_code=403, error_code=320004)
         )
 
@@ -243,7 +243,7 @@ class TestProvideProject:
     def test_other_rest_api_errors_are_reraised(self, conn, client_instance):
         client_instance._project_name = "proj"
         conn._variable_api._get_data_science_profile_enabled.return_value = True
-        conn._model_serving_api.load_default_configuration.side_effect = (
+        conn._model_serving_api._load_default_configuration.side_effect = (
             self._make_rest_error(status_error_code=500, error_code=999999)
         )
 

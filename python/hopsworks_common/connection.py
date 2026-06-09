@@ -443,7 +443,7 @@ class Connection:
             # but after a project is provided to client
             try:
                 # istio client, default resources,...
-                self._model_serving_api.load_default_configuration()
+                self._model_serving_api._load_default_configuration()
             except RestAPIError as e:
                 if e.response.error_code == 403 and e.error_code == 320004:
                     print(

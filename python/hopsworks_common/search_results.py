@@ -281,7 +281,7 @@ class FeatureGroupSearchResult(SearchResultItem):
             Exception: If the connection to the feature store fails or the
                 Feature Group cannot be retrieved.
         """
-        fs = client._get_connection().get_feature_store(self.project.name)
+        fs = client._get_connection()._get_feature_store(self.project.name)
         return fs.get_feature_group(self.name, version=self.version)
 
 
@@ -304,7 +304,7 @@ class FeatureViewSearchResult(SearchResultItem):
             Exception: If the connection to the feature store fails or the
                 Feature View cannot be retrieved.
         """
-        fs = client._get_connection().get_feature_store(self.project.name)
+        fs = client._get_connection()._get_feature_store(self.project.name)
         return fs.get_feature_view(self.name, version=self.version)
 
 
@@ -327,7 +327,7 @@ class TrainingDatasetSearchResult(SearchResultItem):
             Exception: If the connection to the feature store fails or the
                 Training Dataset cannot be retrieved.
         """
-        fs = client._get_connection().get_feature_store(self.project.name)
+        fs = client._get_connection()._get_feature_store(self.project.name)
         return fs.get_training_dataset(self.name, version=self.version)
 
 
