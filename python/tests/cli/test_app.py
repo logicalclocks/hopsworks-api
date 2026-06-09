@@ -27,6 +27,8 @@ def _fake_app(**overrides):
     a.git_branch = overrides.get("git_branch")
     a.latest_commit = overrides.get("latest_commit")
     a.entrypoint_script = overrides.get("entrypoint_script")
+    a.monitoring_config = overrides.get("monitoring_config")
+    a.monitoringConfig = overrides.get("monitoringConfig")
     a.description = overrides.get("description")
     a.app_url = overrides.get("app_url")
     return a
@@ -149,6 +151,27 @@ def test_app_info_shows_custom_metadata(mock_project):
     assert 'python -m uvicorn dash:app --port "$APP_PORT"' in result.output
 
 
+def test_app_info_shows_monitoring_routes(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash",
+        state="RUNNING",
+        serving=True,
+        monitoringConfig={
+            "enabled": True,
+            "routes": [
+                {"path": "/api", "matchType": "prefix"},
+                {"path": "/predict", "matchType": "exact"},
+            ],
+        },
+    )
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "Monitoring routes" in result.output
+    assert "/api (prefix)" in result.output
+    assert "/predict (exact)" in result.output
+
+
 def test_app_info_shows_git_metadata(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.get_app.return_value = _fake_app(
@@ -218,6 +241,31 @@ def test_app_info_json_includes_git_metadata(mock_project):
     assert payload["git_branch"] == "main"
     assert payload["latest_commit"] == "0123456789abcdef0123456789abcdef01234567"
     assert payload["entrypoint_script"] == "streamlitapp.py"
+
+
+def test_app_info_json_includes_monitoring_config(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash",
+        state="RUNNING",
+        serving=True,
+        monitoring_config={
+            "enabled": True,
+            "routes": [
+                {"path": "/api", "matchType": "prefix"},
+                {"path": "/predict", "matchType": "exact"},
+            ],
+        },
+    )
+    result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["monitoring"] == "enabled"
+    assert payload["monitoring_config"]["enabled"] is True
+    assert payload["monitoring_config"]["routes"] == [
+        {"path": "/api", "matchType": "prefix"},
+        {"path": "/predict", "matchType": "exact"},
+    ]
 
 
 def test_app_url_exits_non_zero_when_not_serving(mock_project):
