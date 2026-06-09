@@ -374,6 +374,76 @@ class TestFeatureView:
             fv, training_dataset_version=1
         )
 
+    def _fv_with_spec_server(self, mocker):
+        # Build a FeatureView whose (lazy) vector servers are spec'd
+        # VectorServer mocks. ``spec`` restricts the mock to attributes that
+        # really exist on VectorServer, so any call to a pre-rename public
+        # name (e.g. get_feature_vector instead of _get_feature_vector)
+        # raises AttributeError instead of silently passing.
+        from hsfs.core.vector_server import VectorServer
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            labels=[],
+        )
+        server = mocker.MagicMock(spec=VectorServer)
+        server._serving_initialized = True
+        server.serving_keys = []
+        fv._FeatureView__vector_server = server
+        fv._FeatureView__batch_scoring_server = server
+        fv._vector_db_client = None
+        return fv, server
+
+    def test_init_serving_delegates_to_server(self, mocker):
+        # Regression guard for the renamed VectorServer._init_serving.
+        fv, server = self._fv_with_spec_server(mocker)
+        mocker.patch.object(fv, "_get_embedding_fgs", return_value=[])
+
+        fv.init_serving(training_dataset_version=1)
+
+        server._init_serving.assert_called_once()
+        assert server._init_serving.call_args.kwargs["entity"] is fv
+
+    def test_get_feature_vector_delegates_to_server(self, mocker):
+        # Regression guard for the renamed VectorServer._get_feature_vector.
+        fv, server = self._fv_with_spec_server(mocker)
+
+        result = fv.get_feature_vector(entry={"primary_key": 1})
+
+        server._get_feature_vector.assert_called_once()
+        assert result is server._get_feature_vector.return_value
+
+    def test_get_feature_vectors_delegates_to_server(self, mocker):
+        # Regression guard for the renamed VectorServer._get_feature_vectors.
+        fv, server = self._fv_with_spec_server(mocker)
+
+        result = fv.get_feature_vectors(entry=[{"primary_key": 1}])
+
+        server._get_feature_vectors.assert_called_once()
+        assert result is server._get_feature_vectors.return_value
+
+    def test_get_inference_helper_delegates_to_server(self, mocker):
+        # Regression guard for the renamed VectorServer._get_inference_helper.
+        fv, server = self._fv_with_spec_server(mocker)
+
+        result = fv.get_inference_helper(entry={"primary_key": 1})
+
+        server._get_inference_helper.assert_called_once()
+        assert result is server._get_inference_helper.return_value
+
+    def test_get_inference_helpers_delegates_to_server(self, mocker):
+        # Regression guard for the renamed VectorServer._get_inference_helpers.
+        fv, server = self._fv_with_spec_server(mocker)
+
+        result = fv.get_inference_helpers(entry=[{"primary_key": 1}])
+
+        server._get_inference_helpers.assert_called_once()
+        assert result is server._get_inference_helpers.return_value
+
     def test_transformed_feature_name(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
