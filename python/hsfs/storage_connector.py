@@ -4268,6 +4268,14 @@ class UnityCatalogSparkOptions:
 def _assert_delta_extension_loaded(spark: Any) -> None:
     if _running_in_databricks(spark):
         return
+    is_connect = not hasattr(spark, "sparkContext")
+    if not is_connect:
+        # Classic Spark: spark.sql.catalog.spark_catalog is mutable at runtime.
+        spark.conf.set(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        return
     try:
         exts = spark.conf.get("spark.sql.extensions", "") or ""
     except Exception:  # noqa: BLE001 — SparkSession variants vary
