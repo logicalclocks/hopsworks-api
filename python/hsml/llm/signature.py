@@ -25,6 +25,7 @@ from hsml.llm.model import Model
 if TYPE_CHECKING:
     import numpy
     import pandas
+    from hsfs.feature_view import FeatureView
     from hsml.model_schema import ModelSchema
 
 
@@ -44,7 +45,7 @@ def create_model(
     | list
     | None = None,
     model_schema: ModelSchema | None = None,
-    feature_view=None,
+    feature_view: FeatureView | None = None,
     training_dataset_version: int | None = None,
 ) -> Model:
     """Create an LLM model metadata object.

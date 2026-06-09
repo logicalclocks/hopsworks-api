@@ -209,7 +209,9 @@ class Links:
 
     @public
     @staticmethod
-    def get_one_accessible_parent(links):
+    def get_one_accessible_parent(
+        links: Links | None,
+    ) -> feature_view.FeatureView | training_dataset.TrainingDataset | None:
         """Return the single accessible parent artifact from the given links.
 
         Parameters:

@@ -60,7 +60,7 @@ def disable_usage_logging():
 
 
 @public
-def get_sdk_info():
+def get_sdk_info() -> str:
     """Return the environment information the SDK reports for usage logging.
 
     Returns:

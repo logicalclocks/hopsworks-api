@@ -106,7 +106,9 @@ class FeatureLogging:
         return self._extra_logging_columns
 
     @public
-    def get_feature_group(self, transformed: bool | None = None):
+    def get_feature_group(
+        self, transformed: bool | None = None
+    ) -> feature_group.FeatureGroup:
         """Get the feature group backing this feature logging.
 
         Transformed and untransformed features are logged in the same feature
