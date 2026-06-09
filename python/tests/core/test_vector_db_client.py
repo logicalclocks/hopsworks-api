@@ -45,7 +45,7 @@ class TestVectorDbClient:
         mocker.patch("hsfs.engine.get_type", return_value="python")
         # Mock the OpenSearchClientSingleton to return a MagicMock instead of creating a real client
         self.mock_os_wrapper = MagicMock()
-        self.mock_os_wrapper.search.return_value = {
+        self.mock_os_wrapper._search.return_value = {
             "hits": {
                 "hits": [
                     {
@@ -465,7 +465,7 @@ class TestVectorDbClient:
             "query": {"bool": {"must": [{"match": {"f1": 10}}, {"match": {"f2": 20}}]}},
             "_source": ["f1", "f2", "f3", "f_bool", "f_ts"],
         }
-        self.mock_os_wrapper.search.assert_called_once_with(
+        self.mock_os_wrapper._search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]
@@ -479,7 +479,7 @@ class TestVectorDbClient:
             "size": 10,
             "_source": ["f1", "f2", "f3", "f_bool", "f_ts"],
         }
-        self.mock_os_wrapper.search.assert_called_once_with(
+        self.mock_os_wrapper._search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]

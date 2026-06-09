@@ -158,7 +158,7 @@ class VectorDbClient:
         opensearch_client = OpenSearchClientSingleton(
             feature_store_id=embedding_feature.feature_group.feature_store_id
         )
-        results = opensearch_client.search(
+        results = opensearch_client._search(
             body=query, index=index_name, options=options
         )
 
@@ -174,7 +174,7 @@ class VectorDbClient:
                 try:
                     # It is expected that this request ALWAYS fails because requested k is too large.
                     # The purpose here is to get the max k allowed from the vector database, and cache it.
-                    opensearch_client.search(
+                    opensearch_client._search(
                         body=query, index=index_name, options=options
                     )
                 except VectorDatabaseException as e:
@@ -192,7 +192,7 @@ class VectorDbClient:
             query["query"]["bool"]["must"][0]["knn"][col_name]["k"] = min(
                 VectorDbClient._index_result_limit_k.get(index_name, k), 3 * k
             )
-            results = opensearch_client.search(
+            results = opensearch_client._search(
                 body=query, index=index_name, options=options
             )
 
@@ -436,7 +436,7 @@ class VectorDbClient:
                 if VectorDbClient._index_result_limit_n.get(index_name) is None:
                     try:
                         query["size"] = 2**31 - 1
-                        opensearch_client.search(body=query, index=index_name)
+                        opensearch_client._search(body=query, index=index_name)
                     except VectorDatabaseException as e:
                         if (
                             e.reason
@@ -454,7 +454,7 @@ class VectorDbClient:
                             raise e
                 query["size"] = VectorDbClient._index_result_limit_n.get(index_name)
         query["_source"] = list(self._fg_vdb_col_fg_col_map.get(fg_id).keys())
-        results = opensearch_client.search(body=query, index=index_name)
+        results = opensearch_client._search(body=query, index=index_name)
         # https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn/#spaces
         return [
             self._convert_to_pandas_type(
@@ -496,7 +496,7 @@ class VectorDbClient:
                 }
             },
         }
-        return OpenSearchClientSingleton(feature_store_id=fg.feature_store_id).count(
+        return OpenSearchClientSingleton(feature_store_id=fg.feature_store_id)._count(
             self._get_vector_db_index_name(fg.id), query, options=options
         )
 

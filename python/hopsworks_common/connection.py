@@ -473,7 +473,7 @@ class Connection:
         from hsfs import engine
 
         if OpenSearchClientSingleton._instance:
-            OpenSearchClientSingleton.close_all()
+            OpenSearchClientSingleton._close_all()
         client.stop()
         engine.stop()
         self._feature_store_api = None
