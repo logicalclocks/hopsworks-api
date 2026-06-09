@@ -192,7 +192,7 @@ class Connection:
         Returns:
             A model registry handle object to perform operations on.
         """
-        return self._model_registry_api.get(project)
+        return self._model_registry_api._get(project)
 
     @usage._method_logger
     @_connected
@@ -211,7 +211,7 @@ class Connection:
         Returns:
             A model serving handle object to perform operations on.
         """
-        return self._model_serving_api.get()
+        return self._model_serving_api._get()
 
     @usage._method_logger
     @_connected

@@ -97,32 +97,38 @@ class TestConnection:
     # handlers
 
     def test_get_model_registry(self, mocker):
-        # Arrange
+        # Arrange. A spec'd ModelRegistryApi makes a call to the pre-rename
+        # public name (.get) raise instead of silently passing on an
+        # auto-created mock attribute.
+        from hsml.core.model_registry_api import ModelRegistryApi
+
         mock_connection = mocker.MagicMock()
         mock_connection._get_model_registry = Connection._get_model_registry
-        mock_connection._model_registry_api = mocker.MagicMock()
-        mock_connection._model_registry_api.get = mocker.MagicMock(return_value="mr")
+        mock_connection._model_registry_api = mocker.MagicMock(spec=ModelRegistryApi)
+        mock_connection._model_registry_api._get = mocker.MagicMock(return_value="mr")
 
         # Act
         mr = mock_connection._get_model_registry(mock_connection)
 
         # Assert
         assert mr == "mr"
-        mock_connection._model_registry_api.get.assert_called_once()
+        mock_connection._model_registry_api._get.assert_called_once()
 
     def test_get_model_serving(self, mocker):
-        # Arrange
+        # Arrange (spec'd ModelServingApi — see test_get_model_registry).
+        from hsml.core.model_serving_api import ModelServingApi
+
         mock_connection = mocker.MagicMock()
         mock_connection._get_model_serving = Connection._get_model_serving
-        mock_connection._model_serving_api = mocker.MagicMock()
-        mock_connection._model_serving_api.get = mocker.MagicMock(return_value="ms")
+        mock_connection._model_serving_api = mocker.MagicMock(spec=ModelServingApi)
+        mock_connection._model_serving_api._get = mocker.MagicMock(return_value="ms")
 
         # Act
         ms = mock_connection._get_model_serving(mock_connection)
 
         # Assert
         assert ms == "ms"
-        mock_connection._model_serving_api.get.assert_called_once()
+        mock_connection._model_serving_api._get.assert_called_once()
 
     # connection
 

@@ -378,7 +378,7 @@ class OpenSearchClientSingleton:
         from hsfs.core import storage_connector_api
 
         connector_api = storage_connector_api.StorageConnectorApi()
-        connector = connector_api.get(feature_store_id, self.FEDERATED_CONNECTOR_NAME)
+        connector = connector_api._get(feature_store_id, self.FEDERATED_CONNECTOR_NAME)
 
         if connector is None:
             # Connector doesn't exist, do not cache anything

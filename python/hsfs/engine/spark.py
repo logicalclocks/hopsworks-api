@@ -297,7 +297,7 @@ class Engine:
                 # Needed for MongoDB since the field names cannot be set using
                 # the query constructor's select statement (unlike with file-based
                 # sources where we can use "SELECT col AS feature_name").
-                full_fg = external_fg._feature_group_engine._feature_group_api.get(
+                full_fg = external_fg._feature_group_engine._feature_group_api._get(
                     external_fg.feature_store_id, external_fg.name, external_fg.version
                 )
                 columns = full_fg.columns if full_fg else []
