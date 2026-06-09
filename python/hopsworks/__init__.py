@@ -633,9 +633,21 @@ def _set_active_project(project):
         _client.provide_project(project.name)
 
 
+@public
 def disable_usage_logging():
+    """Disable anonymous usage logging for this SDK session.
+
+    Usage logging is already disabled by default; call this to be explicit or
+    after it has been enabled elsewhere.
+    """
     usage._disable()
 
 
+@public
 def get_sdk_info():
+    """Return the environment information the SDK reports for usage logging.
+
+    Returns:
+        A JSON string describing the SDK and runtime environment.
+    """
     return usage._get_env()
