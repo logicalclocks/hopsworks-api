@@ -15,9 +15,9 @@
 #
 
 import pytest
-from hsml import deployment, predictor
+from hsml import deployment, deployment_tracing_config, predictor, resources
 from hsml.client.exceptions import ModelServingException
-from hsml.constants import PREDICTOR_STATE
+from hsml.constants import MODEL, PREDICTOR, PREDICTOR_STATE
 from hsml.core import serving_api
 from hsml.engine import serving_engine
 
@@ -109,6 +109,46 @@ class TestDeployment:
 
         # Assert
         assert "not an instance of the Predictor class" in str(e_info.value)
+
+    def test_tracing_property_delegates_to_predictor(self, mocker):
+        # Arrange
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=True,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
+        )
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            tracing=tracing,
+        )
+
+        # Act
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.tracing is tracing
+        assert d.tracing.otel_tracing_storage == "offline"
+
+        updated_tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=False,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_BOTH,
+        )
+        d.tracing = updated_tracing
+
+        assert p.tracing is updated_tracing
+        assert p.tracing.otel_tracing_storage == "both"
 
     # from predictor
 
