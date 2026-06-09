@@ -326,8 +326,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
-    def delete(self, feature_group):
-        self._feature_group_api.delete(feature_group)
+    def delete(self, feature_group, force=False):
+        self._feature_group_api.delete(feature_group, force=force)
 
     def commit_details(self, feature_group, wallclock_time, limit):
         if (

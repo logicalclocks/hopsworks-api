@@ -26,7 +26,17 @@ def test_fg_delete_confirms_and_calls_sdk(mock_project):
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "delete", "txn", "--yes"])
     assert result.exit_code == 0, result.output
-    fg.delete.assert_called_once()
+    fg.delete.assert_called_once_with(force=False)
+
+
+def test_fg_delete_force_cascades(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.name, fg.version = "txn", 1
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "delete", "txn", "--yes", "--force"])
+    assert result.exit_code == 0, result.output
+    fg.delete.assert_called_once_with(force=True)
 
 
 def test_fg_delete_aborts_without_yes(mock_project):

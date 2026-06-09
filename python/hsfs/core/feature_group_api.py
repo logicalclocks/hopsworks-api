@@ -277,6 +277,7 @@ class FeatureGroupApi:
         feature_group_instance: fg_mod.FeatureGroup
         | fg_mod.ExternalFeatureGroup
         | fg_mod.SpineGroup,
+        force: bool = False,
     ) -> None:
         """Drop a feature group from the feature store.
 
@@ -284,6 +285,7 @@ class FeatureGroupApi:
 
         Parameters:
             feature_group_instance: metadata object of feature group
+            force: when True, also cascade-delete feature views that depend on the feature group
         """
         _client = client.get_instance()
         path_params = [
@@ -294,7 +296,8 @@ class FeatureGroupApi:
             "featuregroups",
             feature_group_instance.id,
         ]
-        _client._send_request("DELETE", path_params)
+        query_params = {"force": True} if force else None
+        _client._send_request("DELETE", path_params, query_params=query_params)
 
     def update_metadata(
         self,

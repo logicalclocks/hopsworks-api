@@ -753,8 +753,16 @@ def fg_append_features(
     "--version", type=int, help="Feature group version; required when multiple exist."
 )
 @click.option("--yes", is_flag=True, help="Skip the interactive confirmation prompt.")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Delete even if used by feature views, cascade-deleting those feature views "
+    "(and their training data).",
+)
 @click.pass_context
-def fg_delete(ctx: click.Context, name: str, version: int | None, yes: bool) -> None:
+def fg_delete(
+    ctx: click.Context, name: str, version: int | None, yes: bool, force: bool
+) -> None:
     """Delete a feature group and all its data.
 
     Args:
@@ -762,16 +770,22 @@ def fg_delete(ctx: click.Context, name: str, version: int | None, yes: bool) -> 
         name: Feature group name.
         version: Specific version to delete.
         yes: Skip confirmation when True.
+        force: Cascade-delete dependent feature views instead of failing.
     """
     fg = _get_fg(ctx, name, version)
     if not yes and not output.JSON_MODE:
+        extra = (
+            " Any feature views using it (and their training data) will also be deleted."
+            if force
+            else ""
+        )
         click.confirm(
             f"Delete feature group '{name}' v{getattr(fg, 'version', '?')}? "
-            "This wipes all offline and online data.",
+            f"This wipes all offline and online data.{extra}",
             abort=True,
         )
     try:
-        fg.delete()
+        fg.delete(force=force)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted feature group %s", name)
