@@ -349,6 +349,31 @@ class TestFeatureView:
         with pytest.raises(FeatureStoreException, match="ambiguous"):
             fv.get_feature("primary_key")
 
+    def test_init_batch_scoring_delegates_to_server(self, mocker):
+        # Regression: FeatureView.init_batch_scoring must call the (now
+        # private) VectorServer._init_batch_scoring. A spec'd mock makes a
+        # call to the pre-rename name (init_batch_scoring) raise instead of
+        # silently passing on an auto-created attribute.
+        from hsfs.core.vector_server import VectorServer
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            labels=[],
+        )
+        server = mocker.MagicMock(spec=VectorServer)
+        fv._FeatureView__batch_scoring_server = server
+
+        fv.init_batch_scoring(training_dataset_version=1)
+
+        assert fv._serving_training_dataset_version == 1
+        server._init_batch_scoring.assert_called_once_with(
+            fv, training_dataset_version=1
+        )
+
     def test_transformed_feature_name(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")

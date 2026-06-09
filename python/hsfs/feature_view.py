@@ -546,7 +546,7 @@ class FeatureView:
             training_dataset_version: Transformation statistics are fetched from training dataset and applied to the feature vector.
         """
         self._serving_training_dataset_version = training_dataset_version
-        self._batch_scoring_server.init_batch_scoring(
+        self._batch_scoring_server._init_batch_scoring(
             self, training_dataset_version=training_dataset_version
         )
 
