@@ -138,7 +138,7 @@ class OnlineStoreSqlClient:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
                 self.prepared_statements[key] = (
-                    self.feature_view_api.get_serving_prepared_statement(
+                    self.feature_view_api._get_serving_prepared_statement(
                         entity.name,
                         entity.version,
                         batch=key.startswith("batch"),
@@ -162,7 +162,7 @@ class OnlineStoreSqlClient:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
                 self.prepared_statements[key] = (
-                    self.training_dataset_api.get_serving_prepared_statement(
+                    self.training_dataset_api._get_serving_prepared_statement(
                         entity, batch=key.startswith("batch")
                     )
                 )
