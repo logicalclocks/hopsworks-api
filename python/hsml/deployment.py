@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from hsml.client.istio.utils.infer_type import InferInput
+    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.predictor_state import PredictorState
@@ -747,6 +748,16 @@ class Deployment:
     @transformer.setter
     def transformer(self, transformer: Transformer):
         self._predictor.transformer = transformer
+
+    @public
+    @property
+    def tracing(self):
+        """Tracing configuration attached to this deployment."""
+        return self._predictor.tracing
+
+    @tracing.setter
+    def tracing(self, tracing: DeploymentTracingConfig | dict | None):
+        self._predictor.tracing = tracing
 
     @public
     @property

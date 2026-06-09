@@ -19,6 +19,7 @@ import copy
 import pytest
 from hopsworks_common.constants import SCALING_CONFIG
 from hsml import (
+    deployment_tracing_config,
     inference_batcher,
     inference_logger,
     predictor,
@@ -1174,6 +1175,50 @@ class TestPredictor:
         kwargs = predictor.Predictor.extract_fields_from_json(wire)
 
         assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
+
+    def test_tracing_wire_round_trip(self, mocker):
+        # The tracing object must survive serialisation as a nested payload and
+        # come back from the wire as a strongly typed config object.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=True,
+            provider="mlflow",
+            experiment_id="exp-1",
+            status="running",
+            sampling_percentage=25,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            tracing=tracing,
+        )
+
+        serialized = p.to_dict()
+        restored = predictor.Predictor.from_response_json(serialized)
+
+        assert serialized["tracing"]["otelTracingStorage"] == "offline"
+        assert serialized["tracing"]["enabled"] is True
+        assert restored.tracing is not None
+        assert restored.tracing.enabled is True
+        assert restored.tracing.provider == "mlflow"
+        assert restored.tracing.experiment_id == "exp-1"
+        assert restored.tracing.status == "running"
+        assert restored.tracing.sampling_percentage == 25
+        assert restored.tracing.otel_tracing_storage == "offline"
 
     # vLLM variant round-trip
 

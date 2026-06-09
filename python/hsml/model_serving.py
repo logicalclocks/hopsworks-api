@@ -45,6 +45,7 @@ _AGENT_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 if TYPE_CHECKING:
+    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_endpoint import InferenceEndpoint
     from hsml.inference_logger import InferenceLogger
@@ -206,6 +207,7 @@ class ModelServing:
         env_vars: dict | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -248,6 +250,7 @@ class ModelServing:
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
+            tracing: Tracing configuration for the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
 
@@ -273,6 +276,7 @@ class ModelServing:
             env_vars=env_vars,
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
+            tracing=tracing,
         )
 
     @public
@@ -366,6 +370,7 @@ class ModelServing:
         environment: str | None = None,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         env_vars: dict | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -396,6 +401,7 @@ class ModelServing:
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
+            tracing: Tracing configuration for the endpoint.
 
         Returns:
             The predictor metadata object.
@@ -411,6 +417,7 @@ class ModelServing:
             environment=environment,
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
+            tracing=tracing,
         )
 
     @public
@@ -428,6 +435,7 @@ class ModelServing:
         inference_batcher: InferenceBatcher | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -469,6 +477,7 @@ class ModelServing:
             inference_batcher: Inference batcher configuration.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             scaling_configuration: Scaling configuration for the predictor.
+            tracing: Tracing configuration for the deployment.
 
         Returns:
             The deployment metadata object.
@@ -535,6 +544,7 @@ class ModelServing:
             api_protocol=api_protocol,
             environment=env_name,
             scaling_configuration=scaling_configuration,
+            tracing=tracing,
         )
 
         existing = self.get_deployment(name)
@@ -694,8 +704,9 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
 
     Returns the remote path of the runner script to use as `script_file`.
     """
-    from build import ProjectBuilder
     from build.env import DefaultIsolatedEnv
+
+    from build import ProjectBuilder
 
     pkg_name = _read_package_name(package_dir)
 
