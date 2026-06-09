@@ -82,7 +82,7 @@ class ModelServingApi:
                 if endpoint is not None:
                     client.istio.init(
                         endpoint._get_any_host(),
-                        endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
+                        endpoint._get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
                     )
                 else:
                     raise ValueError(
@@ -97,8 +97,8 @@ class ModelServingApi:
 
                 if endpoint is not None:
                     # if load balancer (external ip) available
-                    https_port = endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
-                    port = https_port or endpoint.get_port(
+                    https_port = endpoint._get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                    port = https_port or endpoint._get_port(
                         INFERENCE_ENDPOINTS.PORT_NAME_HTTP
                     )
                     _client = client._get_instance()

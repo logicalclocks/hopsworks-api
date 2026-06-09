@@ -265,7 +265,7 @@ class TestInferenceEndpoint:
         ie = inference_endpoint.InferenceEndpoint(type=None, hosts=None, ports=ports)
 
         # Act
-        port = ie.get_port(ports[0].name)
+        port = ie._get_port(ports[0].name)
 
         # Assert
         assert port == ports[0]
@@ -282,7 +282,7 @@ class TestInferenceEndpoint:
         ie = inference_endpoint.InferenceEndpoint(type=None, hosts=None, ports=ports)
 
         # Act
-        port = ie.get_port("not_found")
+        port = ie._get_port("not_found")
 
         # Assert
         assert port is None
@@ -292,7 +292,7 @@ class TestInferenceEndpoint:
         ie = inference_endpoint.InferenceEndpoint(type=None, hosts=None, ports=None)
 
         # Act
-        port = ie.get_port("not_found")
+        port = ie._get_port("not_found")
 
         # Assert
         assert port is None

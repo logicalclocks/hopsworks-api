@@ -224,7 +224,7 @@ class Engine:
         schema=None,
     ):
         if self._metrics:
-            self._metrics.snapshot()
+            self._metrics._snapshot()
         if not connector:
             result_df = self._sql_offline(sql_query, feature_store)
         else:
@@ -232,7 +232,7 @@ class Engine:
 
         self._set_job_group("", "")
         if self._metrics:
-            self._metrics.report("sql")
+            self._metrics._report("sql")
         return self._return_dataframe_type(result_df, dataframe_type)
 
     def _is_flyingduck_query_supported(self, query, read_options=None):
@@ -579,7 +579,7 @@ class Engine:
         validation_id=None,
     ):
         if self._metrics:
-            self._metrics.snapshot()
+            self._metrics._snapshot()
         try:
             # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
             # FeatureGroups with stream=True use the same batch insert logic as non-stream
@@ -602,7 +602,7 @@ class Engine:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
         finally:
             if self._metrics:
-                self._metrics.report("save_dataframe")
+                self._metrics._report("save_dataframe")
 
     def _save_stream_dataframe(
         self,
