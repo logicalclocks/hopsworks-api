@@ -636,7 +636,7 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_hudi_engine.return_value.register_temporary_table.call_count == 1
+        assert mock_hudi_engine.return_value._register_temporary_table.call_count == 1
 
     def test_register_delta_temporary_table(self, mocker):
         # Arrange
@@ -658,7 +658,7 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_delta_engine.return_value.register_temporary_table.call_count == 1
+        assert mock_delta_engine.return_value._register_temporary_table.call_count == 1
 
     def test_return_dataframe_type_default(self, mocker):
         # Arrange
@@ -1768,7 +1768,7 @@ class TestSpark:
 
         # Assert
         assert mock_df.write.format.call_count == 1
-        assert mock_hudi_engine.return_value.save_hudi_fg.call_count == 0
+        assert mock_hudi_engine.return_value._save_hudi_fg.call_count == 0
         assert mock_df.write.format.call_args[0][0] == "hive"
         assert mock_df.write.format.return_value.mode.call_args[0][0] == "append"
         assert mock_df.write.format.return_value.mode.return_value.options.call_args[
@@ -1824,7 +1824,7 @@ class TestSpark:
 
         # Assert
         assert mock_df.write.format.call_count == 1
-        assert mock_hudi_engine.return_value.save_hudi_fg.call_count == 0
+        assert mock_hudi_engine.return_value._save_hudi_fg.call_count == 0
         assert mock_df.write.format.call_args[0][0] == "hive"
         assert mock_df.write.format.return_value.mode.call_args[0][0] == "append"
         assert mock_df.write.format.return_value.mode.return_value.options.call_args[
@@ -1872,7 +1872,7 @@ class TestSpark:
 
         # Assert
         assert mock_df.write.format.call_count == 0
-        assert mock_hudi_engine.return_value.save_hudi_fg.call_count == 1
+        assert mock_hudi_engine.return_value._save_hudi_fg.call_count == 1
 
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
