@@ -1324,6 +1324,10 @@ class Engine:
                 # by their own, they don't need /**
                 # for bigquery, argument location can be a SQL query
                 path = location
+            elif os.path.splitext(location.rstrip("/"))[-1]:
+                # Path already points to a specific file (has an extension) —
+                # appending /** would make it a non-existent directory glob.
+                path = location
             else:
                 path = location + "/**"
 

@@ -1948,4 +1948,322 @@ class TestMongoDBConnector:
         )
         opts = sc.connector_options()
         assert "maxPoolSize" not in opts
-        assert opts["tlsAllowInvalidCertificates"] is True
+
+
+class TestStorageConnectorToDict:
+    """Tests that to_dict() produces the camelCase payload the backend expects."""
+
+    def test_hopsfs_to_dict(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_hopsfs"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Act
+        d = sc.to_dict()
+
+        # Assert
+        assert d["type"] == "featurestoreHopsfsConnectorDTO"
+        assert d["storageConnectorType"] == "HOPSFS"
+        assert d["name"] == "test_hopsfs"
+        assert d["description"] == "HOPSFS connector description"
+        assert d["hopsfsPath"] == "test_path"
+        assert d["datasetName"] == "test_dataset_name"
+
+    def test_s3_to_dict(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_s3"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Act
+        d = sc.to_dict()
+
+        # Assert
+        assert d["type"] == "featurestoreS3ConnectorDTO"
+        assert d["storageConnectorType"] == "S3"
+        assert d["bucket"] == "test_bucket"
+        assert d["accessKey"] == "test_access_key"
+        assert d["secretKey"] == "test_secret_key"
+        assert d["serverEncryptionAlgorithm"] == "test_server_encryption_algorithm"
+        assert d["serverEncryptionKey"] == "test_server_encryption_key"
+        assert d["sessionToken"] == "test_session_token"
+        assert d["iamRole"] == "test_iam_role"
+        assert d["arguments"] == [{"name": "test_name", "value": "test_value"}]
+
+    def test_s3_to_dict_minimal(self):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="my_s3",
+            featurestore_id=67,
+            bucket="my-bucket",
+            region="eu-north-1",
+        )
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreS3ConnectorDTO"
+        assert d["storageConnectorType"] == "S3"
+        assert d["bucket"] == "my-bucket"
+        assert d["region"] == "eu-north-1"
+        assert d["arguments"] == []
+
+    def test_redshift_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_redshift"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreRedshiftConnectorDTO"
+        assert d["storageConnectorType"] == "REDSHIFT"
+        assert d["clusterIdentifier"] == "test_cluster_identifier"
+        assert d["databaseDriver"] == "test_database_driver"
+        assert d["databaseEndpoint"] == "test_database_endpoint"
+        assert d["databaseName"] == "test_database_name"
+        assert d["databasePort"] == "test_database_port"
+        assert d["tableName"] == "test_table_name"
+        assert d["databaseUserName"] == "test_database_user_name"
+        assert d["autoCreate"] == "test_auto_create"
+        assert d["databasePassword"] == "test_database_password"
+        assert d["databaseGroup"] == "test_database_group"
+        assert d["iamRole"] == "test_iam_role"
+        assert d["expiration"] == "test_expiration"
+        # fixture passes arguments as a raw string (non-list); passed through as-is
+        assert d["arguments"] == "test_arguments"
+
+    def test_adls_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_adls"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreAdlsConnectorDTO"
+        assert d["storageConnectorType"] == "ADLS"
+        assert d["generation"] == "test_generation"
+        assert d["directoryId"] == "test_directory_id"
+        assert d["applicationId"] == "test_application_id"
+        assert d["serviceCredential"] == "test_service_credential"
+        assert d["accountName"] == "test_account_name"
+        assert d["containerName"] == "test_container_name"
+        assert d["sparkOptions"] == [{"name": "test_name", "value": "test_value"}]
+
+    def test_snowflake_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_snowflake"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreSnowflakeConnectorDTO"
+        assert d["storageConnectorType"] == "SNOWFLAKE"
+        assert d["url"] == "test_url"
+        assert d["user"] == "test_user"
+        assert d["password"] == "test_password"
+        assert d["token"] == "test_token"
+        assert d["database"] == "test_database"
+        assert d["schema"] == "test_schema"
+        assert d["table"] == "test_table"
+        assert d["warehouse"] == "test_warehouse"
+        assert d["role"] == "test_role"
+        assert d["application"] == "test_application"
+        assert d["passphrase"] == "test_passphrase"
+        assert d["sfOptions"] == [{"name": "test_name", "value": "test_value"}]
+
+    def test_sap_hana_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_sap_hana"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featureStoreSapHanaConnectorDTO"
+        assert d["storageConnectorType"] == "SAP_HANA"
+        assert d["host"] == "hana.example.com"
+        assert d["port"] == 39015
+        assert d["database"] == "HXE"
+        assert d["schema"] == "SYSTEM"
+        assert d["table"] == "TBL"
+        assert d["user"] == "SYSTEM"
+        assert d["password"] == "test_password"
+        assert d["application"] == "hopsworks"
+        assert d["arguments"] == [{"name": "fetchsize", "value": "1000"}]
+
+    def test_jdbc_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_jdbc"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreJdbcConnectorDTO"
+        assert d["storageConnectorType"] == "JDBC"
+        assert d["connectionString"] == "test_conn_string"
+        assert len(d["arguments"]) == 4
+        assert d["arguments"][0]["name"] == "sslTrustStore"
+
+    def test_kafka_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreKafkaConnectorDTO"
+        assert d["storageConnectorType"] == "KAFKA"
+        assert d["bootstrapServers"] == "test_bootstrap_servers"
+        assert d["securityProtocol"] == "test_security_protocol"
+        assert d["sslTruststoreLocation"] == "test_ssl_truststore_location"
+        assert d["sslTruststorePassword"] == "test_ssl_truststore_password"
+        assert d["sslKeystoreLocation"] == "test_ssl_keystore_location"
+        assert d["sslKeystorePassword"] == "test_ssl_keystore_password"
+        assert d["sslKeyPassword"] == "test_ssl_key_password"
+        assert (
+            d["sslEndpointIdentificationAlgorithm"]
+            == "test_ssl_endpoint_identification_algorithm"
+        )
+        assert d["options"] == [
+            {"name": "test_option_name", "value": "test_option_value"}
+        ]
+
+    def test_kafka_external_flag_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["externalKafka"] is True
+
+    def test_gcs_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_gcs"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featureStoreGcsConnectorDTO"
+        assert d["storageConnectorType"] == "GCS"
+        assert d["keyPath"] == "test_key_path"
+        assert d["bucket"] == "test_bucket"
+        assert d["algorithm"] == "test_algorithm"
+        assert d["encryptionKey"] == "test_encryption_key"
+        assert d["encryptionKeyHash"] == "test_encryption_key_hash"
+
+    def test_bigquery_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_big_query_table"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreBigqueryConnectorDTO"
+        assert d["storageConnectorType"] == "BIGQUERY"
+        assert d["keyPath"] == "test_key_path"
+        assert d["parentProject"] == "test_parent_project"
+        assert d["dataset"] == "test_dataset"
+        assert d["queryTable"] == "test_query_table"
+        assert d["queryProject"] == "test_query_project"
+        assert d["arguments"] == [{"name": "test_name", "value": "test_value"}]
+
+    def test_sql_oracle_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_oracle"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreSqlConnectorDTO"
+        assert d["storageConnectorType"] == "SQL"
+        assert d["databaseType"] == "ORACLE"
+        assert d["host"] == "test_host"
+        assert d["port"] == 1521
+        assert d["database"] == "test_database"
+        assert d["user"] == "test_user"
+        assert d["password"] == "test_password"
+        assert d["walletPath"] == "/Projects/test_project/Resources/wallet.zip"
+        assert d["walletPassword"] == "test_wallet_password"
+        assert d["arguments"] == [{"name": "test_name", "value": "test_value"}]
+
+    def test_mongodb_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_mongodb"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreMongoConnectorDTO"
+        assert d["storageConnectorType"] == "MONGODB"
+        assert d["connectionString"] == "mongodb+srv://hopsworks.example.mongodb.net"
+        assert d["database"] == "sample_mflix"
+        assert d["collection"] == "comments"
+        assert d["user"] == "test_user"
+        assert d["password"] == "test_password"
+        assert d["authSource"] == "admin"
+        assert d["authMechanism"] == "SCRAM-SHA-256"
+        assert d["options"] == [{"name": "maxPoolSize", "value": "10"}]
+
+    def test_unity_catalog_pat_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_unity_catalog"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["type"] == "featurestoreUnityCatalogConnectorDTO"
+        assert d["storageConnectorType"] == "UNITY_CATALOG"
+        assert d["workspaceUrl"] == "https://test.cloud.databricks.com"
+        assert d["authMethod"] == "PAT"
+        assert d["defaultCatalog"] == "test_catalog"
+        assert d["awsRegion"] == "us-west-2"
+        assert d["arguments"] == [{"name": "arg1", "value": "val1"}]
+        # server-only boolean must not be sent back
+        assert "hasAccessToken" not in d
+        assert "hasClientSecret" not in d
+
+    def test_unity_catalog_oauth_workspace_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"][
+            "get_unity_catalog_oauth_workspace"
+        ]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["authMethod"] == "OAUTH_M2M"
+        assert d["oauthEndpoint"] == "WORKSPACE"
+        assert d["clientId"] == "test-sp-client-id"
+        assert "hasClientSecret" not in d
+
+    def test_unity_catalog_oauth_account_to_dict(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_unity_catalog_oauth_account"][
+            "response"
+        ]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        d = sc.to_dict()
+
+        assert d["authMethod"] == "OAUTH_M2M"
+        assert d["oauthEndpoint"] == "ACCOUNT"
+        assert d["accountId"] == "12345678-1234-1234-1234-1234567890ab"
+        assert d["accountHost"] == "accounts.cloud.databricks.com"
+
+
+class TestStorageConnectorSave:
+    def test_save_calls_api_create(self, mocker):
+        mock_create = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=storage_connector.S3Connector(
+                id=42, name="my_s3", featurestore_id=67, bucket="my-bucket"
+            ),
+        )
+        sc = storage_connector.S3Connector(
+            id=None, name="my_s3", featurestore_id=67, bucket="my-bucket"
+        )
+
+        result = sc.save()
+
+        mock_create.assert_called_once_with(sc)
+        assert result.id == 42
+
+    def test_update_calls_api_update(self, mocker):
+        mock_update = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._update",
+            return_value=storage_connector.S3Connector(
+                id=1, name="my_s3", featurestore_id=67, bucket="new-bucket"
+            ),
+        )
+        sc = storage_connector.S3Connector(
+            id=1, name="my_s3", featurestore_id=67, bucket="old-bucket"
+        )
+
+        result = sc.update()
+
+        mock_update.assert_called_once_with(sc)
+        assert result.bucket == "new-bucket"

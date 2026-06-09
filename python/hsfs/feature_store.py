@@ -526,6 +526,45 @@ class FeatureStore:
 
     @public
     @usage._method_logger
+    def create_data_source(
+        self,
+        connector: storage_connector.StorageConnector,
+    ) -> ds.DataSource:
+        """Create a new data source in the feature store from a storage connector.
+
+        The connector is persisted to the backend and the resulting
+        `DataSource` wrapping it is returned.
+
+        Example:
+            ```python
+            import hopsworks
+            from hsfs.storage_connector import S3Connector
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = S3Connector(
+                id=None,
+                name="my_s3_connector",
+                featurestore_id=fs.id,
+                bucket="my-bucket",
+                region="eu-north-1",
+            )
+            data_source = fs.create_data_source(sc)
+            ```
+
+        Parameters:
+            connector: Storage connector to persist and wrap as a data source.
+
+        Returns:
+            `DataSource`. Data source wrapping the created storage connector.
+        """
+        connector._featurestore_id = self._id
+        saved = self._storage_connector_api._create(connector)
+        return ds.DataSource(storage_connector=saved)
+
+    @public
+    @usage._method_logger
     def share(self, target_project: str | int) -> None:
         """Share this entire feature store with another project.
 

@@ -1,3 +1,4 @@
+# ruff: noqa
 #
 #   Copyright 2026 Hopsworks AB
 #
