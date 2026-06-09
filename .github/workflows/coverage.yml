@@ -41,7 +41,9 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev --project python --reinstall-package hopsworks
+        run: |
+          uv cache clean hopsworks
+          uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
