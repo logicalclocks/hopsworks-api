@@ -123,14 +123,17 @@ def test_fg_lineage_empty(mock_project):
     assert "No lineage links found" in result.output
 
 
-def test_fg_lineage_tolerates_failing_edge(mock_project):
+def test_fg_lineage_surfaces_real_error(mock_project):
+    # A provenance accessor raising a real error (permission/auth/server) must
+    # surface as a command failure, not be swallowed and rendered as "no
+    # lineage". The SDK returns None for a genuinely absent edge, so anything
+    # that raises is a real failure.
     fg = _fg_with_provenance()
-    fg.get_data_source_provenance.side_effect = RuntimeError("not external")
+    fg.get_data_source_provenance.side_effect = RuntimeError("backend down")
     fs = mock_project.get_feature_store.return_value
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "lineage", "transactions"])
-    assert result.exit_code == 0, result.output
-    assert "raw" in result.output
+    assert result.exit_code != 0
 
 
 # --- feature view ----------------------------------------------------------

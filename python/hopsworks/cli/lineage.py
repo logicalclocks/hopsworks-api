@@ -26,24 +26,21 @@ _BUCKETS = ("accessible", "inaccessible", "deleted", "faulty")
 
 
 def fetch(fn: Any) -> Any:
-    """Call a provenance accessor, returning None if it is missing or errors.
+    """Call a provenance accessor and return its result.
 
-    Some edges (for example data-source provenance on a non-external feature
-    group) raise instead of returning an empty result.
-    Treat those as no links so one missing edge does not fail the command.
+    The SDK accessors return None (or an empty Links) when an edge is simply
+    absent and raise RestAPIError only on real backend errors. We deliberately
+    do NOT swallow exceptions here: a permission, auth, or server error must
+    surface and fail the command rather than render misleadingly as "no
+    lineage". Returns None only when the accessor itself is absent (fn is None).
 
     Args:
         fn: A zero-argument provenance accessor, or None.
 
     Returns:
-        The accessor's result, or None if it is missing or raised.
+        The accessor's result (which may itself be None), or None if fn is None.
     """
-    if fn is None:
-        return None
-    try:
-        return fn()
-    except Exception:  # noqa: BLE001 - a missing edge is not a command failure
-        return None
+    return fn() if fn is not None else None
 
 
 def _iter_artifacts(links: Any) -> Iterator[tuple[Any, str]]:
