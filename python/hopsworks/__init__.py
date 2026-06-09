@@ -102,7 +102,7 @@ _LAZY = {
     "hsml": _load_hsml,
     "Connection": _load_connection_class,
     "build_spark": _load_build_spark,
-    "connection": lambda: _load_connection_class().connection,
+    "connection": lambda: _load_connection_class()._connection,
     # ``udf`` is the public entry point for hopsworks UDFs; pulling it through
     # ``hsfs`` keeps the lazy-load path consistent.
     "udf": lambda: _load_hsfs().hopsworks_udf.udf,
@@ -176,7 +176,7 @@ if not any(isinstance(f, _HsfsHsmlAliasFinder) for f in sys.meta_path):
 
 def _make_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
     """Factory: create a new Connection via the lazy-loaded Connection class."""
-    return _load_connection_class().connection(*args, **kwargs)
+    return _load_connection_class()._connection(*args, **kwargs)
 
 
 # Holds the active Connection instance after login(); points to _make_connection

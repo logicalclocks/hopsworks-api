@@ -947,7 +947,7 @@ class TestCertFolderParameter:
         import hopsworks
 
         # Mock to prevent actual connection
-        mock_connection = mocker.patch("hopsworks.Connection.connection")
+        mock_connection = mocker.patch("hopsworks.Connection._connection")
 
         # Clear any existing env var
         env_backup = os.environ.pop("HOPSWORKS_CERT_FOLDER", None)
@@ -969,7 +969,7 @@ class TestCertFolderParameter:
         """Test that HOPSWORKS_CERT_FOLDER environment variable is used."""
         import hopsworks
 
-        mock_connection = mocker.patch("hopsworks.Connection.connection")
+        mock_connection = mocker.patch("hopsworks.Connection._connection")
 
         custom_folder = "/custom/cert/folder"
         os.environ["HOPSWORKS_CERT_FOLDER"] = custom_folder
@@ -988,7 +988,7 @@ class TestCertFolderParameter:
         """Test that cert_folder parameter takes precedence over environment variable."""
         import hopsworks
 
-        mock_connection = mocker.patch("hopsworks.Connection.connection")
+        mock_connection = mocker.patch("hopsworks.Connection._connection")
 
         os.environ["HOPSWORKS_CERT_FOLDER"] = "/env/cert/folder"
         param_folder = "/param/cert/folder"

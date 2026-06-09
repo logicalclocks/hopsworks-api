@@ -95,6 +95,32 @@ jobs:
       - name: Check every module is importable
         run: uv run --project python python python/scripts/check_importable.py
 
+  pep8_public:
+    name: PEP-8 / @public check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        name: Setup Python
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          working-directory: python
+
+      # The checker parses the four packages statically with griffe (it never
+      # imports them), so it only needs griffe plus the hopsworks-apigen griffe
+      # extension. Running in an ephemeral, project-free environment avoids the
+      # heavy full dependency install.
+      - name: Run PEP-8 / @public check
+        run: >
+          uv run --no-project --with griffe --with hopsworks-apigen
+          python python/scripts/check_pep8_public.py
+
   unit_tests:
     name: Unit Tests
     needs: lint_stylecheck

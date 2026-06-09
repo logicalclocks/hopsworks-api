@@ -35,7 +35,7 @@ from hsfs.connection import (  # noqa: E402,  Module level import not at top of 
 
 __version__ = version.__version__
 
-connection = Connection.connection
+connection = Connection._connection
 
 
 def fs_formatwarning(message, category, filename, lineno, line=None):

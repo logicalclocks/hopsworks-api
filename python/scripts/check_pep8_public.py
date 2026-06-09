@@ -104,6 +104,15 @@ IMPORTLIB_HOOK_NAMES = {"create_module", "exec_module", "find_spec"}
 # ``VectorDbClient.read``, ``TrainingDatasetEngine.read``).
 POLYMORPHISM_FALLBACK_QUALNAMES: set[str] = set()
 
+# Third-party-API-mirroring re-exports: symbols that intentionally mirror an
+# external library's public name (renaming would diverge from upstream and break
+# interop), exempt like vendored code. Keep precise (full dotted paths).
+THIRD_PARTY_REEXPORT_QUALNAMES = {
+    # Re-export / no-op shim of ``typeguard.typechecked`` (applied as
+    # ``@typechecked`` across the SDK); mirrors typeguard's public name.
+    "hopsworks_common.decorators.typechecked",
+}
+
 
 def _is_excluded_filepath(filepath: Path, root: Path) -> bool:
     """Whether a module file lies in an excluded subtree or is generated."""
@@ -297,6 +306,10 @@ def _compliance(
     # Rule 10 fallback allowlist for known interface overrides that cannot be
     # resolved structurally (normally empty; see the constant's docstring).
     if cls is not None and f"{cls.name}.{name}" in POLYMORPHISM_FALLBACK_QUALNAMES:
+        return None
+
+    # Rule 11: third-party-API-mirroring re-export carve-out.
+    if func.path in THIRD_PARTY_REEXPORT_QUALNAMES:
         return None
 
     # Not compliant.

@@ -268,18 +268,18 @@ class TestLoginUnit:
     def setup_method(self):
         # Arrange — reset module globals so tests are isolated.
         hopsworks._connected_project = None
-        hopsworks._hw_connection = hopsworks.Connection.connection
+        hopsworks._hw_connection = hopsworks.Connection._connection
 
     def teardown_method(self):
         hopsworks._connected_project = None
-        hopsworks._hw_connection = hopsworks.Connection.connection
+        hopsworks._hw_connection = hopsworks.Connection._connection
 
     def _mock_conn_factory(self, mocker, mock_project):
         """Patch Connection.connection to return a mock connection instance."""
         mock_conn_instance = mocker.MagicMock()
         mock_conn_instance._get_project.return_value = mock_project
         mock_conn_factory = mocker.patch.object(
-            hopsworks.Connection, "connection", return_value=mock_conn_instance
+            hopsworks.Connection, "_connection", return_value=mock_conn_instance
         )
         return mock_conn_factory, mock_conn_instance
 
@@ -375,7 +375,7 @@ class TestLoginUnit:
         mock_response.content = b""
         mock_conn_factory = mocker.patch.object(
             hopsworks.Connection,
-            "connection",
+            "_connection",
             side_effect=[
                 RestAPIError("https://eu-west.cloud.hopsworks.ai", mock_response),
                 mock_conn_instance,
@@ -466,7 +466,7 @@ class TestLoginUnit:
         mock_conn_instance = mocker.MagicMock()
         mock_conn_instance._get_project.return_value = mock_project
         mock_conn_factory = mocker.patch.object(
-            hopsworks.Connection, "connection", return_value=mock_conn_instance
+            hopsworks.Connection, "_connection", return_value=mock_conn_instance
         )
         mocker.patch("hopsworks.client._stop", create=True)
         mocker.patch("hopsworks._initialize_module_apis")

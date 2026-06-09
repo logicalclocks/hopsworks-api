@@ -481,7 +481,7 @@ class Connection:
         _logger.info("Connection closed.")
 
     @classmethod
-    def connection(
+    def _connection(
         cls,
         host: str | None = None,
         port: int = HOPSWORKS_PORT_DEFAULT,

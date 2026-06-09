@@ -20,7 +20,7 @@ from hopsworks_common import util, version
 from hopsworks_common.connection import Connection
 
 
-connection = Connection.connection
+connection = Connection._connection
 
 __version__ = version.__version__
 
