@@ -15,9 +15,9 @@
 #
 
 from hopsworks_common.client.istio import (
+    _get_instance,
     base,
     external,
-    _get_instance,
     grpc,
     hopsworks,
     init,

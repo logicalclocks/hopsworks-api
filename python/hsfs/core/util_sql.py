@@ -44,7 +44,7 @@ def create_mysql_engine(
     if external:
         # This only works with external clients.
         # Hopsworks clients should use the storage connector
-        host = variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
+        host = variable_api.VariableApi()._get_loadbalancer_external_domain("mysqld")
         online_options["url"] = re.sub(
             "://[0-9a-zA-Z.]+:",
             f"://{host}:",
@@ -93,7 +93,7 @@ async def create_async_engine(
     url = make_url(online_options["url"].replace("jdbc:", ""))
     if hostname is None:
         if external:
-            hostname = variable_api.VariableApi().get_loadbalancer_external_domain(
+            hostname = variable_api.VariableApi()._get_loadbalancer_external_domain(
                 "mysqld"
             )
         else:

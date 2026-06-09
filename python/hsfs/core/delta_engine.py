@@ -368,7 +368,7 @@ class DeltaEngine:
             os.environ["PEMS_DIR"] = _client.get_certs_folder()
             _logger.debug(f"PEMS_DIR set to {os.environ['PEMS_DIR']}")
             try:
-                datanode_ip = self._variable_api.get_loadbalancer_external_domain(
+                datanode_ip = self._variable_api._get_loadbalancer_external_domain(
                     "datanode"
                 )
                 _logger.debug(
@@ -380,7 +380,7 @@ class DeltaEngine:
                     "Failed to write to delta table in external cluster. Make sure datanode load balancer has been setup on the cluster."
                 ) from e
 
-            user_name = self._project_api.get_user_info().get("username", None)
+            user_name = self._project_api._get_user_info().get("username", None)
 
             if not user_name:
                 raise FeatureStoreException(
@@ -404,7 +404,7 @@ class DeltaEngine:
         if _client._is_external():
             parsed_url = urlparse(location)
             try:
-                deltars_loc = f"hdfs://{self._variable_api.get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
+                deltars_loc = f"hdfs://{self._variable_api._get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
                 _logger.debug(
                     f"External client, using namenode url + delta-rs location: {deltars_loc}"
                 )

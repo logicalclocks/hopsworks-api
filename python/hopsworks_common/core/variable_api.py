@@ -40,7 +40,7 @@ LOADBALANCER_SERVICES = {
     "hopsworks.core.variable_api.VariableApi", "hsfs.core.variable_api.VariableApi"
 )
 class VariableApi:
-    def get_variable(self, variable: str):
+    def _get_variable(self, variable: str):
         """Get the configured value of a variable.
 
         Parameters:
@@ -59,7 +59,7 @@ class VariableApi:
 
         return domain["successMessage"]
 
-    def get_version(self, software: str) -> str | None:
+    def _get_version(self, software: str) -> str | None:
         """Get version of a software component.
 
         Parameters:
@@ -81,7 +81,7 @@ class VariableApi:
                 return entry["version"]
         return None
 
-    def parse_major_and_minor(
+    def _parse_major_and_minor(
         self, backend_version: str
     ) -> tuple[str | None, str | None]:
         """Extract major and minor version from full version.
@@ -100,7 +100,7 @@ class VariableApi:
             return (None, None)
         return matches.group(1), matches.group(2)
 
-    def get_data_science_profile_enabled(self) -> bool:
+    def _get_data_science_profile_enabled(self) -> bool:
         """Check if data science profile is enabled on the backend.
 
         Returns:
@@ -109,9 +109,9 @@ class VariableApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self.get_variable("enable_data_science_profile") == "true"
+        return self._get_variable("enable_data_science_profile") == "true"
 
-    def get_flyingduck_enabled(self) -> bool:
+    def _get_flyingduck_enabled(self) -> bool:
         """Check if Flying Duck is enabled on the backend.
 
         Returns:
@@ -120,9 +120,9 @@ class VariableApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self.get_variable("enable_flyingduck") == "true"
+        return self._get_variable("enable_flyingduck") == "true"
 
-    def get_loadbalancer_external_domain(
+    def _get_loadbalancer_external_domain(
         self,
         service: Literal[
             "mysqld",
@@ -148,7 +148,7 @@ class VariableApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         try:
-            return self.get_variable(f"loadbalancer_external_domain_{service}")
+            return self._get_variable(f"loadbalancer_external_domain_{service}")
         except RestAPIError as err:
             if err.STATUS_CODE_NOT_FOUND:
                 raise FeatureStoreException(
@@ -158,25 +158,25 @@ class VariableApi:
                 ) from err
             raise err
 
-    def get_service_discovery_domain(self) -> str:
+    def _get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.
 
         Returns:
             The domain of service discovery server, if it is set up, otherwise empty string `""`.
         """
         try:
-            return self.get_variable("service_discovery_domain")
+            return self._get_variable("service_discovery_domain")
         except RestAPIError:
             return ""
 
-    def get_featurestore_online_tablespace(self) -> str:
+    def _get_featurestore_online_tablespace(self) -> str:
         """Get domain of featurestore online tablespace.
 
         Returns:
             The name of featurestore online tablespace, if it is set up, otherwise hopsworks default tablespace `ts_1`.
         """
         try:
-            tablespace = self.get_variable("featurestore_online_tablespace")
+            tablespace = self._get_variable("featurestore_online_tablespace")
         except RestAPIError:
             tablespace = None
         return tablespace or "ts_1"

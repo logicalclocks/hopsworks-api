@@ -52,8 +52,8 @@ class ValidationReportApi:
             "validationreport",
         ]
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         if major == "3" and minor == "0":
             # You must bypass the setter otherwise it ends up as "UNKNOWN"

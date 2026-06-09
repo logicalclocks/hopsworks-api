@@ -216,7 +216,7 @@ class ArrowFlightClient:
         self._client = client._get_instance()
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
-            self._variable_api.get_service_discovery_domain()
+            self._variable_api._get_service_discovery_domain()
         )
 
         self._certificates_json: str | None = None
@@ -266,7 +266,7 @@ class ArrowFlightClient:
             _logger.debug(
                 "Connecting to Hopsworks Cluster to check if Hopsworks Query Service is enabled."
             )
-            self._enabled_on_cluster = self._variable_api.get_flyingduck_enabled()
+            self._enabled_on_cluster = self._variable_api._get_flyingduck_enabled()
         except Exception as e:
             # if feature flag cannot be retrieved, assume it is disabled
             _logger.debug(
@@ -278,7 +278,7 @@ class ArrowFlightClient:
     def _retrieve_host_url(self) -> str | None:
         _logger.debug("Retrieving host URL.")
         if client._is_external():
-            external_domain = self._variable_api.get_loadbalancer_external_domain(
+            external_domain = self._variable_api._get_loadbalancer_external_domain(
                 "feature_query"
             )
             host_url = f"grpc+tls://{external_domain}:5005"

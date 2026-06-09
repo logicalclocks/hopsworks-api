@@ -128,7 +128,7 @@ class TrainingDatasetEngine:
             name: Tag name.
             value: Tag value.
         """
-        self._tags_api.add(training_dataset, name, value)
+        self._tags_api._add(training_dataset, name, value)
 
     def _delete_tag(self, training_dataset, name):
         """Remove a tag from a training dataset.
@@ -137,7 +137,7 @@ class TrainingDatasetEngine:
             training_dataset: The training dataset to remove the tag from.
             name: Tag name.
         """
-        self._tags_api.delete(training_dataset, name)
+        self._tags_api._delete(training_dataset, name)
 
     def _get_tag(self, training_dataset, name):
         """Get tag with a certain name for a training dataset.
@@ -146,7 +146,7 @@ class TrainingDatasetEngine:
             training_dataset: The training dataset to read the tag from.
             name: Tag name.
         """
-        return self._tags_api.get(training_dataset, name)[name]
+        return self._tags_api._get(training_dataset, name)[name]
 
     def _get_tags(self, training_dataset):
         """Get all tags for a training dataset.
@@ -154,7 +154,7 @@ class TrainingDatasetEngine:
         Parameters:
             training_dataset: The training dataset to read tags from.
         """
-        return self._tags_api.get(training_dataset)
+        return self._tags_api._get(training_dataset)
 
     def _update_statistics_config(self, training_dataset):
         """Update the statistics configuration of a training dataset.

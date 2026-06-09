@@ -33,7 +33,7 @@ class TestSupersetApi:
     def api(self, mocker, mock_project):
         """Create a SupersetApi with mocked dependencies."""
         mock_variable_api = Mock()
-        mock_variable_api.get_service_discovery_domain.return_value = "example.local"
+        mock_variable_api._get_service_discovery_domain.return_value = "example.local"
         mocker.patch(
             "hopsworks_common.core.superset_api.VariableApi",
             return_value=mock_variable_api,

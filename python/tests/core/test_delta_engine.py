@@ -55,15 +55,15 @@ def _patch_apis(
             return lb_domain
         raise FeatureStoreException("no lb")
 
-    var_api.get_loadbalancer_external_domain.side_effect = _lb_side_effect
+    var_api._get_loadbalancer_external_domain.side_effect = _lb_side_effect
     mocker.patch("hsfs.core.variable_api.VariableApi", return_value=var_api)
 
     # project_api mock
     proj_api = mocker.Mock()
     if username is not None:
-        proj_api.get_user_info.return_value = {"username": username}
+        proj_api._get_user_info.return_value = {"username": username}
     else:
-        proj_api.get_user_info.return_value = {}
+        proj_api._get_user_info.return_value = {}
     mocker.patch("hopsworks_common.core.project_api.ProjectApi", return_value=proj_api)
 
     return var_api, proj_api
@@ -149,8 +149,8 @@ class TestDeltaEngine:
 
         # Assert
         # internal -> no LB lookups performed during setup
-        var_api.get_loadbalancer_external_domain.assert_not_called()
-        proj_api.get_user_info.assert_not_called()
+        var_api._get_loadbalancer_external_domain.assert_not_called()
+        proj_api._get_user_info.assert_not_called()
 
     def test_setup_delta_rs_external_success(self, mocker, monkeypatch):
         # Arrange

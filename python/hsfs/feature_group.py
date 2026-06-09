@@ -213,7 +213,7 @@ class FeatureGroupBase:
 
             if online_disk:
                 self._online_config.table_space = (
-                    self._variable_api.get_featurestore_online_tablespace()
+                    self._variable_api._get_featurestore_online_tablespace()
                 )
             else:
                 # An empty string is interpreted as don't set table space, while None uses the cluster default

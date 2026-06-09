@@ -302,7 +302,7 @@ class OnlineStoreSqlClient:
         )
         self._connection_options = options
         self._hostname = (
-            variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
+            variable_api.VariableApi()._get_loadbalancer_external_domain("mysqld")
             if self._external
             else None
         )

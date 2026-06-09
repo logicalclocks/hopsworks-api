@@ -163,7 +163,7 @@ class ProjectApi:
         print("Project created successfully, explore it at " + project.get_url())
         return project
 
-    def get_client(self):
+    def _get_client(self):
         _client = client._get_instance()
         path_params = [
             "project",
@@ -172,7 +172,7 @@ class ProjectApi:
         ]
         return _client._send_request("GET", path_params, stream=True)
 
-    def get_user_info(self):
+    def _get_user_info(self):
         projects = self._get_project_teams()
         if projects:
             return projects[0]["user"]

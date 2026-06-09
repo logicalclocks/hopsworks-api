@@ -102,7 +102,7 @@ class SupersetApi:
     def __init__(self, project: project.Project | None = None):
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
-            self._variable_api.get_service_discovery_domain()
+            self._variable_api._get_service_discovery_domain()
         )
         if project is not None:
             self._project_id = project.id

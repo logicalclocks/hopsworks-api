@@ -49,7 +49,7 @@ class FeatureGroupBaseEngine:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
         """
-        self._tags_api.add(feature_group, name, value)
+        self._tags_api._add(feature_group, name, value)
 
     def _delete_tag(self, feature_group: FeatureGroup, name: str):
         """Remove a tag from a feature group.
@@ -58,7 +58,7 @@ class FeatureGroupBaseEngine:
             feature_group: The feature group to remove the tag from.
             name: Name of the tag to be removed.
         """
-        self._tags_api.delete(feature_group, name)
+        self._tags_api._delete(feature_group, name)
 
     def _get_tag(self, feature_group: FeatureGroup, name: str) -> Any:
         """Get tag with a certain name.
@@ -70,7 +70,7 @@ class FeatureGroupBaseEngine:
         Returns:
             The value of the tag with the specified name, or `None` if it does not exist.
         """
-        tag = self._tags_api.get(feature_group, name)
+        tag = self._tags_api._get(feature_group, name)
         if tag:
             return tag[name]
         return None
@@ -84,7 +84,7 @@ class FeatureGroupBaseEngine:
         Returns:
             A dictionary of all tags for the feature group, or an empty dictionary if none exist.
         """
-        tags = self._tags_api.get(feature_group)
+        tags = self._tags_api._get(feature_group)
         if tags:
             return tags
         return {}

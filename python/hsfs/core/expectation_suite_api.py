@@ -52,8 +52,8 @@ class ExpectationSuiteApi:
             "expectationsuite",
         ]
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         method = "POST"
         if major == "3" and minor == "0":
@@ -89,8 +89,8 @@ class ExpectationSuiteApi:
         headers = {"content-type": "application/json"}
         payload = expectation_suite.json()
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         method = "PUT"
         if major == "3" and minor == "0":
@@ -128,8 +128,8 @@ class ExpectationSuiteApi:
         headers = {"content-type": "application/json"}
         payload = expectation_suite.json()
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         method = "PUT"
         if major == "3" and minor == "0":
@@ -159,8 +159,8 @@ class ExpectationSuiteApi:
             expectation_suite_id,
         ]
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         if major == "3" and minor == "0":
             del path_params[-1]

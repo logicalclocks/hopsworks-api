@@ -423,7 +423,7 @@ class TestFeatureGroup:
     def test_feature_group_online_disk_not_set(self, mocker):
         # Arrange
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            "hopsworks_common.core.variable_api.VariableApi._get_featurestore_online_tablespace",
             return_value="ts_1",  # Simulate no tablespace set
         )
 
@@ -444,7 +444,7 @@ class TestFeatureGroup:
     def test_feature_group_online_disk_not_set_online_config(self, mocker):
         # Arrange
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            "hopsworks_common.core.variable_api.VariableApi._get_featurestore_online_tablespace",
             return_value="ts_1",
         )
 
@@ -473,7 +473,7 @@ class TestFeatureGroup:
     def test_feature_group_online_disk_true(self, mocker):
         # Arrange
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            "hopsworks_common.core.variable_api.VariableApi._get_featurestore_online_tablespace",
             return_value="ts_1",  # Simulate no tablespace set
         )
 
@@ -499,7 +499,7 @@ class TestFeatureGroup:
     def test_feature_group_online_disk_true_override_online_config(self, mocker):
         # Arrange
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            "hopsworks_common.core.variable_api.VariableApi._get_featurestore_online_tablespace",
             return_value="ts_1",
         )
 
@@ -529,7 +529,7 @@ class TestFeatureGroup:
     def test_feature_group_online_disk_false(self, mocker):
         # Arrange
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            "hopsworks_common.core.variable_api.VariableApi._get_featurestore_online_tablespace",
             return_value="ts_1",
         )
 
@@ -555,7 +555,7 @@ class TestFeatureGroup:
     def test_feature_group_online_disk_false_override_online_config(self, mocker):
         # Arrange
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            "hopsworks_common.core.variable_api.VariableApi._get_featurestore_online_tablespace",
             return_value="ts_1",
         )
 
@@ -1282,7 +1282,7 @@ class TestExternalFeatureGroup:
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi._delete"
         )
 
-        version_api = mocker.patch("hsfs.core.variable_api.VariableApi.get_version")
+        version_api = mocker.patch("hsfs.core.variable_api.VariableApi._get_version")
         version_api.return_value = hsfs.__version__
 
         mock_es_engine_get_expectation_suite_url = mocker.patch(
@@ -1316,7 +1316,7 @@ class TestExternalFeatureGroup:
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi._update"
         )
 
-        version_api = mocker.patch("hsfs.core.variable_api.VariableApi.get_version")
+        version_api = mocker.patch("hsfs.core.variable_api.VariableApi._get_version")
         version_api.return_value = hsfs.__version__
 
         mock_es_engine_get_expectation_suite_url = mocker.patch(

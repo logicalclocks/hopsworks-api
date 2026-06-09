@@ -1109,7 +1109,7 @@ class FeatureViewEngine:
     def _add_tag(
         self, feature_view_obj, name: str, value, training_dataset_version=None
     ):
-        self._tags_api.add(
+        self._tags_api._add(
             feature_view_obj,
             name,
             value,
@@ -1117,12 +1117,12 @@ class FeatureViewEngine:
         )
 
     def _delete_tag(self, feature_view_obj, name: str, training_dataset_version=None):
-        self._tags_api.delete(
+        self._tags_api._delete(
             feature_view_obj, name, training_dataset_version=training_dataset_version
         )
 
     def _get_tag(self, feature_view_obj, name: str, training_dataset_version=None):
-        tags = self._tags_api.get(
+        tags = self._tags_api._get(
             feature_view_obj, name, training_dataset_version=training_dataset_version
         )
         if name in tags:
@@ -1130,7 +1130,7 @@ class FeatureViewEngine:
         return None
 
     def _get_tags(self, feature_view_obj, training_dataset_version=None):
-        return self._tags_api.get(
+        return self._tags_api._get(
             feature_view_obj, training_dataset_version=training_dataset_version
         )
 

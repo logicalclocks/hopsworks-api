@@ -345,7 +345,7 @@ class TestTrainingDatasetEngine:
         td_engine._add_tag(training_dataset=None, name=None, value=None)
 
         # Assert
-        assert mock_tags_api.return_value.add.call_count == 1
+        assert mock_tags_api.return_value._add.call_count == 1
 
     def test_delete_tag(self, mocker):
         # Arrange
@@ -359,7 +359,7 @@ class TestTrainingDatasetEngine:
         td_engine._delete_tag(training_dataset=None, name=None)
 
         # Assert
-        assert mock_tags_api.return_value.delete.call_count == 1
+        assert mock_tags_api.return_value._delete.call_count == 1
 
     def test_get_tag(self, mocker):
         # Arrange
@@ -373,7 +373,7 @@ class TestTrainingDatasetEngine:
         td_engine._get_tag(training_dataset=None, name=None)
 
         # Assert
-        assert mock_tags_api.return_value.get.call_count == 1
+        assert mock_tags_api.return_value._get.call_count == 1
 
     def test_get_tags(self, mocker):
         # Arrange
@@ -387,7 +387,7 @@ class TestTrainingDatasetEngine:
         td_engine._get_tags(training_dataset=None)
 
         # Assert
-        assert mock_tags_api.return_value.get.call_count == 1
+        assert mock_tags_api.return_value._get.call_count == 1
 
     def test_update_statistics_config(self, mocker):
         # Arrange

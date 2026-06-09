@@ -283,7 +283,7 @@ class OnlineStoreRestClientSingleton:
                 _logger.debug(
                     "External Online Store REST Client : Retrieving RonDB Rest Server endpoint via loadbalancer."
                 )
-            external_domain = self.variable_api.get_loadbalancer_external_domain(
+            external_domain = self.variable_api._get_loadbalancer_external_domain(
                 "online_store_rest_server"
             )
             default_url = f"https://{external_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
@@ -296,7 +296,7 @@ class OnlineStoreRestClientSingleton:
             _logger.debug(
                 "Internal Online Store REST Client : Retrieving RonDB Rest Server endpoint via service discovery."
             )
-        service_discovery_domain = self.variable_api.get_service_discovery_domain()
+        service_discovery_domain = self.variable_api._get_service_discovery_domain()
         if service_discovery_domain == "":
             raise FeatureStoreException(
                 "Client could not get Online Store hostname from service_discovery_domain. "

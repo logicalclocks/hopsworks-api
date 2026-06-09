@@ -26,7 +26,7 @@ class TestOnlineStoreRestClient:
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
         mocker.patch("hopsworks_common.client._get_instance")
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_loadbalancer_external_domain",
+            "hopsworks_common.core.variable_api.VariableApi._get_loadbalancer_external_domain",
             return_value="eu-west.cloud.hopsworks.ai",
         )
         ping_rdrs_mock = mocker.patch(
@@ -57,7 +57,7 @@ class TestOnlineStoreRestClient:
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hopsworks_common.client._get_instance")
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_service_discovery_domain",
+            "hopsworks_common.core.variable_api.VariableApi._get_service_discovery_domain",
             return_value="consul",
         )
         optional_config = {"api_key": "provided_api_key"}

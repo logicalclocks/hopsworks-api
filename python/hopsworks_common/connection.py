@@ -315,7 +315,7 @@ class Connection:
         regexMatcher = re.compile(versionPattern)
 
         client_version = version.__version__
-        self.backend_version = self._variable_api.get_version("hopsworks")
+        self.backend_version = self._variable_api._get_version("hopsworks")
 
         major_minor_client = regexMatcher.search(client_version).group(0)
         major_minor_backend = regexMatcher.search(self._backend_version).group(0)
@@ -410,7 +410,7 @@ class Connection:
             self._services_api = services_api.ServicesApi()
             self._secret_api = secret_api.SecretsApi()
             self._variable_api = variable_api.VariableApi()
-            usage._init_usage(self._host, self._variable_api.get_version("hopsworks"))
+            usage._init_usage(self._host, self._variable_api._get_version("hopsworks"))
 
             self._provide_project()
         except (TypeError, ConnectionError):
@@ -438,7 +438,7 @@ class Connection:
         from hsfs import engine
 
         engine._get_instance()
-        if self._variable_api.get_data_science_profile_enabled():
+        if self._variable_api._get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client
             try:

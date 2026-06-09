@@ -177,7 +177,7 @@ class TestProvideProject:
         return err
 
     def test_name_delegates_to_external_client(self, conn, client_instance):
-        conn._variable_api.get_data_science_profile_enabled.return_value = False
+        conn._variable_api._get_data_science_profile_enabled.return_value = False
 
         conn._provide_project(name="proj")
 
@@ -186,7 +186,7 @@ class TestProvideProject:
 
     def test_name_is_not_forwarded_when_internal(self, conn, client_instance):
         client_instance._is_external.return_value = False
-        conn._variable_api.get_data_science_profile_enabled.return_value = False
+        conn._variable_api._get_data_science_profile_enabled.return_value = False
 
         conn._provide_project(name="proj")
 
@@ -195,7 +195,7 @@ class TestProvideProject:
 
     def test_uses_client_project_name_when_already_set(self, conn, client_instance):
         client_instance._project_name = "already-set"
-        conn._variable_api.get_data_science_profile_enabled.return_value = False
+        conn._variable_api._get_data_science_profile_enabled.return_value = False
 
         conn._provide_project()
 
@@ -204,14 +204,14 @@ class TestProvideProject:
     def test_short_circuits_when_no_project(self, conn, client_instance):
         conn._provide_project()
 
-        conn._variable_api.get_data_science_profile_enabled.assert_not_called()
+        conn._variable_api._get_data_science_profile_enabled.assert_not_called()
         conn._model_serving_api.load_default_configuration.assert_not_called()
 
     def test_loads_default_configuration_when_profile_enabled(
         self, conn, client_instance
     ):
         client_instance._project_name = "proj"
-        conn._variable_api.get_data_science_profile_enabled.return_value = True
+        conn._variable_api._get_data_science_profile_enabled.return_value = True
 
         conn._provide_project()
 
@@ -221,7 +221,7 @@ class TestProvideProject:
         self, conn, client_instance
     ):
         client_instance._project_name = "proj"
-        conn._variable_api.get_data_science_profile_enabled.return_value = False
+        conn._variable_api._get_data_science_profile_enabled.return_value = False
 
         conn._provide_project()
 
@@ -231,7 +231,7 @@ class TestProvideProject:
         # 403 + 320004 means the API key lacks the SERVING scope; model serving is disabled
         # but login must still succeed.
         client_instance._project_name = "proj"
-        conn._variable_api.get_data_science_profile_enabled.return_value = True
+        conn._variable_api._get_data_science_profile_enabled.return_value = True
         conn._model_serving_api.load_default_configuration.side_effect = (
             self._make_rest_error(status_error_code=403, error_code=320004)
         )
@@ -242,7 +242,7 @@ class TestProvideProject:
 
     def test_other_rest_api_errors_are_reraised(self, conn, client_instance):
         client_instance._project_name = "proj"
-        conn._variable_api.get_data_science_profile_enabled.return_value = True
+        conn._variable_api._get_data_science_profile_enabled.return_value = True
         conn._model_serving_api.load_default_configuration.side_effect = (
             self._make_rest_error(status_error_code=500, error_code=999999)
         )

@@ -114,7 +114,7 @@ class TrinoApi:
         """
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
-            self._variable_api.get_service_discovery_domain()
+            self._variable_api._get_service_discovery_domain()
         )
         self._secret_api: secret_api.SecretsApi = secret_api.SecretsApi()
         self._project_api: project_api.ProjectApi = project_api.ProjectApi()
@@ -156,7 +156,7 @@ class TrinoApi:
         """
         _logger.debug("Retrieving Trino host.")
         if client._is_external():
-            external_domain = self._variable_api.get_loadbalancer_external_domain(
+            external_domain = self._variable_api._get_loadbalancer_external_domain(
                 "trino"
             )
             host = external_domain
@@ -214,7 +214,7 @@ class TrinoApi:
                 If credentials cannot be retrieved from secrets storage or
                 if the client cannot determine the username for the current project user.
         """
-        username = self._project_api.get_user_info().get("username", None)
+        username = self._project_api._get_user_info().get("username", None)
         if username is None:
             raise TrinoException(
                 "Client could not determine username for the current project user."

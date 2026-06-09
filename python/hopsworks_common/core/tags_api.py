@@ -41,7 +41,7 @@ class TagsApi:
         self._entity_type = entity_type
 
     @usage._method_logger
-    def add(
+    def _add(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
         name: str,
@@ -60,7 +60,7 @@ class TagsApi:
             training_dataset_version: Version of the training dataset.
         """
         _client = client._get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version) + [
+        path_params = self._get_path(metadata_instance, training_dataset_version) + [
             name
         ]
         headers = {"content-type": "application/json"}
@@ -68,7 +68,7 @@ class TagsApi:
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     @usage._method_logger
-    def delete(
+    def _delete(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
         name: str,
@@ -84,7 +84,7 @@ class TagsApi:
             training_dataset_version: Version of the training dataset.
         """
         _client = client._get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version) + [
+        path_params = self._get_path(metadata_instance, training_dataset_version) + [
             name
         ]
 
@@ -92,7 +92,7 @@ class TagsApi:
 
     @usage._method_logger
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def get(
+    def _get(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
         name: str | None = None,
@@ -111,7 +111,7 @@ class TagsApi:
             Dict of tag name/values.
         """
         _client = client._get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version)
+        path_params = self._get_path(metadata_instance, training_dataset_version)
 
         if name is not None:
             path_params.append(name)
@@ -124,7 +124,7 @@ class TagsApi:
         }
 
     @usage._method_logger
-    def get_path(self, metadata_instance, training_dataset_version=None):
+    def _get_path(self, metadata_instance, training_dataset_version=None):
         _client = client._get_instance()
         if hasattr(metadata_instance, "training_data"):
             # Only FeatureView has training_data method
