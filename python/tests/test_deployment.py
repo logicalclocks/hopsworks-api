@@ -821,7 +821,7 @@ class TestDeployment:
             self._make_chunk(content="world"),
         ]
         mock_api = mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs", return_value=chunks
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=chunks
         )
 
         # Act
@@ -841,7 +841,7 @@ class TestDeployment:
         d = deployment.Deployment(predictor=p)
         mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
         mock_api = mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs", return_value=[]
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=[]
         )
 
         d.read_logs(
@@ -858,7 +858,7 @@ class TestDeployment:
         assert kwargs["since"] == "2026-05-08T00:00:00Z"
         assert kwargs["until"] == "2026-05-08T01:00:00Z"
         assert kwargs["pod"] == "my-pod-0"
-        # tail goes through positionally per ServingApi.get_logs signature.
+        # tail goes through positionally per ServingApi._get_logs signature.
         assert mock_api.call_args.args[2] == 200
 
     def test_read_logs_multiple_instances_get_block_headers(
@@ -868,7 +868,7 @@ class TestDeployment:
         d = deployment.Deployment(predictor=p)
         mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
         mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs",
+            "hsml.core.serving_api.ServingApi._get_logs",
             return_value=[
                 self._make_chunk(instance_name="pod-A", content="a1\n"),
                 self._make_chunk(instance_name="pod-B", content="b1\n"),
@@ -906,7 +906,7 @@ class TestDeployment:
             ),
         ]
         mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs",
+            "hsml.core.serving_api.ServingApi._get_logs",
             side_effect=[first, second, []],
         )
         # No real sleeps in the test.
@@ -938,7 +938,7 @@ class TestDeployment:
             self._make_chunk(content="ready\n"),
         ]
         mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs",
+            "hsml.core.serving_api.ServingApi._get_logs",
             side_effect=[first, second],
         )
         mocker.patch("time.sleep")
@@ -957,7 +957,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
-        mocker.patch("hsml.core.serving_api.ServingApi.get_logs", return_value=[])
+        mocker.patch("hsml.core.serving_api.ServingApi._get_logs", return_value=[])
         # First state probe returns Running, second returns Stopped → loop exits.
         states = [
             mocker.MagicMock(status="Running"),

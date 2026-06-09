@@ -104,7 +104,7 @@ class ModelRegistry:
             )
             version = self.DEFAULT_VERSION
 
-        return self._model_api.get(
+        return self._model_api._get(
             name,
             version,
             self.model_registry_id,
@@ -127,7 +127,7 @@ class ModelRegistry:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve model versions from the model registry.
         """
-        return self._model_api.get_models(
+        return self._model_api._get_models(
             name,
             self.model_registry_id,
             shared_registry_project_name=self.shared_registry_project_name,
@@ -154,7 +154,7 @@ class ModelRegistry:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve model from the model registry.
         """
-        model = self._model_api.get_models(
+        model = self._model_api._get_models(
             name,
             self.model_registry_id,
             shared_registry_project_name=self.shared_registry_project_name,
@@ -264,7 +264,7 @@ class ModelRegistry:
         # /inspect on the resource) to the typed exception so the caller doesn't
         # need to introspect a raw RestAPIError.
         try:
-            start = self._huggingface_api.start_import(
+            start = self._huggingface_api._start_import(
                 self.model_registry_id,
                 hugging_face_model_id,
                 hf_token=hf_token,
@@ -294,7 +294,7 @@ class ModelRegistry:
         last_completed = 0
         try:
             while time.time() < deadline:
-                last_status = self._huggingface_api.get_status(
+                last_status = self._huggingface_api._get_status(
                     self.model_registry_id, job_id
                 )
                 status = (last_status or {}).get("status")
@@ -337,7 +337,7 @@ class ModelRegistry:
 
         # Timed out — best-effort cancel so the partial dir doesn't linger.
         with contextlib.suppress(Exception):
-            self._huggingface_api.cancel(self.model_registry_id, job_id, cleanup=True)
+            self._huggingface_api._cancel(self.model_registry_id, job_id, cleanup=True)
         raise HuggingFaceImportException(
             HuggingFaceImportException.FETCH_FAILED,
             f"HuggingFace import {hugging_face_model_id} did not finish within "
@@ -415,7 +415,7 @@ class ModelRegistry:
         # The status payload doesn't include the registered version directly,
         # so look up the latest matching name. The HF importer always registers
         # at MAX(version)+1, so the most recent get_models() entry is ours.
-        candidates = self._model_api.get_models(
+        candidates = self._model_api._get_models(
             sanitised,
             self.model_registry_id,
             shared_registry_project_name=self.shared_registry_project_name,

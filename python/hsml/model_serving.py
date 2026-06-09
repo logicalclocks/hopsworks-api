@@ -92,7 +92,7 @@ class ModelServing:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
         """
-        return self._serving_api.get_by_id(id)
+        return self._serving_api._get_by_id(id)
 
     @public
     @usage.method_logger
@@ -121,7 +121,7 @@ class ModelServing:
         """
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
-        return self._serving_api.get(name)
+        return self._serving_api._get(name)
 
     @public
     @usage.method_logger
@@ -163,7 +163,7 @@ class ModelServing:
         if status is not None:
             self._validate_deployment_status(status)
 
-        return self._serving_api.get_all(model_name, status)
+        return self._serving_api._get_all(model_name, status)
 
     def _validate_deployment_status(self, status):
         statuses = list(util.get_members(PREDICTOR_STATE, prefix="STATUS"))
@@ -183,7 +183,7 @@ class ModelServing:
         Returns:
             Inference endpoints for model inference
         """
-        return self._serving_api.get_inference_endpoints()
+        return self._serving_api._get_inference_endpoints()
 
     @public
     @usage.method_logger

@@ -145,7 +145,7 @@ class ServingEngine:
                         update_progress,
                     )
 
-                self._serving_api.post(
+                self._serving_api._post(
                     deployment_instance, DEPLOYMENT.ACTION_START
                 )  # start deployment
 
@@ -194,7 +194,7 @@ class ServingEngine:
                     pbar.set_description(desc)
 
             update_progress(state, num_instances)
-            self._serving_api.post(
+            self._serving_api._post(
                 deployment_instance, DEPLOYMENT.ACTION_STOP
             )  # stop deployment
 
@@ -442,13 +442,13 @@ class ServingEngine:
 
     def _create(self, deployment_instance):
         try:
-            self._serving_api.put(deployment_instance)
+            self._serving_api._put(deployment_instance)
             print("Deployment created, explore it at " + deployment_instance.get_url())
         except RestAPIError as re:
             raise_err = True
             if re.error_code == ModelServingException.ERROR_CODE_DUPLICATED_ENTRY:
                 msg = "Deployment with the same name already exists"
-                existing_deployment = self._serving_api.get(deployment_instance.name)
+                existing_deployment = self._serving_api._get(deployment_instance.name)
                 if (
                     existing_deployment.model_name == deployment_instance.model_name
                     and existing_deployment.model_version
@@ -487,7 +487,7 @@ class ServingEngine:
             or state.status == PREDICTOR_STATE.STATUS_FAILED
         ):
             # if running, it's fine
-            self._serving_api.put(deployment_instance)
+            self._serving_api._put(deployment_instance)
             print("Deployment updated, applying changes to running instances...")
             state = self._poll_deployment_status(  # wait for status
                 deployment_instance, PREDICTOR_STATE.STATUS_RUNNING, await_update
@@ -512,7 +512,7 @@ class ServingEngine:
             or state.status == PREDICTOR_STATE.STATUS_STOPPED
         ):
             # if stopped, it's fine
-            self._serving_api.put(deployment_instance)
+            self._serving_api._put(deployment_instance)
             print("Deployment updated, explore it at " + deployment_instance.get_url())
             return
 
@@ -541,12 +541,12 @@ class ServingEngine:
                 "Deployment not stopped, please stop it first by using `.stop()` or check its status with .get_state()"
             )
 
-        self._serving_api.delete(deployment_instance)
+        self._serving_api._delete(deployment_instance)
         print("Deployment deleted successfully")
 
     def _get_state(self, deployment_instance):
         try:
-            state = self._serving_api.get_state(deployment_instance)
+            state = self._serving_api._get_state(deployment_instance)
         except RestAPIError as re:
             if re.error_code == ModelServingException.ERROR_CODE_SERVING_NOT_FOUND:
                 raise ModelServingException("Deployment not found") from re
@@ -580,7 +580,7 @@ class ServingEngine:
             end="\n\n",
         )
 
-        return self._serving_api.get_logs(deployment_instance, component, tail)
+        return self._serving_api._get_logs(deployment_instance, component, tail)
 
     # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
     # These never print and never short-circuit on deployment state. The
@@ -615,7 +615,7 @@ class ServingEngine:
         Returns:
             All matching log chunks concatenated into a single string.
         """
-        chunks = self._serving_api.get_logs(
+        chunks = self._serving_api._get_logs(
             deployment_instance,
             component,
             tail,
@@ -685,7 +685,7 @@ class ServingEngine:
 
         while True:
             chunks = (
-                self._serving_api.get_logs(
+                self._serving_api._get_logs(
                     deployment_instance,
                     component,
                     # Bounded per-poll fetch. Larger values just mean more work
@@ -785,7 +785,7 @@ class ServingEngine:
         serving_tool = deployment_instance.predictor.serving_tool
         through_hopsworks = serving_tool != PREDICTOR.SERVING_TOOL_KSERVE
         try:
-            return self._serving_api.send_inference_request(
+            return self._serving_api._send_inference_request(
                 deployment_instance, payload, through_hopsworks
             )
         except RestAPIError as re:

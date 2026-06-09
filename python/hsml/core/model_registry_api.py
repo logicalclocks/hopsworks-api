@@ -26,7 +26,7 @@ class ModelRegistryApi:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()
 
-    def get(self, project: str | None = None) -> ModelRegistry:
+    def _get(self, project: str | None = None) -> ModelRegistry:
         """Get model registry for specific project.
 
         Parameters:

@@ -44,7 +44,7 @@ class HuggingFaceApi:
             "huggingface",
         ]
 
-    def start_import(
+    def _start_import(
         self,
         model_registry_id: int,
         hugging_face_model_id: str,
@@ -90,7 +90,7 @@ class HuggingFaceApi:
             data=json.dumps(body),
         )
 
-    def get_status(self, model_registry_id: int, job_id: str) -> dict:
+    def _get_status(self, model_registry_id: int, job_id: str) -> dict:
         """Poll the status of a running or finished HuggingFace import job.
 
         Parameters:
@@ -106,7 +106,7 @@ class HuggingFaceApi:
             self._base_path(model_registry_id) + ["status", job_id],
         )
 
-    def cancel(
+    def _cancel(
         self, model_registry_id: int, job_id: str, cleanup: bool = False
     ) -> None:
         """Cancel an import. If ``cleanup`` is true, the partial directory is removed.

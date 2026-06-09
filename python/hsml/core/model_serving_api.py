@@ -29,7 +29,7 @@ class ModelServingApi:
         self._dataset_api = dataset_api.DatasetApi()
         self._serving_api = serving_api.ServingApi()
 
-    def get(self) -> ModelServing:
+    def _get(self) -> ModelServing:
         """Get model serving for specific project.
 
         Returns:
@@ -45,21 +45,21 @@ class ModelServingApi:
 
         return ModelServing(_client._project_name, _client._project_id)
 
-    def load_default_configuration(self):
+    def _load_default_configuration(self):
         """Load default configuration and set istio client for model serving."""
         # kserve installed
-        is_kserve_installed = self._serving_api.is_kserve_installed()
+        is_kserve_installed = self._serving_api._is_kserve_installed()
         client.set_kserve_installed(is_kserve_installed)
 
         # istio client
         self._istio_init_if_available()
 
         # num instances limits
-        num_instances_range = self._serving_api.get_num_instances_limits()
+        num_instances_range = self._serving_api._get_num_instances_limits()
         client.set_serving_num_instances_limits(num_instances_range)
 
         # Knative domain
-        knative_domain = self._serving_api.get_knative_domain()
+        knative_domain = self._serving_api._get_knative_domain()
         client.set_knative_domain(knative_domain)
 
     def _istio_init_if_available(self):
@@ -73,7 +73,7 @@ class ModelServingApi:
                 pass
 
             # setup istio client
-            inference_endpoints = self._serving_api.get_inference_endpoints()
+            inference_endpoints = self._serving_api._get_inference_endpoints()
             if not client._is_external():
                 # if internal, get node port
                 endpoint = get_endpoint_by_type(

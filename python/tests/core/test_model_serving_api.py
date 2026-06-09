@@ -56,7 +56,7 @@ class TestIstioInitIfAvailable:
 
         api._istio_init_if_available()
 
-        api._serving_api.get_inference_endpoints.assert_not_called()
+        api._serving_api._get_inference_endpoints.assert_not_called()
         self.istio_init.assert_not_called()
 
     def test_skips_when_istio_already_initialized(self, mocker, api):
@@ -67,7 +67,7 @@ class TestIstioInitIfAvailable:
 
         api._istio_init_if_available()
 
-        api._serving_api.get_inference_endpoints.assert_not_called()
+        api._serving_api._get_inference_endpoints.assert_not_called()
         self.istio_init.assert_not_called()
 
     # internal (non-external) client
@@ -76,7 +76,7 @@ class TestIstioInitIfAvailable:
         mocker.patch(
             "hsml.core.model_serving_api.client._is_external", return_value=False
         )
-        api._serving_api.get_inference_endpoints.return_value = [
+        api._serving_api._get_inference_endpoints.return_value = [
             _endpoint(
                 INFERENCE_ENDPOINTS.ENDPOINT_TYPE_KUBE_CLUSTER,
                 [(INFERENCE_ENDPOINTS.PORT_NAME_HTTP, 80)],
@@ -91,7 +91,7 @@ class TestIstioInitIfAvailable:
         mocker.patch(
             "hsml.core.model_serving_api.client._is_external", return_value=False
         )
-        api._serving_api.get_inference_endpoints.return_value = [
+        api._serving_api._get_inference_endpoints.return_value = [
             _endpoint(
                 INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER,
                 [(INFERENCE_ENDPOINTS.PORT_NAME_HTTP, 80)],
@@ -114,7 +114,7 @@ class TestIstioInitIfAvailable:
         mocker.patch(
             "hsml.core.model_serving_api.client.get_instance", return_value=fake_client
         )
-        api._serving_api.get_inference_endpoints.return_value = [
+        api._serving_api._get_inference_endpoints.return_value = [
             _endpoint(
                 INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER,
                 [
@@ -140,7 +140,7 @@ class TestIstioInitIfAvailable:
         mocker.patch(
             "hsml.core.model_serving_api.client.get_instance", return_value=fake_client
         )
-        api._serving_api.get_inference_endpoints.return_value = [
+        api._serving_api._get_inference_endpoints.return_value = [
             _endpoint(
                 INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER,
                 [(INFERENCE_ENDPOINTS.PORT_NAME_HTTP, 80)],
@@ -161,7 +161,7 @@ class TestIstioInitIfAvailable:
         mocker.patch(
             "hsml.core.model_serving_api.client._is_external", return_value=True
         )
-        api._serving_api.get_inference_endpoints.return_value = [
+        api._serving_api._get_inference_endpoints.return_value = [
             _endpoint(
                 INFERENCE_ENDPOINTS.ENDPOINT_TYPE_KUBE_CLUSTER,
                 [(INFERENCE_ENDPOINTS.PORT_NAME_HTTP, 80)],

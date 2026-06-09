@@ -38,7 +38,7 @@ class ServingApi:
         pass
 
     @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
-    def get_by_id(self, id: int) -> deployment.Deployment | None:
+    def _get_by_id(self, id: int) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain id.
 
         Parameters:
@@ -62,7 +62,7 @@ class ServingApi:
         return deployment_instance
 
     @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
-    def get(self, name: str) -> deployment.Deployment | None:
+    def _get(self, name: str) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain name.
 
         Parameters:
@@ -83,7 +83,7 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
-    def get_all(
+    def _get_all(
         self, model_name: str = None, status: str = None
     ) -> list[deployment.Deployment]:
         """Get the metadata of all deployments.
@@ -112,7 +112,7 @@ class ServingApi:
             deployment_instance.project_name = _client._project_name
         return deployment_instances
 
-    def get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
+    def _get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
         """Get inference endpoints.
 
         Returns:
@@ -123,7 +123,7 @@ class ServingApi:
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
-    def put(self, deployment_instance: deployment.Deployment) -> deployment.Deployment:
+    def _put(self, deployment_instance: deployment.Deployment) -> deployment.Deployment:
         """Save deployment metadata to model serving.
 
         Parameters:
@@ -148,7 +148,7 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
-    def post(self, deployment_instance: deployment.Deployment, action: str):
+    def _post(self, deployment_instance: deployment.Deployment, action: str):
         """Perform an action on the deployment.
 
         Parameters:
@@ -165,7 +165,7 @@ class ServingApi:
         query_params = {"action": action}
         return _client._send_request("POST", path_params, query_params=query_params)
 
-    def delete(self, deployment_instance: deployment.Deployment):
+    def _delete(self, deployment_instance: deployment.Deployment):
         """Delete the deployment and metadata.
 
         Parameters:
@@ -180,7 +180,7 @@ class ServingApi:
         ]
         return _client._send_request("DELETE", path_params)
 
-    def get_state(
+    def _get_state(
         self, deployment_instance: deployment.Deployment
     ) -> predictor_state.PredictorState:
         """Get the state of a given deployment.
@@ -201,7 +201,7 @@ class ServingApi:
         deployment_json = _client._send_request("GET", path_params)
         return predictor_state.PredictorState.from_response_json(deployment_json)
 
-    def reset_changes(
+    def _reset_changes(
         self, deployment_instance: deployment.Deployment
     ) -> deployment.Deployment:
         """Reset a given deployment to the original values in the Hopsworks instance.
@@ -224,7 +224,7 @@ class ServingApi:
         deployment_aux.project_name = _client._project_name
         return deployment_aux
 
-    def send_inference_request(
+    def _send_inference_request(
         self,
         deployment_instance: deployment.Deployment,
         data: dict | list[InferInput],
@@ -318,7 +318,7 @@ class ServingApi:
         )
         return _client._create_grpc_channel(path_prefix)
 
-    def is_kserve_installed(self) -> bool:
+    def _is_kserve_installed(self) -> bool:
         """Check if kserve is installed.
 
         Returns:
@@ -332,7 +332,7 @@ class ServingApi:
             and kserve_installed["successMessage"] == "true"
         )
 
-    def get_num_instances_limits(self) -> list[int]:
+    def _get_num_instances_limits(self) -> list[int]:
         """Get number of instances limits for model serving.
 
         Returns:
@@ -351,7 +351,7 @@ class ServingApi:
             int(max_instances["successMessage"]),
         ]
 
-    def get_knative_domain(self) -> str:
+    def _get_knative_domain(self) -> str:
         """Get the domain used by knative.
 
         Returns:
@@ -364,7 +364,7 @@ class ServingApi:
 
         return domain["successMessage"]
 
-    def get_logs(
+    def _get_logs(
         self,
         deployment_instance: deployment.Deployment,
         component: str,

@@ -36,7 +36,7 @@ class LocalEngine:
         self._dataset_api.mkdir(remote_path)
 
     def _delete(self, model_instance):
-        self._model_api.delete(model_instance)
+        self._model_api._delete(model_instance)
 
     def _upload(self, local_path: str, remote_path: str, upload_configuration=None):
         local_path = self._get_abs_path(local_path)
@@ -47,7 +47,7 @@ class LocalEngine:
 
         if self._hdfs_api is not None:
             # use the hdfs client if available
-            self._hdfs_api.upload(
+            self._hdfs_api._upload(
                 local_path=local_path,
                 upload_path=remote_path,
                 buffer_size=upload_configuration.get(
@@ -83,7 +83,7 @@ class LocalEngine:
 
         if self._hdfs_api is not None:
             # use the hdfs client if available
-            self._hdfs_api.download(
+            self._hdfs_api._download(
                 path=remote_path,
                 local_path=local_path,
                 buffer_size=download_configuration.get(

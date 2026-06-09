@@ -84,7 +84,7 @@ class ModelEngine:
             for _ in range(int(await_registration / sleep_seconds)):
                 try:
                     time.sleep(sleep_seconds)
-                    model_meta = self._model_api.get(
+                    model_meta = self._model_api._get(
                         model_instance.name,
                         model_instance.version,
                         model_registry_id,
@@ -370,14 +370,14 @@ class ModelEngine:
 
             # Get highest available model metadata version
             # This makes sure we skip corrupt versions where the model folder is deleted manually but the backend metadata is still there
-            model = self._model_api.get(
+            model = self._model_api._get(
                 model_instance._name,
                 current_highest_version,
                 model_instance.model_registry_id,
             )
             while model:
                 current_highest_version += 1
-                model = self._model_api.get(
+                model = self._model_api._get(
                     model_instance._name,
                     current_highest_version,
                     model_instance.model_registry_id,
@@ -386,7 +386,7 @@ class ModelEngine:
             model_instance._version = current_highest_version
         else:
             model_backend_object_exists = (
-                self._model_api.get(
+                self._model_api._get(
                     model_instance._name,
                     model_instance._version,
                     model_instance.model_registry_id,
@@ -536,7 +536,7 @@ class ModelEngine:
                 if step["id"] == 2:
                     model_instance = self._upload_additional_resources(model_instance)
                 if step["id"] == 3:
-                    model_instance = self._model_api.put(
+                    model_instance = self._model_api._put(
                         model_instance, model_query_params
                     )
                 if step["id"] == 4:
@@ -927,7 +927,7 @@ class ModelEngine:
             name: tag name
             value: tag value
         """
-        self._model_api.set_tag(model_instance, name, value)
+        self._model_api._set_tag(model_instance, name, value)
 
     def _delete_tag(self, model_instance, name):
         """Remove a tag from a model.
@@ -936,7 +936,7 @@ class ModelEngine:
             model_instance: the model to remove the tag from
             name: tag name to remove
         """
-        self._model_api.delete_tag(model_instance, name)
+        self._model_api._delete_tag(model_instance, name)
 
     def _get_tag(self, model_instance, name):
         """Get tag with a certain name.
@@ -945,7 +945,7 @@ class ModelEngine:
             model_instance: the model to get the tag from
             name: tag name
         """
-        return self._model_api.get_tag(model_instance, name)
+        return self._model_api._get_tag(model_instance, name)
 
     def _get_tags(self, model_instance):
         """Get all tags for a model.
@@ -953,7 +953,7 @@ class ModelEngine:
         Parameters:
             model_instance: the model to get tags from
         """
-        return self._model_api.get_tags(model_instance)
+        return self._model_api._get_tags(model_instance)
 
     def _get_feature_view_provenance(
         self, model_instance
@@ -970,7 +970,7 @@ class ModelEngine:
         Returns:
             The feature view used to generate this model.
         """
-        return self._model_api.get_feature_view_provenance(model_instance)
+        return self._model_api._get_feature_view_provenance(model_instance)
 
     def _get_training_dataset_provenance(
         self, model_instance
@@ -987,4 +987,4 @@ class ModelEngine:
         Returns:
             The training dataset used to generate this model.
         """
-        return self._model_api.get_training_dataset_provenance(model_instance)
+        return self._model_api._get_training_dataset_provenance(model_instance)
