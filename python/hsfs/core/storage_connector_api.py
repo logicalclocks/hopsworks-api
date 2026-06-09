@@ -15,9 +15,10 @@
 #
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common import client
+from hopsworks_common import client, util
 from hsfs import decorators, storage_connector
 
 
@@ -43,6 +44,67 @@ class StorageConnectorApi:
         query_params = {"temporaryCredentials": True}
 
         return _client._send_request("GET", path_params, query_params=query_params)
+
+    def create(
+        self,
+        storage_connector_instance: storage_connector.StorageConnector,
+    ) -> storage_connector.StorageConnector:
+        """Create a new storage connector in the feature store.
+
+        Parameters:
+            storage_connector_instance: The storage connector to create.
+
+        Returns:
+            The created storage connector with its assigned id.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector_instance._featurestore_id,
+            "storageconnectors",
+        ]
+        headers = {"content-type": "application/json"}
+        return storage_connector.StorageConnector.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                data=json.dumps(storage_connector_instance, cls=util.Encoder),
+            )
+        )
+
+    def update(
+        self,
+        storage_connector_instance: storage_connector.StorageConnector,
+    ) -> storage_connector.StorageConnector:
+        """Update an existing storage connector in the feature store.
+
+        Parameters:
+            storage_connector_instance: The storage connector to update.
+
+        Returns:
+            The updated storage connector.
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector_instance._featurestore_id,
+            "storageconnectors",
+            storage_connector_instance.name,
+        ]
+        headers = {"content-type": "application/json"}
+        return storage_connector_instance.update_from_response_json(
+            _client._send_request(
+                "PUT",
+                path_params,
+                headers=headers,
+                data=json.dumps(storage_connector_instance, cls=util.Encoder),
+            )
+        )
 
     def get(
         self, feature_store_id: int, name: str

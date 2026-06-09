@@ -20,6 +20,8 @@ import logging
 import os
 import posixpath
 import re
+import shutil
+import tempfile
 import time
 import warnings
 from abc import ABC, abstractmethod
@@ -79,6 +81,26 @@ class StorageConnector(ABC):
     MONGODB = "MONGODB"
 
     NOT_FOUND_ERROR_CODE = 270042
+
+    _DTO_TYPE = {
+        HOPSFS: "featurestoreHopsfsConnectorDTO",
+        S3: "featurestoreS3ConnectorDTO",
+        REDSHIFT: "featurestoreRedshiftConnectorDTO",
+        ADLS: "featurestoreAdlsConnectorDTO",
+        SNOWFLAKE: "featurestoreSnowflakeConnectorDTO",
+        SAP_HANA: "featureStoreSapHanaConnectorDTO",
+        MONGODB: "featurestoreMongoConnectorDTO",
+        JDBC: "featurestoreJdbcConnectorDTO",
+        KAFKA: "featurestoreKafkaConnectorDTO",
+        GCS: "featureStoreGcsConnectorDTO",
+        BIGQUERY: "featurestoreBigqueryConnectorDTO",
+        SQL: "featurestoreSqlConnectorDTO",
+        ORACLE: "featurestoreSqlConnectorDTO",
+        OPENSEARCH: "featurestoreOpenSearchConnectorDTO",
+        CRM: "featurestoreCRMConnectorDTO",
+        UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
+        REST: "featurestoreRESTConnectorDTO",
+    }
 
     def __init__(
         self,
@@ -158,9 +180,58 @@ class StorageConnector(ABC):
         return {
             "id": self._id,
             "name": self._name,
+            "description": self._description,
             "featurestoreId": self._featurestore_id,
             "storageConnectorType": self.type,
+            "type": self._DTO_TYPE.get(self.type),
         }
+
+    @public
+    def save(self) -> StorageConnector:
+        """Persist this storage connector to the feature store.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = hsfs.storage_connector.S3Connector(
+                id=None,
+                name="my_s3_connector",
+                featurestore_id=fs.id,
+                bucket="my-bucket",
+                region="eu-north-1",
+            )
+            sc.save()
+            ```
+
+        Returns:
+            The saved storage connector with its assigned id.
+        """
+        return self._storage_connector_api.create(self)
+
+    @public
+    def update(self) -> StorageConnector:
+        """Update this storage connector in the feature store.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_s3_connector").storage_connector
+            sc._bucket = "new-bucket"
+            sc.update()
+            ```
+
+        Returns:
+            The updated storage connector.
+        """
+        return self._storage_connector_api.update(self)
 
     @public
     @property
@@ -585,6 +656,16 @@ class HopsFSConnector(StorageConnector):
         self._hopsfs_path = hopsfs_path
         self._dataset_name = dataset_name
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "hopsfsPath": self._hopsfs_path,
+                "datasetName": self._dataset_name,
+            }
+        )
+        return payload
+
     def spark_options(self) -> dict[str, Any]:
         return {}
 
@@ -742,6 +823,26 @@ class S3Connector(StorageConnector):
         Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`.
         """
         return self._arguments
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "bucket": self._bucket,
+                "accessKey": self._access_key,
+                "secretKey": self._secret_key,
+                "serverEncryptionAlgorithm": self._server_encryption_algorithm,
+                "serverEncryptionKey": self._server_encryption_key,
+                "path": self._path,
+                "region": self._region,
+                "sessionToken": self._session_token,
+                "iamRole": self._iam_role,
+                "arguments": [
+                    {"name": k, "value": v} for k, v in self._arguments.items()
+                ],
+            }
+        )
+        return payload
 
     def spark_options(self) -> dict[str, str]:
         return self._arguments
@@ -980,6 +1081,31 @@ class RedshiftConnector(StorageConnector):
             )
         return self._arguments
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "clusterIdentifier": self._cluster_identifier,
+                "databaseDriver": self._database_driver,
+                "databaseEndpoint": self._database_endpoint,
+                "databaseName": self._database_name,
+                "databasePort": self._database_port,
+                "tableName": self._table_name,
+                "databaseUserName": self._database_user_name,
+                "autoCreate": self._auto_create,
+                "databasePassword": self._database_password,
+                "databaseGroup": self._database_group,
+                "iamRole": self._iam_role,
+                "expiration": self._expiration,
+                "arguments": (
+                    [{"name": k, "value": v} for k, v in self._arguments.items()]
+                    if isinstance(self._arguments, dict)
+                    else self._arguments
+                ),
+            }
+        )
+        return payload
+
     @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external Redshift connector library."""
@@ -1155,6 +1281,25 @@ class AdlsConnector(StorageConnector):
         if self.generation == 2:
             return f"abfss://{self.container_name}@{self.account_name}.dfs.core.windows.net"
         return f"adl://{self.account_name}.azuredatalakestore.net"
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "generation": self._generation,
+                "directoryId": self._directory_id,
+                "applicationId": self._application_id,
+                "serviceCredential": self._service_credential,
+                "accountName": self._account_name,
+                "containerName": self._container_name,
+                "sparkOptions": (
+                    [{"name": k, "value": v} for k, v in self._spark_options.items()]
+                    if self._spark_options
+                    else None
+                ),
+            }
+        )
+        return payload
 
     def spark_options(self) -> dict[str, Any]:
         return self._spark_options
@@ -1365,6 +1510,31 @@ class SnowflakeConnector(StorageConnector):
             A dictionary with the needed arguments for you to connect to a Snowflake database.
         """
         return self.connector_options()
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "url": self._url,
+                "warehouse": self._warehouse,
+                "database": self._database,
+                "user": self._user,
+                "password": self._password,
+                "token": self._token,
+                "schema": self._schema,
+                "table": self._table,
+                "role": self._role,
+                "application": self._application,
+                "privateKey": self._private_key,
+                "passphrase": self._passphrase,
+                "sfOptions": (
+                    [{"name": k, "value": v} for k, v in self._options.items()]
+                    if self._options
+                    else None
+                ),
+            }
+        )
+        return payload
 
     @public
     def connector_options(self) -> dict[str, Any] | None:
@@ -1606,6 +1776,27 @@ class SapHanaConnector(StorageConnector):
     def options(self) -> dict[str, Any]:
         """Additional Spark and JDBC options merged into reads."""
         return self._arguments
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "database": self._database,
+                "schema": self._schema,
+                "table": self._table,
+                "user": self._user,
+                "password": self._password,
+                "application": self._application,
+                "arguments": (
+                    [{"name": k, "value": v} for k, v in self._arguments.items()]
+                    if self._arguments
+                    else None
+                ),
+            }
+        )
+        return payload
 
     @public
     def connector_options(self) -> dict[str, Any]:
@@ -1850,6 +2041,26 @@ class MongoDBConnector(StorageConnector):
             url = url + "?" + "&".join(params)
         return url
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "connectionString": self._connection_string,
+                "database": self._database,
+                "collection": self._collection,
+                "user": self._user,
+                "password": self._password,
+                "authSource": self._auth_source,
+                "authMechanism": self._auth_mechanism,
+                "options": (
+                    [{"name": k, "value": v} for k, v in self._options.items()]
+                    if self._options
+                    else None
+                ),
+            }
+        )
+        return payload
+
     @public
     def connector_options(self) -> dict[str, Any]:
         """Return arguments suitable for an external ``pymongo`` client.
@@ -1986,6 +2197,16 @@ class JdbcConnector(StorageConnector):
         When running hsfs with PySpark/Spark in Hopsworks, the driver is automatically provided in the classpath but you need to set the `driver` argument to `com.mysql.cj.jdbc.Driver` when creating the Storage Connector.
         """
         return self._arguments
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "connectionString": self._connection_string,
+                "arguments": self._arguments,
+            }
+        )
+        return payload
 
     def spark_options(self) -> dict[str, Any]:
         options = (
@@ -2227,6 +2448,28 @@ class KafkaConnector(StorageConnector):
         return config
 
     @public
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "bootstrapServers": self._bootstrap_servers,
+                "securityProtocol": self._security_protocol,
+                "sslTruststoreLocation": self._ssl_truststore_location,
+                "sslTruststorePassword": self._ssl_truststore_password,
+                "sslKeystoreLocation": self._ssl_keystore_location,
+                "sslKeystorePassword": self._ssl_keystore_password,
+                "sslKeyPassword": self._ssl_key_password,
+                "sslEndpointIdentificationAlgorithm": self._ssl_endpoint_identification_algorithm,
+                "externalKafka": self._external_kafka,
+                "options": (
+                    [{"name": k, "value": v} for k, v in self._options.items()]
+                    if self._options
+                    else None
+                ),
+            }
+        )
+        return payload
+
     def confluent_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to confluent_kafka, based on the provided apache spark configuration.
 
@@ -2541,6 +2784,19 @@ class GcsConnector(StorageConnector):
             return os.path.join(self.path, sub_path)
         return self.path
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "keyPath": self._key_path,
+                "bucket": self._bucket,
+                "algorithm": self._algorithm,
+                "encryptionKey": self._encryption_key,
+                "encryptionKeyHash": self._encryption_key_hash,
+            }
+        )
+        return payload
+
     def spark_options(self) -> dict[str, Any]:
         return {}
 
@@ -2720,6 +2976,25 @@ class BigQueryConnector(StorageConnector):
     def arguments(self) -> dict[str, Any]:
         """Additional spark options."""
         return self._arguments
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "keyPath": self._key_path,
+                "parentProject": self._parent_project,
+                "dataset": self._dataset,
+                "queryTable": self._query_table,
+                "queryProject": self._query_project,
+                "materializationDataset": self._materialization_dataset,
+                "arguments": (
+                    [{"name": k, "value": v} for k, v in self._arguments.items()]
+                    if self._arguments
+                    else None
+                ),
+            }
+        )
+        return payload
 
     @public
     def connector_options(self) -> dict[str, Any]:
@@ -2964,6 +3239,27 @@ class SqlConnector(StorageConnector):
             return util.extract_zip(local_path)
         return local_path
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "databaseType": self._database_type,
+                "host": self._host,
+                "port": self._port,
+                "database": self._database,
+                "user": self._user,
+                "password": self._password,
+                "walletPath": self._wallet_path,
+                "walletPassword": self._wallet_password,
+                "arguments": (
+                    [{"name": k, "value": v} for k, v in self._arguments.items()]
+                    if self._arguments
+                    else None
+                ),
+            }
+        )
+        return payload
+
     def spark_options(self) -> dict[str, Any]:
         opts = {
             **(self._arguments if self._arguments else {}),
@@ -3065,14 +3361,42 @@ class SqlConnector(StorageConnector):
         if self._database_type == self.ORACLE:
             wallet_dir = self._prepare_wallet()
             if wallet_dir:
-                options["oracle.net.wallet_location"] = (
-                    f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
-                )
-                # For wallet-only connectors the URL is a TNS alias; the JDBC
-                # driver needs tns_admin to find tnsnames.ora inside the wallet.
-                options["oracle.net.tns_admin"] = wallet_dir
-                if self._wallet_password:
-                    options["oracle.net.wallet_password"] = self._wallet_password
+                jks = os.path.join(wallet_dir, "keystore.jks")
+                trust_jks = os.path.join(wallet_dir, "truststore.jks")
+                if os.path.isfile(jks) and os.path.isfile(trust_jks):
+                    # OCI wallets ship both ewallet.p12 (Oracle SSO format) and
+                    # keystore.jks / truststore.jks (standard Java KeyStore).
+                    # The SSO format requires oraclepki.jar + osdt_core.jar to
+                    # parse correctly; the JKS files work with the standard JVM.
+                    # sqlnet.ora contains WALLET_LOCATION which forces the driver
+                    # back to SSO, so point tns_admin at a stripped copy that
+                    # only has tnsnames.ora and SSL_SERVER_DN_MATCH.
+                    tns_dir = tempfile.mkdtemp(prefix="oracle_tns_")
+                    shutil.copy(
+                        os.path.join(wallet_dir, "tnsnames.ora"),
+                        os.path.join(tns_dir, "tnsnames.ora"),
+                    )
+                    with open(os.path.join(tns_dir, "sqlnet.ora"), "w") as f:
+                        f.write("SSL_SERVER_DN_MATCH=yes\n")
+                    options["oracle.net.tns_admin"] = tns_dir
+                    options["javax.net.ssl.keyStore"] = jks
+                    options["javax.net.ssl.trustStore"] = trust_jks
+                    if self._wallet_password:
+                        options["javax.net.ssl.keyStorePassword"] = (
+                            self._wallet_password
+                        )
+                        options["javax.net.ssl.trustStorePassword"] = (
+                            self._wallet_password
+                        )
+                else:
+                    # No JKS files — fall back to Oracle wallet (requires
+                    # oraclepki.jar + osdt_core.jar + osdt_cert.jar on classpath).
+                    options["oracle.net.tns_admin"] = wallet_dir
+                    options["oracle.net.wallet_location"] = (
+                        f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                    )
+                    if self._wallet_password:
+                        options["oracle.net.wallet_password"] = self._wallet_password
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
@@ -3149,6 +3473,27 @@ class OpenSearchConnector(StorageConnector):
     def arguments(self) -> dict[str, Any]:
         """Additional OpenSearch connection options."""
         return self._arguments
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "scheme": self._scheme,
+                "verify": self._verify,
+                "username": self._username,
+                "password": self._password,
+                "trustStorePath": self._trust_store_path,
+                "trustStorePassword": self._trust_store_password,
+                "arguments": (
+                    [{"name": k, "value": v} for k, v in self._arguments.items()]
+                    if self._arguments
+                    else None
+                ),
+            }
+        )
+        return payload
 
     def spark_options(self) -> dict[str, Any]:
         return self.connector_options()
@@ -3350,6 +3695,30 @@ class CRMAndAnalyticsConnector(StorageConnector):
         """Additional parameters."""
         return self._parameters
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "apiKey": self._api_key,
+                "crmType": self._crm_type.value
+                if hasattr(self._crm_type, "value")
+                else self._crm_type,
+                "username": self._username,
+                "password": self._password,
+                "domain": self._domain,
+                "accountId": self._account_id,
+                "keyPath": self._key_path,
+                "propertyId": self._property_id,
+                "devToken": self._dev_token,
+                "customerId": self._customer_id,
+                "impersonatedEmail": self._impersonated_email,
+                "refreshToken": self._refresh_token,
+                "headers": self._headers,
+                "parameters": self._parameters,
+            }
+        )
+        return payload
+
     def spark_options(self) -> dict[str, Any]:
         return {}
 
@@ -3531,6 +3900,30 @@ class UnityCatalogConnector(StorageConnector):
         lets callers tell whether one exists without exposing the secret.
         """
         return self._has_client_secret
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        arguments = self._arguments if isinstance(self._arguments, dict) else {}
+        payload.update(
+            {
+                "workspaceUrl": self._workspace_url,
+                "accessToken": self._access_token,
+                "defaultCatalog": self._default_catalog,
+                "awsRegion": self._aws_region,
+                "authMethod": self._auth_method,
+                "clientId": self._client_id,
+                "clientSecret": self._client_secret,
+                "oauthEndpoint": self._oauth_endpoint,
+                "accountId": self._account_id,
+                "accountHost": self._account_host,
+                "arguments": (
+                    [{"name": k, "value": v} for k, v in arguments.items()]
+                    if arguments
+                    else None
+                ),
+            }
+        )
+        return payload
 
     @public
     def connector_options(self) -> dict[str, Any]:
@@ -3875,6 +4268,14 @@ class UnityCatalogSparkOptions:
 def _assert_delta_extension_loaded(spark: Any) -> None:
     if _running_in_databricks(spark):
         return
+    is_connect = not hasattr(spark, "sparkContext")
+    if not is_connect:
+        # Classic Spark: spark.sql.catalog.spark_catalog is mutable at runtime.
+        spark.conf.set(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        return
     try:
         exts = spark.conf.get("spark.sql.extensions", "") or ""
     except Exception:  # noqa: BLE001 — SparkSession variants vary
@@ -4154,8 +4555,6 @@ class RestConnector(StorageConnector):
         payload = super().to_dict()
         payload.update(
             {
-                "type": "featurestoreRESTConnectorDTO",
-                "description": self._description,
                 "authConfig": (
                     self._auth_config.to_dict() if self._auth_config else None
                 ),
