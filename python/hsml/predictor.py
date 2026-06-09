@@ -29,6 +29,7 @@ from hopsworks_common.constants import (
 )
 from hsml import deployment
 from hsml.deployable_component import DeployableComponent
+from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
 from hsml.predictor_state import PredictorState
@@ -80,6 +81,7 @@ class Predictor(DeployableComponent):
         env_vars: dict[str, str] | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tracing: DeploymentTracingConfig | dict | Default | None = None,
         **kwargs,
     ):
         serving_tool = (
@@ -128,6 +130,7 @@ class Predictor(DeployableComponent):
         self._project_namespace = project_namespace
         self._project_name = None
         self._env_vars = env_vars
+        self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
 
@@ -320,6 +323,11 @@ class Predictor(DeployableComponent):
         kwargs["inference_logger"] = InferenceLogger.from_json(json_decamelized)
         kwargs["inference_batcher"] = InferenceBatcher.from_json(json_decamelized)
         kwargs["transformer"] = Transformer.from_json(json_decamelized)
+        kwargs["tracing"] = util._extract_field_from_json(
+            json_decamelized,
+            ["tracing", "tracing_config"],
+            as_instance_of=DeploymentTracingConfig,
+        )
         kwargs["id"] = json_decamelized.pop("id")
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
@@ -397,6 +405,8 @@ class Predictor(DeployableComponent):
             json = {**json, **self._inference_batcher.to_dict()}
         if self._transformer is not None:
             json = {**json, **self._transformer.to_dict()}
+        if self._tracing is not None:
+            json = {**json, "tracing": self._tracing.to_dict()}
         if self._scaling_configuration is not None:
             json = {**json, **self._scaling_configuration.to_dict()}
         return json
@@ -568,6 +578,16 @@ class Predictor(DeployableComponent):
     @transformer.setter
     def transformer(self, transformer: Transformer):
         self._transformer = transformer
+
+    @public
+    @property
+    def tracing(self):
+        """Tracing configuration attached to the predictor."""
+        return self._tracing
+
+    @tracing.setter
+    def tracing(self, tracing: DeploymentTracingConfig | dict | Default | None):
+        self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
 
     @public
     @property

@@ -20,8 +20,6 @@ import logging
 import os
 import posixpath
 import re
-import shutil
-import tempfile
 import time
 import warnings
 from abc import ABC, abstractmethod
@@ -2127,9 +2125,7 @@ class MongoDBConnector(StorageConnector):
         """Read a collection from MongoDB into a dataframe.
 
         Parameters:
-            query: Collection name to read; overrides the connector's default collection.
-                For advanced cases, pass a JSON-encoded aggregation pipeline; the engine
-                forwards it via the ``aggregation.pipeline`` option.
+            query: Not used for MongoDB.
             data_format: Not used for MongoDB.
             options: Extra key/value options merged into the Spark reader configuration.
             path: Not used for MongoDB.
@@ -2142,18 +2138,11 @@ class MongoDBConnector(StorageConnector):
             raise NotImplementedError(
                 "MongoDB connector not yet supported for engine: " + engine._get_type()
             )
-        self._refetch()
         merged = (
             {**self.spark_options(), **options}
             if options is not None
             else self.spark_options()
         )
-        if query:
-            stripped = query.strip()
-            if stripped.startswith("["):
-                merged["aggregation.pipeline"] = stripped
-            else:
-                merged["collection"] = stripped
         return engine._get_instance()._read(
             self, self.MONGODB_FORMAT, merged, None, dataframe_type
         )
@@ -3225,15 +3214,42 @@ class SqlConnector(StorageConnector):
         """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
         return self._wallet_password
 
+    def _inline_tns_url(self, wallet_dir: str) -> str:
+        """Build a JDBC URL with the TNS descriptor inlined from tnsnames.ora.
+
+        Avoids setting oracle.net.tns_admin to a driver-local path, which
+        would fail on executor pods that don't share the driver filesystem.
+        Prefers the _tp alias (general-purpose); falls back to the first alias.
+        """
+        tnsnames_path = os.path.join(wallet_dir, "tnsnames.ora")
+        aliases: dict[str, str] = {}
+        current_alias: str | None = None
+        current_desc: list[str] = []
+        with open(tnsnames_path) as f:
+            for line in f:
+                if line and not line[0].isspace() and "=" in line:
+                    if current_alias:
+                        aliases[current_alias] = "".join(current_desc).strip()
+                    current_alias, _, rest = line.partition("=")
+                    current_alias = current_alias.strip()
+                    current_desc = [rest]
+                elif current_alias:
+                    current_desc.append(line)
+        if current_alias:
+            aliases[current_alias] = "".join(current_desc).strip()
+        alias = next(
+            (a for a in aliases if a.endswith("_tp")),
+            next(iter(aliases), None),
+        )
+        if alias and self._database not in aliases:
+            return f"jdbc:{self._JDBC_SCHEMES[self.ORACLE]}:@{aliases[alias]}"
+        return self.spark_options()["url"]
+
     def _prepare_wallet(self) -> str | None:
         """Download (if needed) and extract the wallet, returning a local directory.
 
-        For Spark JDBC the Oracle driver runs inside the JVM and needs a local
-        filesystem path to the wallet directory.
-        When the wallet lives in HopsFS the file is first downloaded to the
-        driver via ``engine.add_file`` and then extracted.
-        JDBC reads are single-partition (driver-only) so the wallet does not
-        need to be distributed to executors.
+        The wallet is downloaded to the driver only — JDBC reads are forced to
+        a single partition so no executor ever needs the wallet files.
         Returns ``None`` when no wallet path is configured.
         """
         if not self._wallet_path:
@@ -3355,7 +3371,6 @@ class SqlConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        self._refetch()
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -3370,21 +3385,12 @@ class SqlConnector(StorageConnector):
                 jks = os.path.join(wallet_dir, "keystore.jks")
                 trust_jks = os.path.join(wallet_dir, "truststore.jks")
                 if os.path.isfile(jks) and os.path.isfile(trust_jks):
-                    # OCI wallets ship both ewallet.p12 (Oracle SSO format) and
-                    # keystore.jks / truststore.jks (standard Java KeyStore).
-                    # The SSO format requires oraclepki.jar + osdt_core.jar to
-                    # parse correctly; the JKS files work with the standard JVM.
-                    # sqlnet.ora contains WALLET_LOCATION which forces the driver
-                    # back to SSO, so point tns_admin at a stripped copy that
-                    # only has tnsnames.ora and SSL_SERVER_DN_MATCH.
-                    tns_dir = tempfile.mkdtemp(prefix="oracle_tns_")
-                    shutil.copy(
-                        os.path.join(wallet_dir, "tnsnames.ora"),
-                        os.path.join(tns_dir, "tnsnames.ora"),
-                    )
-                    with open(os.path.join(tns_dir, "sqlnet.ora"), "w") as f:
-                        f.write("SSL_SERVER_DN_MATCH=yes\n")
-                    options["oracle.net.tns_admin"] = tns_dir
+                    # OCI wallet with JKS files — inline the TNS descriptor into
+                    # the URL (avoids tns_admin path on executors) and set JKS
+                    # paths for SSL.  The read is forced to the driver because
+                    # the JKS files only exist there.
+                    if not self._host:
+                        options["url"] = self._inline_tns_url(wallet_dir)
                     options["javax.net.ssl.keyStore"] = jks
                     options["javax.net.ssl.trustStore"] = trust_jks
                     if self._wallet_password:
@@ -3394,16 +3400,20 @@ class SqlConnector(StorageConnector):
                         options["javax.net.ssl.trustStorePassword"] = (
                             self._wallet_password
                         )
-                else:
-                    # No JKS files — fall back to Oracle wallet (requires
-                    # oraclepki.jar + osdt_core.jar + osdt_cert.jar on classpath).
-                    options["oracle.net.tns_admin"] = wallet_dir
-                    options["oracle.net.wallet_location"] = (
-                        f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                    return engine._get_instance()._read_jdbc_on_driver(
+                        options, dataframe_type
                     )
-                    if self._wallet_password:
-                        options["oracle.net.wallet_password"] = self._wallet_password
-
+                # No JKS — fall back to Oracle wallet (requires oraclepki.jar
+                # + osdt_core.jar + osdt_cert.jar on classpath).
+                options["oracle.net.tns_admin"] = wallet_dir
+                options["oracle.net.wallet_location"] = (
+                    f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                )
+                if self._wallet_password:
+                    options["oracle.net.wallet_password"] = self._wallet_password
+                return engine._get_instance()._read_jdbc_on_driver(
+                    options, dataframe_type
+                )
         return engine._get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )

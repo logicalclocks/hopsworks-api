@@ -287,6 +287,25 @@ class Engine:
                     external_fg.data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
+            if (
+                external_fg.data_source.storage_connector.type
+                == StorageConnector.MONGODB
+            ):
+                # The query constructor response omits features from the
+                # on-demand FG payload. Fetch the full FG to get column_name
+                # mappings so we can rename source fields to feature names.
+                # Needed for MongoDB since the field names cannot be set using
+                # the query constructor's select statement (unlike with file-based
+                # sources where we can use "SELECT col AS feature_name").
+                full_fg = external_fg._feature_group_engine._feature_group_api.get(
+                    external_fg.feature_store_id, external_fg.name, external_fg.version
+                )
+                columns = full_fg.columns if full_fg else []
+                for feat in columns:
+                    if feat.column_name != feat.name:
+                        external_dataset = external_dataset.withColumnRenamed(
+                            feat.column_name, feat.name
+                        )
         else:
             external_dataset = external_fg.dataframe
 
@@ -1343,6 +1362,56 @@ class Engine:
             self._spark_session.read.format(data_format)
             .options(**(read_options if read_options else {}))
             .load(path),
+            dataframe_type=dataframe_type,
+        )
+
+    def _read_jdbc_on_driver(self, options, dataframe_type):
+        # Wallet files exist on the driver only — read via JVM DriverManager
+        # directly on the driver process, collect into pandas, then wrap in a
+        # Spark DataFrame.  Spark always dispatches jdbc tasks to executors
+        # (even with numPartitions=1), so spark.read.jdbc cannot be used here.
+        import pandas as pd
+
+        jvm = self._jvm
+        props = jvm.java.util.Properties()
+        for k, v in options.items():
+            if k not in ("url", "query", "dbtable"):
+                props.setProperty(k, str(v))
+
+        url = options["url"]
+        sql = options.get("query") or f"SELECT * FROM {options['dbtable']}"
+
+        from pyspark.sql.types import StringType, StructField, StructType
+
+        conn = jvm.java.sql.DriverManager.getConnection(url, props)
+        try:
+            stmt = conn.createStatement()
+            rs = stmt.executeQuery(sql)
+            meta = rs.getMetaData()
+            col_count = meta.getColumnCount()
+            columns = [meta.getColumnLabel(i + 1) for i in range(col_count)]
+            rows = []
+            while rs.next():
+                row = []
+                for i in range(col_count):
+                    val = rs.getObject(i + 1)
+                    row.append(None if val is None else str(val))
+                rows.append(row)
+            rs.close()
+            stmt.close()
+        finally:
+            conn.close()
+
+        # All values are strings — use an explicit all-string schema so
+        # nullable/all-null columns don't cause inference to fail.
+        # Type coercion happens when Spark executes SQL against the temp view.
+        schema = StructType(
+            [StructField(col, StringType(), nullable=True) for col in columns]
+        )
+
+        pdf = pd.DataFrame(rows, columns=columns)
+        return self._return_dataframe_type(
+            self._spark_session.createDataFrame(pdf, schema=schema),
             dataframe_type=dataframe_type,
         )
 
