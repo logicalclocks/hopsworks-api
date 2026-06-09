@@ -74,7 +74,7 @@ class TestGreatExpectationEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -107,7 +107,7 @@ class TestGreatExpectationEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -153,7 +153,7 @@ class TestGreatExpectationEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -198,7 +198,7 @@ class TestGreatExpectationEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -247,7 +247,7 @@ class TestGreatExpectationEngine:
         )
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = _make_ge_expectation_suite(name="suite_name", expectations=[], meta={})
 
@@ -288,7 +288,7 @@ class TestGreatExpectationEngine:
         )
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = es.ExpectationSuite(
             expectation_suite_name="suite_name", expectations=[], meta={}
@@ -331,7 +331,7 @@ class TestGreatExpectationEngine:
         )
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = None
 
@@ -370,7 +370,7 @@ class TestGreatExpectationEngine:
         )
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = None
 
@@ -505,7 +505,7 @@ class TestGreatExpectationEngine:
         )
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -550,7 +550,7 @@ class TestGreatExpectationEngine:
         )
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -595,7 +595,7 @@ class TestGreatExpectationEngine:
         )
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -634,7 +634,7 @@ class TestGreatExpectationEngine:
         # Arrange
         ge_engine = great_expectation_engine.GreatExpectationEngine(feature_store_id=11)
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
@@ -666,7 +666,7 @@ class TestGreatExpectationEngine:
 class TestGreatExpectationEngineEndToEnd:
     """End-to-end tests that exercise the real great_expectations call.
 
-    The existing TestGreatExpectationEngine mocks engine.get_instance() so it
+    The existing TestGreatExpectationEngine mocks engine._get_instance() so it
     never reaches the GE library. These tests intentionally do call into GE so
     that an upgrade-time regression in the GE-boundary surfaces here.
     """
@@ -872,7 +872,7 @@ class TestGreatExpectationEngineEndToEnd:
         feature_store_id = 99
         mocker.patch("hsfs.engine.get_type")
         # Use a real Python engine so the orchestrator reaches the real GE call.
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine.Engine())
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,

@@ -57,7 +57,7 @@ def init(engine_type: str) -> None:
             _engine_type = engine_type
 
 
-def get_instance() -> (
+def _get_instance() -> (
     spark.Engine | spark_no_metastore.Engine | TypeVar("python.Engine")
 ):
     init(hopsworks_common.connection._hsfs_engine_type)

@@ -29,7 +29,7 @@ class TestTrainingDatasetEngine:
         feature_store_id = 99
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
 
         td = training_dataset.TrainingDataset(
@@ -70,7 +70,7 @@ class TestTrainingDatasetEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
 
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
 
         td = training_dataset.TrainingDataset(
@@ -104,7 +104,7 @@ class TestTrainingDatasetEngine:
 
         mocker.patch("hopsworks_common.client._get_instance")
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
         mock_warning = mocker.patch("warnings.warn")
 
@@ -149,7 +149,7 @@ class TestTrainingDatasetEngine:
         # Arrange
         feature_store_id = 99
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
@@ -177,7 +177,7 @@ class TestTrainingDatasetEngine:
         # Arrange
         feature_store_id = 99
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
@@ -203,7 +203,7 @@ class TestTrainingDatasetEngine:
         feature_store_id = 99
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_read = mocker.patch(
             "hsfs.storage_connector.HopsFSConnector.read"
         )
@@ -232,7 +232,7 @@ class TestTrainingDatasetEngine:
         feature_store_id = 99
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_read = mocker.patch(
             "hsfs.storage_connector.HopsFSConnector.read"
         )

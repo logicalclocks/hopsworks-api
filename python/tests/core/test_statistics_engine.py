@@ -60,7 +60,7 @@ class TestStatisticsEngine:
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -103,7 +103,7 @@ class TestStatisticsEngine:
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -146,7 +146,7 @@ class TestStatisticsEngine:
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -204,7 +204,7 @@ class TestStatisticsEngine:
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -254,7 +254,7 @@ class TestStatisticsEngine:
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -307,7 +307,7 @@ class TestStatisticsEngine:
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -352,7 +352,7 @@ class TestStatisticsEngine:
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
         )
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -392,7 +392,7 @@ class TestStatisticsEngine:
 
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_warning = mocker.patch("warnings.warn")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
@@ -438,7 +438,7 @@ class TestStatisticsEngine:
 
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -488,7 +488,7 @@ class TestStatisticsEngine:
         feature_store_id = 99
 
         mock_engine_get_type = mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_statistics_engine_profile_unique_values = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._profile_unique_values"
         )
@@ -522,7 +522,7 @@ class TestStatisticsEngine:
         feature_store_id = 99
 
         mock_engine_get_type = mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_statistics_engine_profile_unique_values = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._profile_unique_values"
         )
@@ -828,7 +828,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
@@ -857,7 +857,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 

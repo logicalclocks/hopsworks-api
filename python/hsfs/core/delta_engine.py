@@ -457,7 +457,7 @@ class DeltaEngine:
                 # key_path is a HopsFS path; download it locally for external clients
                 from hsfs import engine
 
-                local_key_path = engine.get_instance()._add_file(connector.key_path)
+                local_key_path = engine._get_instance()._add_file(connector.key_path)
                 opts["GOOGLE_SERVICE_ACCOUNT_PATH"] = local_key_path
             return opts
         return {}

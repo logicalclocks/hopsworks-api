@@ -746,7 +746,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -816,7 +816,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -955,7 +955,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -1024,7 +1024,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -1164,7 +1164,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -1216,7 +1216,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -1274,7 +1274,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -1331,7 +1331,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -1392,7 +1392,7 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fv_engine_read_from_storage_connector = mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
         )
@@ -1738,7 +1738,7 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine._drop_helper_columns"
         )
         mock_sc_read = mocker.patch("hsfs.storage_connector.HopsFSConnector.read")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -1828,7 +1828,7 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
@@ -1865,7 +1865,7 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
@@ -1926,7 +1926,7 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
@@ -2056,7 +2056,7 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
@@ -2109,7 +2109,7 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
@@ -2160,7 +2160,7 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
@@ -2975,7 +2975,7 @@ class TestFeatureViewEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        engine = mocker.patch("hsfs.engine.get_instance", autospec=True).return_value
+        engine = mocker.patch("hsfs.engine._get_instance", autospec=True).return_value
         mocker.patch("hsfs.engine.get_type", return_value="python")
         engine._check_supported_dataframe.return_value = True
         engine._parse_schema_feature_group.return_value = [
@@ -3035,7 +3035,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
         mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -3279,7 +3279,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
         mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -3522,7 +3522,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
         mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -3801,7 +3801,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
         mocked_engine._get_feature_logging_list.return_value = (
             pd.DataFrame,
             None,
@@ -3933,7 +3933,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
         mocked_engine._get_feature_logging_list.return_value = (
             pd.DataFrame,
             None,
@@ -4137,7 +4137,7 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
         mocked_engine._get_feature_logging_list.return_value = (
             pd.DataFrame,
             None,

@@ -35,7 +35,7 @@ class TestOnlineStoreRestClient:
 
         # Act
         online_store_rest_client.init_or_reset_online_store_rest_client()
-        online_store_rest_client_instance = online_store_rest_client.get_instance()
+        online_store_rest_client_instance = online_store_rest_client._get_instance()
 
         # Assert
         variable_api_mock.assert_called_once()
@@ -71,7 +71,7 @@ class TestOnlineStoreRestClient:
         online_store_rest_client.init_or_reset_online_store_rest_client(
             optional_config=optional_config
         )
-        online_store_rest_client_instance = online_store_rest_client.get_instance()
+        online_store_rest_client_instance = online_store_rest_client._get_instance()
 
         # Assert
         assert variable_api_mock.call_count == 2

@@ -145,7 +145,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -184,7 +184,7 @@ class TestFeatureGroupEngine:
             return col1 + 1
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -228,7 +228,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -354,7 +354,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -402,7 +402,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -448,7 +448,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -499,7 +499,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -542,7 +542,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -601,7 +601,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -821,7 +821,7 @@ class TestFeatureGroupEngine:
         mock_engine = mocker.MagicMock()
         mock_engine._spark_session = mocker.MagicMock()
         mock_engine._spark_context = mocker.MagicMock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine"
             "._get_spark_session_and_context",
@@ -858,7 +858,7 @@ class TestFeatureGroupEngine:
         mock_engine = mocker.MagicMock()
         mock_engine._spark_session = mocker.MagicMock()
         mock_engine._spark_context = None
-        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -884,7 +884,7 @@ class TestFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_hudi_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
@@ -938,7 +938,7 @@ class TestFeatureGroupEngine:
         mock_sc_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -964,7 +964,7 @@ class TestFeatureGroupEngine:
         mock_sc_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -1037,7 +1037,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_fg_engine_update_features_metadata = mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._update_features_metadata"
         )
@@ -1132,7 +1132,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -1182,7 +1182,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -1233,7 +1233,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -1278,7 +1278,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -1332,7 +1332,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -2209,7 +2209,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -2252,7 +2252,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -2297,7 +2297,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )
@@ -2343,7 +2343,7 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
         )

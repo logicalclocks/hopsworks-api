@@ -102,7 +102,7 @@ class TestS3Connector:
         assert sc.arguments == {}
 
     def test_default_path(self, mocker):
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         mocker.patch(
             "hsfs.storage_connector.StorageConnector.refetch", return_value=None
         )
@@ -117,7 +117,7 @@ class TestS3Connector:
         assert "s3://test-bucket" in mock_engine_read.call_args[0][3]
 
     def test_get_path(self, mocker):
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         sc = storage_connector.S3Connector(
             id=1, name="test_connector", featurestore_id=1, bucket="test-bucket"
         )
@@ -129,7 +129,7 @@ class TestS3Connector:
         assert result == "s3://test-bucket/some/location"
 
     def test_get_path_storage_connector_with_path(self, mocker):
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         sc = storage_connector.S3Connector(
             id=1,
             name="test_connector",
@@ -345,7 +345,7 @@ class TestRedshiftConnector:
             database_name="db",
         )
 
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         mocker.patch("hsfs.core.storage_connector_api.StorageConnectorApi._refetch")
         mock_engine_read = mocker.patch("hsfs.engine.spark.Engine._read")
 
@@ -398,7 +398,7 @@ class TestAdlsConnector:
         assert sc._spark_options == {}
 
     def test_default_path(self, mocker):
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         mock_engine_read = mocker.patch("hsfs.engine.spark.Engine._read")
         # act
         sc = storage_connector.AdlsConnector(
@@ -420,7 +420,7 @@ class TestAdlsConnector:
 
 class TestSnowflakeConnector:
     def test_read_query_option(self, mocker):
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         mock_engine_read = mocker.patch("hsfs.engine.spark.Engine._read")
 
         snowflake_connector = storage_connector.SnowflakeConnector(
@@ -675,7 +675,7 @@ class TestKafkaConnector:
     def test_kafka_options_user_sc(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
 
         mock_engine_get_instance.return_value._add_file.return_value = (
@@ -702,7 +702,7 @@ class TestKafkaConnector:
 
     def test_kafka_options_internal(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
@@ -734,7 +734,7 @@ class TestKafkaConnector:
 
     def test_kafka_options_external(self, mocker, backend_fixtures):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
 
         sc = storage_connector.StorageConnector.from_response_json(json)
@@ -761,7 +761,7 @@ class TestKafkaConnector:
 
     def test_spark_options(self, mocker, backend_fixtures):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
@@ -795,7 +795,7 @@ class TestKafkaConnector:
 
     def test_spark_options_spark_35(self, mocker, backend_fixtures):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
@@ -848,7 +848,7 @@ class TestKafkaConnector:
 
     def test_spark_options_external(self, mocker, backend_fixtures):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
 
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
@@ -876,7 +876,7 @@ class TestKafkaConnector:
 
     def test_spark_options_spark_35_external(self, mocker, backend_fixtures):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
 
@@ -933,7 +933,7 @@ class TestKafkaConnector:
 
     def test_confluent_options(self, mocker, backend_fixtures):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
         mock_engine_get_instance.return_value._add_file.return_value = (
@@ -964,7 +964,7 @@ class TestKafkaConnector:
 
     def test_confluent_options_jaas_single_quotes(self, mocker):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = None
         mocker.patch("hopsworks_common.client._get_instance")
         sc = storage_connector.KafkaConnector(
@@ -995,7 +995,7 @@ class TestKafkaConnector:
 
     def test_confluent_options_jaas_double_quotes(self, mocker):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = None
         mocker.patch("hopsworks_common.client._get_instance")
         sc = storage_connector.KafkaConnector(
@@ -1070,7 +1070,7 @@ class TestGcsConnector:
             sc.read()
 
     def test_default_path(self, mocker):
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         mock_engine_read = mocker.patch("hsfs.engine.spark.Engine._read")
         # act
         sc = storage_connector.GcsConnector(
@@ -1247,7 +1247,7 @@ class TestSqlConnector:
     ):
         # Arrange
         connector = self._make_connector(database_type)
-        mock_read = mocker.patch("hsfs.engine.get_instance")
+        mock_read = mocker.patch("hsfs.engine._get_instance")
         mocker.patch.object(connector, "refetch")
 
         # Act
@@ -1271,7 +1271,7 @@ class TestSqlConnector:
             user="scott",
             password="tiger",
         )
-        mock_engine = mocker.patch("hsfs.engine.get_instance")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
         mocker.patch.object(connector, "refetch")
 
         # Act
@@ -1455,7 +1455,7 @@ class TestOracleConnector:
             wallet_password="walletpass",
         )
 
-        mock_engine = mocker.patch("hsfs.engine.get_instance")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
         mock_engine.return_value._add_file.return_value = str(wallet_zip)
         mocker.patch.object(sc, "refetch")
 
@@ -1688,7 +1688,7 @@ class TestSapHanaConnector:
         assert opts["fetchsize"] == "5000"
 
     def test_read_query_overrides_dbtable(self, mocker):
-        mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         mock_engine_read = mocker.patch("hsfs.engine.spark.Engine._read")
 
         sc = storage_connector.SapHanaConnector(

@@ -102,7 +102,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         transformation_context: dict[str, Any] = None,
         validation_options: dict = None,
     ):
-        dataframe_features = engine.get_instance()._parse_schema_feature_group(
+        dataframe_features = engine._get_instance()._parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
         )
         dataframe_features = (
@@ -162,7 +162,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         online_write_options = write_options
 
         return (
-            engine.get_instance()._save_dataframe(
+            engine._get_instance()._save_dataframe(
                 feature_group,
                 feature_dataframe,
                 (
@@ -225,7 +225,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
     ):
-        dataframe_features = engine.get_instance()._parse_schema_feature_group(
+        dataframe_features = engine._get_instance()._parse_schema_feature_group(
             feature_dataframe,
             feature_group.time_travel_format,
             features=feature_group.columns,
@@ -314,7 +314,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._feature_group_api._delete_content(feature_group)
 
         return (
-            engine.get_instance()._save_dataframe(
+            engine._get_instance()._save_dataframe(
                 feature_group,
                 feature_dataframe,
                 "bulk_insert" if overwrite else operation,
@@ -357,10 +357,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     @staticmethod
     def _get_spark_session_and_context():
-        if isinstance(engine.get_instance(), engine.spark.Engine):
+        if isinstance(engine._get_instance(), engine.spark.Engine):
             return (
-                engine.get_instance()._spark_session,
-                engine.get_instance()._spark_context,
+                engine._get_instance()._spark_session,
+                engine._get_instance()._spark_context,
             )
         return None, None
 
@@ -414,7 +414,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._online_conn = self._storage_connector_api._get_online_connector(
                 self._feature_store_id
             )
-        return engine.get_instance()._sql(
+        return engine._get_instance()._sql(
             query,
             feature_store_name,
             self._online_conn if online else None,
@@ -461,7 +461,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         # write empty dataframe to update parquet schema
-        engine.get_instance()._update_table_schema(feature_group)
+        engine._get_instance()._update_table_schema(feature_group)
 
     def _update_description(
         self, feature_group: fg.FeatureGroup, description: str
@@ -541,7 +541,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 "It is currently only possible to stream to the online storage."
             )
 
-        dataframe_features = engine.get_instance()._parse_schema_feature_group(
+        dataframe_features = engine._get_instance()._parse_schema_feature_group(
             dataframe, feature_group.time_travel_format
         )
         dataframe_features = (
@@ -580,9 +580,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 # we will use save_dataframe method on empty dataframe to create directory structure
                 offline_write_options = write_options
                 online_write_options = write_options
-                engine.get_instance()._save_dataframe(
+                engine._get_instance()._save_dataframe(
                     feature_group,
-                    engine.get_instance()._create_empty_df(dataframe),
+                    engine._get_instance()._create_empty_df(dataframe),
                     (
                         hudi_engine.HudiEngine.HUDI_BULK_INSERT
                         if feature_group.time_travel_format == "HUDI"
@@ -604,7 +604,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 stacklevel=1,
             )
 
-        return engine.get_instance()._save_stream_dataframe(
+        return engine._get_instance()._save_stream_dataframe(
             feature_group,
             dataframe,
             query_name,

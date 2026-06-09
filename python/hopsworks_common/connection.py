@@ -437,7 +437,7 @@ class Connection:
 
         from hsfs import engine
 
-        engine.get_instance()
+        engine._get_instance()
         if self._variable_api.get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client

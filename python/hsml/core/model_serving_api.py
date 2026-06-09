@@ -67,7 +67,7 @@ class ModelServingApi:
         if client._is_kserve_installed():
             # check existing istio client
             try:
-                if client.istio.get_instance() is not None:
+                if client.istio._get_instance() is not None:
                     return  # istio client already set
             except Exception:
                 pass

@@ -80,7 +80,7 @@ class GreatExpectationEngine:
                     f"{util.get_feature_group_url(feature_group.feature_store_id, feature_group.id)}."
                 )
 
-            report = engine.get_instance()._validate_with_great_expectations(
+            report = engine._get_instance()._validate_with_great_expectations(
                 dataframe=dataframe,
                 expectation_suite=suite.to_ge_type(),
                 ge_validate_kwargs=validation_options.get("ge_validate_kwargs", {}),

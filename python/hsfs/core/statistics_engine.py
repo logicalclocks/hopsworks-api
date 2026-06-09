@@ -100,7 +100,7 @@ class StatisticsEngine:
                 return self._save_statistics(stats, metadata_instance, feature_view_obj)
         else:
             # Python engine
-            return engine.get_instance()._profile_by_spark(metadata_instance)
+            return engine._get_instance()._profile_by_spark(metadata_instance)
         return None
 
     def _compute_and_save_monitoring_statistics(
@@ -207,7 +207,7 @@ class StatisticsEngine:
             # if empty data, set count to 0 and return
             col_stats = [{"column": col_name, "count": 0} for col_name in columns]
             return json.dumps({"columns": col_stats})
-        return engine.get_instance()._profile(
+        return engine._get_instance()._profile(
             feature_dataframe, columns, correlations, histograms, exact_uniqueness
         )
 
@@ -395,7 +395,7 @@ class StatisticsEngine:
 
         # compute statistics for all features with transformation fn
         all_columns = (columns or []) + (label_encoder_features or [])
-        stats_str = engine.get_instance()._profile(
+        stats_str = engine._get_instance()._profile(
             feature_dataframe, all_columns, False, True, False
         )
 
@@ -415,7 +415,7 @@ class StatisticsEngine:
             col_stats_unique_values = {
                 "column": column,
                 "unique_values": list(
-                    engine.get_instance()._get_unique_values(feature_dataframe, column)
+                    engine._get_instance()._get_unique_values(feature_dataframe, column)
                 ),
             }
             if column in stats_dict:

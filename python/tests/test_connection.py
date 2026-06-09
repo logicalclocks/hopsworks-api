@@ -167,7 +167,7 @@ class TestProvideProject:
 
     @pytest.fixture(autouse=True)
     def _stub_hsfs_engine(self, mocker):
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
     def _make_rest_error(self, status_error_code, error_code):
         err = RestAPIError.__new__(RestAPIError)

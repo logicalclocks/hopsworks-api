@@ -117,7 +117,9 @@ class Query:
         else:
             online_conn = None
 
-            if engine.get_instance()._is_flyingduck_query_supported(self, read_options):
+            if engine._get_instance()._is_flyingduck_query_supported(
+                self, read_options
+            ):
                 # The FlyingDuck (Hopsworks Query Service) payload is build in the backend
                 sql_query = self._query_constructor_api._construct_query(self, hqs=True)
             else:
@@ -332,7 +334,7 @@ class Query:
             )
         self._check_read_supported(online)
         if online and self._left_feature_group.embedding_index:
-            return engine.get_instance()._read_vector_db(
+            return engine._get_instance()._read_vector_db(
                 self._left_feature_group,
                 dataframe_type=dataframe_type,
                 filter=self._filter,
@@ -355,7 +357,7 @@ class Query:
                     "Pandas types casting only supported for feature_group.read()/query.select_all()"
                 )
 
-        return engine.get_instance()._sql(
+        return engine._get_instance()._sql(
             sql_query,
             self._feature_store_name,
             online_conn,
@@ -414,7 +416,7 @@ class Query:
         self._check_read_supported(online)
         read_options = {}
         if online and self._left_feature_group.embedding_index:
-            return engine.get_instance()._read_vector_db(
+            return engine._get_instance()._read_vector_db(
                 self._left_feature_group, n, filter=self._filter
             )
         previous_limit = self._limit
@@ -423,7 +425,7 @@ class Query:
             sql_query, online_conn = self._prep_read(online, read_options)
         finally:
             self._limit = previous_limit
-        return engine.get_instance()._show(
+        return engine._get_instance()._show(
             sql_query, self._feature_store_name, n, online_conn, read_options
         )
 

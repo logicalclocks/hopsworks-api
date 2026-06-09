@@ -748,7 +748,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -771,7 +771,7 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
 
@@ -798,7 +798,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -823,7 +823,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -848,7 +848,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -869,7 +869,7 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
 
@@ -896,7 +896,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -922,7 +922,7 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
         mock_hopsworks_client = mocker.MagicMock()
@@ -957,7 +957,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -982,7 +982,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 

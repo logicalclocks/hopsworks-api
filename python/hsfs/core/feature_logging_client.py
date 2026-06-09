@@ -37,7 +37,7 @@ def init_client(
         _logger.warning("Feature Logging Client is already initialized.")
 
 
-def get_instance() -> FeatureLoggingClientSingleton:
+def _get_instance() -> FeatureLoggingClientSingleton:
     global _client
     if _client is None:
         _logger.warning(

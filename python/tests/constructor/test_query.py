@@ -694,7 +694,7 @@ class TestQuery:
 
     def test_prep_read_spine(self, mocker):
         engine = spark.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
@@ -720,7 +720,7 @@ class TestQuery:
 
     def test_prep_hudi_delta_fg_join(self, mocker):
         engine = spark.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
@@ -776,7 +776,7 @@ class TestQuery:
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         mock_engine = mocker.MagicMock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
         mock_fs_query.query = "SELECT * FROM test"
@@ -799,7 +799,7 @@ class TestQuery:
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         mock_engine = mocker.MagicMock()
-        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
         mock_fs_query.query = "SELECT * FROM test"

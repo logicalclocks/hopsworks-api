@@ -516,7 +516,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -539,7 +539,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -566,7 +566,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -656,7 +656,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -698,7 +698,7 @@ class TestTransformationFunctionEngine:
         mocker_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -748,7 +748,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -791,7 +791,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -836,7 +836,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -889,7 +889,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -934,7 +934,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -980,7 +980,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1039,7 +1039,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1096,7 +1096,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1156,7 +1156,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1206,7 +1206,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1258,7 +1258,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1317,7 +1317,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1377,7 +1377,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1429,7 +1429,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1489,7 +1489,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1554,7 +1554,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1622,7 +1622,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1689,7 +1689,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1757,7 +1757,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1824,7 +1824,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1885,7 +1885,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1945,7 +1945,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2010,7 +2010,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2084,7 +2084,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2146,7 +2146,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2192,7 +2192,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2233,7 +2233,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2274,7 +2274,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2321,7 +2321,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2379,7 +2379,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2431,7 +2431,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99

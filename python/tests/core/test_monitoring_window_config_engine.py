@@ -278,7 +278,7 @@ class TestMonitoringWindowConfigEngine:
     def test_fetch_feature_view_data(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch(ENGINE_GET_TYPE, return_value="spark")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mocker.patch(CLIENT_GET_INSTANCE)
         unit_test_fv = feature_view.FeatureView.from_response_json(
             backend_fixtures["feature_view"]["get"]["response"]

@@ -99,7 +99,7 @@ class OnlineStoreRestClientApi:
                 f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=NpDatetimeEncoder)}"
             )
         return self._handle_rdrs_feature_store_response(
-            online_store_rest_client.get_instance().send_request(
+            online_store_rest_client._get_instance().send_request(
                 method="POST",
                 path_params=[self.SINGLE_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
@@ -144,7 +144,7 @@ class OnlineStoreRestClientApi:
                 f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=NpDatetimeEncoder)}"
             )
         return self._handle_rdrs_feature_store_response(
-            online_store_rest_client.get_instance().send_request(
+            online_store_rest_client._get_instance().send_request(
                 method="POST",
                 path_params=[self.BATCH_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
@@ -160,7 +160,7 @@ class OnlineStoreRestClientApi:
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Pinging RonDB Rest Server")
-        ping_response = online_store_rest_client.get_instance().send_request(
+        ping_response = online_store_rest_client._get_instance().send_request(
             method="GET", path_params=[self.PING_ENDPOINT]
         )
         if _logger.isEnabledFor(logging.DEBUG):

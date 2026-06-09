@@ -1223,7 +1223,7 @@ class TestSpark:
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -1351,7 +1351,7 @@ class TestSpark:
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -1483,7 +1483,7 @@ class TestSpark:
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -1611,7 +1611,7 @@ class TestSpark:
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -1882,7 +1882,7 @@ class TestSpark:
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -1979,7 +1979,7 @@ class TestSpark:
         )
         mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -2053,7 +2053,7 @@ class TestSpark:
         )
         mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
 
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
@@ -3981,7 +3981,7 @@ class TestSpark:
 
     def test_read_stream(self, mocker):
         # Arrange
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mocker.patch("hopsworks_common.client._get_instance")
         mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 

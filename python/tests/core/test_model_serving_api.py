@@ -45,7 +45,7 @@ class TestIstioInitIfAvailable:
             "hsml.core.model_serving_api.client._is_kserve_installed", return_value=True
         )
         mocker.patch(
-            "hsml.core.model_serving_api.client.istio.get_instance", return_value=None
+            "hsml.core.model_serving_api.client.istio._get_instance", return_value=None
         )
         self.istio_init = mocker.patch("hsml.core.model_serving_api.client.istio.init")
 
@@ -62,7 +62,7 @@ class TestIstioInitIfAvailable:
 
     def test_skips_when_istio_already_initialized(self, mocker, api):
         mocker.patch(
-            "hsml.core.model_serving_api.client.istio.get_instance",
+            "hsml.core.model_serving_api.client.istio._get_instance",
             return_value=object(),
         )
 

@@ -786,7 +786,7 @@ class TestFeatureGroup:
 
     def test_save_with_non_feature_list(self, mocker):
         engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mock_convert_to_default_dataframe = mocker.patch(
@@ -826,7 +826,7 @@ class TestFeatureGroup:
 
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch(
             "hsfs.engine.python.Engine._convert_to_default_dataframe",
@@ -875,7 +875,7 @@ class TestFeatureGroup:
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch(
             "hsfs.engine.python.Engine._convert_to_default_dataframe",
@@ -1395,7 +1395,7 @@ class TestExternalFeatureGroup:
     def test_prepare_spark_location(self, mocker, backend_fixtures):
         # Arrange
         engine = spark.Engine()
-        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        engine_instance = mocker.patch("hsfs.engine._get_instance", return_value=engine)
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
@@ -1410,7 +1410,7 @@ class TestExternalFeatureGroup:
     def test_prepare_spark_location_with_s3_connector(self, mocker, backend_fixtures):
         # Arrange
         engine = spark.Engine()
-        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        engine_instance = mocker.patch("hsfs.engine._get_instance", return_value=engine)
         refetch_api = mocker.patch("hsfs.storage_connector.S3Connector.refetch")
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
@@ -1432,7 +1432,7 @@ class TestExternalFeatureGroup:
     ):
         # Arrange
         engine = python.Engine()
-        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        engine_instance = mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.storage_connector.S3Connector.refetch")
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
@@ -1825,7 +1825,7 @@ class TestFeatureGroupRead:
         )
         fake_query = mock.MagicMock()
         mocker.patch.object(fg, "select_all", return_value=fake_query)
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         env = {
             "HOPS_START_TIME": "2026-01-01T00:00:00Z",
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",
@@ -1897,7 +1897,7 @@ class TestExternalFeatureGroupRead:
         fake_query = mock.MagicMock()
         mocker.patch.object(fg, "select_all", return_value=fake_query)
         mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         env = {
             "HOPS_START_TIME": "2026-01-01T00:00:00Z",
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",

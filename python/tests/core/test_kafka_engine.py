@@ -140,7 +140,7 @@ class TestKafkaEngine:
 
     def test_get_kafka_config(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
@@ -182,7 +182,7 @@ class TestKafkaEngine:
 
     def test_get_kafka_config_external_client(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
@@ -224,7 +224,7 @@ class TestKafkaEngine:
 
     def test_get_kafka_config_internal_kafka(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
@@ -269,7 +269,7 @@ class TestKafkaEngine:
         self, mocker, backend_fixtures
     ):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
@@ -404,7 +404,7 @@ class TestKafkaEngine:
     def test_spark_get_kafka_config(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
@@ -447,7 +447,7 @@ class TestKafkaEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
@@ -489,7 +489,7 @@ class TestKafkaEngine:
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )

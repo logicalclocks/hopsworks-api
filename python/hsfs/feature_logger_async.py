@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hsfs.core.feature_logging_client import (
-    get_instance as get_feature_logging_client,
+    _get_instance as get_feature_logging_client,
 )
 from hsfs.core.feature_logging_client import (
     init_client,

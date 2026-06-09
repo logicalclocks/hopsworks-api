@@ -684,7 +684,7 @@ class Predictor(DeployableComponent):
 
         serving = serving_api.ServingApi()
 
-        istio_client = client.istio.get_instance()
+        istio_client = client.istio._get_instance()
         if istio_client is not None:
             path_parts = serving._get_istio_inference_path(self, base_only=True)
             return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
@@ -747,7 +747,7 @@ class Predictor(DeployableComponent):
         serving = serving_api.ServingApi()
 
         # Try Istio client first
-        istio_client = client.istio.get_instance()
+        istio_client = client.istio._get_instance()
         if istio_client is not None:
             path_parts = serving._get_istio_inference_path(self, base_only=False)
             return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"

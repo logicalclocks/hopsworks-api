@@ -37,7 +37,7 @@ class TestFeatureGroupApi:
             "hopsworks_common.client._get_instance",
             return_value=client_mock,
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         print(client_mock.side_effect)
 

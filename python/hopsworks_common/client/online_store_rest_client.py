@@ -62,8 +62,8 @@ def init_or_reset_online_store_rest_client(
             )
 
 
-@also_available_as("hsfs.client.online_store_rest_client.get_instance")
-def get_instance() -> OnlineStoreRestClientSingleton:
+@also_available_as("hsfs.client.online_store_rest_client._get_instance")
+def _get_instance() -> OnlineStoreRestClientSingleton:
     global _online_store_rest_client
     if _online_store_rest_client is None:
         if _logger.isEnabledFor(logging.WARNING):
