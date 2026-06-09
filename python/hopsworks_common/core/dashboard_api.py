@@ -38,7 +38,7 @@ class DashboardApi:
     """
 
     def _path(self) -> list[Any]:
-        return rest.project_path("dashboards")
+        return rest._project_path("dashboards")
 
     @public
     def list_dashboards(self) -> list[dict[str, Any]]:
@@ -48,7 +48,7 @@ class DashboardApi:
             A list of dashboard dicts, each with an ``id``, ``name`` and
             embedded ``charts`` list.
         """
-        payload = rest.send_request("GET", self._path())
+        payload = rest._send_request("GET", self._path())
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict):
@@ -65,7 +65,7 @@ class DashboardApi:
         Returns:
             The dashboard dict.
         """
-        return rest.send_request("GET", [*self._path(), dashboard_id])
+        return rest._send_request("GET", [*self._path(), dashboard_id])
 
     @public
     def create_dashboard(self, name: str) -> dict[str, Any]:
@@ -77,7 +77,7 @@ class DashboardApi:
         Returns:
             The created dashboard dict.
         """
-        return rest.send_request(
+        return rest._send_request(
             "POST", self._path(), json_body={"name": name, "charts": []}
         )
 
@@ -93,7 +93,9 @@ class DashboardApi:
         Returns:
             The updated dashboard dict.
         """
-        return rest.send_request("PUT", [*self._path(), dashboard_id], json_body=fields)
+        return rest._send_request(
+            "PUT", [*self._path(), dashboard_id], json_body=fields
+        )
 
     @public
     def delete_dashboard(self, dashboard_id: int) -> None:
@@ -102,7 +104,7 @@ class DashboardApi:
         Args:
             dashboard_id: Dashboard identifier.
         """
-        rest.send_request("DELETE", [*self._path(), dashboard_id])
+        rest._send_request("DELETE", [*self._path(), dashboard_id])
 
     @public
     def add_chart(self, dashboard_id: int, chart_id: int) -> dict[str, Any]:

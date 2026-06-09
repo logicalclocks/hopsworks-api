@@ -24,9 +24,9 @@ because the SDK's per-entity wrappers don't yet cover every endpoint.
 
 This module exposes the bare minimum stable surface for those call sites:
 
-* :func:`send_request` — perform a request against ``/hopsworks-api/api/...``
+* :func:`_send_request` — perform a request against ``/hopsworks-api/api/...``
   with shared host/auth/TLS configuration.
-* :func:`project_path` — build a ``project/<id>/...`` path tuple so callers
+* :func:`_project_path` — build a ``project/<id>/...`` path tuple so callers
   don't reach into ``_project_id`` directly.
 
 Internal SDK consumers should import from here rather than ``client.get_instance()``
@@ -39,21 +39,19 @@ from __future__ import annotations
 import json as _json
 from typing import Any
 
-from hopsworks_apigen import public
 from hopsworks_common import client
 
 
-@public
-def project_path(*tail: Any) -> list[Any]:
+def _project_path(*tail: Any) -> list[Any]:
     """Build a ``["project", <project_id>, *tail]`` path list.
 
     Args:
         *tail: Path components to append after ``project/<id>``. Numeric IDs
-            are accepted alongside strings — :func:`send_request` URL-encodes
+            are accepted alongside strings — :func:`_send_request` URL-encodes
             them.
 
     Returns:
-        A list ready to pass as ``path_params`` to :func:`send_request`.
+        A list ready to pass as ``path_params`` to :func:`_send_request`.
 
     Raises:
         RuntimeError: When the SDK is not connected (``hopsworks.login``
@@ -69,8 +67,7 @@ def project_path(*tail: Any) -> list[Any]:
     return ["project", project_id, *tail]
 
 
-@public
-def send_request(
+def _send_request(
     method: str,
     path_params: list[Any],
     query_params: dict[str, Any] | None = None,
