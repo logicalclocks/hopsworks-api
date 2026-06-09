@@ -4,7 +4,10 @@ Wraps the SDK's ``project.get_app_api()``: list, info, create, start, redeploy,
 stop, delete, plus a convenience ``url`` that prints the public serving URL.
 App scripts can either live in HopsFS or in a Git repository. File-backed
 Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
-``--entrypoint-script``; custom apps use ``--entrypoint-command``.
+``--entrypoint-script``; custom apps use ``--entrypoint-command``. App metadata
+can also carry monitoring config (``enabled`` plus optional ``routes`` with
+``path`` and ``matchType``), and ``hops app info`` prints the monitoring state
+and route list when it is present.
 """
 
 from __future__ import annotations
@@ -82,6 +85,8 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Latest commit", getattr(a, "latest_commit", None) or "-"],
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
+        ["Monitoring", _monitoring_state_text(a)],
+        ["Monitoring routes", _monitoring_routes_text(a)],
         ["Description", getattr(a, "description", None) or "-"],
         ["URL", getattr(a, "app_url", None) or "-"],
     ]
@@ -303,6 +308,9 @@ def app_create(
     start: bool,
 ) -> None:
     """Create a new app.
+
+    Monitoring is enabled by default in the backend. Route filters are optional
+    and narrow the traffic counted by Envoy.
 
     Args:
         ctx: Click context.
@@ -558,8 +566,71 @@ def _redeploy(a: Any, await_serving: bool = True) -> None:
         click.echo(url)
 
 
+def _monitoring_config(a: Any) -> Any:
+    return getattr(a, "monitoring_config", None) or getattr(a, "monitoringConfig", None)
+
+
+def _monitoring_enabled(a: Any) -> bool:
+    config = _monitoring_config(a)
+    if not config:
+        return True
+    if isinstance(config, dict):
+        enabled = config.get("enabled")
+    else:
+        enabled = getattr(config, "enabled", None)
+    return enabled is not False
+
+
+def _monitoring_routes(a: Any) -> list[dict[str, str | None]]:
+    config = _monitoring_config(a)
+    if not config:
+        return []
+    if isinstance(config, dict):
+        routes = config.get("routes") or []
+    else:
+        routes = getattr(config, "routes", None) or []
+    normalized: list[dict[str, str | None]] = []
+    for route in routes:
+        if isinstance(route, dict):
+            path = route.get("path") or route.get("route")
+            match_type = route.get("matchType") or route.get("match_type")
+        else:
+            path = getattr(route, "path", None)
+            match_type = getattr(route, "matchType", None) or getattr(
+                route, "match_type", None
+            )
+        if not path:
+            continue
+        normalized.append(
+            {"path": str(path), "matchType": str(match_type) if match_type else None}
+        )
+    return normalized
+
+
+def _monitoring_state_text(a: Any) -> str:
+    if _monitoring_config(a) is None:
+        return "enabled"
+    return "enabled" if _monitoring_enabled(a) else "disabled"
+
+
+def _monitoring_routes_text(a: Any) -> str:
+    if _monitoring_config(a) is not None and not _monitoring_enabled(a):
+        return "-"
+    routes = _monitoring_routes(a)
+    if not routes:
+        return "default ignored paths"
+    parts = []
+    for route in routes:
+        text = route["path"]
+        if route["matchType"]:
+            text = f"{text} ({route['matchType']})"
+        parts.append(text)
+    return ", ".join(parts)
+
+
 def _app_to_dict(a: Any) -> dict[str, Any]:
     source = _app_source(a)
+    routes = _monitoring_routes(a)
     return {
         "id": getattr(a, "id", None),
         "name": getattr(a, "name", None),
@@ -578,6 +649,11 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
         "entrypoint_command": getattr(a, "entrypoint_command", None),
+        "monitoring": _monitoring_state_text(a),
+        "monitoring_config": {
+            "enabled": _monitoring_enabled(a),
+            "routes": routes,
+        },
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
