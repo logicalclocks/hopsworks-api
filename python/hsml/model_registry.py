@@ -80,7 +80,7 @@ class ModelRegistry:
         return cls(**json_decamelized)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_model(self, name: str, version: int | None = None) -> model.Model | None:
         """Get a model entity from the model registry.
 
@@ -112,7 +112,7 @@ class ModelRegistry:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_models(self, name: str) -> list[model.Model]:
         """Get all model entities from the model registry for a specified name.
 
@@ -134,7 +134,7 @@ class ModelRegistry:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_best_model(
         self, name: str, metric: str, direction: str
     ) -> model.Model | None:
@@ -196,7 +196,7 @@ class ModelRegistry:
         return self._model_registry_id
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def hf_download(
         self,
         hugging_face_model_id: str,

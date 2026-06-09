@@ -42,7 +42,7 @@ class AppApi:
         self._log = logging.getLogger(__name__)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_apps(self) -> list[app.App]:
         """Get all apps in the project.
 
@@ -58,7 +58,7 @@ class AppApi:
         return app.App.from_response_json_list(response)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_app(self, name: str) -> app.App | None:
         """Get an app by name.
 
@@ -89,7 +89,7 @@ class AppApi:
         return app.App.from_response_json(response)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_app(
         self,
         name: str,

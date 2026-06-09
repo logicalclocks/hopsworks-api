@@ -40,7 +40,7 @@ class TagsApi:
         self._feature_store_id = feature_store_id
         self._entity_type = entity_type
 
-    @usage.method_logger
+    @usage._method_logger
     def add(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
@@ -67,7 +67,7 @@ class TagsApi:
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
-    @usage.method_logger
+    @usage._method_logger
     def delete(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
@@ -90,8 +90,8 @@ class TagsApi:
 
         _client._send_request("DELETE", path_params)
 
-    @usage.method_logger
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    @usage._method_logger
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
     def get(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
@@ -123,7 +123,7 @@ class TagsApi:
             )
         }
 
-    @usage.method_logger
+    @usage._method_logger
     def get_path(self, metadata_instance, training_dataset_version=None):
         _client = client.get_instance()
         if hasattr(metadata_instance, "training_data"):

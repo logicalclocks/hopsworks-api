@@ -31,7 +31,7 @@ class FlinkClusterApi:
         self._job_api = job_api.JobApi()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_configuration(self) -> dict:
         """Get configuration for the Flink cluster.
 
@@ -44,7 +44,7 @@ class FlinkClusterApi:
         return self._job_api.get_configuration("FLINK")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def setup_cluster(
         self, name: str, config: dict | None = None
     ) -> flink_cluster.FlinkCluster:
@@ -108,8 +108,8 @@ class FlinkClusterApi:
         return flink_cluster_obj
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found(
+    @usage._method_logger
+    @decorators._catch_not_found(
         "hopsworks_common.flink_cluster.FlinkCluster", fallback_return=None
     )
     def get_cluster(self, name: str) -> flink_cluster.FlinkCluster | None:

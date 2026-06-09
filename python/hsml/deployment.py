@@ -76,7 +76,7 @@ class Deployment:
         self._model_registry_id = None
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
@@ -91,7 +91,7 @@ class Deployment:
         self._serving_engine._save(self, await_update)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def start(self, await_running: int | None = 600):
         """Start the deployment.
 
@@ -106,7 +106,7 @@ class Deployment:
         self._serving_engine._start(self, await_status=await_running)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop(self, await_stopped: int | None = 600):
         """Stop the deployment.
 
@@ -121,7 +121,7 @@ class Deployment:
         self._serving_engine._stop(self, await_status=await_stopped)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def restart(
         self,
         await_stopped: int | None = 600,
@@ -143,7 +143,7 @@ class Deployment:
         self.start(await_running=await_running)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self, force: bool = False):
         """Delete the deployment.
 
@@ -283,7 +283,7 @@ class Deployment:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def download_artifact_files(self, local_path: str | None = None):
         """Download the artifact files served by the deployment.
 

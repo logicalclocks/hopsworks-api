@@ -57,7 +57,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hopsworks_common.core.type_systems import _create_extended_type
-from hopsworks_common.decorators import uses_great_expectations, uses_polars
+from hopsworks_common.decorators import _uses_great_expectations, _uses_polars
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
     feature,
@@ -395,7 +395,7 @@ class Engine:
             f"{data_format} training dataset format is not supported to read as pandas dataframe."
         )
 
-    @uses_polars
+    @_uses_polars
     def _read_polars(
         self, data_format: Literal["csv", "tsv", "parquet"], obj: Any
     ) -> pl.DataFrame:
@@ -843,7 +843,7 @@ class Engine:
             "Deequ data validation is only available with Spark Engine. Use validate_with_great_expectations"
         )
 
-    @uses_great_expectations
+    @_uses_great_expectations
     def _validate_with_great_expectations(
         self,
         dataframe: pl.DataFrame | pd.DataFrame,

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class StorageConnectorApi:
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.storage_connector.StorageConnector", fallback_return=None
     )
     def _get(self, feature_store_id: int, name: str) -> dict[str, Any]:

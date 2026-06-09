@@ -37,7 +37,7 @@ class ServingApi:
     def __init__(self):
         pass
 
-    @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
+    @decorators._catch_not_found("hsml.deployment.Deployment", fallback_return=None)
     def _get_by_id(self, id: int) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain id.
 
@@ -61,7 +61,7 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
-    @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
+    @decorators._catch_not_found("hsml.deployment.Deployment", fallback_return=None)
     def _get(self, name: str) -> deployment.Deployment | None:
         """Get the metadata of a deployment with a certain name.
 

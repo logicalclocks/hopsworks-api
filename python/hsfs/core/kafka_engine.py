@@ -29,7 +29,7 @@ from hopsworks_common.core.constants import (
     HAS_PANDAS,
     avro_not_installed_message,
 )
-from hopsworks_common.decorators import uses_confluent_kafka
+from hopsworks_common.decorators import _uses_confluent_kafka
 from hsfs.core import online_ingestion, online_ingestion_api, storage_connector_api
 from tqdm import tqdm
 
@@ -57,7 +57,7 @@ if TYPE_CHECKING:
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
-@uses_confluent_kafka
+@_uses_confluent_kafka
 def _init_kafka_consumer(
     feature_store_id: int,
     offline_write_options: dict[str, Any],
@@ -158,7 +158,7 @@ def _get_headers(
     return headers
 
 
-@uses_confluent_kafka
+@_uses_confluent_kafka
 def _init_kafka_producer(
     feature_store_id: int,
     offline_write_options: dict[str, Any],
@@ -167,7 +167,7 @@ def _init_kafka_producer(
     return Producer(_get_kafka_config(feature_store_id, offline_write_options))
 
 
-@uses_confluent_kafka
+@_uses_confluent_kafka
 def _kafka_get_offsets(
     topic_name: str,
     feature_store_id: int,
@@ -296,7 +296,7 @@ def _get_kafka_config(
     return config
 
 
-@uses_confluent_kafka
+@_uses_confluent_kafka
 def _build_ack_callback_and_optional_progress_bar(
     n_rows: int, is_multi_part_insert: bool, offline_write_options: dict[str, Any]
 ) -> tuple[Callable, tqdm | None]:

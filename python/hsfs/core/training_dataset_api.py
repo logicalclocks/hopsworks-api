@@ -46,7 +46,7 @@ class TrainingDatasetApi:
             ),
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.training_dataset.TrainingDataset", fallback_return=[]
     )
     def _get_all_training_datasets(self, name: str):
@@ -63,7 +63,7 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params),
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.training_dataset.TrainingDataset", fallback_return=None
     )
     def _get_training_dataset_by_version(self, name: str, version: int):

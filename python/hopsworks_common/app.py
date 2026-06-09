@@ -255,7 +255,7 @@ class App:
         return self._memory_requested
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def run(self, await_serving: bool = True) -> App:
         """Start the app.
 
@@ -289,7 +289,7 @@ class App:
         return self._refresh()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def redeploy(self, await_serving: bool = True) -> App:
         """Redeploy the app by rolling its Kubernetes deployment.
 
@@ -344,7 +344,7 @@ class App:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def make_public(self) -> str | None:
         """Make this Streamlit app reachable without a Hopsworks login.
 
@@ -364,7 +364,7 @@ class App:
         return self.public_url
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def make_private(self) -> None:
         """Revoke public access.
 
@@ -376,7 +376,7 @@ class App:
         self._public_token = None
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop(self) -> App:
         """Stop the app.
 
@@ -400,7 +400,7 @@ class App:
         return self._refresh()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the app entirely.
 
@@ -410,7 +410,7 @@ class App:
         self._app_api._delete(self._name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_logs(self) -> dict[str, str]:
         """Get stdout and stderr logs for the latest app execution.
 

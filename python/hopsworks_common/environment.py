@@ -84,7 +84,7 @@ class Environment:
         return self._description
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def install_wheel(self, path: str, await_installation: bool | None = True):
         """Install a python library packaged in a wheel file.
 
@@ -131,7 +131,7 @@ class Environment:
             self._environment_engine.await_library_command(self.name, library_name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def install_requirements(self, path: str, await_installation: bool | None = True):
         """Install libraries specified in a `requirements.txt` file.
 
@@ -178,7 +178,7 @@ class Environment:
             self._environment_engine.await_library_command(self.name, library_name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def uninstall(
         self, library_name: str, await_uninstallation: bool | None = True
     ) -> None:
@@ -211,7 +211,7 @@ class Environment:
             self._environment_engine.await_library_command(self.name, library_name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the environment.
 

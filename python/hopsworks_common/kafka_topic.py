@@ -170,7 +170,7 @@ class KafkaTopic:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the topic.
 

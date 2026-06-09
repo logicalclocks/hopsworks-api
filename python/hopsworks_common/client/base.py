@@ -29,7 +29,7 @@ import requests
 import urllib3
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
-from hopsworks_common.decorators import connected
+from hopsworks_common.decorators import _connected
 
 
 with contextlib.suppress(ImportError):
@@ -115,7 +115,7 @@ class Client:
         with open(path, "w") as f:
             f.write(content)
 
-    @connected
+    @_connected
     def _send_request(
         self,
         method: str,

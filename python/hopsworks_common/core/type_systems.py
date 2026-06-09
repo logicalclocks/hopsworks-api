@@ -27,7 +27,7 @@ from hopsworks_common.core.constants import (
     HAS_POLARS,
     HAS_PYARROW,
 )
-from hopsworks_common.decorators import uses_polars
+from hopsworks_common.decorators import _uses_polars
 from hsfs.client.exceptions import FeatureStoreException
 
 
@@ -352,7 +352,7 @@ def _cast_pandas_column_to_offline_type(
     return feature_column  # handle gracefully, just return the column as-is
 
 
-@uses_polars
+@_uses_polars
 def _cast_polars_column_to_offline_type(
     feature_column: pl.Series, offline_type: str
 ) -> pl.Series:

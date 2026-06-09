@@ -71,7 +71,7 @@ class DatasetApi:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def download(
         self,
         path: str,
@@ -168,7 +168,7 @@ class DatasetApi:
         return local_path
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def upload(
         self,
         local_path: str,
@@ -486,7 +486,7 @@ class DatasetApi:
         return self.exists(remote_path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def remove(self, path: str):
         """Remove a path in the Hopsworks Filesystem.
 
@@ -515,7 +515,7 @@ class DatasetApi:
         return self.remove(remote_path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def share(
         self,
         path: str,
@@ -583,7 +583,7 @@ class DatasetApi:
             raise
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def unshare(self, path: str, target_project: str) -> None:
         """Revoke a previously-granted dataset share with another project.
 
@@ -632,7 +632,7 @@ class DatasetApi:
             raise
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def mkdir(self, path: str) -> str:
         """Create a directory in the Hopsworks Filesystem.
 
@@ -669,7 +669,7 @@ class DatasetApi:
         )["attributes"]["path"]
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def copy(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Copy a file or directory in the Hopsworks Filesystem.
 
@@ -713,7 +713,7 @@ class DatasetApi:
         _client._send_request("POST", path_params, query_params=query_params)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def move(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Move a file or directory in the Hopsworks Filesystem.
 
@@ -757,7 +757,7 @@ class DatasetApi:
         _client._send_request("POST", path_params, query_params=query_params)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def upload_feature_group(
         self, feature_group: FeatureGroup, path: str, dataframe: pd.DataFrame
     ):
@@ -798,7 +798,7 @@ class DatasetApi:
             chunk_number += 1
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def list(self, path: str, offset: int = 0, limit: int = 1000) -> list[str]:
         """List the files and directories from a path in the Hopsworks Filesystem.
 
@@ -848,7 +848,7 @@ class DatasetApi:
             )
         return files
 
-    @usage.method_logger
+    @usage._method_logger
     def _list_dataset_path(
         self,
         path: str,
@@ -887,7 +887,7 @@ class DatasetApi:
         return items["count"], cls.from_response_json(items)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def read_content(self, path: str, dataset_type: str = "DATASET") -> dict | None:
         """Read the content of a file.
 

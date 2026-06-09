@@ -106,7 +106,7 @@ class AlertsApi:
         self._log = logging.getLogger(__name__)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_alerts(self) -> list[alert.ProjectAlert]:
         """Get all project alerts.
 
@@ -135,8 +135,8 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found(
+    @usage._method_logger
+    @decorators._catch_not_found(
         "hopsworks_common.alert.ProjectAlert", fallback_return=None
     )
     def get_alert(self, alert_id: int) -> alert.ProjectAlert | None:
@@ -170,7 +170,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_job_alerts(self, job_name: str) -> list[alert.JobAlert]:
         """Get all job alerts.
 
@@ -202,8 +202,10 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found("hopsworks_common.alert.JobAlert", fallback_return=None)
+    @usage._method_logger
+    @decorators._catch_not_found(
+        "hopsworks_common.alert.JobAlert", fallback_return=None
+    )
     def get_job_alert(self, job_name: str, alert_id: int) -> alert.JobAlert | None:
         """Get a specific job alert by ID.
 
@@ -243,7 +245,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_feature_group_alerts(
         self,
         feature_store_id: int,
@@ -288,8 +290,8 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found(
+    @usage._method_logger
+    @decorators._catch_not_found(
         "hopsworks_common.alert.FeatureGroupAlert", fallback_return=None
     )
     def get_feature_group_alert(
@@ -339,7 +341,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_feature_view_alerts(
         self,
         feature_store_id: int,
@@ -388,8 +390,8 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found(
+    @usage._method_logger
+    @decorators._catch_not_found(
         "hopsworks_common.alert.FeatureViewAlert", fallback_return=None
     )
     def get_feature_view_alert(
@@ -443,7 +445,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_project_alert(
         self,
         receiver: str,
@@ -519,7 +521,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_feature_group_alert(
         self,
         feature_store_id: int,
@@ -596,7 +598,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_feature_view_alert(
         self,
         feature_store_id: int,
@@ -667,7 +669,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_job_alert(
         self,
         job_name: str,
@@ -732,7 +734,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_alert_receivers(self) -> list[alert_receiver.AlertReceiver]:
         """Get all alert receivers.
 
@@ -764,8 +766,8 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found(
+    @usage._method_logger
+    @decorators._catch_not_found(
         "hopsworks_common.alert_receiver.AlertReceiver", fallback_return=None
     )
     def get_alert_receiver(self, name: str) -> alert_receiver.AlertReceiver | None:
@@ -801,7 +803,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_alert_receiver(
         self,
         name: str,
@@ -907,7 +909,7 @@ class AlertsApi:
         return alerts_engine.AlertsEngine().await_receiver(name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_alert(self, alert_id: int):
         """Delete an alert by ID.
 
@@ -935,7 +937,7 @@ class AlertsApi:
         self._log.info(f"Alert with ID {alert_id} deleted successfully.")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def trigger_alert(
         self,
         receiver_name: str,
@@ -1012,7 +1014,7 @@ class AlertsApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_triggered_alerts(
         self, active: bool = True, silenced: bool = False, inhibited: bool = False
     ) -> list[triggered_alert.TriggeredAlert]:

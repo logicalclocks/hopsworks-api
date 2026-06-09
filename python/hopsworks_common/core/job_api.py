@@ -47,7 +47,7 @@ from hopsworks_apigen import public
 )
 class JobApi:
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_job(self, name: str, config: dict) -> job.Job:
         """Create a new job or update an existing one.
 
@@ -91,8 +91,8 @@ class JobApi:
         return created_job
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found("hopsworks_common.job.Job", fallback_return=None)
+    @usage._method_logger
+    @decorators._catch_not_found("hopsworks_common.job.Job", fallback_return=None)
     def get_job(self, name: str) -> job.Job | None:
         """Get a job.
 
@@ -118,7 +118,7 @@ class JobApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_jobs(self) -> list[job.Job]:
         """Get all jobs.
 
@@ -140,7 +140,7 @@ class JobApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def exists(self, name: str) -> bool:
         """Check if a job exists.
 
@@ -157,7 +157,7 @@ class JobApi:
         return job is not None
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_configuration(
         self,
         type: Literal["SPARK", "PYSPARK", "PYTHON", "PYTHON_APP", "DOCKER", "FLINK"],
@@ -246,7 +246,7 @@ class JobApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create(
         self,
         name: str,
@@ -267,7 +267,7 @@ class JobApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def launch(self, name: str, args: str = None) -> None:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "executions"]
@@ -279,7 +279,7 @@ class JobApi:
         _client._send_request("POST", path_params, headers=headers, data=args)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get(self, name: str) -> job.Job:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name]
@@ -287,7 +287,7 @@ class JobApi:
         return job.Job.from_response_json(_client._send_request("GET", path_params))
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def last_execution(self, job: job.Job) -> execution.Execution:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
@@ -303,7 +303,7 @@ class JobApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_or_update_schedule_job(
         self, name: str, schedule_config: dict[str, Any]
     ) -> job_schedule.JobSchedule:
@@ -319,7 +319,7 @@ class JobApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_schedule_job(self, name: str) -> None:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]

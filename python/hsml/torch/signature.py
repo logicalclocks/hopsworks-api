@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 _mr = None
 
 
-@usage.method_logger
+@usage._method_logger
 def create_model(
     name: str,
     version: int | None = None,

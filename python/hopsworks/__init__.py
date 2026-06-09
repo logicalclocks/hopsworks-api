@@ -634,8 +634,8 @@ def _set_active_project(project):
 
 
 def disable_usage_logging():
-    usage.disable()
+    usage._disable()
 
 
 def get_sdk_info():
-    return usage.get_env()
+    return usage._get_env()

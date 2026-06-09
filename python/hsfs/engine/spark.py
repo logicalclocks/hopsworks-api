@@ -120,7 +120,7 @@ from hsfs.core import (
 )
 from hsfs.core.constants import GE_MAJOR, HAS_AVRO, HAS_GREAT_EXPECTATIONS
 from hsfs.core.feature_logging import LoggingMetaData
-from hsfs.decorators import uses_great_expectations
+from hsfs.decorators import _uses_great_expectations
 from hsfs.storage_connector import StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
@@ -1486,7 +1486,7 @@ class Engine:
             exact_uniqueness,
         )
 
-    @uses_great_expectations
+    @_uses_great_expectations
     def _validate_with_great_expectations(
         self,
         dataframe: DataFrame,  # noqa: F821

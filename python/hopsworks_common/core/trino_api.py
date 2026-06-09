@@ -31,7 +31,7 @@ from hopsworks_common.client.exceptions import TrinoException
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.core.constants import HAS_TRINO
 from hopsworks_common.core.variable_api import VariableApi
-from hopsworks_common.decorators import uses_trino
+from hopsworks_common.decorators import _uses_trino
 
 
 if HAS_TRINO:
@@ -140,7 +140,7 @@ class TrinoApi:
         return verify
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_host(self) -> str:
         """Retrieve the Trino host based on client location.
 
@@ -171,7 +171,7 @@ class TrinoApi:
         return host
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_port(self) -> int:
         """Get the Trino port number.
 
@@ -202,7 +202,7 @@ class TrinoApi:
         return secret.value
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_basic_auth(self) -> tuple[str, str]:
         """Get a tuple containing the username and password for the current project user.
 
@@ -223,9 +223,9 @@ class TrinoApi:
         password = self._get_password(user)
         return user, password
 
-    @uses_trino
+    @_uses_trino
     @public
-    @usage.method_logger
+    @usage._method_logger
     def connect(
         self,
         source: str = DEFAULT_SOURCE,
@@ -288,9 +288,9 @@ class TrinoApi:
             **kwargs,
         )
 
-    @uses_trino
+    @_uses_trino
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_engine(
         self,
         source: str = DEFAULT_SQLALCHEMY_SOURCE,

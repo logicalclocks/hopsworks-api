@@ -38,7 +38,7 @@ from hsfs.core.expectation_engine import ExpectationEngine
 from hsfs.core.variable_api import VariableApi
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
-from hsfs.decorators import uses_great_expectations
+from hsfs.decorators import _uses_great_expectations
 from hsfs.ge_expectation import GeExpectation
 
 
@@ -151,7 +151,7 @@ class ExpectationSuite:
 
     @public
     @classmethod
-    @uses_great_expectations
+    @_uses_great_expectations
     def from_ge_type(
         cls,
         ge_expectation_suite: great_expectations.core.ExpectationSuite,
@@ -241,7 +241,7 @@ class ExpectationSuite:
         return json.dumps(self, cls=util.Encoder)
 
     @public
-    @uses_great_expectations
+    @_uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuite:
         """Convert to Great Expectations ExpectationSuite type.
 

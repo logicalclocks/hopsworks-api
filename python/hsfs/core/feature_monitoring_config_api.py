@@ -157,7 +157,7 @@ class FeatureMonitoringConfigApi:
             _client._send_request("GET", path_params)
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.core.feature_monitoring_config.FeatureMonitoringConfig",
         fallback_return=[],
     )

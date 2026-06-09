@@ -36,7 +36,7 @@ from hopsworks_common.core import (
     variable_api,
 )
 from hopsworks_common.core.opensearch import OpenSearchClientSingleton
-from hopsworks_common.decorators import connected, not_connected
+from hopsworks_common.decorators import _connected, _not_connected
 from requests.exceptions import ConnectionError
 from typing_extensions import Self
 
@@ -158,8 +158,8 @@ class Connection:
 
         self.connect()
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def get_feature_store(
         self,
         name: str | None = None,
@@ -179,8 +179,8 @@ class Connection:
             name = client.get_instance()._project_name
         return self._feature_store_api._get(util.append_feature_store_suffix(name))
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def get_model_registry(self, project: str | None = None) -> ModelRegistry:
         """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
 
@@ -194,8 +194,8 @@ class Connection:
         """
         return self._model_registry_api.get(project)
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def get_model_serving(self) -> ModelServing:
         """Get a reference to model serving to perform operations on. Model serving operates on top of a model registry, defaulting to the project's default model registry.
 
@@ -213,8 +213,8 @@ class Connection:
         """
         return self._model_serving_api.get()
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def get_secrets_api(self) -> secret_api.SecretsApi:
         """Get the secrets api.
 
@@ -223,8 +223,8 @@ class Connection:
         """
         return self._secret_api
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def create_project(
         self,
         name: str,
@@ -257,8 +257,8 @@ class Connection:
             name, description, feature_store_topic, namespace
         )
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def get_project(self, name: str | None = None) -> Project:
         """Get an existing project.
 
@@ -281,8 +281,8 @@ class Connection:
 
         return self._project_api._get_project(name)
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def get_projects(self) -> list[Project]:
         """Get all projects.
 
@@ -291,8 +291,8 @@ class Connection:
         """
         return self._project_api._get_projects()
 
-    @usage.method_logger
-    @connected
+    @usage._method_logger
+    @_connected
     def project_exists(self, name: str) -> bool:
         """Check if a project exists.
 
@@ -304,7 +304,7 @@ class Connection:
         """
         return self._project_api._exists(name)
 
-    @connected
+    @_connected
     def _check_compatibility(self):
         """Check the compatibility between the client and backend.
 
@@ -328,7 +328,7 @@ class Connection:
             )
             sys.stderr.flush()
 
-    @not_connected
+    @_not_connected
     def connect(self) -> None:
         """Instantiate the connection.
 
@@ -410,7 +410,7 @@ class Connection:
             self._services_api = services_api.ServicesApi()
             self._secret_api = secret_api.SecretsApi()
             self._variable_api = variable_api.VariableApi()
-            usage.init_usage(self._host, self._variable_api.get_version("hopsworks"))
+            usage._init_usage(self._host, self._variable_api.get_version("hopsworks"))
 
             self._provide_project()
         except (TypeError, ConnectionError):
@@ -420,7 +420,7 @@ class Connection:
 
         self._check_compatibility()
 
-    @connected
+    @_connected
     def _provide_project(self, name=None):
         _client = client.get_instance()
 
@@ -573,7 +573,7 @@ class Connection:
         return self._host
 
     @host.setter
-    @not_connected
+    @_not_connected
     def host(self, host: str | None) -> None:
         self._host = host
 
@@ -582,7 +582,7 @@ class Connection:
         return self._port
 
     @port.setter
-    @not_connected
+    @_not_connected
     def port(self, port: int) -> None:
         self._port = port
 
@@ -591,7 +591,7 @@ class Connection:
         return self._project
 
     @project.setter
-    @not_connected
+    @_not_connected
     def project(self, project: str | None) -> None:
         self._project = project
 
@@ -600,7 +600,7 @@ class Connection:
         return self._hostname_verification
 
     @hostname_verification.setter
-    @not_connected
+    @_not_connected
     def hostname_verification(self, hostname_verification):
         self._hostname_verification = hostname_verification
 
@@ -609,7 +609,7 @@ class Connection:
         return self._trust_store_path
 
     @trust_store_path.setter
-    @not_connected
+    @_not_connected
     def trust_store_path(self, trust_store_path: str | None) -> None:
         self._trust_store_path = trust_store_path
 
@@ -618,7 +618,7 @@ class Connection:
         return self._cert_folder
 
     @cert_folder.setter
-    @not_connected
+    @_not_connected
     def cert_folder(self, cert_folder: str) -> None:
         self._cert_folder = cert_folder
 
@@ -648,12 +648,12 @@ class Connection:
         return self._backend_version
 
     @api_key_file.setter
-    @not_connected
+    @_not_connected
     def api_key_file(self, api_key_file: str | None) -> None:
         self._api_key_file = api_key_file
 
     @api_key_value.setter
-    @not_connected
+    @_not_connected
     def api_key_value(self, api_key_value: str | None) -> str | None:
         self._api_key_value = api_key_value
 

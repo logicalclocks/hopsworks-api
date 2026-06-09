@@ -108,7 +108,7 @@ class Model:
         self._training_dataset_version = training_dataset_version
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def save(
         self,
         model_path: str,
@@ -177,7 +177,7 @@ class Model:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def download(self, local_path: str | None = None) -> str:
         """Download the model files.
 
@@ -206,7 +206,7 @@ class Model:
         return self._model_engine._download(model_instance=self, local_path=local_path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the model.
 
@@ -358,7 +358,7 @@ class Model:
         return removed_count
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def deploy(
         self,
         name: str | None = None,
@@ -449,7 +449,7 @@ class Model:
         return predictor.deploy()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def add_tag(self, name: str, value: str | dict):
         """Attach a tag to a model.
 
@@ -466,7 +466,7 @@ class Model:
         self._model_engine._set_tag(model_instance=self, name=name, value=value)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def set_tag(self, name: str, value: str | dict):
         """Deprecated: Use add_tag instead.
 
@@ -482,7 +482,7 @@ class Model:
         self._model_engine._set_tag(model_instance=self, name=name, value=value)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_tag(self, name: str):
         """Delete a tag attached to a model.
 

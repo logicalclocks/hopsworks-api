@@ -70,7 +70,7 @@ class FeatureGroupApi:
             ),
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.feature_group.FeatureGroupBase", fallback_return=[]
     )
     def _get_feature_group_by_name(self, feature_store_id: int, name: str):
@@ -88,7 +88,7 @@ class FeatureGroupApi:
         }
         return _client._send_request("GET", path_params, query_params)
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.feature_group.FeatureGroupBase", fallback_return=None
     )
     def _get_feature_group_by_version(
@@ -174,7 +174,7 @@ class FeatureGroupApi:
             self._check_features(fg_obj)
         return fg_objs
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.feature_group.FeatureGroupBase", fallback_return=None
     )
     def _get_by_id(

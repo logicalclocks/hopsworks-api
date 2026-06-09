@@ -33,7 +33,7 @@ from hopsworks_common import (
 @public("hopsworks.core.kafka_api.KafkaApi", "hsfs.core.kafka_api.KafkaApi")
 class KafkaApi:
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_topic(
         self,
         name: str,
@@ -86,7 +86,7 @@ class KafkaApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_schema(self, subject: str, schema: dict) -> kafka_schema.KafkaSchema:
         """Create a new kafka schema.
 
@@ -149,7 +149,7 @@ class KafkaApi:
         return self.get_schema(schema.subject, schema.version)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_topic(self, name: str) -> kafka_topic.KafkaTopic | None:
         """Get kafka topic by name.
 
@@ -170,7 +170,7 @@ class KafkaApi:
         return None
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_topics(self) -> list[kafka_topic.KafkaTopic]:
         """Get all kafka topics.
 
@@ -223,7 +223,7 @@ class KafkaApi:
         _client._send_request("DELETE", path_params)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_subjects(self) -> list[str]:
         """Get all subjects.
 
@@ -243,7 +243,7 @@ class KafkaApi:
         return list(subjects)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_schemas(self, subject: str) -> list[kafka_schema.KafkaSchema]:
         """Get all schema versions for the subject.
 
@@ -275,7 +275,7 @@ class KafkaApi:
         return schemas
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_schema(self, subject: str, version: int) -> kafka_schema.KafkaSchema | None:
         """Get schema given subject name and version.
 
@@ -389,7 +389,7 @@ class KafkaApi:
         return config
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_subject(
         self,
         feature_store_id: int,

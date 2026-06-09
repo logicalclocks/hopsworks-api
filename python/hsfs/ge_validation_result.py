@@ -30,7 +30,7 @@ import humps
 from hopsworks_apigen import public
 from hsfs import util
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
-from hsfs.decorators import uses_great_expectations
+from hsfs.decorators import _uses_great_expectations
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -131,7 +131,7 @@ class ValidationResult:
         }
 
     @public
-    @uses_great_expectations
+    @_uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationValidationResult:
         """Convert to Great Expectations ExpectationValidationResult type.
 

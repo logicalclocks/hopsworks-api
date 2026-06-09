@@ -282,7 +282,7 @@ class StatisticsEngine:
         )
         return self._save_statistics(stats, td_metadata_instance, feature_view_obj)
 
-    @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
+    @decorators._catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def _get(
         self,
         metadata_instance: feature_group.FeatureGroup
@@ -315,7 +315,7 @@ class StatisticsEngine:
             training_dataset_version=training_dataset_version,
         )
 
-    @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
+    @decorators._catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def _get_all(
         self,
         metadata_instance: feature_group.FeatureGroup
@@ -344,7 +344,7 @@ class StatisticsEngine:
             training_dataset_version=training_dataset_version,
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.statistics.Statistics",
         "hsfs.feature_group_commit.FeatureGroupCommit",
         fallback_return=None,

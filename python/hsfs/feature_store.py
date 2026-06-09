@@ -275,7 +275,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_on_demand_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
@@ -300,7 +300,7 @@ class FeatureStore:
         return self.get_external_feature_group(name, version)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_external_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
@@ -346,7 +346,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_on_demand_feature_groups(
         self, name: str
     ) -> list[feature_group.ExternalFeatureGroup]:
@@ -370,7 +370,7 @@ class FeatureStore:
         return self.get_external_feature_groups(name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_external_feature_groups(
         self, name: str | None = None
     ) -> list[feature_group.ExternalFeatureGroup]:
@@ -469,7 +469,7 @@ class FeatureStore:
 
     @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
         """Get a previously created storage connector from the feature store.
 
@@ -495,7 +495,7 @@ class FeatureStore:
         return self.get_data_source(name).storage_connector
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_data_source(self, name: str) -> ds.DataSource:
         """Get a data source from the feature store.
 
@@ -525,7 +525,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def share(self, target_project: str | int) -> None:
         """Share this entire feature store with another project.
 
@@ -556,7 +556,7 @@ class FeatureStore:
         share_api.ShareApi(self._id)._share_feature_store(target_project)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def shared_with(self) -> list[dict]:
         """List the projects this feature store has been shared with.
 
@@ -584,7 +584,7 @@ class FeatureStore:
         return share_api.ShareApi(self._id)._list_feature_store_shares()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def unshare(self, target_project: str | int) -> None:
         """Revoke a previously-granted feature-store-level share.
 
@@ -647,7 +647,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_online_storage_connector(self) -> storage_connector.StorageConnector:
         """Get the storage connector for the Online Feature Store of the respective project's feature store.
 
@@ -670,7 +670,7 @@ class FeatureStore:
         return self.get_online_data_source().storage_connector
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_online_data_source(self) -> ds.DataSource:
         """Get the data source for the Online Feature Store of the respective project's feature store.
 
@@ -708,7 +708,7 @@ class FeatureStore:
         return tag.Tag._normalize(tags)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_feature_group(
         self,
         name: str,
@@ -949,7 +949,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_or_create_feature_group(
         self,
         name: str,
@@ -1176,7 +1176,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_on_demand_feature_group(
         self,
         name: str,
@@ -1331,7 +1331,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_external_feature_group(
         self,
         name: str,
@@ -1551,7 +1551,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_or_create_spine_group(
         self,
         name: str,
@@ -1796,7 +1796,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_transformation_function(
         self,
         transformation_function: HopsworksUdf,
@@ -1839,7 +1839,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_transformation_function(
         self,
         name: str,
@@ -1945,7 +1945,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_transformation_functions(self) -> list[TransformationFunction]:
         """Get  all transformation functions metadata objects.
 
@@ -1964,7 +1964,7 @@ class FeatureStore:
         return self._transformation_function_engine._get_transformation_fns()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_feature_view(
         self,
         name: str,
@@ -2098,7 +2098,7 @@ class FeatureStore:
         return self._feature_view_engine._save(feat_view)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_or_create_feature_view(
         self,
         name: str,
@@ -2184,7 +2184,7 @@ class FeatureStore:
         return fv_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_feature_view(
         self, name: str, version: int = None
     ) -> feature_view.FeatureView:
@@ -2229,7 +2229,7 @@ class FeatureStore:
         return feature_view_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
         """Get a list of all versions of a feature view entity from the feature store.
 
@@ -2486,7 +2486,7 @@ class FeatureStore:
         return self._offline_feature_store_name
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def search(
         self,
         search_term: str = None,
@@ -2583,7 +2583,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def search_feature_groups(
         self,
         search_term: str = None,
@@ -2641,7 +2641,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def search_feature_views(
         self,
         search_term: str = None,
@@ -2699,7 +2699,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def search_training_datasets(
         self,
         search_term: str = None,
@@ -2757,7 +2757,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def search_features(
         self,
         search_term: str = None,

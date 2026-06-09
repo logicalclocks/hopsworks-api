@@ -64,7 +64,7 @@ class GitRemote:
         return self._url
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Remove the git remote from the repo.
 

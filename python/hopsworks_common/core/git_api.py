@@ -49,7 +49,7 @@ class GitApi:
         self._log = logging.getLogger(__name__)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def clone(
         self,
         url: str,
@@ -122,7 +122,7 @@ class GitApi:
         return self.get_repo(git_op.repository.name, git_op.repository.path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_repos(self) -> list[git_repo.GitRepo]:
         """Get the existing Git repositories.
 
@@ -144,7 +144,7 @@ class GitApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_providers(self) -> list[git_provider.GitProvider]:
         """Get the configured Git providers.
 
@@ -157,7 +157,7 @@ class GitApi:
         return self._git_provider_api._get_providers()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_provider(
         self, provider: Literal["GitHub", "GitLab", "BitBucket"], host: str = None
     ) -> git_provider.GitProvider | None:
@@ -176,7 +176,7 @@ class GitApi:
         return self._git_provider_api._get_provider(provider, host)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def set_provider(
         self,
         provider: Literal["GitHub", "GitLab", "BitBucket"],
@@ -211,7 +211,7 @@ class GitApi:
         self._git_provider_api._set_provider(provider, username, token, host)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_repo(self, name: str, path: str = None) -> git_repo.GitRepo | None:
         """Get the cloned Git repository.
 

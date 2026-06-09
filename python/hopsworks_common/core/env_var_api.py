@@ -71,7 +71,9 @@ class EnvVarsApi:
         )
 
     @public
-    @decorators.catch_not_found("hopsworks_common.env_var.EnvVar", fallback_return=None)
+    @decorators._catch_not_found(
+        "hopsworks_common.env_var.EnvVar", fallback_return=None
+    )
     def get_env_var(self, name: str) -> env_var.EnvVar | None:
         """Look up a single env var by name.
 

@@ -71,7 +71,7 @@ class FlinkCluster:
         return ongoing_executions
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def start(self, await_time: int = 1800):
         """Start the flink cluster and wait until it reaches RUNNING state.
 
@@ -180,7 +180,7 @@ class FlinkCluster:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop_job(self, job_id: str):
         """Stop specific job in the flink cluster.
 
@@ -264,7 +264,7 @@ class FlinkCluster:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def submit_job(
         self, jar_id: str, main_class: str, job_arguments: str | None = None
     ) -> str:
@@ -352,7 +352,7 @@ class FlinkCluster:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop(self):
         """Stop this cluster.
 

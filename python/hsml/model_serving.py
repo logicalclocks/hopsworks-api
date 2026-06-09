@@ -69,7 +69,7 @@ class ModelServing:
         self._serving_api = serving_api.ServingApi()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment_by_id(self, id: int) -> Deployment | None:
         """Get a deployment by id from Model Serving.
 
@@ -95,7 +95,7 @@ class ModelServing:
         return self._serving_api._get_by_id(id)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment(self, name: str = None) -> Deployment | None:
         """Get a deployment by name from Model Serving.
 
@@ -124,7 +124,7 @@ class ModelServing:
         return self._serving_api._get(name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployments(
         self, model: Model = None, status: str = None
     ) -> list[Deployment]:
@@ -186,7 +186,7 @@ class ModelServing:
         return self._serving_api._get_inference_endpoints()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_predictor(
         self,
         model: Model,
@@ -276,7 +276,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_transformer(
         self,
         script_file: str | None = None,
@@ -353,7 +353,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_endpoint(
         self,
         name: str,
@@ -414,7 +414,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def deploy_agent(
         self,
         entry: str,
@@ -551,7 +551,7 @@ class ModelServing:
         return predictor.deploy()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_deployment(
         self,
         predictor: Predictor,

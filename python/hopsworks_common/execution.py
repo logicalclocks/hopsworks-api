@@ -240,7 +240,7 @@ class Execution:
         return self._execution_engine.download_logs(self, path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the execution.
 
@@ -253,7 +253,7 @@ class Execution:
         self._execution_api._delete(self._job.name, self.id)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop(self):
         """Stop the execution.
 

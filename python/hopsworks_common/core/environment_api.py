@@ -28,7 +28,7 @@ class EnvironmentApi:
         self._environment_engine = environment_engine.EnvironmentEngine()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_environment(
         self,
         name: str,
@@ -86,7 +86,7 @@ class EnvironmentApi:
         return env
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_environments(self) -> list[environment.Environment]:
         """Get all available environments in the project.
 
@@ -118,8 +118,8 @@ class EnvironmentApi:
         )
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found(
+    @usage._method_logger
+    @decorators._catch_not_found(
         "hopsworks_common.environment.Environment", fallback_return=None
     )
     def get_environment(self, name: str) -> environment.Environment | None:

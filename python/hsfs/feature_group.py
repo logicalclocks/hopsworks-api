@@ -88,7 +88,7 @@ from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
-from hsfs.decorators import typechecked, uses_great_expectations
+from hsfs.decorators import _uses_great_expectations, typechecked
 from hsfs.embedding import EmbeddingIndex
 from hsfs.online_config import OnlineConfig
 from hsfs.statistics_config import StatisticsConfig
@@ -1672,7 +1672,7 @@ class FeatureGroupBase:
         )
 
     @public
-    @uses_great_expectations
+    @_uses_great_expectations
     def validate(
         self,
         dataframe: pd.DataFrame | TypeVar("pyspark.sql.DataFrame") | None = None,

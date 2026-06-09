@@ -55,7 +55,7 @@ class ModelApi:
             )
         )
 
-    @decorators.catch_not_found("hsml.model.Model", fallback_return=None)
+    @decorators._catch_not_found("hsml.model.Model", fallback_return=None)
     def _get(
         self,
         name: str,
@@ -209,7 +209,7 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
     def _get_tags(self, model_instance: model.Model) -> dict:
         """Get the tags.
 
@@ -238,7 +238,7 @@ class ModelApi:
             )
         }
 
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
     def _get_tag(self, model_instance: model.Model, name: str) -> dict | None:
         """Get the tag.
 

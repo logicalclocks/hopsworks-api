@@ -64,7 +64,7 @@ class SecretsApi:
         )
 
     @public
-    @decorators.catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
+    @decorators._catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
     def get_secret(self, name: str, owner: str | None = None) -> secret.Secret | None:
         """Get a secret.
 

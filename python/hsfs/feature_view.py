@@ -368,7 +368,7 @@ class FeatureView:
         return self._feature_view_engine._update(self)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def init_serving(
         self,
         training_dataset_version: int | None = None,
@@ -1175,7 +1175,7 @@ class FeatureView:
         return {fg for fg in self.query.featuregroups if fg.embedding_index}
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_batch_data(
         self,
         start_time: str | int | datetime | date | None = None,
@@ -1535,7 +1535,7 @@ class FeatureView:
         self._last_accessed_training_dataset = version
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_training_data(
         self,
         start_time: str | int | datetime | date | None = "",
@@ -1775,7 +1775,7 @@ class FeatureView:
         return td.version, td_job
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_train_test_split(
         self,
         test_size: float | None = None,
@@ -2075,7 +2075,7 @@ class FeatureView:
         return td.version, td_job
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_train_validation_test_split(
         self,
         validation_size: float | None = None,
@@ -2372,7 +2372,7 @@ class FeatureView:
         return td.version, td_job
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def recreate_training_dataset(
         self,
         training_dataset_version: int,
@@ -2454,7 +2454,7 @@ class FeatureView:
         return td_job
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def training_data(
         self,
         start_time: str | int | datetime | date | None = None,
@@ -2615,7 +2615,7 @@ class FeatureView:
         return df
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def train_test_split(
         self,
         test_size: float | None = None,
@@ -2813,7 +2813,7 @@ class FeatureView:
             )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def train_validation_test_split(
         self,
         validation_size: float | None = None,
@@ -3049,7 +3049,7 @@ class FeatureView:
             )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_training_data(
         self,
         training_dataset_version: int,
@@ -3126,7 +3126,7 @@ class FeatureView:
         return df
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_train_test_split(
         self,
         training_dataset_version: int,
@@ -3200,7 +3200,7 @@ class FeatureView:
         return df
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_train_validation_test_split(
         self,
         training_dataset_version: int,
@@ -3280,7 +3280,7 @@ class FeatureView:
         return df
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_training_datasets(self) -> list[training_dataset.TrainingDatasetBase]:
         """Returns the metadata of all training datasets created with this feature view.
 
@@ -3311,7 +3311,7 @@ class FeatureView:
         return tds
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_training_dataset_statistics(
         self,
         training_dataset_version: int,
@@ -3348,7 +3348,7 @@ class FeatureView:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def add_training_dataset_tag(
         self,
         training_dataset_version: int,
@@ -3386,7 +3386,7 @@ class FeatureView:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_training_dataset_tag(
         self, training_dataset_version: int, name: str
     ) -> tag.Tag | None:
@@ -3422,7 +3422,7 @@ class FeatureView:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_training_dataset_tags(
         self, training_dataset_version: int
     ) -> dict[str, tag.Tag]:
@@ -3456,7 +3456,7 @@ class FeatureView:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_training_dataset_tag(
         self, training_dataset_version: int, name: str
     ) -> None:
@@ -3489,7 +3489,7 @@ class FeatureView:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def purge_training_data(self, training_dataset_version: int) -> None:
         """Delete a training dataset (data only).
 
@@ -3518,7 +3518,7 @@ class FeatureView:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def purge_all_training_data(self) -> None:
         """Delete all training datasets (data only).
 
@@ -3542,7 +3542,7 @@ class FeatureView:
         self._feature_view_engine._delete_training_dataset_only(self)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_training_dataset(self, training_dataset_version: int) -> None:
         """Delete a training dataset. This will delete both metadata and training data.
 
@@ -3573,7 +3573,7 @@ class FeatureView:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_all_training_datasets(self) -> None:
         """Delete all training datasets. This will delete both metadata and training data.
 

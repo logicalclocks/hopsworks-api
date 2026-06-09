@@ -57,7 +57,7 @@ class TransformationFunctionApi:
             )
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.transformation_function.TransformationFunction", fallback_return=None
     )
     def _get_transformation_fn(
