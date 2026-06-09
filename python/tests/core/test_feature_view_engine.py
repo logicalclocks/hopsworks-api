@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 from hopsworks_common import constants
-from hopsworks_common.core.type_systems import create_extended_type
+from hopsworks_common.core.type_systems import _create_extended_type
 from hsfs import (
     engine,
     feature,
@@ -4066,7 +4066,7 @@ class TestFeatureViewEngine:
 
         training_dataset_version = 3
 
-        extended_list = create_extended_type(list)
+        extended_list = _create_extended_type(list)
         logging_data = extended_list(logging_data)
         logging_data.hopsworks_logging_metadata = logging_metadata
 
@@ -4299,7 +4299,7 @@ class TestFeatureViewEngine:
 
         training_dataset_version = 3
 
-        extended_list = create_extended_type(list)
+        extended_list = _create_extended_type(list)
         logging_data = extended_list(logging_data)
         logging_data.hopsworks_logging_metadata = logging_metadata
 

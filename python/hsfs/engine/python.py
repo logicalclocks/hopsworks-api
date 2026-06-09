@@ -37,8 +37,8 @@ from typing import (
 
 from hopsworks_common import constants
 from hsfs.core.type_systems import (
-    cast_column_to_offline_type,
-    cast_column_to_online_type,
+    _cast_column_to_offline_type,
+    _cast_column_to_online_type,
 )
 
 
@@ -56,7 +56,7 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hopsworks_common.core.type_systems import create_extended_type
+from hopsworks_common.core.type_systems import _create_extended_type
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
@@ -113,7 +113,7 @@ if HAS_SQLALCHEMY:
     from sqlalchemy import sql
 
 if HAS_PANDAS:
-    from hsfs.core.type_systems import convert_pandas_dtype_to_offline_type
+    from hsfs.core.type_systems import _convert_pandas_dtype_to_offline_type
 
 if HAS_POLARS:
     import polars as pl
@@ -280,7 +280,7 @@ class Engine:
             transformed_features if transformed else untransformed_features
         )
 
-        extended_type = create_extended_type(type(batch_dataframe))
+        extended_type = _create_extended_type(type(batch_dataframe))
         batch_dataframe = extended_type(batch_dataframe)
         batch_dataframe.hopsworks_logging_metadata = logging_meta_data
 
@@ -975,7 +975,7 @@ class Engine:
                 if pa.types.is_null(pd_type) and feature_type_map.get(name):
                     converted_type = feature_type_map.get(name)
                 else:
-                    converted_type = convert_pandas_dtype_to_offline_type(pd_type)
+                    converted_type = _convert_pandas_dtype_to_offline_type(pd_type)
             except ValueError as e:
                 raise FeatureStoreException(f"Feature '{name}': {str(e)}") from e
             features.append(feature.Feature(name, converted_type))
@@ -1964,9 +1964,11 @@ class Engine:
     ) -> pd.DataFrame:
         for _feat in schema:
             if not online:
-                df[_feat.name] = cast_column_to_offline_type(df[_feat.name], _feat.type)
+                df[_feat.name] = _cast_column_to_offline_type(
+                    df[_feat.name], _feat.type
+                )
             else:
-                df[_feat.name] = cast_column_to_online_type(
+                df[_feat.name] = _cast_column_to_online_type(
                     df[_feat.name], _feat.online_type
                 )
         return df
@@ -2371,7 +2373,7 @@ class Engine:
         # Cast columns to the correct types
         for f in logging_feature_group_features:
             if f.name in logging_df.columns:
-                logging_df[f.name] = cast_column_to_offline_type(
+                logging_df[f.name] = _cast_column_to_offline_type(
                     logging_df[f.name], f.type
                 )
 

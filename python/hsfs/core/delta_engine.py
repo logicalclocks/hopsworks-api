@@ -25,7 +25,7 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
-from hopsworks_common.core.type_systems import convert_offline_type_to_pyarrow_type
+from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hsfs import feature_group, feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
 
@@ -778,7 +778,7 @@ class DeltaEngine:
                     "Cannot create Delta table schema."
                 )
             try:
-                pyarrow_type = convert_offline_type_to_pyarrow_type(_feature.type)
+                pyarrow_type = _convert_offline_type_to_pyarrow_type(_feature.type)
                 pyarrow_fields.append(
                     pa.field(_feature.name, pyarrow_type, nullable=True)
                 )

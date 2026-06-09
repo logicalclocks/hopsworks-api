@@ -2030,7 +2030,7 @@ class TestPython:
 
     def test_parse_schema_feature_group_pandas(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.type_systems.convert_pandas_dtype_to_offline_type")
+        mocker.patch("hsfs.core.type_systems._convert_pandas_dtype_to_offline_type")
 
         python_engine = python.Engine()
 
@@ -2053,7 +2053,7 @@ class TestPython:
     )
     def test_parse_schema_feature_group_polars(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.type_systems.convert_pandas_dtype_to_offline_type")
+        mocker.patch("hsfs.core.type_systems._convert_pandas_dtype_to_offline_type")
 
         python_engine = python.Engine()
 

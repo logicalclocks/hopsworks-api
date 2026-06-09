@@ -39,7 +39,7 @@ from hopsworks_common.core.constants import (
     numpy_not_installed_message,
     polars_not_installed_message,
 )
-from hopsworks_common.core.type_systems import create_extended_type
+from hopsworks_common.core.type_systems import _create_extended_type
 from hsfs.client import exceptions, online_store_rest_client
 from hsfs.core import (
     online_store_rest_client_engine,
@@ -1219,7 +1219,7 @@ class VectorServer:
                 f"""Unknown return type. Supported return types are {"'list', 'numpy'" if not inference_helper else "'dict'"}, 'polars' and 'pandas''"""
             )
         if logging_meta_data:
-            extended_type = create_extended_type(type(feature_vector))
+            extended_type = _create_extended_type(type(feature_vector))
             feature_vector = extended_type(feature_vector)
             feature_vector.hopsworks_logging_metadata = logging_meta_data
         return feature_vector
