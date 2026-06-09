@@ -306,11 +306,10 @@ class FeatureGroupBase:
         Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the feature group **and** all the feature data in offline and online storage associated with it.
 
-        Arguments:
-            force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place (degraded) instead of failing.
-                Defaults to False, in which case deletion fails if the feature group is used by a feature view.
+        Parameters:
+            force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place (degraded) rather than failing.
+                When False, deletion fails if the feature group is used by a feature view.
             delete_feature_views: When True, also delete the feature views that depend on this feature group, along with their training data.
-                Defaults to False.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
