@@ -2791,7 +2791,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
-        afc = arrow_flight_client.get_instance()
+        afc = arrow_flight_client._get_instance()
         afc._disabled_for_session = False
         afc._enabled_on_cluster = True
 
@@ -2818,8 +2818,8 @@ class TestFeatureViewEngine:
             labels=[],
         )
 
-        assert arrow_flight_client.get_instance().is_enabled()
-        assert arrow_flight_client.supports(mock_constructor_query.featuregroups)
+        assert arrow_flight_client._get_instance()._is_enabled()
+        assert arrow_flight_client._supports(mock_constructor_query.featuregroups)
 
         # Act
         # All good if we don't get an exception
@@ -2833,8 +2833,8 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
-        afc = arrow_flight_client.get_instance()
-        afc._is_enabled = True
+        afc = arrow_flight_client._get_instance()
+        afc._enabled_on_cluster = True
 
         mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")
 

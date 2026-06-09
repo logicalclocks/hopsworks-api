@@ -3527,7 +3527,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         if self._vector_db_client is None and self._embedding_index:
             self._vector_db_client = VectorDbClient(self.select_all())
-        results = self._vector_db_client.find_neighbors(
+        results = self._vector_db_client._find_neighbors(
             embedding,
             feature=(self.__getattr__(col) if col else None),
             k=k,
@@ -5507,7 +5507,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         """
         if self._vector_db_client is None and self._embedding_index:
             self._vector_db_client = VectorDbClient(self.select_all())
-        results = self._vector_db_client.find_neighbors(
+        results = self._vector_db_client._find_neighbors(
             embedding,
             feature=(self.__getattr__(col) if col else None),
             k=k,

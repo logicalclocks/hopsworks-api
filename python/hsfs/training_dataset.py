@@ -1071,7 +1071,7 @@ class TrainingDataset(TrainingDatasetBase):
                 If set to False, the online feature store storage connector is used which relies on the private IP.
                 Defaults to True if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
         """
-        self._vector_server.init_serving(self, batch, external)
+        self._vector_server._init_serving(self, batch, external)
 
     @public
     def get_serving_vector(
@@ -1091,7 +1091,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)
-        return self._vector_server.get_feature_vector(entry)
+        return self._vector_server._get_feature_vector(entry)
 
     @public
     def get_serving_vectors(
@@ -1111,7 +1111,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)
-        return self._vector_server.get_feature_vectors(entry)
+        return self._vector_server._get_feature_vectors(entry)
 
     @public
     @property

@@ -473,7 +473,7 @@ class FeatureView:
             )
 
         # initiate single vector server
-        self._vector_server.init_serving(
+        self._vector_server._init_serving(
             entity=self,
             external=external,
             inference_helper_columns=True,
@@ -764,7 +764,7 @@ class FeatureView:
         vector_db_features = None
         if self._vector_db_client:
             vector_db_features = self._get_vector_db_result(entry)
-        return self._vector_server.get_feature_vector(
+        return self._vector_server._get_feature_vector(
             entry=entry,
             return_type=return_type,
             passed_features=passed_features,
@@ -926,7 +926,7 @@ class FeatureView:
             for _entry in entry:
                 vector_db_features.append(self._get_vector_db_result(_entry))
 
-        return self._vector_server.get_feature_vectors(
+        return self._vector_server._get_feature_vectors(
             entries=entry,
             return_type=return_type,
             passed_features=passed_features,
@@ -986,7 +986,7 @@ class FeatureView:
         """
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
-        return self._vector_server.get_inference_helper(
+        return self._vector_server._get_inference_helper(
             entry, return_type, force_rest_client, force_sql_client
         )
 
@@ -1043,7 +1043,7 @@ class FeatureView:
         """
         if self._vector_server is None:
             self.init_serving(external=external, init_rest_client=force_rest_client)
-        return self._vector_server.get_inference_helpers(
+        return self._vector_server._get_inference_helpers(
             entry, return_type, force_rest_client, force_sql_client
         )
 
@@ -1055,13 +1055,13 @@ class FeatureView:
             return {}
         result_vectors = {}
         for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
-            complete, fg_entry = self._vector_db_client.filter_entry_by_join_index(
+            complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
                 entry, join_index
             )
             if not complete:
                 # Not retrieving from vector db if entry is not completed
                 continue
-            vector_db_features = self._vector_db_client.read(
+            vector_db_features = self._vector_db_client._read(
                 fg.id,
                 fg.columns,
                 keys=fg_entry,
@@ -1138,7 +1138,7 @@ class FeatureView:
         """
         if self._vector_db_client is None:
             self.init_serving(external=external)
-        results = self._vector_db_client.find_neighbors(
+        results = self._vector_db_client._find_neighbors(
             embedding,
             feature=(feature if feature else None),
             k=k,
@@ -1147,7 +1147,7 @@ class FeatureView:
         if len(results) == 0:
             return []
 
-        return self._vector_server.get_feature_vectors(
+        return self._vector_server._get_feature_vectors(
             [self._extract_primary_key(res[1]) for res in results],
             return_type=return_type,
             vector_db_features=[res[1] for res in results],
@@ -4054,7 +4054,7 @@ class FeatureView:
         Returns:
             The feature vector that contains all on-demand features in the feature view.
         """
-        return self._vector_server.compute_on_demand_features(
+        return self._vector_server._compute_on_demand_features(
             feature_vectors=feature_vector,
             request_parameters=request_parameters,
             transformation_context=transformation_context,
@@ -4092,7 +4092,7 @@ class FeatureView:
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
 
-        return self._vector_server.transform(
+        return self._vector_server._transform(
             feature_vectors=feature_vector,
             transformation_context=transformation_context,
             return_type=return_type,

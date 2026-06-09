@@ -364,7 +364,7 @@ class TestFeatureGroupEngine:
         mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
         mock_validate_schema = mocker.patch(
-            "hsfs.core.schema_validation.DataFrameValidator.validate_schema"
+            "hsfs.core.schema_validation.DataFrameValidator._validate_schema"
         )
 
         fg_engine = feature_group_engine.FeatureGroupEngine(

@@ -137,7 +137,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and validation_options.get("schema_validation", True)
         ):
             # validate df schema
-            dataframe_features = DataFrameValidator().validate_schema(
+            dataframe_features = DataFrameValidator()._validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 
@@ -267,7 +267,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and validation_options.get("schema_validation", True)
         ):
             # validate df schema
-            dataframe_features = DataFrameValidator().validate_schema(
+            dataframe_features = DataFrameValidator()._validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 

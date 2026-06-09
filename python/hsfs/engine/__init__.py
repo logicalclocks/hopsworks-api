@@ -85,4 +85,4 @@ def stop() -> None:
     from hsfs.core import arrow_flight_client
 
     _engine = None
-    arrow_flight_client.close()
+    arrow_flight_client._close()

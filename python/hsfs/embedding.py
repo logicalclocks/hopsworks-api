@@ -347,7 +347,7 @@ class EmbeddingIndex:
         """
         if self._vector_db_client is None:
             self._vector_db_client = VectorDbClient(self._feature_group.select_all())
-        return self._vector_db_client.count(self.feature_group, options=options)
+        return self._vector_db_client._count(self.feature_group, options=options)
 
     @classmethod
     def from_response_json(cls, json_dict):

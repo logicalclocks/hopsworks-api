@@ -2267,8 +2267,8 @@ class FeatureStore:
         """Reset Hopsworks feature query service for the current session."""
         from hsfs.core import arrow_flight_client
 
-        arrow_flight_client.close()
-        arrow_flight_client.get_instance()
+        arrow_flight_client._close()
+        arrow_flight_client._get_instance()
 
     @public
     def create_chart(

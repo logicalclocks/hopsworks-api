@@ -162,7 +162,7 @@ class Engine:
     ) -> bool:
         from hsfs.core import arrow_flight_client
 
-        return arrow_flight_client.is_query_supported(query, read_options or {})
+        return arrow_flight_client._is_query_supported(query, read_options or {})
 
     def _validate_dataframe_type(self, dataframe_type: str):
         if not isinstance(dataframe_type, str) or dataframe_type.lower() not in [
@@ -299,7 +299,7 @@ class Engine:
 
             result_df = util.run_with_loading_animation(
                 "Reading data from Hopsworks, using Hopsworks Feature Query Service",
-                arrow_flight_client.get_instance().read_query,
+                arrow_flight_client._get_instance()._read_query,
                 sql_query,
                 arrow_flight_config or {},
                 dataframe_type,
@@ -479,9 +479,9 @@ class Engine:
     ) -> pd.DataFrame | pl.DataFrame:
         from hsfs.core import arrow_flight_client
 
-        if arrow_flight_client.is_data_format_supported(data_format, read_options):
+        if arrow_flight_client._is_data_format_supported(data_format, read_options):
             arrow_flight_config = read_options.get("arrow_flight_config")
-            return arrow_flight_client.get_instance().read_path(
+            return arrow_flight_client._get_instance()._read_path(
                 path,
                 arrow_flight_config,
                 dataframe_type=dataframe_type,
@@ -1462,7 +1462,7 @@ class Engine:
 
         if (
             arrow_flight_client_imported
-            and arrow_flight_client.is_query_supported(dataset, user_write_options)
+            and arrow_flight_client._is_query_supported(dataset, user_write_options)
             and len(training_dataset.splits) == 0
             and feature_view_obj
             and len(feature_view_obj.transformation_functions) == 0
@@ -1472,7 +1472,7 @@ class Engine:
             query_obj, _ = dataset._prep_read(False, user_write_options)
             return util.run_with_loading_animation(
                 "Materializing data to Hopsworks, using Hopsworks Feature Query Service",
-                arrow_flight_client.get_instance().create_training_dataset,
+                arrow_flight_client._get_instance()._create_training_dataset,
                 feature_view_obj,
                 training_dataset,
                 query_obj,

@@ -135,8 +135,8 @@ class TestPythonReader:
             mock_dataset_api.return_value.read_content.return_value.content = (
                 file.read()
             )
-        arrow_flight_client.get_instance()._disabled_for_session = True
-        arrow_flight_client.get_instance()._enabled_on_cluster = False
+        arrow_flight_client._get_instance()._disabled_for_session = True
+        arrow_flight_client._get_instance()._enabled_on_cluster = False
 
         # Act
         df_list = python.Engine()._read_hopsfs_remote(

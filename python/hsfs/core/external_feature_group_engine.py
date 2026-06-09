@@ -42,7 +42,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 (feature_group.data_source.database and feature_group.data_source.table)
                 or feature_group.data_source.path is not None
                 or feature_group.data_source.query
-            ) and arrow_flight_client.supports([feature_group]):
+            ) and arrow_flight_client._supports([feature_group]):
                 # If the user provided a data source, we can use it to infer the schema
                 feature_group._features = [
                     feature.Feature.from_response_json(feat)

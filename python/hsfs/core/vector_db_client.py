@@ -58,9 +58,9 @@ class VectorDbClient:
         self._fg_id_to_vdb_pks = {}
         self._serving_keys = serving_keys
         self._serving_key_by_serving_index: dict[int, hsfs.serving_key.ServingKey] = {}
-        self.init()
+        self._init()
 
-    def init(self):
+    def _init(self):
         for fg in self._query.featuregroups:
             if fg.embedding_index:
                 for feat in fg.embedding_index.get_embeddings():
@@ -110,7 +110,7 @@ class VectorDbClient:
                     ] = (join.prefix or "") + feat.name  # join.prefix can be None
                 self._fg_vdb_col_td_col_map[join_fg.id] = vdb_col_td_col_map
 
-    def find_neighbors(
+    def _find_neighbors(
         self,
         embedding,
         feature: Feature = None,
@@ -381,7 +381,7 @@ class VectorDbClient:
             new_map[new_key] = value
         return new_map
 
-    def read(
+    def _read(
         self,
         fg_id,
         schema,
@@ -467,7 +467,7 @@ class VectorDbClient:
         ]
 
     @staticmethod
-    def read_feature_group(
+    def _read_feature_group(
         feature_group: hsfs.feature_group.FeatureGroup,
         n: int = None,
         filter: Filter | Logic = None,
@@ -488,7 +488,7 @@ class VectorDbClient:
             ]
         raise FeatureStoreException("Feature group does not have embedding.")
 
-    def count(self, fg, options=None):
+    def _count(self, fg, options=None):
         query = {
             "query": {
                 "bool": {
@@ -506,7 +506,7 @@ class VectorDbClient:
             raise ValueError("No embedding fg available.")
         return embedding.index_name
 
-    def filter_entry_by_join_index(
+    def _filter_entry_by_join_index(
         self, entry: dict[str, Any], join_index: int
     ) -> tuple[bool, dict[str, Any]]:
         fg_entry = {}

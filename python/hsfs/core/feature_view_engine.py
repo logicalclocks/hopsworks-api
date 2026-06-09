@@ -1192,9 +1192,9 @@ class FeatureViewEngine:
 
             if (
                 arrow_flight_client_imported
-                and arrow_flight_client.get_instance().is_enabled()
+                and arrow_flight_client._get_instance()._is_enabled()
             ):
-                if not arrow_flight_client.supports(
+                if not arrow_flight_client._supports(
                     feature_view_obj.query.featuregroups
                 ):
                     raise NotImplementedError(

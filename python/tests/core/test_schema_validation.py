@@ -149,7 +149,7 @@ class BaseDataFrameTest:
         with pytest.raises(
             ValueError, match=f"Primary key column {KEY} is missing in input dataframe"
         ):
-            DataFrameValidator().validate_schema(
+            DataFrameValidator()._validate_schema(
                 feature_group_data, df, feature_group_data.columns
             )
 
@@ -166,7 +166,7 @@ class BaseDataFrameTest:
         with pytest.raises(
             ValueError, match="Primary key column primary_key contains null values"
         ):
-            DataFrameValidator().validate_schema(
+            DataFrameValidator()._validate_schema(
                 feature_group_data, modified_df, feature_group_data.columns
             )
 
@@ -187,12 +187,12 @@ class BaseDataFrameTest:
         # Act, Assert
         if online_enabled:
             with pytest.raises(ValueError, match="String length exceeded"):
-                DataFrameValidator().validate_schema(
+                DataFrameValidator()._validate_schema(
                     feature_group_created, modified_df, feature_group_created.columns
                 )
         else:
             # Should not raise when online is disabled
-            df_features = DataFrameValidator().validate_schema(
+            df_features = DataFrameValidator()._validate_schema(
                 feature_group_created, modified_df, feature_group_created.columns
             )
             assert isinstance(df_features, list)
@@ -209,12 +209,12 @@ class BaseDataFrameTest:
         # Act, Assert
         if online_enabled:
             with pytest.raises(ValueError, match="String length exceeded"):
-                DataFrameValidator().validate_schema(
+                DataFrameValidator()._validate_schema(
                     feature_group_data, modified_df, feature_group_data.columns
                 )
         else:
             # Should not raise when online is disabled
-            df_features = DataFrameValidator().validate_schema(
+            df_features = DataFrameValidator()._validate_schema(
                 feature_group_data, modified_df, feature_group_data.columns
             )
             assert isinstance(df_features, list)
@@ -229,7 +229,7 @@ class BaseDataFrameTest:
         self._update_online_enabled(feature_group_data, online_enabled)
 
         # Act
-        df_features = DataFrameValidator().validate_schema(
+        df_features = DataFrameValidator()._validate_schema(
             feature_group_data, df, feature_group_data.columns
         )
         # Assert
@@ -256,7 +256,7 @@ class BaseDataFrameTest:
         feature_group_data.columns = []
 
         # Act
-        df_features = DataFrameValidator().validate_schema(
+        df_features = DataFrameValidator()._validate_schema(
             feature_group_data, modified_df, initial_features
         )
 
@@ -283,7 +283,7 @@ class BaseDataFrameTest:
         modified_df = self._modify_row(df, 0, string_col="a" * 301)
 
         with caplog.at_level("WARNING"):
-            df_features = DataFrameValidator().validate_schema(
+            df_features = DataFrameValidator()._validate_schema(
                 feature_group_data, modified_df, initial_features
             )
 
@@ -305,7 +305,7 @@ class BaseDataFrameTest:
         modified_df = self._modify_row(df, 0, string_col="b" * 1001)
 
         # Act
-        df_features = DataFrameValidator().validate_schema(
+        df_features = DataFrameValidator()._validate_schema(
             feature_group_data, modified_df, feature_group_data.columns
         )
 
@@ -327,7 +327,7 @@ class BaseDataFrameTest:
 
         # Act
         with pytest.raises(ValueError) as excinfo:
-            DataFrameValidator().validate_schema(
+            DataFrameValidator()._validate_schema(
                 feature_group_data, modified_df, feature_group_data.columns
             )
 
@@ -366,7 +366,7 @@ class TestPandasDataframe(BaseDataFrameTest):
         # Arrange
 
         # Act
-        validator = DataFrameValidator.get_validator(df)
+        validator = DataFrameValidator._get_validator(df)
 
         # Assert
         assert isinstance(validator, PandasValidator)
@@ -389,7 +389,7 @@ class TestPandasDataframe(BaseDataFrameTest):
         )
 
         # Act
-        string_cols = PandasValidator.get_string_columns(df)
+        string_cols = PandasValidator._get_string_columns(df)
 
         # Assert
         # validate that only 'val' is detected as a string column
@@ -423,7 +423,7 @@ class TestPolarsDataframe(BaseDataFrameTest):
         # Arrange
 
         # Act
-        validator = DataFrameValidator.get_validator(df)
+        validator = DataFrameValidator._get_validator(df)
 
         # Assert
         assert isinstance(validator, PolarsValidator)
@@ -462,7 +462,7 @@ class TestSparkDataframe(BaseDataFrameTest):
         # Arrange
 
         # Act
-        validator = DataFrameValidator.get_validator(spark_df)
+        validator = DataFrameValidator._get_validator(spark_df)
 
         # Assert
         assert isinstance(validator, PySparkValidator)

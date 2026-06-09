@@ -457,7 +457,7 @@ class TestVectorDbClient:
             self.target._check_filter("f1 > 20", self.fg2)
 
     def test_read_with_keys(self):
-        actual = self.target.read(
+        actual = self.target._read(
             self.fg.id, self.fg.columns, keys={"f1": 10, "f2": 20}
         )
 
@@ -472,7 +472,7 @@ class TestVectorDbClient:
         assert actual == expected
 
     def test_read_with_pk(self):
-        actual = self.target.read(self.fg.id, self.fg.columns, pk="f1")
+        actual = self.target._read(self.fg.id, self.fg.columns, pk="f1")
 
         expected_query = {
             "query": {"bool": {"must": [{"exists": {"field": "f1"}}]}},
@@ -487,4 +487,4 @@ class TestVectorDbClient:
 
     def test_read_without_pk_or_keys(self):
         with pytest.raises(FeatureStoreException):
-            self.target.read(self.fg.id, self.fg.columns)
+            self.target._read(self.fg.id, self.fg.columns)
