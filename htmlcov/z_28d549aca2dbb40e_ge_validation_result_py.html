@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_28d549aca2dbb40e_hopsworks_udf_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-09 17:20 +0000
+            created at 2026-06-09 21:45 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -112,7 +112,7 @@
     <p class="run"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t"><span class="key">from</span> <span class="nam">hopsworks_apigen</span> <span class="key">import</span> <span class="nam">public</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t"><span class="key">from</span> <span class="nam">hsfs</span> <span class="key">import</span> <span class="nam">util</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t"><span class="key">from</span> <span class="nam">hsfs</span><span class="op">.</span><span class="nam">core</span><span class="op">.</span><span class="nam">constants</span> <span class="key">import</span> <span class="nam">HAS_GREAT_EXPECTATIONS</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t"><span class="key">from</span> <span class="nam">hsfs</span><span class="op">.</span><span class="nam">decorators</span> <span class="key">import</span> <span class="nam">uses_great_expectations</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t"><span class="key">from</span> <span class="nam">hsfs</span><span class="op">.</span><span class="nam">decorators</span> <span class="key">import</span> <span class="nam">_uses_great_expectations</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t"><span class="key">if</span> <span class="nam">HAS_GREAT_EXPECTATIONS</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -213,7 +213,7 @@
     <p class="run run2"><span class="n"><a id="t131" href="#t131">131</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t132" href="#t132">132</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t133" href="#t133">133</a></span><span class="t">    <span class="op">@</span><span class="nam">public</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t134" href="#t134">134</a></span><span class="t">    <span class="op">@</span><span class="nam">uses_great_expectations</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t134" href="#t134">134</a></span><span class="t">    <span class="op">@</span><span class="nam">_uses_great_expectations</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t135" href="#t135">135</a></span><span class="t">    <span class="key">def</span> <span class="nam">to_ge_type</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">great_expectations</span><span class="op">.</span><span class="nam">core</span><span class="op">.</span><span class="nam">ExpectationValidationResult</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t136" href="#t136">136</a></span><span class="t">        <span class="str">"""Convert to Great Expectations ExpectationValidationResult type.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t137" href="#t137">137</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -341,7 +341,7 @@
     <p class="pln"><span class="n"><a id="t259" href="#t259">259</a></span><span class="t">        <span class="com"># use the same function as the rest of the client to deal with conversion to timestamps</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t260" href="#t260">260</a></span><span class="t">        <span class="com"># from various types</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t">        <span class="key">if</span> <span class="nam">validation_time</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_validation_time</span> <span class="op">=</span> <span class="nam">util</span><span class="op">.</span><span class="nam">convert_event_time_to_timestamp</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_validation_time</span> <span class="op">=</span> <span class="nam">util</span><span class="op">.</span><span class="nam">_convert_event_time_to_timestamp</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t">                <span class="nam">validation_time</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t265" href="#t265">265</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -394,7 +394,7 @@
             <a class="nav" href="z_28d549aca2dbb40e_hopsworks_udf_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-09 17:20 +0000
+            created at 2026-06-09 21:45 +0000
         </p>
     </div>
 </footer>
