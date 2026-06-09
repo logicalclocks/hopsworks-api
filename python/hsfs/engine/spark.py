@@ -287,7 +287,10 @@ class Engine:
                     external_fg.data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
-            if external_fg.data_source.storage_connector.type == StorageConnector.MONGODB:
+            if (
+                external_fg.data_source.storage_connector.type
+                == StorageConnector.MONGODB
+            ):
                 # The query constructor response omits features from the
                 # on-demand FG payload. Fetch the full FG to get column_name
                 # mappings so we can rename source fields to feature names.
