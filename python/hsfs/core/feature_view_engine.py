@@ -365,7 +365,7 @@ class FeatureViewEngine:
                 util._convert_event_time_to_timestamp(start_time),
                 util._convert_event_time_to_timestamp(end_time),
                 training_dataset_version=training_dataset_version,
-                is_python_engine=engine.get_type() == "python",
+                is_python_engine=engine._get_type() == "python",
                 with_label=with_label,
                 primary_keys=primary_keys,
                 event_time=event_time,
@@ -427,7 +427,7 @@ class FeatureViewEngine:
                 util._convert_event_time_to_timestamp(start_time),
                 util._convert_event_time_to_timestamp(end_time),
                 training_dataset_version=training_dataset_version,
-                is_python_engine=engine.get_type() == "python",
+                is_python_engine=engine._get_type() == "python",
                 extra_filter=extra_filter,
             )
         except exceptions.RestAPIError as e:
@@ -813,7 +813,7 @@ class FeatureViewEngine:
     ):
         if not with_columns:
             if (
-                engine.get_type().startswith("spark")
+                engine._get_type().startswith("spark")
                 and dataframe_type.lower() == "spark"
             ):
                 existing_cols = [field.name for field in df.schema.fields]
@@ -888,7 +888,7 @@ class FeatureViewEngine:
             training_dataset_version=training_dataset_obj.version,
         )
 
-        if engine.get_type().startswith("spark"):
+        if engine._get_type().startswith("spark"):
             # if spark engine, read td and compute stats
             if training_dataset_obj.splits:
                 td_df = {
@@ -1184,7 +1184,7 @@ class FeatureViewEngine:
         return None
 
     def _check_feature_group_accessibility(self, feature_view_obj):
-        if engine.get_type() == "python":
+        if engine._get_type() == "python":
             try:
                 from hsfs.core import arrow_flight_client
 

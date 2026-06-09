@@ -2456,7 +2456,7 @@ class TestSpark:
 
     def test_write_training_dataset_to_df(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker.patch("hopsworks_common.client._get_instance")
 
         spark_engine = spark.Engine()
@@ -2527,7 +2527,7 @@ class TestSpark:
 
     def test_write_training_dataset_split_to_df(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker.patch("hopsworks_common.client._get_instance")
 
         spark_engine = spark.Engine()
@@ -2607,7 +2607,7 @@ class TestSpark:
 
     def test_write_training_dataset_query(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine._write_options")
@@ -2673,7 +2673,7 @@ class TestSpark:
 
     def test_write_training_dataset_query_coalesce(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine._write_options")
@@ -2740,7 +2740,7 @@ class TestSpark:
 
     def test_write_training_dataset_td_splits(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine._write_options")
@@ -2811,7 +2811,7 @@ class TestSpark:
 
     def test_write_training_dataset_td_splits_coalesce(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine._write_options")
@@ -2883,7 +2883,7 @@ class TestSpark:
 
     def test_split_df(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_spark_engine_time_series_split = mocker.patch(
@@ -2928,7 +2928,7 @@ class TestSpark:
 
     def test_split_df_time_split_td_features(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_spark_engine_time_series_split = mocker.patch(
@@ -2982,7 +2982,7 @@ class TestSpark:
 
     def test_split_df_time_split_query_features(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_spark_engine_time_series_split = mocker.patch(
@@ -3036,7 +3036,7 @@ class TestSpark:
 
     def test_split_df_time_split_query_features_fully_qualified_name(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_spark_engine_time_series_split = mocker.patch(
@@ -6690,7 +6690,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -6732,7 +6732,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -6787,7 +6787,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -6846,7 +6846,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -6894,7 +6894,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -6944,7 +6944,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -6974,7 +6974,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7023,7 +7023,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7074,7 +7074,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7124,7 +7124,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7173,7 +7173,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7226,7 +7226,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7256,7 +7256,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7302,7 +7302,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7350,7 +7350,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7399,7 +7399,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7448,7 +7448,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         caplog.set_level(logging.INFO)
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7501,7 +7501,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7530,7 +7530,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         caplog.set_level(logging.INFO)
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7574,7 +7574,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7621,7 +7621,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7670,7 +7670,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         caplog.set_level(logging.INFO)
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7738,7 +7738,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = [
@@ -7807,7 +7807,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = [
@@ -7856,7 +7856,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         caplog.set_level(logging.INFO)
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7902,7 +7902,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7950,7 +7950,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7998,7 +7998,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = [
@@ -8056,7 +8056,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = [
@@ -8112,7 +8112,7 @@ class TestSpark:
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = [
@@ -8150,7 +8150,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8197,7 +8197,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8245,7 +8245,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8293,7 +8293,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = list(logging_features)
@@ -8345,7 +8345,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = list(logging_features)
@@ -8400,7 +8400,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = list(logging_features)
@@ -8432,7 +8432,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8480,7 +8480,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8534,7 +8534,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8589,7 +8589,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8638,7 +8638,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8690,7 +8690,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8722,7 +8722,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8769,7 +8769,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8816,7 +8816,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8865,7 +8865,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8912,7 +8912,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8962,7 +8962,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9010,7 +9010,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9056,7 +9056,7 @@ class TestSpark:
     ):
         #  Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9106,7 +9106,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9159,7 +9159,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_features = list(logging_features)
@@ -9211,7 +9211,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9264,7 +9264,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9294,7 +9294,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
 
@@ -9513,7 +9513,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
 
@@ -9757,7 +9757,7 @@ class TestSpark:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9997,7 +9997,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10148,7 +10148,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10288,7 +10288,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10458,7 +10458,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10629,7 +10629,7 @@ class TestSpark:
     class TestFilterOnlineDataframe:
         @pytest.fixture(autouse=True)
         def patch_engine_type(self, mocker):
-            mocker.patch("hsfs.engine.get_type", return_value="spark")
+            mocker.patch("hsfs.engine._get_type", return_value="spark")
             mocker.patch(
                 "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
             )
@@ -10947,7 +10947,7 @@ class TestSparkConnectMode:
         from unittest.mock import patch as mock_patch
 
         with (
-            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=True),
+            mock_patch("hsfs.engine.spark._is_spark_connect_env", return_value=True),
             mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
         ):
             engine = self._make_connect_engine()
@@ -10959,7 +10959,7 @@ class TestSparkConnectMode:
         from unittest.mock import patch as mock_patch
 
         with (
-            mock_patch("hsfs.engine.spark.is_spark_connect_env", return_value=False),
+            mock_patch("hsfs.engine.spark._is_spark_connect_env", return_value=False),
             mock_patch("hsfs.engine.spark.SparkSession") as mock_spark,
         ):
             engine = self._make_connect_engine()

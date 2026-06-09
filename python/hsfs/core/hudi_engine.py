@@ -169,11 +169,11 @@ class HudiEngine:
 
         # only enable hive sync when using a Spark engine with a metastore and no storage connector,
         # as the storage connector means data is saved in an external storage
-        from hsfs.engine import get_type
+        from hsfs.engine import _get_type
 
         hive_sync = (
             self._feature_group.data_source.storage_connector is None
-            and get_type() == "spark"
+            and _get_type() == "spark"
         )
 
         hudi_options = {

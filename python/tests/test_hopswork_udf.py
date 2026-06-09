@@ -950,7 +950,7 @@ def test_function():
         assert result.values.tolist() == [[2, 12], [3, 22], [4, 32], [5, 42]]
 
     def test_get_udf_spark_engine_default_mode_training(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         @udf(return_type=int)
         def test(feature):
@@ -969,7 +969,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 0
 
     def test_get_udf_spark_engine_default_mode_inference(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         @udf(return_type=int)
         def test(feature):
@@ -988,7 +988,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 1
 
     def test_get_udf_spark_engine_python_mode_training(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         @udf(return_type=int, mode="python")
         def test(feature):
@@ -1007,7 +1007,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 1
 
     def test_get_udf_spark_engine_python_mode_inference(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         @udf(return_type=int, mode="python")
         def test(feature):
@@ -1026,7 +1026,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 1
 
     def test_get_udf_spark_engine_pandas_mode_training(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         @udf(return_type=int, mode="pandas")
         def test(feature):
@@ -1045,7 +1045,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 0
 
     def test_get_udf_spark_engine_pandas_mode_inference(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         @udf(return_type=int, mode="pandas")
         def test(feature):
@@ -1064,7 +1064,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 0
 
     def test_get_udf_python_engine_default_mode_training(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(return_type=int)
         def test(feature):
@@ -1083,7 +1083,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 0
 
     def test_get_udf_python_engine_default_mode_inference(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(return_type=int)
         def test(feature):
@@ -1102,7 +1102,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 1
 
     def test_get_udf_python_engine_python_mode_training(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(return_type=int, mode="python")
         def test(feature):
@@ -1121,7 +1121,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 1
 
     def test_get_udf_python_engine_python_mode_inference(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(return_type=int, mode="python")
         def test(feature):
@@ -1140,7 +1140,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 1
 
     def test_get_udf_python_engine_pandas_mode_training(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(return_type=int, mode="pandas")
         def test(feature):
@@ -1159,7 +1159,7 @@ def test_function():
         assert python_wrapper_mocker.call_count == 0
 
     def test_get_udf_python_engine_pandas_mode_inference(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(return_type=int, mode="pandas")
         def test(feature):
@@ -1516,7 +1516,7 @@ def test_function():
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
     def test_execute(self, mocker, execution_mode):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(int, mode=execution_mode)
         def add_one(feature):
@@ -1558,7 +1558,7 @@ def test_function():
         assert add_one.output_column_names == []
 
     def test_execute_statistics_and_context(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         stats = TransformationStatistics("feature")
 
         @udf(int, mode="pandas")

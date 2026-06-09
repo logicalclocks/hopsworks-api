@@ -475,7 +475,7 @@ class Connection:
         if OpenSearchClientSingleton._instance:
             OpenSearchClientSingleton._close_all()
         client._stop()
-        engine.stop()
+        engine._stop()
         self._feature_store_api = None
         self._connected = False
         _logger.info("Connection closed.")

@@ -201,7 +201,7 @@ class TransformationFunctionEngine:
             request_parameters=request_parameters,
         )
 
-        if isinstance(data, dict) or engine.get_type() != "spark":
+        if isinstance(data, dict) or engine._get_type() != "spark":
             # If the data is a dictionary or if the engine is not spark, we execute the transformation functions using.
             return TransformationFunctionEngine._apply_transformation_functions_impl(
                 transformation_functions=transformation_functions,
@@ -331,7 +331,7 @@ class TransformationFunctionEngine:
         """
         features = []
 
-        if not online and engine.get_type() == "spark":
+        if not online and engine._get_type() == "spark":
             raise exceptions.FeatureStoreException(
                 "Cannot apply transformation functions on a dictionary in offline mode when the engine is spark. Please use the python engine or use the online mode."
             )

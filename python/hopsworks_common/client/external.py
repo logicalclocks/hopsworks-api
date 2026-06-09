@@ -147,10 +147,10 @@ class Client(base.Client):
             # must be set before the first getOrCreate() call.
             # The session created here is reused by the engine, so this is
             # the only place where these configs take effect.
-            from hopsworks_common.spark_connect_utils import is_spark_connect_env
+            from hopsworks_common.spark_connect_utils import _is_spark_connect_env
 
             builder = SparkSession.builder
-            if is_spark_connect_env():
+            if _is_spark_connect_env():
                 builder = builder.config(
                     "spark.sql.extensions",
                     "io.delta.sql.DeltaSparkSessionExtension",
@@ -175,9 +175,9 @@ class Client(base.Client):
                 "hops.ipc.server.ssl.enabled": "true",
             }
 
-            from hopsworks_common.spark_connect_utils import is_spark_connect_session
+            from hopsworks_common.spark_connect_utils import _is_spark_connect_session
 
-            if is_spark_connect_session(_spark_session):
+            if _is_spark_connect_session(_spark_session):
                 for conf_key, conf_value in configuration_dict.items():
                     _spark_session.conf.set(f"spark.hadoop.{conf_key}", conf_value)
             else:

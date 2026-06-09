@@ -27,7 +27,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
@@ -61,7 +61,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.arrow_flight_client._supports", return_value=True)
         mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
@@ -95,7 +95,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker.patch("hsfs.core.arrow_flight_client._supports", return_value=True)
         mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
@@ -129,7 +129,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.arrow_flight_client._supports", return_value=True)
         mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
@@ -163,7 +163,7 @@ class TestExternalFeatureGroupEngine:
     def test_save_primary_key(self, mocker):
         # Arrange
         feature_store_id = 99
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
@@ -198,7 +198,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.engine._get_instance")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
@@ -230,7 +230,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
         external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
@@ -300,7 +300,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_external_fg_engine_update_features_metadata = mocker.patch(
             "hsfs.core.external_feature_group_engine.ExternalFeatureGroupEngine._update_features_metadata"
         )
@@ -335,7 +335,7 @@ class TestExternalFeatureGroupEngine:
         feature_store_id = 99
         description = "temp_description"
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
         external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
@@ -370,7 +370,7 @@ class TestExternalFeatureGroupEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
 
         f = feature.Feature(name="f", type="str")
 
@@ -425,7 +425,7 @@ class TestExternalFeatureGroupEngine:
             arguments="",
         )
         mocker.patch("hsfs.engine._get_instance", return_value=python.Engine())
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         feature_store_id = 99
         external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -456,7 +456,7 @@ class TestExternalFeatureGroupEngine:
         )
 
         mocker.patch("hsfs.engine._get_instance", return_value=python.Engine())
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
 
         feature_store_id = 99

@@ -97,9 +97,9 @@ import logging
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.spark_connect_utils import (
-    is_spark_connect_env,
-    is_spark_connect_session,
-    is_spark_dataframe,
+    _is_spark_connect_env,
+    _is_spark_connect_session,
+    _is_spark_dataframe,
 )
 from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
@@ -147,14 +147,14 @@ class Engine:
         Subclasses can override to customize the session builder
         (e.g. skip Hive support or add Delta extensions).
         """
-        if is_spark_connect_env():
+        if _is_spark_connect_env():
             return SparkSession.builder.getOrCreate()
         return SparkSession.builder.enableHiveSupport().getOrCreate()
 
     def __init__(self):
         self._spark_session = self._create_spark_session()
 
-        self._is_connect = is_spark_connect_session(self._spark_session)
+        self._is_connect = _is_spark_connect_session(self._spark_session)
 
         if self._is_connect:
             self._spark_context = None
@@ -342,7 +342,7 @@ class Engine:
             return dataframe
 
         # Converting to pandas dataframe if return type is not spark
-        if is_spark_dataframe(dataframe):
+        if _is_spark_dataframe(dataframe):
             dataframe = dataframe.toPandas()
 
         if dataframe_type.lower() == "pandas":
@@ -362,7 +362,7 @@ class Engine:
         Accepts ``list``, ``numpy.ndarray``, ``pandas.DataFrame``, ``RDD``,
         and Spark DataFrames. Both classic ``pyspark.sql.DataFrame`` and
         Spark Connect ``pyspark.sql.connect.dataframe.DataFrame`` are
-        supported via ``is_spark_dataframe``; the all-nullable schema
+        supported via ``_is_spark_dataframe``; the all-nullable schema
         rebuild uses ``DataFrame.to(schema)`` which works in both modes.
 
         ``RDD`` inputs are rejected when running under Spark Connect — the
@@ -390,7 +390,7 @@ class Engine:
                 )
             dataframe = dataframe.toDF()
 
-        if is_spark_dataframe(dataframe):
+        if _is_spark_dataframe(dataframe):
             upper_case_features = [
                 c for c in dataframe.columns if util._contains_uppercase(c)
             ]
@@ -1764,7 +1764,7 @@ class Engine:
             True for both ``pyspark.sql.DataFrame`` and
             ``pyspark.sql.connect.dataframe.DataFrame``; False otherwise.
         """
-        return is_spark_dataframe(dataframe)
+        return _is_spark_dataframe(dataframe)
 
     def _update_table_schema(self, feature_group):
         if feature_group.time_travel_format == "DELTA":
@@ -2494,7 +2494,7 @@ class Engine:
         Returns:
             `True` if the dataframe is supported, `False` otherwise.
         """
-        if is_spark_dataframe(dataframe) or isinstance(dataframe, pd.DataFrame):
+        if _is_spark_dataframe(dataframe) or isinstance(dataframe, pd.DataFrame):
             return True
         return None
 

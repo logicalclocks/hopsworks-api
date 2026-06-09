@@ -78,7 +78,7 @@ fg3 = feature_group.FeatureGroup(
     id=12,
     stream=False,
 )
-engine.init("python")
+engine._init("python")
 query = fg1.select_all().join(fg2.select(["tf1_name"]), on=["id"])
 query_self_join = fg1.select_all().join(fg1.select_all(), on=["id"], prefix="fg1_")
 query_prefix = (
@@ -563,7 +563,7 @@ class TestTransformationFunctionEngine:
             return col1 + 1
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
@@ -599,7 +599,7 @@ class TestTransformationFunctionEngine:
             return col1 + 1
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -625,7 +625,7 @@ class TestTransformationFunctionEngine:
             return col1 + 1
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -696,7 +696,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
@@ -792,7 +792,7 @@ class TestTransformationFunctionEngine:
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -837,7 +837,7 @@ class TestTransformationFunctionEngine:
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = True
         mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -890,7 +890,7 @@ class TestTransformationFunctionEngine:
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -935,7 +935,7 @@ class TestTransformationFunctionEngine:
         mocker_engine = mocker.Mock()
         mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99

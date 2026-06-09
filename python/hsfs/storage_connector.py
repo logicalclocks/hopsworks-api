@@ -1485,7 +1485,8 @@ class SnowflakeConnector(StorageConnector):
         # validate engine supports connector type
         if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "Snowflake connector not yet supported for engine: " + engine.get_type()
+                "Snowflake connector not yet supported for engine: "
+                + engine._get_type()
             )
 
         options = (
@@ -1692,7 +1693,7 @@ class SapHanaConnector(StorageConnector):
         """
         if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "SAP HANA connector not yet supported for engine: " + engine.get_type()
+                "SAP HANA connector not yet supported for engine: " + engine._get_type()
             )
         self.refetch()
         merged = (
@@ -1928,7 +1929,7 @@ class MongoDBConnector(StorageConnector):
         """
         if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "MongoDB connector not yet supported for engine: " + engine.get_type()
+                "MongoDB connector not yet supported for engine: " + engine._get_type()
             )
         self.refetch()
         merged = (
@@ -2599,7 +2600,7 @@ class GcsConnector(StorageConnector):
         # validate engine supports connector type
         if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "GCS connector not yet supported for engine: " + engine.get_type()
+                "GCS connector not yet supported for engine: " + engine._get_type()
             )
 
         # validate path begins with gs://
@@ -2811,7 +2812,7 @@ class BigQueryConnector(StorageConnector):
         # validate engine supports connector type
         if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "BigQuery connector not yet supported for engine: " + engine.get_type()
+                "BigQuery connector not yet supported for engine: " + engine._get_type()
             )
         # merge user spark options on top of default spark options
         options = (

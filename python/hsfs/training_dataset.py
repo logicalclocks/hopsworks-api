@@ -695,7 +695,7 @@ class TrainingDataset(TrainingDatasetBase):
         self.data_source = training_dataset.data_source
         # currently we do not save the training dataset statistics config for training datasets
         self.statistics_config = user_stats_config
-        if self.statistics_config.enabled and engine.get_type().startswith("spark"):
+        if self.statistics_config.enabled and engine._get_type().startswith("spark"):
             self.compute_statistics()
         if user_version is None:
             warnings.warn(
@@ -780,7 +780,7 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def compute_statistics(self):
         """Compute the statistics for the training dataset and save them to the feature store."""
-        if self.statistics_config.enabled and engine.get_type().startswith("spark"):
+        if self.statistics_config.enabled and engine._get_type().startswith("spark"):
             try:
                 registered_stats = self._statistics_engine._get(
                     self,
@@ -1055,7 +1055,7 @@ class TrainingDataset(TrainingDatasetBase):
             Query string for the chosen storage used to generate this training dataset.
         """
         return self._training_dataset_engine._query(
-            self, online, with_label, engine.get_type() == "python"
+            self, online, with_label, engine._get_type() == "python"
         )
 
     @public

@@ -19,7 +19,7 @@ import json
 from typing import TYPE_CHECKING, Literal
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hopsworks_common import alert, client, util
 from hopsworks_common.core import (
     alerts_api,
@@ -279,6 +279,7 @@ class Project:
         """
         return self._app_api
 
+    @deprecated("hopsworks.project.Project.get_job_api")
     def get_jobs_api(self):
         """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage."""
         return self.get_job_api()

@@ -42,7 +42,7 @@ class TestVectorDbClient:
 
     @pytest.fixture(autouse=True)
     def setup_mocks(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         # Mock the OpenSearchClientSingleton to return a MagicMock instead of creating a real client
         self.mock_os_wrapper = MagicMock()
         self.mock_os_wrapper._search.return_value = {

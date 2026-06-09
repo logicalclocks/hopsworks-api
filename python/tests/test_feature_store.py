@@ -138,7 +138,7 @@ class TestFeatureStore:
     def test_create_feature_group(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker.patch(
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
         )

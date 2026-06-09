@@ -68,7 +68,7 @@ class TestTrainingDatasetEngine:
         feature_store_id = 99
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
 
         mocker.patch("hsfs.engine._get_instance")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")

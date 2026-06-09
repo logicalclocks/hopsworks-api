@@ -3103,7 +3103,7 @@ class FeatureGroup(FeatureGroupBase):
             time_travel_format=time_travel_format,
         )
 
-        if engine.get_type() == "python" and not self._sink_enabled:
+        if engine._get_type() == "python" and not self._sink_enabled:
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
@@ -3217,7 +3217,7 @@ class FeatureGroup(FeatureGroupBase):
 
     @staticmethod
     def _has_deltalake():
-        if engine.get_type() == "python":
+        if engine._get_type() == "python":
             return HAS_DELTALAKE_PYTHON
         return HAS_DELTALAKE_SPARK
 
@@ -3378,7 +3378,7 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 "Time travel format is not set for the feature group, cannot read as of specific point in time."
             )
-        if wallclock_time and engine.get_type() == "python":
+        if wallclock_time and engine._get_type() == "python":
             raise FeatureStoreException(
                 "Python environments does not support incremental queries. "
                 "Read feature group without timestamp to retrieve latest snapshot or switch to "
@@ -3734,13 +3734,13 @@ class FeatureGroup(FeatureGroupBase):
         # Compute stats in client if there is no backfill job:
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
-        if self.statistics_config.enabled and engine.get_type().startswith("spark"):
+        if self.statistics_config.enabled and engine._get_type().startswith("spark"):
             self._statistics_engine._compute_and_save_statistics(
                 self, feature_dataframe
             )
         elif (
             self.statistics_config.enabled
-            and engine.get_type() == "python"
+            and engine._get_type() == "python"
             and not self.stream
         ):
             commit_id = list(self.commit_details(limit=1))[0]
@@ -3955,14 +3955,14 @@ class FeatureGroup(FeatureGroupBase):
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
         if (
-            engine.get_type().startswith("spark")
+            engine._get_type().startswith("spark")
             and not self.stream
             and storage_normalized != "online"
         ):
             self.compute_statistics()
         elif (
             self.statistics_config.enabled
-            and engine.get_type() == "python"
+            and engine._get_type() == "python"
             and not self.stream
             and storage_normalized != "online"
         ):
@@ -4292,7 +4292,7 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        if self.time_travel_format == "HUDI" and not engine.get_type().startswith(
+        if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
             "spark"
         ):
             raise NotImplementedError(
@@ -5370,7 +5370,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         # and we read the underlying Delta files directly.
         if (
             dataframe_type in ("default", "spark")
-            and engine.get_type().startswith("spark")
+            and engine._get_type().startswith("spark")
             and not online
             and start_time is None
             and end_time is None
@@ -5380,7 +5380,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 return uc_df
 
         if (
-            engine.get_type() == "python"
+            engine._get_type() == "python"
             and not online
             and not engine._get_instance()._is_flyingduck_query_supported(
                 self.select_all()

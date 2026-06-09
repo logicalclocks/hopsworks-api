@@ -25,7 +25,7 @@ from hsfs.core import monitoring_window_config_engine as mwce
 
 DEFAULT_FEATURE_NAME = "amount"
 
-ENGINE_GET_TYPE = "hsfs.engine.get_type"
+ENGINE_GET_TYPE = "hsfs.engine._get_type"
 CLIENT_GET_INSTANCE = "hopsworks_common.client._get_instance"
 
 
@@ -327,7 +327,7 @@ class TestMonitoringWindowConfigEngine:
 
     def test_fetch_entity_data_in_monitoring_window(self, backend_fixtures, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         mocker.patch("hopsworks_common.client._get_instance")
 
         fetch_feature_group_data_mocker = mocker.patch(

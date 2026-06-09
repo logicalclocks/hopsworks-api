@@ -3,7 +3,7 @@ import re
 
 import pandas as pd
 from hopsworks_common.core.constants import HAS_POLARS
-from hopsworks_common.spark_connect_utils import is_spark_dataframe
+from hopsworks_common.spark_connect_utils import _is_spark_dataframe
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class DataFrameValidator:
             if isinstance(df, pl.DataFrame):
                 return PolarsValidator()
 
-        if is_spark_dataframe(df):
+        if _is_spark_dataframe(df):
             return PySparkValidator()
 
         return None

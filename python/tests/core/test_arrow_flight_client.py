@@ -38,7 +38,7 @@ class TestArrowFlightClient:
 
     def _arrange_engine_mocks(self, mocker, backend_fixtures):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
         json_query = backend_fixtures["fs_query"]["get_basic_info"]["response"]

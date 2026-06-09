@@ -86,7 +86,7 @@ class TestQuery:
     def test_from_response_json_python(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         json = backend_fixtures["query"]["get"]["response"]
 
         # Act
@@ -108,7 +108,7 @@ class TestQuery:
     def test_from_response_json_external_fg_python(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         json = backend_fixtures["query"]["get_external_fg"]["response"]
 
         # Act
@@ -130,7 +130,7 @@ class TestQuery:
     def test_from_response_json_spark(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         json = backend_fixtures["query"]["get"]["response"]
 
         # Act
@@ -152,7 +152,7 @@ class TestQuery:
     def test_from_response_json_external_fg_spark(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         json = backend_fixtures["query"]["get_external_fg"]["response"]
 
         # Act
@@ -174,7 +174,7 @@ class TestQuery:
     def test_from_response_json_basic_info(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         json = backend_fixtures["query"]["get_basic_info"]["response"]
 
         # Act
@@ -196,7 +196,7 @@ class TestQuery:
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         json = backend_fixtures["query"]["get_basic_info_deprecated"]["response"]
 
         # Act
@@ -222,7 +222,7 @@ class TestQuery:
 
     def test_as_of(self, mocker, backend_fixtures):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         q = query.Query.from_response_json(backend_fixtures["query"]["get"]["response"])
         q.as_of("2022-01-01 00:00:00")
 
@@ -251,7 +251,7 @@ class TestQuery:
         assert q._joins[0].query.left_feature_group_start_time is None
 
     def test_collect_feature(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select(["label"]).join(TestQuery.fg2.select(["tf1_name"]))
@@ -268,7 +268,7 @@ class TestQuery:
             assert feat.name == expected_feature_names[i]
 
     def test_collect_featuregroups(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -283,7 +283,7 @@ class TestQuery:
         assert set(q.featuregroups) == set(expected_featuregroups)
 
     def test_append_feature(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select([TestQuery.fg1["label"]]).append_feature("id")
@@ -295,7 +295,7 @@ class TestQuery:
             assert feat.name == expected_features[i].name
 
     def test_get_feature(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select(TestQuery.fg1["label"]).join(
@@ -308,7 +308,7 @@ class TestQuery:
         )
 
     def test_get_index(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select(TestQuery.fg1["label"]).join(
@@ -321,7 +321,7 @@ class TestQuery:
         )
 
     def test_get_attr(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select(TestQuery.fg1["label"]).join(
@@ -334,7 +334,7 @@ class TestQuery:
         )
 
     def test_get_feature_by_name(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -353,7 +353,7 @@ class TestQuery:
         )
 
     def test_get_feature_by_name_prefix(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -372,7 +372,7 @@ class TestQuery:
         )
 
     def test_get_feature_by_name_ambiguous(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -390,7 +390,7 @@ class TestQuery:
         )
 
     def test_get_feature_by_feature_ambiguous(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -408,7 +408,7 @@ class TestQuery:
         ) == query.Query.ERROR_MESSAGE_FEATURE_AMBIGUOUS_FG.format("id")
 
     def test_get_feature_by_feature_non_ambiguous(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -421,7 +421,7 @@ class TestQuery:
         assert q._get_featuregroup_by_feature(TestQuery.fg3["id"]) == TestQuery.fg3
 
     def test_get_ambiguous_features_star_schema(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -457,7 +457,7 @@ class TestQuery:
             )
 
     def test_get_ambiguous_features_snowflake_schema(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select_all().join(
@@ -491,7 +491,7 @@ class TestQuery:
             )
 
     def test_get_ambiguous_features_no_ambiguous_features(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -505,7 +505,7 @@ class TestQuery:
         assert ambiguous_features == {}
 
     def test_extract_feature_to_feature_group_mapping_joins_star_schema(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -553,7 +553,7 @@ class TestQuery:
     def test_extract_feature_to_feature_group_mapping_joins_snowflake_schema(
         self, mocker
     ):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -600,7 +600,7 @@ class TestQuery:
             )
 
     def test_extract_feature_to_feature_group_mapping_joins_no_ambiguity(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -641,7 +641,7 @@ class TestQuery:
             )
 
     def test_check_and_warn_ambiguous_features_snowflake_schema(self, mocker, caplog):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select_all().join(
@@ -657,7 +657,7 @@ class TestQuery:
         )
 
     def test_check_and_warn_ambiguous_features_star_schema(self, mocker, caplog):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -675,7 +675,7 @@ class TestQuery:
         )
 
     def test_check_and_warn_ambiguous_features_no_ambiguity(self, mocker, caplog):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = (
@@ -695,7 +695,7 @@ class TestQuery:
     def test_prep_read_spine(self, mocker):
         engine = spark.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
         mock_fs_query.query = "SELECT * FROM test"
@@ -721,7 +721,7 @@ class TestQuery:
     def test_prep_hudi_delta_fg_join(self, mocker):
         engine = spark.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
         mock_fs_query.query = "SELECT * FROM test"
@@ -745,7 +745,7 @@ class TestQuery:
         mock_fs_query.register_hudi_tables.assert_called()
 
     def test_limit_sets_limit(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select_all().limit(10)
@@ -754,7 +754,7 @@ class TestQuery:
         assert q._limit == 10
 
     def test_limit_returns_self(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select_all()
@@ -764,7 +764,7 @@ class TestQuery:
         assert result is q
 
     def test_limit_overrides_previous(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         q = TestQuery.fg1.select_all().limit(10).limit(20)
@@ -773,7 +773,7 @@ class TestQuery:
         assert q._limit == 20
 
     def test_show_does_not_mutate_limit(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         mock_engine = mocker.MagicMock()
         mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
@@ -796,7 +796,7 @@ class TestQuery:
         assert q._limit == 50
 
     def test_show_uses_n_as_limit(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         mock_engine = mocker.MagicMock()
         mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
@@ -844,7 +844,7 @@ class TestQueryRead:
             event_time=None,
         )
 
-        with mock.patch("hsfs.engine.get_type", return_value="python"):
+        with mock.patch("hsfs.engine._get_type", return_value="python"):
             q = query.Query(
                 left_feature_group=fg_without_event_time,
                 left_features=fg_without_event_time.columns,
@@ -873,7 +873,7 @@ class TestQueryRead:
             event_time=None,
         )
 
-        with mock.patch("hsfs.engine.get_type", return_value="python"):
+        with mock.patch("hsfs.engine._get_type", return_value="python"):
             q = query.Query(
                 left_feature_group=fg_without_event_time,
                 left_features=fg_without_event_time.columns,
@@ -902,7 +902,7 @@ class TestQueryRead:
             event_time=None,
         )
 
-        with mock.patch("hsfs.engine.get_type", return_value="python"):
+        with mock.patch("hsfs.engine._get_type", return_value="python"):
             q = query.Query(
                 left_feature_group=fg_without_event_time,
                 left_features=fg_without_event_time.columns,
@@ -914,7 +914,7 @@ class TestQueryRead:
                 filtered_q.read(start_time="2024-01-01")
 
     def test_build_feature_lookup_left_features_only(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         q = TestQuery.fg1.select_all()
         lookup = q._build_feature_lookup()
@@ -929,7 +929,7 @@ class TestQueryRead:
             assert fg == TestQuery.fg1
 
     def test_build_feature_lookup_with_joins(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         q = TestQuery.fg1.select_all().join(TestQuery.fg2.select_all())
         lookup = q._build_feature_lookup()
@@ -941,7 +941,7 @@ class TestQueryRead:
         assert len(lookup["id"]) == 2
 
     def test_build_feature_lookup_with_prefix(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         q = TestQuery.fg1.select_all().join(TestQuery.fg3.select_all(), prefix="fg3_")
         lookup = q._build_feature_lookup()
@@ -1007,7 +1007,7 @@ class TestQueryRead:
 
     def test_get_feature_by_name_uses_build_and_resolve(self, mocker, backend_fixtures):
         """Verify _get_feature_by_name delegates to _build_feature_lookup and _resolve_feature_from_lookup."""
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         q = (
             TestQuery.fg1.select_all()

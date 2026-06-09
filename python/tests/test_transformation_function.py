@@ -1062,7 +1062,7 @@ class TestTransformationFunction:
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
     def test_execute(self, mocker, execution_mode):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(int, mode=execution_mode)
         def add_one(feature):
@@ -1109,7 +1109,7 @@ class TestTransformationFunction:
             assert transformed_values_offline == offline_expected_data
 
     def test_execute_statistics_and_context(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         stats = TransformationStatistics("feature")
 
         @udf(int, mode="pandas")

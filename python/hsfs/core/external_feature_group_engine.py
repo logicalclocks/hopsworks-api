@@ -61,7 +61,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 if external_dataset is None:
                     raise FeatureStoreException(
                         "Features (schema) need to be set for creation of external feature groups with engine "
-                        + engine.get_type()
+                        + engine._get_type()
                         + ". Alternatively use Spark kernel."
                     )
 

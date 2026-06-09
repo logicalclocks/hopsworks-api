@@ -25,7 +25,7 @@ class TestExpectationEngine:
         feature_group_id = 10
         expectation_suite_id = 21
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(
@@ -46,7 +46,7 @@ class TestExpectationEngine:
         feature_group_id = 10
         expectation_suite_id = 21
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(
@@ -68,7 +68,7 @@ class TestExpectationEngine:
         expectation_suite_id = 21
         expectation_id = 32
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(
@@ -90,7 +90,7 @@ class TestExpectationEngine:
         expectation_suite_id = 21
         expectation_id = 32
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(

@@ -119,7 +119,7 @@ class TestFeatureGroupBaseEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch(
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
         )

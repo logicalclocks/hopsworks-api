@@ -95,7 +95,7 @@ class Query:
         # Lookback configuration for the feature view's joins; set only on the
         # root Query and emitted as the top-level `lookback` field on the wire.
         self._lookback: Lookback | None = None
-        self._python_engine: bool = engine.get_type() == "python"
+        self._python_engine: bool = engine._get_type() == "python"
         self._query_constructor_api: query_constructor_api.QueryConstructorApi = (
             query_constructor_api.QueryConstructorApi()
         )

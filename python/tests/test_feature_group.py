@@ -37,7 +37,7 @@ from hsfs.transformation_function import TransformationType
 
 
 with mock.patch("hopsworks_common.client._get_instance"):
-    engine.init("python")
+    engine._init("python")
 
 
 def get_test_feature_group():
@@ -322,7 +322,7 @@ class TestFeatureGroup:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         json = backend_fixtures["feature_store"]["get"]["response"]
 
         features = [
@@ -787,8 +787,8 @@ class TestFeatureGroup:
     def test_save_with_non_feature_list(self, mocker):
         engine = python.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mock_convert_to_default_dataframe = mocker.patch(
             "hsfs.engine.python.Engine._convert_to_default_dataframe"
         )
@@ -827,7 +827,7 @@ class TestFeatureGroup:
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker.patch(
             "hsfs.engine.python.Engine._convert_to_default_dataframe",
             return_value=dataframe_fixture_basic,
@@ -876,7 +876,7 @@ class TestFeatureGroup:
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker.patch(
             "hsfs.engine.python.Engine._convert_to_default_dataframe",
             return_value=dataframe_fixture_basic,
@@ -980,7 +980,7 @@ class TestFeatureGroup:
         This test does not validate resolver logic; it only checks that the outputs of the resolver functions are propagated to the FeatureGroup instance and that the resolvers are called with the expected arguments (notably that the stream resolver receives the already-resolved format).
         """
         # Arrange: ensure code path selects Python Engine class
-        monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
+        monkeypatch.setattr("hsfs.engine._get_type", lambda: "python")
         expected_fmt = "DELTA"
         expected_stream = False
         fmt_mock = mocker.Mock(return_value=expected_fmt)
@@ -1024,7 +1024,7 @@ class TestFeatureGroup:
         This test avoids checking the internal logic of the resolver and only validates the delegation and side-effects of `_init_time_travel_and_stream`.
         """
         # Arrange: ensure code path selects Spark Engine class
-        monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
+        monkeypatch.setattr("hsfs.engine._get_type", lambda: "spark")
         expected_fmt = "HUDI"
         fmt_mock = mocker.Mock(return_value=expected_fmt)
         stream_mock = mocker.Mock(return_value=True)
@@ -1111,7 +1111,7 @@ class TestFeatureGroup:
 
     def test_embedding_index_forces_online_enabled(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         # Act
         fg = feature_group.FeatureGroup(
@@ -1451,7 +1451,7 @@ class TestExternalFeatureGroup:
     def test_upper_case_primary_key_event_time(self, mocker, backend_fixtures, caplog):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         json = backend_fixtures["feature_store"]["get"]["response"]
 
         features = [
@@ -1506,7 +1506,7 @@ class TestFeatureGroupExecuteOdts:
         )
 
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(int)
         def add_one(feature):
@@ -1571,7 +1571,7 @@ class TestFeatureGroupExecuteOdts:
         )
 
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(int)
         def add_context_value(feature, context):
@@ -1638,7 +1638,7 @@ class TestFeatureGroupExecuteOdts:
         import pandas as pd
 
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test_fg",
@@ -1679,7 +1679,7 @@ class TestFeatureGroupExecuteOdts:
         )
 
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         @udf(int, mode=execution_mode)
         def add_one(feature):
@@ -1787,7 +1787,7 @@ class TestFeatureGroupRead:
 
         # Act & Assert
         with (
-            mock.patch("hsfs.engine.get_type", return_value="spark"),
+            mock.patch("hsfs.engine._get_type", return_value="spark"),
             pytest.raises(
                 FeatureStoreException, match="Cannot use wallclock_time together"
             ),
@@ -1800,7 +1800,7 @@ class TestFeatureGroupRead:
 
         # Act & Assert
         with (
-            mock.patch("hsfs.engine.get_type", return_value="spark"),
+            mock.patch("hsfs.engine._get_type", return_value="spark"),
             pytest.raises(
                 FeatureStoreException, match="Cannot use wallclock_time together"
             ),
@@ -1866,7 +1866,7 @@ class TestFeatureGroupRead:
 class TestExternalFeatureGroupRead:
     def test_read_with_start_time_no_event_time_raises(self, backend_fixtures):
         # Arrange
-        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+        with mock.patch("hsfs.engine._get_type", return_value="spark"):
             json = backend_fixtures["external_feature_group"]["get"]["response"]
             fg = feature_group.ExternalFeatureGroup.from_response_json(json)
             fg._event_time = None
@@ -1877,7 +1877,7 @@ class TestExternalFeatureGroupRead:
 
     def test_read_with_end_time_no_event_time_raises(self, backend_fixtures):
         # Arrange
-        with mock.patch("hsfs.engine.get_type", return_value="spark"):
+        with mock.patch("hsfs.engine._get_type", return_value="spark"):
             json = backend_fixtures["external_feature_group"]["get"]["response"]
             fg = feature_group.ExternalFeatureGroup.from_response_json(json)
             fg._event_time = None
@@ -1896,7 +1896,7 @@ class TestExternalFeatureGroupRead:
         fg._event_time = None
         fake_query = mock.MagicMock()
         mocker.patch.object(fg, "select_all", return_value=fake_query)
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         mocker.patch("hsfs.engine._get_instance")
         env = {
             "HOPS_START_TIME": "2026-01-01T00:00:00Z",

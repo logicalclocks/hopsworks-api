@@ -1063,7 +1063,7 @@ class TestGcsConnector:
         assert sc.encryption_key_hash is None
 
     def test_python_support_validation(self, backend_fixtures):
-        engine.set_instance("python", python.Engine())
+        engine._set_instance("python", python.Engine())
         json = backend_fixtures["storage_connector"]["get_gcs_basic_info"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         with pytest.raises(NotImplementedError):
@@ -1125,7 +1125,7 @@ class TestBigQueryConnector:
 
     def test_credentials_base64_encoded(self, mocker, backend_fixtures, tmp_path):
         # Arrange
-        engine.set_instance("spark", spark.Engine())
+        engine._set_instance("spark", spark.Engine())
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
 
         credentials = '{"type": "service_account", "project_id": "test"}'
@@ -1156,7 +1156,7 @@ class TestBigQueryConnector:
 
     def test_python_support_validation(self, backend_fixtures):
         # Arrange
-        engine.set_instance("python", python.Engine())
+        engine._set_instance("python", python.Engine())
         json = backend_fixtures["storage_connector"]["get_big_query_basic_info"][
             "response"
         ]
@@ -1168,7 +1168,7 @@ class TestBigQueryConnector:
 
     def test_query_validation(self, mocker, backend_fixtures, tmp_path):
         # Arrange
-        engine.set_instance("spark", spark.Engine())
+        engine._set_instance("spark", spark.Engine())
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
 
         credentials = '{"type": "service_account", "project_id": "test"}'
@@ -1189,7 +1189,7 @@ class TestBigQueryConnector:
 
     def test_connector_options(self, backend_fixtures):
         # Arrange
-        engine.set_instance("python", python.Engine())
+        engine._set_instance("python", python.Engine())
         json = backend_fixtures["storage_connector"]["get_big_query_query"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
 

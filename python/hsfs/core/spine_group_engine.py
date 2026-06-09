@@ -26,7 +26,7 @@ class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             if feature_group.dataframe is None:
                 raise FeatureStoreException(
                     "Features (schema) need to be set for creation of spine feature groups with engine "
-                    + engine.get_type()
+                    + engine._get_type()
                     + ". Alternatively use Spark kernel."
                 )
 

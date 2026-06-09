@@ -25,7 +25,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_url = "test_url"
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -57,7 +57,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_url = "test_url"
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -89,7 +89,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_url = "test_url"
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -122,7 +122,7 @@ class TestExpectationSuiteEngine:
         feature_store_id = 99
         feature_group_id = 10
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -143,7 +143,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_id = 21
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -163,7 +163,7 @@ class TestExpectationSuiteEngine:
         feature_store_id = 99
         feature_group_id = 10
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hsfs.util._get_hostname_replaced_url"

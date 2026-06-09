@@ -57,13 +57,13 @@ class StatisticsEngine:
             Otherwise, Spark job metadata used to compute the statistics.
         """
         if (
-            engine.get_type().startswith("spark")
+            engine._get_type().startswith("spark")
             or feature_view_obj is not None
             or (
                 all(
                     [
                         feature_group_commit_id is not None,
-                        engine.get_type() == "python",
+                        engine._get_type() == "python",
                         feature_dataframe is not None,
                     ]
                 )
@@ -134,7 +134,7 @@ class StatisticsEngine:
         elif isinstance(feature_name, list):
             feature_names = feature_name
 
-        if engine.get_type() == "spark":
+        if engine._get_type() == "spark":
             commit_time = int(float(datetime.now().timestamp()) * 1000)
             stats_str = self._profile_statistics(
                 feature_dataframe, feature_names, False, False, False
@@ -384,9 +384,9 @@ class StatisticsEngine:
         self, feature_dataframe, columns, label_encoder_features
     ) -> str:
         if (
-            engine.get_type() == "spark"
+            engine._get_type() == "spark"
             and len(feature_dataframe.select(*columns).head(1)) == 0
-        ) or (engine.get_type() == "python" and len(feature_dataframe.head()) == 0):
+        ) or (engine._get_type() == "python" and len(feature_dataframe.head()) == 0):
             raise exceptions.FeatureStoreException(
                 "There is no data in the entity that you are trying to compute "
                 "statistics for. A possible cause might be that you inserted only data "

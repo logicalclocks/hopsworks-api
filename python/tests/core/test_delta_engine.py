@@ -770,7 +770,7 @@ class TestDeltaEngine:
         # delta-spark; the engine should raise a clear ImportError.
         _force_missing_delta_spark(monkeypatch)
         mocker.patch(
-            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=False,
         )
 
@@ -793,7 +793,7 @@ class TestDeltaEngine:
     def test_get_last_commit_metadata_spark(self, mocker):
         # Arrange — classic Spark path uses ``DeltaTable.forPath(...).history()``.
         mocker.patch(
-            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=False,
         )
         mock_history_data = [
@@ -842,7 +842,7 @@ class TestDeltaEngine:
     def test_get_last_commit_metadata_spark_connect(self, mocker):
         # Arrange — Connect path bypasses Hive by reading ``_delta_log/*.json``.
         mocker.patch(
-            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=True,
         )
         mock_history_data = [

@@ -68,7 +68,7 @@ class TestFeatureGroupWriter:
         )
         mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mocker.patch("hsfs.core.job.Job")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -128,7 +128,7 @@ class TestFeatureGroupWriter:
         )
         mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mocker.patch("hsfs.core.job.Job")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test",

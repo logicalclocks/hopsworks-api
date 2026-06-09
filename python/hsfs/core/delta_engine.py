@@ -51,9 +51,9 @@ def _is_delta_table_at(spark_session, path: str) -> bool:
     succeeds only when *path* is a Delta table and otherwise raises an
     AnalysisException that we treat as "not a Delta table".
     """
-    from hopsworks_common.spark_connect_utils import is_spark_connect_session
+    from hopsworks_common.spark_connect_utils import _is_spark_connect_session
 
-    if is_spark_connect_session(spark_session):
+    if _is_spark_connect_session(spark_session):
         try:
             spark_session.sql(f"DESCRIBE DETAIL delta.`{path}`").take(1)
             return True
@@ -77,9 +77,9 @@ def _delta_table_for_path(spark_session, path: str):
     older delta-spark versions do not support Connect-mode handle ops like
     merge/history, so we raise a clear error pointing at the upgrade path.
     """
-    from hopsworks_common.spark_connect_utils import is_spark_connect_session
+    from hopsworks_common.spark_connect_utils import _is_spark_connect_session
 
-    if is_spark_connect_session(spark_session):
+    if _is_spark_connect_session(spark_session):
         try:
             from delta.connect.tables import DeltaTable
         except ImportError as e:
@@ -862,10 +862,10 @@ class DeltaEngine:
         # --- Get commit history ---
         if spark_context is not None:
             from hopsworks_common.spark_connect_utils import (  # noqa: PLC0415
-                is_spark_connect_session,
+                _is_spark_connect_session,
             )
 
-            if is_spark_connect_session(spark_context):
+            if _is_spark_connect_session(spark_context):
                 # Spark Connect path: ``DESCRIBE HISTORY`` and
                 # ``DeltaTable.history()`` route through Spark's catalog, which
                 # on Hopsworks is the Hive Metastore. The Spark Connect server

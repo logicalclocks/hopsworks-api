@@ -835,7 +835,7 @@ def renaming_wrapper(*args):
             self.execution_mode.get_current_execution_mode(online)
             == UDFExecutionMode.PANDAS
         ):
-            if engine.get_type() in ["python", "training"] or online:
+            if engine._get_type() in ["python", "training"] or online:
                 return self._pandas_udf_wrapper()
             from pyspark.sql.functions import pandas_udf
 
@@ -847,7 +847,7 @@ def renaming_wrapper(*args):
             self.execution_mode.get_current_execution_mode(online)
             == UDFExecutionMode.PYTHON
         ):
-            if engine.get_type() in ["python", "training"] or online:
+            if engine._get_type() in ["python", "training"] or online:
                 # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
                 return self._python_udf_wrapper(rename_outputs=False)
             from pyspark.sql.functions import udf as pyspark_udf

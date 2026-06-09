@@ -2105,7 +2105,7 @@ class TestPython:
         mock_python_engine_legacy_save_dataframe = mocker.patch(
             "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
 
         python_engine = python.Engine()
 
@@ -2182,7 +2182,7 @@ class TestPython:
             "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
         mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         python_engine = python.Engine()
 
@@ -2575,7 +2575,7 @@ class TestPython:
     def test_prepare_transform_split_df_random_split(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_random_split = mocker.patch(
             "hsfs.engine.python.Engine._random_split"
@@ -2625,7 +2625,7 @@ class TestPython:
     def test_prepare_transform_split_df_time_split_td_features(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
@@ -2694,7 +2694,7 @@ class TestPython:
     def test_prepare_transform_split_df_time_split_query_features(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
@@ -2765,7 +2765,7 @@ class TestPython:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
@@ -3153,7 +3153,7 @@ class TestPython:
 
     def test_write_training_dataset(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
@@ -3187,7 +3187,7 @@ class TestPython:
     def test_write_training_dataset_query_td(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_job = mocker.patch("hsfs.core.job.Job")
 
@@ -3232,7 +3232,7 @@ class TestPython:
     def test_write_training_dataset_query_fv(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_job = mocker.patch("hsfs.core.job.Job")
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
@@ -3781,7 +3781,7 @@ class TestPython:
     def test_extract_logging_metadata_all_columns_and_drop_none(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -3975,7 +3975,7 @@ class TestPython:
     def test_extract_logging_metadata_all_columns_and_drop_all(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -4147,7 +4147,7 @@ class TestPython:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -4342,7 +4342,7 @@ class TestPython:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -4529,7 +4529,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4569,7 +4569,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4615,7 +4615,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4661,7 +4661,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4716,7 +4716,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4765,7 +4765,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4798,7 +4798,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4859,7 +4859,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4907,7 +4907,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4954,7 +4954,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5008,7 +5008,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5058,7 +5058,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5112,7 +5112,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5158,7 +5158,7 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5212,7 +5212,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5261,7 +5261,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5292,7 +5292,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5341,7 +5341,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5385,7 +5385,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5431,7 +5431,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5503,7 +5503,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5568,7 +5568,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5623,7 +5623,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5672,7 +5672,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5716,7 +5716,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5761,7 +5761,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5821,7 +5821,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5876,7 +5876,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5912,7 +5912,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5960,7 +5960,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6004,7 +6004,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6048,7 +6048,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6102,7 +6102,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6152,7 +6152,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6186,7 +6186,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6235,7 +6235,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6280,7 +6280,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6325,7 +6325,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6377,7 +6377,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6426,7 +6426,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6460,7 +6460,7 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6505,7 +6505,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6546,7 +6546,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6587,7 +6587,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6632,7 +6632,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6674,7 +6674,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6716,7 +6716,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6768,7 +6768,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6813,7 +6813,7 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6856,7 +6856,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6912,7 +6912,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6964,7 +6964,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6998,7 +6998,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7045,7 +7045,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7169,7 +7169,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7297,7 +7297,7 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7440,7 +7440,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7473,7 +7473,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7524,7 +7524,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7561,7 +7561,7 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7601,7 +7601,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7638,7 +7638,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7681,7 +7681,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7716,7 +7716,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7761,7 +7761,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7797,7 +7797,7 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7841,7 +7841,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7878,7 +7878,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7923,7 +7923,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -7960,7 +7960,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8005,7 +8005,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8047,7 +8047,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8092,7 +8092,7 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8128,7 +8128,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8173,7 +8173,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8214,7 +8214,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8259,7 +8259,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8295,7 +8295,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8338,7 +8338,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8379,7 +8379,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8422,7 +8422,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8456,7 +8456,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8501,7 +8501,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8541,7 +8541,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8587,7 +8587,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8623,7 +8623,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8667,7 +8667,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8710,7 +8710,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8744,7 +8744,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8787,7 +8787,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8830,7 +8830,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8866,7 +8866,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8914,7 +8914,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -8954,7 +8954,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -9000,7 +9000,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -9146,7 +9146,7 @@ class TestPython:
     ):
         # Prepare
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
@@ -9293,7 +9293,7 @@ class TestPython:
     class TestFilterOnlineDataframe:
         @pytest.fixture(autouse=True)
         def patch_engine_type(self, mocker):
-            mocker.patch("hsfs.engine.get_type", return_value="python")
+            mocker.patch("hsfs.engine._get_type", return_value="python")
             mocker.patch(
                 "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
             )
