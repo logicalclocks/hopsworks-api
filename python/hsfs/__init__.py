@@ -22,6 +22,7 @@ import warnings
 # Setting polars skip cpu flag to suppress CPU false positive warning messages printed while importing hsfs
 os.environ["POLARS_SKIP_CPU_CHECK"] = "1"
 
+from hopsworks_apigen import public  # noqa: E402
 from hsfs import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
     usage,
     util,
@@ -34,7 +35,7 @@ from hsfs.connection import (  # noqa: E402,  Module level import not at top of 
 
 __version__ = version.__version__
 
-connection = Connection.connection
+connection = Connection._connection
 
 
 def fs_formatwarning(message, category, filename, lineno, line=None):
@@ -48,12 +49,24 @@ warnings.filterwarnings(
 )
 
 
+@public
 def disable_usage_logging():
-    usage.disable()
+    """Disable anonymous usage logging for this SDK session.
+
+    Usage logging is already disabled by default; call this to be explicit or
+    after it has been enabled elsewhere.
+    """
+    usage._disable()
 
 
-def get_sdk_info():
-    return usage.get_env()
+@public
+def get_sdk_info() -> str:
+    """Return the environment information the SDK reports for usage logging.
+
+    Returns:
+        A JSON string describing the SDK and runtime environment.
+    """
+    return usage._get_env()
 
 
 __all__ = ["connection", "disable_usage_logging", "get_sdk_info"]

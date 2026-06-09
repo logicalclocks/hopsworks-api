@@ -71,7 +71,7 @@ class GitProvider:
         return self._host
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Remove the git provider configuration.
 

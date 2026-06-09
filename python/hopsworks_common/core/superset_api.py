@@ -102,12 +102,12 @@ class SupersetApi:
     def __init__(self, project: project.Project | None = None):
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
-            self._variable_api.get_service_discovery_domain()
+            self._variable_api._get_service_discovery_domain()
         )
         if project is not None:
             self._project_id = project.id
         else:
-            _client = client.get_instance()
+            _client = client._get_instance()
             self._project_id = _client._project_id
         self._session_token: str | None = None
         self._csrf_token: str | None = None
@@ -129,7 +129,7 @@ class SupersetApi:
         return f"http://{SUPERSET_SERVICE_NAME}.{self._service_discovery_domain}:{SUPERSET_PORT}"
 
     def _get_session_token(self) -> str:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", self._project_id, "superset", "login"]
         resp = _client._send_request("GET", path_params)
         self._session_token = resp["accessToken"]
@@ -200,7 +200,7 @@ class SupersetApi:
     # ------------------------------------------------------------------ #
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def list_databases(self) -> dict:
         """List all Superset database connections visible to the current user.
 
@@ -214,7 +214,7 @@ class SupersetApi:
     # ------------------------------------------------------------------ #
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_dataset(
         self,
         database_id: int,
@@ -252,7 +252,7 @@ class SupersetApi:
         return self._request("POST", "/api/v1/dataset/", json_data=payload)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_dataset(self, dataset_id: int) -> dict:
         """Get a Superset dataset by ID.
 
@@ -265,7 +265,7 @@ class SupersetApi:
         return self._request("GET", f"/api/v1/dataset/{dataset_id}")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def list_datasets(self) -> dict:
         """List all Superset datasets visible to the current user.
 
@@ -275,7 +275,7 @@ class SupersetApi:
         return self._request("GET", "/api/v1/dataset/")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def update_dataset(self, dataset_id: int, **kwargs: Any) -> dict:
         """Update a Superset dataset.
 
@@ -290,7 +290,7 @@ class SupersetApi:
         return self._request("PUT", f"/api/v1/dataset/{dataset_id}", json_data=kwargs)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_dataset(self, dataset_id: int) -> dict:
         """Delete a Superset dataset.
 
@@ -307,7 +307,7 @@ class SupersetApi:
     # ------------------------------------------------------------------ #
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_chart(
         self,
         slice_name: str,
@@ -350,7 +350,7 @@ class SupersetApi:
         return self._request("POST", "/api/v1/chart/", json_data=payload)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_chart(self, chart_id: int) -> dict:
         """Get a Superset chart by ID.
 
@@ -363,7 +363,7 @@ class SupersetApi:
         return self._request("GET", f"/api/v1/chart/{chart_id}")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def list_charts(self) -> dict:
         """List all Superset charts visible to the current user.
 
@@ -373,7 +373,7 @@ class SupersetApi:
         return self._request("GET", "/api/v1/chart/")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def update_chart(self, chart_id: int, **kwargs: Any) -> dict:
         """Update a Superset chart.
 
@@ -388,7 +388,7 @@ class SupersetApi:
         return self._request("PUT", f"/api/v1/chart/{chart_id}", json_data=kwargs)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_chart(self, chart_id: int) -> dict:
         """Delete a Superset chart.
 
@@ -405,7 +405,7 @@ class SupersetApi:
     # ------------------------------------------------------------------ #
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_dashboard(
         self,
         dashboard_title: str,
@@ -447,7 +447,7 @@ class SupersetApi:
         return self._request("POST", "/api/v1/dashboard/", json_data=payload)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_dashboard(self, dashboard_id: int) -> dict:
         """Get a Superset dashboard by ID.
 
@@ -460,7 +460,7 @@ class SupersetApi:
         return self._request("GET", f"/api/v1/dashboard/{dashboard_id}")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def list_dashboards(self) -> dict:
         """List all Superset dashboards visible to the current user.
 
@@ -470,7 +470,7 @@ class SupersetApi:
         return self._request("GET", "/api/v1/dashboard/")
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def update_dashboard(self, dashboard_id: int, **kwargs: Any) -> dict:
         """Update a Superset dashboard.
 
@@ -487,7 +487,7 @@ class SupersetApi:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_dashboard(self, dashboard_id: int) -> dict:
         """Delete a Superset dashboard.
 

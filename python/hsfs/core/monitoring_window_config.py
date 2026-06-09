@@ -42,19 +42,19 @@ class WindowConfigType(str, Enum):
     SPECIFIC_VALUE = "SPECIFIC_VALUE"
 
     @classmethod
-    def list_str(cls) -> builtins.list[str]:
+    def _list_str(cls) -> builtins.list[str]:
         return [c.value for c in cls]
 
     @classmethod
-    def list(cls) -> builtins.list[WindowConfigType]:
+    def _list(cls) -> builtins.list[WindowConfigType]:
         return list(cls)
 
     @classmethod
-    def from_str(cls, value: str) -> WindowConfigType:
-        if value in cls.list_str():
+    def _from_str(cls, value: str) -> WindowConfigType:
+        if value in cls._list_str():
             return cls(value)
         raise ValueError(
-            f"Invalid value {value} for WindowConfigType, allowed values are {cls.list_str()}"
+            f"Invalid value {value} for WindowConfigType, allowed values are {cls._list_str()}"
         )
 
     def __eq__(self, other):
@@ -221,15 +221,15 @@ class MonitoringWindowConfig:
         if not isinstance(window_config_type, str):
             raise TypeError(
                 "window_config_type must be a string or WindowConfigType. "
-                "Allowed value are" + str(WindowConfigType.list_str())
+                "Allowed value are" + str(WindowConfigType._list_str())
             )
-        if window_config_type not in WindowConfigType.list_str():
+        if window_config_type not in WindowConfigType._list_str():
             raise ValueError(
                 "window_config_type must be one of "
-                + str(WindowConfigType.list_str())
+                + str(WindowConfigType._list_str())
                 + "."
             )
-        self._window_config_type = WindowConfigType.from_str(window_config_type)
+        self._window_config_type = WindowConfigType._from_str(window_config_type)
 
     @public
     @property
@@ -252,7 +252,7 @@ class MonitoringWindowConfig:
                 "Window length can only be set for if window_config_type is ROLLING_TIME."
             )
         elif isinstance(window_length, str):
-            self._window_config_engine.time_range_str_to_time_delta(window_length)
+            self._window_config_engine._time_range_str_to_time_delta(window_length)
             self._window_length = window_length
         else:
             raise TypeError("window_length must be a string.")

@@ -34,7 +34,7 @@ class FeatureGroupApi:
     BACKEND_FG_EXTERNAL = "onDemandFeaturegroupDTO"
     BACKEND_FG_SPINE = "onDemandFeaturegroupDTO"
 
-    def save(
+    def _save(
         self,
         feature_group_instance: fg_mod.FeatureGroup
         | fg_mod.ExternalFeatureGroup
@@ -48,7 +48,7 @@ class FeatureGroupApi:
         Returns:
             updated metadata object of the feature group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -70,11 +70,11 @@ class FeatureGroupApi:
             ),
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.feature_group.FeatureGroupBase", fallback_return=[]
     )
     def _get_feature_group_by_name(self, feature_store_id: int, name: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -88,13 +88,13 @@ class FeatureGroupApi:
         }
         return _client._send_request("GET", path_params, query_params)
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.feature_group.FeatureGroupBase", fallback_return=None
     )
     def _get_feature_group_by_version(
         self, feature_store_id: int, name: str, version: int
     ):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -109,7 +109,7 @@ class FeatureGroupApi:
         }
         return _client._send_request("GET", path_params, query_params)
 
-    def get(
+    def _get(
         self, feature_store_id: int, name: str, version: int | None
     ) -> (
         fg_mod.FeatureGroup
@@ -174,10 +174,10 @@ class FeatureGroupApi:
             self._check_features(fg_obj)
         return fg_objs
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.feature_group.FeatureGroupBase", fallback_return=None
     )
-    def get_by_id(
+    def _get_by_id(
         self, feature_store_id: int, feature_group_id: int
     ) -> fg_mod.FeatureGroup | fg_mod.SpineGroup | fg_mod.ExternalFeatureGroup:
         """Get the metadata of a feature group with a certain id.
@@ -189,7 +189,7 @@ class FeatureGroupApi:
         Returns:
             feature group metadata object
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -213,7 +213,7 @@ class FeatureGroupApi:
             return fg_mod.ExternalFeatureGroup.from_response_json(fg_json)
         return None
 
-    def get_all(
+    def _get_all(
         self,
         feature_store_id: int,
         with_features: bool = False,
@@ -227,7 +227,7 @@ class FeatureGroupApi:
         Returns:
             List of feature group metadata objects.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -249,7 +249,7 @@ class FeatureGroupApi:
 
         return [fg_mod.FeatureGroup.from_response_json(r) for r in res["items"]]
 
-    def delete_content(
+    def _delete_content(
         self,
         feature_group_instance: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
     ) -> None:
@@ -260,7 +260,7 @@ class FeatureGroupApi:
         Parameters:
             feature_group_instance: metadata object of feature group to clear the content for
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -272,7 +272,7 @@ class FeatureGroupApi:
         ]
         _client._send_request("POST", path_params)
 
-    def delete(
+    def _delete(
         self,
         feature_group_instance: fg_mod.FeatureGroup
         | fg_mod.ExternalFeatureGroup
@@ -289,7 +289,7 @@ class FeatureGroupApi:
             force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place
             delete_feature_views: When True, also delete the feature views that depend on the feature group, along with their training data
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -305,7 +305,7 @@ class FeatureGroupApi:
             query_params["deleteFeatureViews"] = True
         _client._send_request("DELETE", path_params, query_params=query_params or None)
 
-    def update_metadata(
+    def _update_metadata(
         self,
         feature_group_instance: fg_mod.FeatureGroup
         | fg_mod.ExternalFeatureGroup
@@ -332,7 +332,7 @@ class FeatureGroupApi:
         Returns:
             FeatureGroup. The updated feature group metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -353,7 +353,7 @@ class FeatureGroupApi:
             ),
         )
 
-    def commit(
+    def _commit(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         feature_group_commit_instance: feature_group_commit.FeatureGroupCommit,
@@ -367,7 +367,7 @@ class FeatureGroupApi:
         Returns:
             The feature group commit metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -387,7 +387,7 @@ class FeatureGroupApi:
             ),
         )
 
-    def get_commit_details(
+    def _get_commit_details(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         wallclock_timestamp: int,
@@ -403,7 +403,7 @@ class FeatureGroupApi:
         Returns:
             The feature group commit metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -422,7 +422,7 @@ class FeatureGroupApi:
             _client._send_request("GET", path_params, query_params, headers=headers),
         )
 
-    def ingestion(
+    def _ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         ingestion_conf: ingestion_job_conf.IngestionJobConf,
@@ -436,7 +436,7 @@ class FeatureGroupApi:
         Returns:
             The ingestion job metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -454,7 +454,7 @@ class FeatureGroupApi:
             ),
         )
 
-    def update_table_schema(
+    def _update_table_schema(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
     ) -> job.Job:
@@ -466,7 +466,7 @@ class FeatureGroupApi:
         Returns:
             The job metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -482,7 +482,7 @@ class FeatureGroupApi:
             _client._send_request("POST", path_params, headers=headers),
         )
 
-    def get_parent_feature_groups(
+    def _get_parent_feature_groups(
         self,
         feature_group_instance: fg_mod.FeatureGroup
         | fg_mod.SpineGroup
@@ -501,7 +501,7 @@ class FeatureGroupApi:
         Returns:
             The feature groups used to generate this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -524,7 +524,7 @@ class FeatureGroupApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
-    def get_storage_connector_provenance(
+    def _get_storage_connector_provenance(
         self, feature_group_instance
     ) -> explicit_provenance.Links:
         """Get the parents of this feature group, based on explicit provenance.
@@ -539,7 +539,7 @@ class FeatureGroupApi:
         Returns:
             The storage connector used to generated this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -562,7 +562,7 @@ class FeatureGroupApi:
             explicit_provenance.Links.Type.STORAGE_CONNECTOR,
         )
 
-    def get_generated_feature_views(
+    def _get_generated_feature_views(
         self,
         feature_group_instance: fg_mod.FeatureGroup
         | fg_mod.SpineGroup
@@ -580,7 +580,7 @@ class FeatureGroupApi:
         Returns:
             The feature views generated using this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -603,7 +603,7 @@ class FeatureGroupApi:
             explicit_provenance.Links.Type.FEATURE_VIEW,
         )
 
-    def get_generated_feature_groups(
+    def _get_generated_feature_groups(
         self,
         feature_group_instance: fg_mod.FeatureGroup
         | fg_mod.SpineGroup
@@ -621,7 +621,7 @@ class FeatureGroupApi:
         Returns:
             The feature groups generated using this feature group.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

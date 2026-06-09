@@ -36,7 +36,7 @@ class TestOnlineStoreRestClientApi:
 
         # Act
         with pytest.raises(online_store_rest_client_api.exceptions.RestAPIError):
-            online_rest_api.handle_rdrs_feature_store_response(response)
+            online_rest_api._handle_rdrs_feature_store_response(response)
 
     def test_handle_rdrs_feature_store_response_bad_request_metadata(
         self, backend_fixtures
@@ -51,7 +51,7 @@ class TestOnlineStoreRestClientApi:
 
         # Act
         with pytest.raises(online_store_rest_client_api.exceptions.RestAPIError):
-            online_rest_api.handle_rdrs_feature_store_response(response)
+            online_rest_api._handle_rdrs_feature_store_response(response)
 
     def test_handle_rdrs_feature_store_response_unauthorized_request_error(
         self, backend_fixtures
@@ -66,7 +66,7 @@ class TestOnlineStoreRestClientApi:
 
         # Act
         with pytest.raises(online_store_rest_client_api.exceptions.RestAPIError):
-            online_rest_api.handle_rdrs_feature_store_response(response)
+            online_rest_api._handle_rdrs_feature_store_response(response)
 
     def test_handle_rdrs_feature_store_response_internal_server_error(
         self, backend_fixtures
@@ -81,4 +81,4 @@ class TestOnlineStoreRestClientApi:
 
         # Act
         with pytest.raises(online_store_rest_client_api.exceptions.RestAPIError):
-            online_rest_api.handle_rdrs_feature_store_response(response)
+            online_rest_api._handle_rdrs_feature_store_response(response)

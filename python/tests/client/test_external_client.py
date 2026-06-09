@@ -419,7 +419,7 @@ class TestExternalClient:
 
             # Verify JKS files and material_passwd exist in the hierarchical user directory
             # Note: PEM files (ca_chain.pem, client_cert.pem, client_key.pem) are created
-            # by download_certs(), not _materialize_certs()
+            # by _download_certs(), not _materialize_certs()
             assert os.path.exists(client._trust_store_path)
             assert os.path.exists(client._key_store_path)
             assert os.path.exists(client._cert_key_path)
@@ -461,7 +461,7 @@ class TestExternalClient:
 
             # Verify JKS files and material_passwd exist directly in cert_folder
             # Note: PEM files (ca_chain.pem, client_cert.pem, client_key.pem) are created
-            # by download_certs(), not _materialize_certs()
+            # by _download_certs(), not _materialize_certs()
             assert os.path.exists(client._trust_store_path)
             assert os.path.exists(client._key_store_path)
             assert os.path.exists(client._cert_key_path)
@@ -469,7 +469,7 @@ class TestExternalClient:
     def test_download_certs_creates_pem_files_in_hierarchical_directory_for_default(
         self, mocker
     ):
-        """Test that download_certs creates PEM files in hierarchical directory for default /tmp."""
+        """Test that _download_certs creates PEM files in hierarchical directory for default /tmp."""
         with tempfile.TemporaryDirectory() as cert_folder:
             # Mock CLIENT.CERT_FOLDER_DEFAULT for hierarchical structure
             mocker.patch(
@@ -492,7 +492,7 @@ class TestExternalClient:
                 client, "_get_credentials", return_value=mock_credentials
             )
 
-            client.download_certs()
+            client._download_certs()
 
             # Verify hierarchical directory structure
             user_dir = os.path.join(
@@ -516,7 +516,7 @@ class TestExternalClient:
     def test_download_certs_creates_pem_files_directly_in_custom_cert_folder(
         self, mocker
     ):
-        """Test that download_certs creates PEM files directly in custom cert_folder."""
+        """Test that _download_certs creates PEM files directly in custom cert_folder."""
         with tempfile.TemporaryDirectory() as cert_folder:
             client = self._create_client(cert_folder, mocker)
             client._cert_folder = None  # Reset to test creation
@@ -534,7 +534,7 @@ class TestExternalClient:
                 client, "_get_credentials", return_value=mock_credentials
             )
 
-            client.download_certs()
+            client._download_certs()
 
             # Verify custom cert_folder is used directly (no subdirectories)
             assert client._cert_folder == cert_folder
@@ -699,21 +699,21 @@ class TestExternalClient:
                 assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
 
     def test_get_certs_folder_with_default_returns_hierarchical_path(self, mocker):
-        """Test that get_certs_folder returns hierarchical path for default /tmp."""
+        """Test that _get_certs_folder returns hierarchical path for default /tmp."""
         client = self._create_client(CLIENT.CERT_FOLDER_DEFAULT, mocker)
 
         expected = os.path.join(
             CLIENT.CERT_FOLDER_DEFAULT, "test.hopsworks.ai", "test_project", "testuser"
         )
-        assert client.get_certs_folder() == expected
+        assert client._get_certs_folder() == expected
 
     def test_get_certs_folder_with_custom_returns_direct_path(self, mocker):
-        """Test that get_certs_folder returns direct path for custom cert_folder."""
+        """Test that _get_certs_folder returns direct path for custom cert_folder."""
         with tempfile.TemporaryDirectory() as cert_folder:
             client = self._create_client(cert_folder, mocker)
 
             # Custom cert_folder should be used directly
-            assert client.get_certs_folder() == cert_folder
+            assert client._get_certs_folder() == cert_folder
 
     def _create_client_with_username(self, cert_folder_base, username, mocker):
         """Create a test client with a specific username.
@@ -947,7 +947,7 @@ class TestCertFolderParameter:
         import hopsworks
 
         # Mock to prevent actual connection
-        mock_connection = mocker.patch("hopsworks.Connection.connection")
+        mock_connection = mocker.patch("hopsworks.Connection._connection")
 
         # Clear any existing env var
         env_backup = os.environ.pop("HOPSWORKS_CERT_FOLDER", None)
@@ -969,7 +969,7 @@ class TestCertFolderParameter:
         """Test that HOPSWORKS_CERT_FOLDER environment variable is used."""
         import hopsworks
 
-        mock_connection = mocker.patch("hopsworks.Connection.connection")
+        mock_connection = mocker.patch("hopsworks.Connection._connection")
 
         custom_folder = "/custom/cert/folder"
         os.environ["HOPSWORKS_CERT_FOLDER"] = custom_folder
@@ -988,7 +988,7 @@ class TestCertFolderParameter:
         """Test that cert_folder parameter takes precedence over environment variable."""
         import hopsworks
 
-        mock_connection = mocker.patch("hopsworks.Connection.connection")
+        mock_connection = mocker.patch("hopsworks.Connection._connection")
 
         os.environ["HOPSWORKS_CERT_FOLDER"] = "/env/cert/folder"
         param_folder = "/param/cert/folder"

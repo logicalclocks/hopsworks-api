@@ -46,19 +46,19 @@ class ValidationReportEngine:
             feature_store_id=feature_store_id, feature_group_id=feature_group_id
         )
 
-    def save(
+    def _save(
         self,
         validation_report: ValidationReport,
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
     ) -> ValidationReport:
-        saved_report = self._validation_report_api.create(validation_report)
+        saved_report = self._validation_report_api._create(validation_report)
         url = self._get_validation_report_url()
         print(f"Validation Report saved successfully, explore a summary at {url}")
         if ge_type:
             return saved_report.to_ge_type()
         return saved_report
 
-    def get_last(
+    def _get_last(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
     ) -> (
         ValidationReport
@@ -78,14 +78,14 @@ class ValidationReportEngine:
             f"""Long reports can be truncated when fetching from Hopsworks.
         \nYou can download the full report at {url}"""
         )
-        reports = self._validation_report_api.get_last()
+        reports = self._validation_report_api._get_last()
         if len(reports) == 0:
             return None
         if len(reports) == 1 and ge_type:
             return reports[0].to_ge_type()
         return reports[0]
 
-    def get_all(
+    def _get_all(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
     ) -> (
         list[ValidationReport]
@@ -104,22 +104,22 @@ class ValidationReportEngine:
             f"""Long reports can be truncated when fetching from Hopsworks.
         \nYou can download full reports at {url}"""
         )
-        reports = self._validation_report_api.get_all()
+        reports = self._validation_report_api._get_all()
         if ge_type:
             return [report.to_ge_type() for report in reports]
         return reports
 
-    def delete(self, validation_report_id: int):
-        self._validation_report_api.delete(validation_report_id)
+    def _delete(self, validation_report_id: int):
+        self._validation_report_api._delete(validation_report_id)
 
     def _get_validation_report_url(self) -> str:
         """Build url to land on Hopsworks UI page which summarizes validation results."""
         sub_path = (
             "/p/"
-            + str(client.get_instance()._project_id)
+            + str(client._get_instance()._project_id)
             + "/fs/"
             + str(self._feature_store_id)
             + "/fg/"
             + str(self._feature_group_id)
         )
-        return util.get_hostname_replaced_url(sub_path)
+        return util._get_hostname_replaced_url(sub_path)

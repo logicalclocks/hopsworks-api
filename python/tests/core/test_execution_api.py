@@ -30,7 +30,7 @@ class TestExecutionApiStart:
         client_mock._project_id = 42
         client_mock._send_request.return_value = {}
         mocker.patch(
-            "hopsworks_common.core.execution_api.client.get_instance",
+            "hopsworks_common.core.execution_api.client._get_instance",
             return_value=client_mock,
         )
         return client_mock
@@ -98,7 +98,7 @@ class TestJobApiLaunch:
         client_mock._project_id = 42
         client_mock._send_request.return_value = {}
         mocker.patch(
-            "hopsworks_common.core.job_api.client.get_instance",
+            "hopsworks_common.core.job_api.client._get_instance",
             return_value=client_mock,
         )
         return client_mock

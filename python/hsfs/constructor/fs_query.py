@@ -115,7 +115,7 @@ class FsQuery:
     def hqs_payload_signature(self) -> str | None:
         return self._hqs_payload_signature
 
-    def register_external(
+    def _register_external(
         self,
         spine: TypeVar("pyspark.sql.DataFrame") | TypeVar("pyspark.RDD") | None = None,
     ) -> None:
@@ -125,23 +125,23 @@ class FsQuery:
         for external_fg_alias in self._on_demand_fg_aliases:
             if type(external_fg_alias.on_demand_feature_group).__name__ == "SpineGroup":
                 external_fg_alias.on_demand_feature_group.dataframe = spine
-            engine.get_instance().register_external_temporary_table(
+            engine._get_instance()._register_external_temporary_table(
                 external_fg_alias.on_demand_feature_group,
                 external_fg_alias.alias,
             )
 
-    def register_hudi_tables(
+    def _register_hudi_tables(
         self,
         feature_store_id: int,
         feature_store_name: str,
         read_options: dict[str, Any] | None,
     ) -> None:
         for hudi_fg in self._hudi_cached_feature_groups:
-            engine.get_instance().register_hudi_temporary_table(
+            engine._get_instance()._register_hudi_temporary_table(
                 hudi_fg, feature_store_id, feature_store_name, read_options
             )
 
-    def register_delta_tables(
+    def _register_delta_tables(
         self,
         feature_store_id: int,
         feature_store_name: str,
@@ -149,7 +149,7 @@ class FsQuery:
         is_cdc_query: bool = False,
     ) -> None:
         for delta_fg in self._delta_cached_feature_groups:
-            engine.get_instance().register_delta_temporary_table(
+            engine._get_instance()._register_delta_temporary_table(
                 delta_fg_alias=delta_fg,
                 feature_store_id=feature_store_id,
                 feature_store_name=feature_store_name,

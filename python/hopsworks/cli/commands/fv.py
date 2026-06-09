@@ -175,9 +175,9 @@ def _list_feature_views(fs: Any) -> list[dict[str, Any]]:
     try:
         # ``expand=features`` so each item carries its feature list; the bare
         # list endpoint omits it, which is why LABELS rendered blank.
-        payload = rest.send_request(
+        payload = rest._send_request(
             "GET",
-            rest.project_path("featurestores", fs_id, "featureview"),
+            rest._project_path("featurestores", fs_id, "featureview"),
             query_params={"expand": ["features"]},
         )
     except Exception as exc:  # noqa: BLE001

@@ -32,7 +32,7 @@ class ExpectationSuiteApi:
         self._feature_group_id = feature_group_id
         self._variable_api = VariableApi()
 
-    def create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
+    def _create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Create an expectation suite attached to a Feature Group.
 
         Parameters:
@@ -41,7 +41,7 @@ class ExpectationSuiteApi:
         Returns:
             the created expectation suite
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -52,8 +52,8 @@ class ExpectationSuiteApi:
             "expectationsuite",
         ]
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         method = "POST"
         if major == "3" and minor == "0":
@@ -65,7 +65,7 @@ class ExpectationSuiteApi:
             _client._send_request(method, path_params, headers=headers, data=payload)
         )
 
-    def update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
+    def _update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Update an expectation suite attached to a Feature Group.
 
         Parameters:
@@ -74,7 +74,7 @@ class ExpectationSuiteApi:
         Returns:
             the updated expectation suite
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -89,8 +89,8 @@ class ExpectationSuiteApi:
         headers = {"content-type": "application/json"}
         payload = expectation_suite.json()
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         method = "PUT"
         if major == "3" and minor == "0":
@@ -101,7 +101,7 @@ class ExpectationSuiteApi:
             _client._send_request(method, path_params, headers=headers, data=payload)
         )
 
-    def update_metadata(
+    def _update_metadata(
         self, expectation_suite: es.ExpectationSuite
     ) -> es.ExpectationSuite:
         """Update the metadata of an expectation suite attached to a Feature Group.
@@ -112,7 +112,7 @@ class ExpectationSuiteApi:
         Returns:
             the expectation suite with updated metadata.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -128,8 +128,8 @@ class ExpectationSuiteApi:
         headers = {"content-type": "application/json"}
         payload = expectation_suite.json()
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         method = "PUT"
         if major == "3" and minor == "0":
@@ -141,13 +141,13 @@ class ExpectationSuiteApi:
             _client._send_request(method, path_params, headers=headers, data=payload)
         )
 
-    def delete(self, expectation_suite_id: int) -> None:
+    def _delete(self, expectation_suite_id: int) -> None:
         """Delete the expectation suite attached to a Feature Group.
 
         Parameters:
             expectation_suite_id: id of the Expectation Suite to delete
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -159,21 +159,21 @@ class ExpectationSuiteApi:
             expectation_suite_id,
         ]
 
-        major, minor = self._variable_api.parse_major_and_minor(
-            self._variable_api.get_version("hopsworks")
+        major, minor = self._variable_api._parse_major_and_minor(
+            self._variable_api._get_version("hopsworks")
         )
         if major == "3" and minor == "0":
             del path_params[-1]
 
         _client._send_request("DELETE", path_params)
 
-    def get(self) -> es.ExpectationSuite | None:
+    def _get(self) -> es.ExpectationSuite | None:
         """Get the expectation suite attached to a Feature Group.
 
         Returns:
             fetched expectation suite attached to the FeatureG Group
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

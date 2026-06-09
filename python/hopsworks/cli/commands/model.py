@@ -95,8 +95,8 @@ def _list_models(project: Any) -> list[dict[str, Any]]:
     if mr_id is None:
         return []
     try:
-        payload = rest.send_request(
-            "GET", rest.project_path("modelregistries", mr_id, "models")
+        payload = rest._send_request(
+            "GET", rest._project_path("modelregistries", mr_id, "models")
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list models: {exc}") from exc

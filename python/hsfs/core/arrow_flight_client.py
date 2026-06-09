@@ -54,14 +54,14 @@ _logger = logging.getLogger(__name__)
 _arrow_flight_instance = None
 
 
-def get_instance() -> ArrowFlightClient:
+def _get_instance() -> ArrowFlightClient:
     global _arrow_flight_instance
     if not _arrow_flight_instance:
         _arrow_flight_instance = ArrowFlightClient()
     return _arrow_flight_instance
 
 
-def close() -> None:
+def _close() -> None:
     global _arrow_flight_instance
     _arrow_flight_instance = None
 
@@ -119,14 +119,14 @@ def _should_retry_certificate_registration(exception):
 
 
 # Avoid unnecessary client init
-def is_data_format_supported(data_format: str, read_options: dict[str, Any] | None):
+def _is_data_format_supported(data_format: str, read_options: dict[str, Any] | None):
     if (
         data_format not in ArrowFlightClient.SUPPORTED_FORMATS
         or read_options
         and read_options.get("use_spark", False)
     ):
         return False
-    return get_instance()._should_be_used()
+    return _get_instance()._should_be_used()
 
 
 def _is_query_supported_rec(query: query.Query):
@@ -162,14 +162,14 @@ def _is_query_supported_rec(query: query.Query):
     return supported
 
 
-def is_query_supported(query: query.Query, read_options: dict[str, Any] | None):
+def _is_query_supported(query: query.Query, read_options: dict[str, Any] | None):
     if (
         read_options
         and read_options.get("use_spark", False)
         or not _is_query_supported_rec(query)
     ):
         return False
-    return get_instance()._should_be_used()
+    return _get_instance()._should_be_used()
 
 
 class ArrowFlightClient:
@@ -213,10 +213,10 @@ class ArrowFlightClient:
             return
         self._disabled_for_session: bool = False
 
-        self._client = client.get_instance()
+        self._client = client._get_instance()
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
-            self._variable_api.get_service_discovery_domain()
+            self._variable_api._get_service_discovery_domain()
         )
 
         self._certificates_json: str | None = None
@@ -266,7 +266,7 @@ class ArrowFlightClient:
             _logger.debug(
                 "Connecting to Hopsworks Cluster to check if Hopsworks Query Service is enabled."
             )
-            self._enabled_on_cluster = self._variable_api.get_flyingduck_enabled()
+            self._enabled_on_cluster = self._variable_api._get_flyingduck_enabled()
         except Exception as e:
             # if feature flag cannot be retrieved, assume it is disabled
             _logger.debug(
@@ -278,7 +278,7 @@ class ArrowFlightClient:
     def _retrieve_host_url(self) -> str | None:
         _logger.debug("Retrieving host URL.")
         if client._is_external():
-            external_domain = self._variable_api.get_loadbalancer_external_domain(
+            external_domain = self._variable_api._get_loadbalancer_external_domain(
                 "feature_query"
             )
             host_url = f"grpc+tls://{external_domain}:5005"
@@ -462,7 +462,7 @@ class ArrowFlightClient:
         stop_max_attempt_number=3,
         retry_on_exception=_should_retry,
     )
-    def get_flight_info(self, descriptor):
+    def _get_flight_info(self, descriptor):
         # The timeout needs not be as long as timeout for do_get or do_action
         _logger.debug("Getting flight info for descriptor: %s", str(descriptor))
         options = pyarrow.flight.FlightCallOptions(timeout=self.health_check_timeout)
@@ -481,7 +481,7 @@ class ArrowFlightClient:
     ):
         if timeout is None:
             timeout = self.timeout
-        info = self.get_flight_info(descriptor)
+        info = self._get_flight_info(descriptor)
         _logger.debug("Retrieved flight info: %s. Fetching dataset.", str(info))
 
         if headers is None:
@@ -499,7 +499,7 @@ class ArrowFlightClient:
 
     # retry is handled in get_dataset
     @_handle_afs_exception(user_message=READ_ERROR)
-    def read_query(self, query_object: FsQuery, arrow_flight_config, dataframe_type):
+    def _read_query(self, query_object: FsQuery, arrow_flight_config, dataframe_type):
         query_encoded = query_object.hqs_payload.encode("ascii")
         descriptor = pyarrow.flight.FlightDescriptor.for_command(query_encoded)
         return self._get_dataset(
@@ -524,7 +524,7 @@ class ArrowFlightClient:
 
     # retry is handled in get_dataset
     @_handle_afs_exception(user_message=READ_ERROR)
-    def read_path(self, path, arrow_flight_config, dataframe_type):
+    def _read_path(self, path, arrow_flight_config, dataframe_type):
         descriptor = pyarrow.flight.FlightDescriptor.for_path(path)
         return self._get_dataset(
             descriptor,
@@ -548,7 +548,7 @@ class ArrowFlightClient:
             e, pyarrow._flight.FlightUnavailableError
         ),
     )
-    def create_training_dataset(
+    def _create_training_dataset(
         self, feature_view_obj, training_dataset_obj, query_obj, arrow_flight_config
     ):
         training_dataset = {}
@@ -579,7 +579,7 @@ class ArrowFlightClient:
             _logger.exception(e)
             print("Error calling action:", e)
 
-    def is_enabled(self):
+    def _is_enabled(self):
         return not (self._disabled_for_session or not self._enabled_on_cluster)
 
     @property
@@ -620,7 +620,7 @@ class ArrowFlightClient:
         return self._enabled_on_cluster
 
 
-def supports(featuregroups):
+def _supports(featuregroups):
     if len(featuregroups) > sum(
         1
         for fg in featuregroups

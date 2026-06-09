@@ -1,7 +1,7 @@
 """CliRunner tests for Phase 3: REST escape-hatch + chart/dashboard/superset.
 
 Every command is driven through the shared ``mock_project`` fixture. We also
-stub out ``hopsworks_common.client.get_instance`` where commands reach through
+stub out ``hopsworks_common.client._get_instance`` where commands reach through
 it for raw REST calls (connector create/delete).
 """
 
@@ -253,7 +253,7 @@ def test_datasource_create_jdbc_posts_body(mock_project):
     fs.id = 67
     fake_client = mock.MagicMock()
     fake_client._project_id = 119
-    with mock.patch("hopsworks_common.client.get_instance", return_value=fake_client):
+    with mock.patch("hopsworks_common.client._get_instance", return_value=fake_client):
         result = CliRunner().invoke(
             cli,
             [
@@ -285,7 +285,7 @@ def _create_connector_body(args: list[str]) -> dict:
     """Invoke a ``datasource create`` command and return the POSTed JSON body."""
     fake_client = mock.MagicMock()
     fake_client._project_id = 119
-    with mock.patch("hopsworks_common.client.get_instance", return_value=fake_client):
+    with mock.patch("hopsworks_common.client._get_instance", return_value=fake_client):
         result = CliRunner().invoke(cli, args)
     assert result.exit_code == 0, result.output
     return json.loads(fake_client._send_request.call_args.kwargs["data"])
@@ -327,7 +327,7 @@ def test_datasource_delete_calls_rest(mock_project):
     fs.id = 67
     fake_client = mock.MagicMock()
     fake_client._project_id = 119
-    with mock.patch("hopsworks_common.client.get_instance", return_value=fake_client):
+    with mock.patch("hopsworks_common.client._get_instance", return_value=fake_client):
         result = CliRunner().invoke(cli, ["datasource", "delete", "mydb", "--yes"])
     assert result.exit_code == 0, result.output
     call = fake_client._send_request.call_args

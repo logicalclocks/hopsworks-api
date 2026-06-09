@@ -42,7 +42,6 @@ class Execution:
         user=None,
         files_to_remove=None,
         duration=None,
-        flink_master_url=None,
         monitoring=None,
         type=None,
         href=None,
@@ -176,9 +175,7 @@ class Execution:
     def success(self) -> bool | None:
         """Boolean to indicate if execution ran successfully or failed."""
         is_yarn_job = (
-            self.job_type.lower() == "spark"
-            or self.job_type.lower() == "pyspark"
-            or self.job_type.lower() == "flink"
+            self.job_type.lower() == "spark" or self.job_type.lower() == "pyspark"
         )
 
         if not is_yarn_job:
@@ -206,7 +203,7 @@ class Execution:
             and isinstance(self._monitoring, dict)
             and self._monitoring.get("appUrl")
         ):
-            _client = client.get_instance()
+            _client = client._get_instance()
             return (
                 _client._base_url.rstrip("/")
                 + "/hopsworks-api/"
@@ -237,10 +234,10 @@ class Execution:
             stdout: Path to downloaded log for stdout.
             stderr: Path to downloaded log for stderr.
         """
-        return self._execution_engine.download_logs(self, path)
+        return self._execution_engine._download_logs(self, path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the execution.
 
@@ -253,7 +250,7 @@ class Execution:
         self._execution_api._delete(self._job.name, self.id)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop(self):
         """Stop the execution.
 
@@ -279,7 +276,7 @@ class Execution:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             hopsworks.client.exceptions.JobExecutionException: If the execution finished with a failure status.
         """
-        self._execution_engine.wait_until_finished(self._job, self, timeout)
+        self._execution_engine._wait_until_finished(self._job, self, timeout)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -293,7 +290,7 @@ class Execution:
     @public
     def get_url(self):
         """Get url to view execution details in Hopsworks UI."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path = (
             "/p/"
             + str(_client._project_id)
@@ -301,4 +298,4 @@ class Execution:
             + self.job_name
             + "/executions"
         )
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)

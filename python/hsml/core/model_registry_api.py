@@ -16,8 +16,8 @@
 
 from __future__ import annotations
 
+from hopsworks_common.client.exceptions import ModelRegistryException
 from hsml import client
-from hsml.client.exceptions import ModelRegistryException
 from hsml.core import dataset_api
 from hsml.model_registry import ModelRegistry
 
@@ -26,7 +26,7 @@ class ModelRegistryApi:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()
 
-    def get(self, project: str | None = None) -> ModelRegistry:
+    def _get(self, project: str | None = None) -> ModelRegistry:
         """Get model registry for specific project.
 
         Parameters:
@@ -35,7 +35,7 @@ class ModelRegistryApi:
         Returns:
             the model registry metadata
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         model_registry_id = _client._project_id
         shared_registry_project_name = None

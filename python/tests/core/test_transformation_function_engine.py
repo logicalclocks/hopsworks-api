@@ -78,7 +78,7 @@ fg3 = feature_group.FeatureGroup(
     id=12,
     stream=False,
 )
-engine.init("python")
+engine._init("python")
 query = fg1.select_all().join(fg2.select(["tf1_name"]), on=["id"])
 query_self_join = fg1.select_all().join(fg1.select_all(), on=["id"], prefix="fg1_")
 query_prefix = (
@@ -123,10 +123,10 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.save(transformation_fn_instance=tf)
+        tf_engine._save(transformation_fn_instance=tf)
 
         # Assert
-        assert mock_tf_api.return_value.register_transformation_fn.call_count == 1
+        assert mock_tf_api.return_value._register_transformation_fn.call_count == 1
 
     def test_get_transformation_fn(self, mocker):
         # Arrange
@@ -162,13 +162,13 @@ class TestTransformationFunctionEngine:
 
         transformations = [tf1, tf2]
 
-        mock_tf_api.return_value.get_transformation_fn.return_value = transformations
+        mock_tf_api.return_value._get_transformation_fn.return_value = transformations
 
         # Act
-        result = tf_engine.get_transformation_fn(name=None, version=None)
+        result = tf_engine._get_transformation_fn(name=None, version=None)
 
         # Assert
-        assert mock_tf_api.return_value.get_transformation_fn.call_count == 1
+        assert mock_tf_api.return_value._get_transformation_fn.call_count == 1
         assert result == transformations
 
     def test_get_transformation_fns(self, mocker):
@@ -205,13 +205,13 @@ class TestTransformationFunctionEngine:
 
         transformations = [tf1, tf2]
 
-        mock_tf_api.return_value.get_transformation_fn.return_value = transformations
+        mock_tf_api.return_value._get_transformation_fn.return_value = transformations
 
         # Act
-        result = tf_engine.get_transformation_fns()
+        result = tf_engine._get_transformation_fns()
 
         # Assert
-        assert mock_tf_api.return_value.get_transformation_fn.call_count == 1
+        assert mock_tf_api.return_value._get_transformation_fn.call_count == 1
         assert result == transformations
 
     def test_delete(self, mocker):
@@ -237,16 +237,16 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.delete(transformation_function_instance=tf1)
+        tf_engine._delete(transformation_function_instance=tf1)
 
         # Assert
-        assert mock_tf_api.return_value.delete.call_count == 1
+        assert mock_tf_api.return_value._delete.call_count == 1
 
     def test_compute_transformation_fn_statistics(self, mocker):
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -263,7 +263,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.compute_transformation_fn_statistics(
+        tf_engine._compute_transformation_fn_statistics(
             training_dataset_obj=td,
             statistics_features=None,
             label_encoder_features=None,
@@ -273,13 +273,13 @@ class TestTransformationFunctionEngine:
 
         # Assert
         assert (
-            mock_s_engine.return_value.compute_transformation_fn_statistics.call_count
+            mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 1
         )
 
     def test_compute_and_set_feature_statistics_no_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -327,19 +327,19 @@ class TestTransformationFunctionEngine:
         dataset = pd.DataFrame()
 
         # Act
-        tf_engine.compute_and_set_feature_statistics(
+        tf_engine._compute_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, dataset=dataset
         )
 
         # Assert
         assert (
-            mock_s_engine.return_value.compute_transformation_fn_statistics.call_count
+            mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 0
         )
 
     def test_compute_and_set_feature_statistics_train_test_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -386,19 +386,19 @@ class TestTransformationFunctionEngine:
         dataset = pd.DataFrame()
 
         # Act
-        tf_engine.compute_and_set_feature_statistics(
+        tf_engine._compute_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, dataset=dataset
         )
 
         # Assert
         assert (
-            mock_s_engine.return_value.compute_transformation_fn_statistics.call_count
+            mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 0
         )
 
     def test_get_and_set_feature_statistics_no_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -443,16 +443,16 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.get_and_set_feature_statistics(
+        tf_engine._get_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, training_dataset_version=1
         )
 
         # Assert
-        assert mock_s_engine.return_value.get.call_count == 0
+        assert mock_s_engine.return_value._get.call_count == 0
 
     def test_get_and_set_feature_statistics_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -500,12 +500,12 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.get_and_set_feature_statistics(
+        tf_engine._get_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, training_dataset_version=1
         )
 
         # Assert
-        assert mock_s_engine.return_value.get.call_count == 1
+        assert mock_s_engine.return_value._get.call_count == 1
 
     def test_execute_udf_on_supported_dataframe(self, mocker):
         # Arrange
@@ -513,22 +513,22 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker_engine._check_supported_dataframe.return_value = True
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
         )
 
         # Act
-        tf_engine.execute_udf(
+        tf_engine._execute_udf(
             udf=add_one, data=pd.DataFrame(data={"col1": [1, 2, 3]}), online=False
         )
 
         # Assert
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 1
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 1
 
     def test_execute_udf_on_unsupported_type(self, mocker):
         # Arrange
@@ -536,10 +536,10 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker_engine._check_supported_dataframe.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -547,14 +547,14 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            tf_engine.execute_udf(udf=add_one, data=1, online=False)
+            tf_engine._execute_udf(udf=add_one, data=1, online=False)
 
         # Assert
         assert (
             str(e_info.value)
             == "Dataframe type <class 'int'> not supported in the engine."
         )
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 0
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 0
 
     def test_execute_udf_on_dict(self, mocker):
         # Arrange
@@ -562,18 +562,18 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker_engine._check_supported_dataframe.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
         )
         mocker.patch.object(
             transformation_function_engine.TransformationFunctionEngine,
-            "apply_udf_on_dict",
+            "_apply_udf_on_dict",
         )
         add_one.output_column_names = [
             "col1"
@@ -582,12 +582,12 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1}
 
         # Act
-        tf_engine.execute_udf(udf=add_one, data=data, online=False)
+        tf_engine._execute_udf(udf=add_one, data=data, online=False)
 
         # Assert
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 0
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 0
         assert (
-            transformation_function_engine.TransformationFunctionEngine.apply_udf_on_dict.call_count
+            transformation_function_engine.TransformationFunctionEngine._apply_udf_on_dict.call_count
             == 1
         )
 
@@ -598,8 +598,8 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -609,7 +609,7 @@ class TestTransformationFunctionEngine:
         ]  # Mocking the output column names, this would be generated when a transformation function is created.
 
         # Act
-        result = tf_engine.apply_udf_on_dict(
+        result = tf_engine._apply_udf_on_dict(
             udf=add_one, data={"col1": 1}, online=False
         )
 
@@ -624,8 +624,8 @@ class TestTransformationFunctionEngine:
         def add_one(col1):
             return col1 + 1
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -635,7 +635,9 @@ class TestTransformationFunctionEngine:
         ]  # Mocking the output column names, this would be generated when a transformation function is created.
 
         # Act
-        result = tf_engine.apply_udf_on_dict(udf=add_one, data={"col1": 1}, online=True)
+        result = tf_engine._apply_udf_on_dict(
+            udf=add_one, data={"col1": 1}, online=True
+        )
 
         # Assert
         assert isinstance(result, dict)
@@ -651,10 +653,10 @@ class TestTransformationFunctionEngine:
         def add_two(col1):
             return col1 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker_engine._check_supported_dataframe.return_value = True
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -674,13 +676,13 @@ class TestTransformationFunctionEngine:
 
         dataset = pd.DataFrame(data={"col1": [1, 2, 3]})
 
-        tf_engine.apply_transformation_functions(
+        tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
         )
 
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 2
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 2
 
     def test_apply_transformation_functions_dict(self, mocker):
         # Arrange
@@ -692,11 +694,11 @@ class TestTransformationFunctionEngine:
         def add_two(col1):
             return col1 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker_engine.check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker_engine._check_supported_dataframe.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -704,7 +706,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch.object(
             transformation_function_engine.TransformationFunctionEngine,
-            "execute_udf",
+            "_execute_udf",
             return_value={"col1": 2},
         )
 
@@ -722,14 +724,14 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1}
 
-        tf_engine.apply_transformation_functions(
+        tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
         )
 
         assert (
-            transformation_function_engine.TransformationFunctionEngine.execute_udf.call_count
+            transformation_function_engine.TransformationFunctionEngine._execute_udf.call_count
             == 2
         )
 
@@ -743,10 +745,10 @@ class TestTransformationFunctionEngine:
         def add_two(col1):
             return col1 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
+        mocker_engine._check_supported_dataframe.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -765,7 +767,7 @@ class TestTransformationFunctionEngine:
         )
 
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=[tf1, tf2],
                 data=1,
                 online=False,
@@ -786,11 +788,11 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker_engine._check_supported_dataframe.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -810,7 +812,7 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1}
         with pytest.raises(exceptions.TransformationFunctionException) as e_info:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=[tf1, tf2],
                 data=dataset,
                 online=False,
@@ -831,11 +833,11 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker_engine._check_supported_dataframe.return_value = True
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -843,7 +845,7 @@ class TestTransformationFunctionEngine:
         mocker_return_df = mocker.Mock()
         mocker.patch.object(
             transformation_function_engine.TransformationFunctionEngine,
-            "execute_udf",
+            "_execute_udf",
             return_value=mocker_return_df,
         )
 
@@ -861,15 +863,15 @@ class TestTransformationFunctionEngine:
 
         dataset = pd.DataFrame(data={"col1": [1, 2, 3], "col2": [4, 5, 6]})
 
-        _ = tf_engine.apply_transformation_functions(
+        _ = tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
         )
 
-        assert mocker_engine.drop_columns.call_count == 1
-        assert mocker_engine.drop_columns.call_args[0][0] is mocker_return_df
-        assert mocker_engine.drop_columns.call_args[0][1] == {"col1", "col2"}
+        assert mocker_engine._drop_columns.call_count == 1
+        assert mocker_engine._drop_columns.call_args[0][0] is mocker_return_df
+        assert mocker_engine._drop_columns.call_args[0][1] == {"col1", "col2"}
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
     def test_apply_transformation_functions_dropped_features_dict_batch(
@@ -884,11 +886,11 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker_engine._check_supported_dataframe.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -908,7 +910,7 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1, "col2": 4}
 
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
@@ -929,11 +931,11 @@ class TestTransformationFunctionEngine:
         def add_two(col2):
             return col2 + 2
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker_engine._check_supported_dataframe.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -953,7 +955,7 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1, "col2": 4}
 
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=True,
@@ -976,9 +978,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1009,7 +1011,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"tf_name": [1, 2]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=df,
             online=online,
@@ -1035,9 +1037,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1068,7 +1070,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=True,
@@ -1092,9 +1094,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1125,7 +1127,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"tf_name": [1, 2]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=df,
             online=online,
@@ -1152,9 +1154,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1185,7 +1187,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1202,9 +1204,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1235,7 +1237,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1254,9 +1256,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1287,7 +1289,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1313,9 +1315,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1346,7 +1348,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1373,9 +1375,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1406,7 +1408,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1424,10 +1426,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1458,7 +1460,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1484,10 +1486,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1518,7 +1520,7 @@ class TestTransformationFunctionEngine:
         df = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1549,10 +1551,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1583,7 +1585,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1617,10 +1619,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1651,7 +1653,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1684,10 +1686,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1718,7 +1720,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1752,10 +1754,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1786,7 +1788,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 2}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1819,10 +1821,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1853,7 +1855,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1880,10 +1882,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1914,7 +1916,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1940,10 +1942,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -1974,7 +1976,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -2005,10 +2007,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2039,7 +2041,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -2079,10 +2081,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2113,7 +2115,7 @@ class TestTransformationFunctionEngine:
         df = pl.DataFrame(data={"tf_name": [1, 2]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -2141,10 +2143,10 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2175,7 +2177,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -2188,9 +2190,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2216,7 +2218,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fg.transformation_functions, data=df
             )
 
@@ -2229,9 +2231,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2257,7 +2259,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fg.transformation_functions, data=data
             )
 
@@ -2270,9 +2272,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2304,7 +2306,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fv.transformation_functions, data=df
             )
 
@@ -2317,9 +2319,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2351,7 +2353,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fv.transformation_functions, data=data
             )
 
@@ -2375,9 +2377,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2402,7 +2404,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"tf_name": [1]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fg.transformation_functions,
             data=df,
             request_parameters={"tf_name": 10},
@@ -2427,9 +2429,9 @@ class TestTransformationFunctionEngine:
         self, mocker, python_engine, execution_mode, online
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         hopsworks_common.connection._hsfs_engine_type = "python"
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -2454,7 +2456,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fg.transformation_functions,
             data=data,
             request_parameters={"tf_name": 10},

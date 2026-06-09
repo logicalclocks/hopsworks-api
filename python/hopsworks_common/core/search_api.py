@@ -589,7 +589,7 @@ class SearchApi:
                 "At least one of search_term, keyword_filter, or tag_filter must be provided."
             )
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         if global_search:
             path_params = ["elastic", "featurestore"]
         else:
