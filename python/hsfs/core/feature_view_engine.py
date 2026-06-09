@@ -2056,4 +2056,4 @@ class FeatureViewEngine:
 
     def _delete_feature_logs(self, fv, feature_logging, transformed):
         self._feature_view_api._delete_feature_logs(fv.name, fv.version, transformed)
-        feature_logging.update(self._get_feature_logging(fv))
+        feature_logging._update(self._get_feature_logging(fv))

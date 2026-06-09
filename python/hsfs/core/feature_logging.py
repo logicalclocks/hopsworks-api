@@ -85,7 +85,7 @@ class FeatureLogging:
             extra_logging_columns,
         )
 
-    def update(self, others):
+    def _update(self, others):
         self._transformed_features = others.transformed_features
         self._untransformed_features = others.untransformed_features
         return self
@@ -105,6 +105,7 @@ class FeatureLogging:
     def extra_logging_columns(self) -> list[Feature] | None:
         return self._extra_logging_columns
 
+    @public
     def get_feature_group(self, transformed: bool | None = None):
         if transformed is not None:
             warnings.warn(
