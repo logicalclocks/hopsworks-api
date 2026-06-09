@@ -1466,8 +1466,9 @@ class TestOracleConnector:
             "/Projects/myproj/Resources/wallet.zip", distribute=False
         )
 
-        # Verify the options passed to engine.read
-        call_options = mock_engine.return_value.read.call_args[0][2]
+        # Oracle reads always go through read_jdbc_on_driver so wallet files
+        # (which only exist on the driver) are accessible.
+        call_options = mock_engine.return_value.read_jdbc_on_driver.call_args[0][0]
         assert call_options["url"] == "jdbc:oracle:thin:@tcps://myhost:1521/ORCL"
         assert "oracle.net.wallet_location" in call_options
         expected_dir = str(tmp_path / "wallet")
