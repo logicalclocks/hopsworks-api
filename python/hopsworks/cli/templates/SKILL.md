@@ -54,8 +54,9 @@ hops fg keywords <name>                   # List tags (aka keywords)
 hops fg add-keyword <name> <kw>           # Attach a keyword
 hops fg remove-keyword <name> <kw>        # Remove a keyword
 hops fg lineage <name> [--version N]      # Upstream/downstream lineage
-hops fg delete <name> --version N --yes   # Delete
-hops fg delete <name> --version N --force # Delete + cascade dependent feature views
+hops fg delete <name> --version N --yes                  # Delete
+hops fg delete <name> --version N --force                # Delete even if feature views depend on it (leaves them in place)
+hops fg delete <name> --version N --delete-feature-views # Delete + also delete dependent feature views
 ```
 
 `lineage` shows parent feature groups, the storage connector, and the data

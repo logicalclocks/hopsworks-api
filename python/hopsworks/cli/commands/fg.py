@@ -756,12 +756,22 @@ def fg_append_features(
 @click.option(
     "--force",
     is_flag=True,
-    help="Delete even if used by feature views, cascade-deleting those feature views "
-    "(and their training data).",
+    help="Delete even if used by feature views, leaving those feature views in place.",
+)
+@click.option(
+    "--delete-feature-views",
+    is_flag=True,
+    help="Also delete the feature views that depend on this feature group, along with "
+    "their training data.",
 )
 @click.pass_context
 def fg_delete(
-    ctx: click.Context, name: str, version: int | None, yes: bool, force: bool
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    yes: bool,
+    force: bool,
+    delete_feature_views: bool,
 ) -> None:
     """Delete a feature group and all its data.
 
@@ -770,22 +780,27 @@ def fg_delete(
         name: Feature group name.
         version: Specific version to delete.
         yes: Skip confirmation when True.
-        force: Cascade-delete dependent feature views instead of failing.
+        force: Delete even if feature views depend on it, leaving them in place.
+        delete_feature_views: Also delete the dependent feature views and their training data.
     """
     fg = _get_fg(ctx, name, version)
     if not yes and not output.JSON_MODE:
-        extra = (
-            " Any feature views using it (and their training data) will also be deleted."
-            if force
-            else ""
-        )
+        if delete_feature_views:
+            extra = " Any feature views using it (and their training data) will also be deleted."
+        elif force:
+            extra = (
+                " It will be deleted even if feature views depend on it; "
+                "those feature views are left in place but will no longer work."
+            )
+        else:
+            extra = ""
         click.confirm(
             f"Delete feature group '{name}' v{getattr(fg, 'version', '?')}? "
             f"This wipes all offline and online data.{extra}",
             abort=True,
         )
     try:
-        fg.delete(force=force)
+        fg.delete(force=force, delete_feature_views=delete_feature_views)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted feature group %s", name)
