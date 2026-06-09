@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from hsfs.validation_report import ValidationReport
 
 
-@public
 class FeatureGroupWriter:
     """Context manager for optimized multi-part inserts into a feature group.
 

@@ -225,7 +225,8 @@ class JobExecutionException(Exception):
     """Generic job executions exception."""
 
 
-@public("hsml.client.exceptions.ModelRegistryException")
+@public("hopsworks.client.exceptions.ModelRegistryException")
+@also_available_as("hsml.client.exceptions.ModelRegistryException")
 class ModelRegistryException(Exception):
     """Generic model registry exception."""
 
@@ -267,7 +268,8 @@ class HuggingFaceImportException(ModelRegistryException):
         super().__init__(self.message)
 
 
-@public("hsml.client.exceptions.ModelServingException")
+@public("hopsworks.client.exceptions.ModelServingException")
+@also_available_as("hsml.client.exceptions.ModelServingException")
 class ModelServingException(Exception):
     """Generic model serving exception."""
 
