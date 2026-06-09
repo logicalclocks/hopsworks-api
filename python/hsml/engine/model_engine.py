@@ -118,7 +118,9 @@ class ModelEngine:
                     with open(input_example_path, "w+") as out:
                         json.dump(input_example, out, cls=util.NumpyEncoder)
 
-                    self._engine._upload(input_example_path, model_instance.version_path)
+                    self._engine._upload(
+                        input_example_path, model_instance.version_path
+                    )
                     model_instance.input_example = None
                 if model_instance._model_schema is not None:
                     model_schema_path = os.path.join(tmp_dir, "model_schema.json")

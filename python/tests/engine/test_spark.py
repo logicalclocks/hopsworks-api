@@ -2378,7 +2378,9 @@ class TestSpark:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = spark_engine._split_labels(df=df, labels=None, dataframe_type="default")
+        result = spark_engine._split_labels(
+            df=df, labels=None, dataframe_type="default"
+        )
 
         # Assert
         assert result == (df, None)

@@ -1938,7 +1938,9 @@ class FeatureStore:
         Returns:
             The TransformationFunction metadata object.
         """
-        return self._transformation_function_engine._get_transformation_fn(name, version)
+        return self._transformation_function_engine._get_transformation_fn(
+            name, version
+        )
 
     @public
     @usage.method_logger

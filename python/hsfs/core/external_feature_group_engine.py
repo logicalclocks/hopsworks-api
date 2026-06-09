@@ -165,7 +165,9 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group, self._new_feature_list(feature_group, updated_features)
         )
 
-    def _append_features(self, feature_group: FeatureGroup, new_features: list[Feature]):
+    def _append_features(
+        self, feature_group: FeatureGroup, new_features: list[Feature]
+    ):
         """Appends features to a feature group.
 
         Parameters:

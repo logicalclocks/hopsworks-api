@@ -635,7 +635,9 @@ class TestTransformationFunctionEngine:
         ]  # Mocking the output column names, this would be generated when a transformation function is created.
 
         # Act
-        result = tf_engine._apply_udf_on_dict(udf=add_one, data={"col1": 1}, online=True)
+        result = tf_engine._apply_udf_on_dict(
+            udf=add_one, data={"col1": 1}, online=True
+        )
 
         # Assert
         assert isinstance(result, dict)

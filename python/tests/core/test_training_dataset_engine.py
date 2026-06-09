@@ -163,10 +163,13 @@ class TestTrainingDatasetEngine:
 
         # Assert
         assert (
-            mock_engine_get_instance.return_value._write_training_dataset.call_count == 1
+            mock_engine_get_instance.return_value._write_training_dataset.call_count
+            == 1
         )
         assert (
-            mock_engine_get_instance.return_value._write_training_dataset.call_args[0][3]
+            mock_engine_get_instance.return_value._write_training_dataset.call_args[0][
+                3
+            ]
             == td_engine.APPEND
         )
 
@@ -185,10 +188,13 @@ class TestTrainingDatasetEngine:
 
         # Assert
         assert (
-            mock_engine_get_instance.return_value._write_training_dataset.call_count == 1
+            mock_engine_get_instance.return_value._write_training_dataset.call_count
+            == 1
         )
         assert (
-            mock_engine_get_instance.return_value._write_training_dataset.call_args[0][3]
+            mock_engine_get_instance.return_value._write_training_dataset.call_args[0][
+                3
+            ]
             == td_engine.OVERWRITE
         )
 

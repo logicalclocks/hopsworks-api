@@ -2961,7 +2961,9 @@ class SqlConnector(StorageConnector):
         """
         if not self._wallet_path:
             return None
-        local_path = engine.get_instance()._add_file(self._wallet_path, distribute=False)
+        local_path = engine.get_instance()._add_file(
+            self._wallet_path, distribute=False
+        )
         if local_path.endswith(".zip") and os.path.isfile(local_path):
             return util.extract_zip(local_path)
         return local_path

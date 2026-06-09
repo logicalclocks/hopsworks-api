@@ -1807,10 +1807,12 @@ class Engine:
             num_entries=n_rows,
         )
 
-        acked, progress_bar = kafka_engine._build_ack_callback_and_optional_progress_bar(
-            n_rows=n_rows,
-            is_multi_part_insert=feature_group._multi_part_insert,
-            offline_write_options=offline_write_options,
+        acked, progress_bar = (
+            kafka_engine._build_ack_callback_and_optional_progress_bar(
+                n_rows=n_rows,
+                is_multi_part_insert=feature_group._multi_part_insert,
+                offline_write_options=offline_write_options,
+            )
         )
 
         if isinstance(dataframe, pd.DataFrame):

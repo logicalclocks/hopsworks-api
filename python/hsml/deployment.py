@@ -293,7 +293,9 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        return self._serving_engine._download_artifact_files(self, local_path=local_path)
+        return self._serving_engine._download_artifact_files(
+            self, local_path=local_path
+        )
 
     @public
     def get_logs(self, component: str = "predictor", tail: int = 10):

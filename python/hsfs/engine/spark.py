@@ -535,7 +535,10 @@ class Engine:
                 # set the timezone to the client's timezone because that is
                 # what spark expects.
                 dataframe[:, n_col] = np.array(
-                    [self._utc_disguised_as_local(d.item()) for d in dataframe[:, n_col]]
+                    [
+                        self._utc_disguised_as_local(d.item())
+                        for d in dataframe[:, n_col]
+                    ]
                 )
         return self._spark_session.createDataFrame(
             dataframe.tolist(),

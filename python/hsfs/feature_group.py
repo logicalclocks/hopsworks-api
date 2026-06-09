@@ -3715,7 +3715,9 @@ class FeatureGroup(FeatureGroupBase):
                 " Please provide a list of features or a Dataframe"
             )
 
-        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(
+            features
+        )
 
         user_version = self._version
 
@@ -3733,7 +3735,9 @@ class FeatureGroup(FeatureGroupBase):
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
-            self._statistics_engine._compute_and_save_statistics(self, feature_dataframe)
+            self._statistics_engine._compute_and_save_statistics(
+                self, feature_dataframe
+            )
         elif (
             self.statistics_config.enabled
             and engine.get_type() == "python"
@@ -3910,7 +3914,9 @@ class FeatureGroup(FeatureGroupBase):
                 stacklevel=1,
             )
 
-        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(
+            features
+        )
 
         if validation_options is None:
             validation_options = {}
@@ -4208,7 +4214,9 @@ class FeatureGroup(FeatureGroupBase):
                 "Features have to be a streaming type spark dataframe. Use `insert()` method instead."
             )
         # lower casing feature names
-        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(
+            features
+        )
         warnings.warn(
             (
                 f"Stream ingestion for feature group `{self._name}`, with version"
@@ -5174,7 +5182,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 If data validation fails and the expectation suite `validation_ingestion_policy` is set to `STRICT`.
                 Data is NOT ingested.
         """
-        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(
+            features
+        )
 
         if validation_options is None:
             validation_options = {}

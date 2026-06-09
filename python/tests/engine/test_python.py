@@ -964,7 +964,9 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine._show(sql_query=None, feature_store=None, n=None, online_conn=None)
+        python_engine._show(
+            sql_query=None, feature_store=None, n=None, online_conn=None
+        )
 
         # Assert
         assert mock_python_engine_sql.call_count == 1
@@ -1754,7 +1756,9 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine._validate(dataframe=None, expectations=None, log_activity=True)
+            python_engine._validate(
+                dataframe=None, expectations=None, log_activity=True
+            )
 
         # Assert
         assert (

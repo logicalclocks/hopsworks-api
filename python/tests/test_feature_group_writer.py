@@ -77,7 +77,9 @@ class TestFeatureGroupWriter:
             primary_key=[],
             partition_key=[],
             id=10,
-            features=engine._parse_schema_feature_group(dataframe_fixture_basic, "HUDI"),
+            features=engine._parse_schema_feature_group(
+                dataframe_fixture_basic, "HUDI"
+            ),
             stream=True,
         )
         fg.feature_store = mocker.MagicMock()
@@ -135,7 +137,9 @@ class TestFeatureGroupWriter:
             primary_key=[],
             partition_key=[],
             id=10,
-            features=engine._parse_schema_feature_group(dataframe_fixture_basic, "HUDI"),
+            features=engine._parse_schema_feature_group(
+                dataframe_fixture_basic, "HUDI"
+            ),
             stream=True,
         )
         fg.feature_store = mocker.MagicMock()

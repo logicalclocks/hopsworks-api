@@ -2229,7 +2229,8 @@ class TestFeatureViewEngine:
 
         # Assert
         assert (
-            mock_s_engine.return_value._compute_and_save_split_statistics.call_count == 0
+            mock_s_engine.return_value._compute_and_save_split_statistics.call_count
+            == 0
         )
         assert mock_s_engine.return_value._compute_and_save_statistics.call_count == 1
 
@@ -2261,7 +2262,8 @@ class TestFeatureViewEngine:
 
         # Assert
         assert (
-            mock_s_engine.return_value._compute_and_save_split_statistics.call_count == 0
+            mock_s_engine.return_value._compute_and_save_split_statistics.call_count
+            == 0
         )
         assert mock_s_engine.return_value._compute_and_save_statistics.call_count == 1
 
@@ -2300,7 +2302,8 @@ class TestFeatureViewEngine:
             == "Provided dataframes should be in dict format 'split': dataframe"
         )
         assert (
-            mock_s_engine.return_value._compute_and_save_split_statistics.call_count == 0
+            mock_s_engine.return_value._compute_and_save_split_statistics.call_count
+            == 0
         )
         assert mock_s_engine.return_value._compute_and_save_statistics.call_count == 0
 
@@ -2332,7 +2335,8 @@ class TestFeatureViewEngine:
 
         # Assert
         assert (
-            mock_s_engine.return_value._compute_and_save_split_statistics.call_count == 1
+            mock_s_engine.return_value._compute_and_save_split_statistics.call_count
+            == 1
         )
         assert mock_s_engine.return_value._compute_and_save_statistics.call_count == 0
 
@@ -3798,7 +3802,11 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine._get_feature_logging_list.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_list.return_value = (
+            pd.DataFrame,
+            None,
+            None,
+        )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3926,7 +3934,11 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine._get_feature_logging_list.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_list.return_value = (
+            pd.DataFrame,
+            None,
+            None,
+        )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -4126,7 +4138,11 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine._get_feature_logging_list.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_list.return_value = (
+            pd.DataFrame,
+            None,
+            None,
+        )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
