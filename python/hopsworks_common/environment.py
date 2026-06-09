@@ -112,7 +112,7 @@ class Environment:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name)
 
         library_name = os.path.basename(path)
 
@@ -128,7 +128,7 @@ class Environment:
         self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            self._environment_engine.await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(self.name, library_name)
 
     @public
     @usage._method_logger
@@ -159,7 +159,7 @@ class Environment:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name)
 
         library_name = os.path.basename(path)
 
@@ -175,7 +175,7 @@ class Environment:
         self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            self._environment_engine.await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(self.name, library_name)
 
     @public
     @usage._method_logger
@@ -203,12 +203,12 @@ class Environment:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name)
 
         self._library_api._uninstall(library_name, self.name)
 
         if await_uninstallation:
-            self._environment_engine.await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(self.name, library_name)
 
     @public
     @usage._method_logger

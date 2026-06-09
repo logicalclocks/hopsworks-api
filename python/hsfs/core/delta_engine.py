@@ -365,7 +365,7 @@ class DeltaEngine:
         _client = client._get_instance()
         if _client._is_external():
             _logger.debug("Setting up delta-rs for external client")
-            os.environ["PEMS_DIR"] = _client.get_certs_folder()
+            os.environ["PEMS_DIR"] = _client._get_certs_folder()
             _logger.debug(f"PEMS_DIR set to {os.environ['PEMS_DIR']}")
             try:
                 datanode_ip = self._variable_api._get_loadbalancer_external_domain(

@@ -259,7 +259,7 @@ class Job:
         )
         if self._job_type == "PYTHON_APP":
             print("Python App started, waiting for it to become ready...")
-            execution = self._execution_engine.wait_for_running(self, execution)
+            execution = self._execution_engine._wait_for_running(self, execution)
             if execution.app_url:
                 print(f"App is running at:\n{execution.app_url}")
             else:
@@ -271,7 +271,7 @@ class Job:
                 f"Job started successfully, you can follow the progress at \n{execution.get_url()}"
             )
             if await_termination:
-                return self._execution_engine.wait_until_finished(self, execution)
+                return self._execution_engine._wait_until_finished(self, execution)
         return execution
 
     @public
@@ -407,7 +407,7 @@ class Job:
                 execution = executions[0]
             else:
                 return
-            self._execution_engine.wait_until_finished(
+            self._execution_engine._wait_until_finished(
                 job=self, execution=execution, timeout=timeout
             )
 

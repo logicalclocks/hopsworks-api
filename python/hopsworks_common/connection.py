@@ -427,7 +427,7 @@ class Connection:
         if name:
             self._project = name
             if _client._is_external():
-                _client.provide_project(name)
+                _client._provide_project(name)
 
         if _client._project_name:
             self._project = _client._project_name

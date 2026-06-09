@@ -423,7 +423,7 @@ class TestJob:
     # --- PYTHON_APP tests ---
 
     def test_run_python_app_waits_for_running(self, mocker, backend_fixtures):
-        # Arrange — PYTHON_APP calls wait_for_running, not wait_until_finished
+        # Arrange — PYTHON_APP calls _wait_for_running, not _wait_until_finished
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
@@ -448,7 +448,7 @@ class TestJob:
             monitoring={"appUrl": "pythonapp/proj/myapp/"},
         )
         mock_execution_api.return_value._start.return_value = started_execution
-        mock_execution_engine.return_value.wait_for_running.return_value = (
+        mock_execution_engine.return_value._wait_for_running.return_value = (
             running_execution
         )
 
@@ -464,9 +464,9 @@ class TestJob:
         # Act
         result = j.run()
 
-        # Assert — wait_for_running called, wait_until_finished NOT called
-        assert mock_execution_engine.return_value.wait_for_running.call_count == 1
-        assert mock_execution_engine.return_value.wait_until_finished.call_count == 0
+        # Assert — _wait_for_running called, _wait_until_finished NOT called
+        assert mock_execution_engine.return_value._wait_for_running.call_count == 1
+        assert mock_execution_engine.return_value._wait_until_finished.call_count == 0
         assert result.state == "RUNNING"
 
     def test_run_python_app_does_not_await_termination(self, mocker, backend_fixtures):
@@ -485,7 +485,7 @@ class TestJob:
         mock_execution_api.return_value._start.return_value = execution.Execution(
             id=1, state="INITIALIZING", job=python_app_job_mock
         )
-        mock_execution_engine.return_value.wait_for_running.return_value = (
+        mock_execution_engine.return_value._wait_for_running.return_value = (
             execution.Execution(id=1, state="RUNNING", job=python_app_job_mock)
         )
 
@@ -498,11 +498,11 @@ class TestJob:
             creator=None,
         )
 
-        # Act — even with await_termination=True, should not call wait_until_finished
+        # Act — even with await_termination=True, should not call _wait_until_finished
         j.run(await_termination=True)
 
         # Assert
-        assert mock_execution_engine.return_value.wait_until_finished.call_count == 0
+        assert mock_execution_engine.return_value._wait_until_finished.call_count == 0
 
     def test_run_python_app_raises_on_failure(self, mocker, backend_fixtures):
         # Arrange — PYTHON_APP that fails during startup
@@ -520,7 +520,7 @@ class TestJob:
         mock_execution_api.return_value._start.return_value = execution.Execution(
             id=1, state="INITIALIZING", job=python_app_job_mock
         )
-        mock_execution_engine.return_value.wait_for_running.side_effect = (
+        mock_execution_engine.return_value._wait_for_running.side_effect = (
             exceptions.JobExecutionException(
                 "Python App failed to start. State: FAILED"
             )

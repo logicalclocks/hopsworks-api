@@ -570,14 +570,16 @@ class TestUtil:
         mock_url_parsed.geturl = mocker.MagicMock(return_value=geturl_return)
         mock_client = mocker.MagicMock()
         mock_client._base_url = base_url + "url"
-        mock_client.replace_public_host = mocker.MagicMock(return_value=mock_url_parsed)
+        mock_client._replace_public_host = mocker.MagicMock(
+            return_value=mock_url_parsed
+        )
         mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
 
         # Act
         url = util._get_hostname_replaced_url(sub_path)
 
         # Assert
-        mock_client.replace_public_host.assert_called_once_with(urlparse_href_arg)
+        mock_client._replace_public_host.assert_called_once_with(urlparse_href_arg)
         mock_url_parsed.geturl.assert_called_once()
         assert url == geturl_return
 
@@ -840,7 +842,7 @@ class TestUtil:
 
         # Assert
         assert (
-            mock_client_get_instance.return_value.replace_public_host.call_args[0][
+            mock_client_get_instance.return_value._replace_public_host.call_args[0][
                 0
             ].path
             == "p/5/jobs/named/7/executions"

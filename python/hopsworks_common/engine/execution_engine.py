@@ -39,7 +39,7 @@ class ExecutionEngine:
         self._execution_api = execution_api.ExecutionApi()
         self._log = logging.getLogger(__name__)
 
-    def download_logs(
+    def _download_logs(
         self, execution: Execution, path: str | None = None
     ) -> tuple[str | None, str | None]:
         """Download execution logs to current directory.
@@ -101,7 +101,7 @@ class ExecutionEngine:
                     raise e
         return download_path
 
-    def wait_for_running(self, job, execution, timeout: float = 120) -> Execution:
+    def _wait_for_running(self, job, execution, timeout: float = 120) -> Execution:
         """Wait until a Python App execution reaches RUNNING state.
 
         Parameters:
@@ -143,7 +143,7 @@ class ExecutionEngine:
 
         return updated_execution
 
-    def wait_until_finished(
+    def _wait_until_finished(
         self, job, execution, timeout: float | None = None
     ) -> Execution | None:
         """Wait until execution terminates.

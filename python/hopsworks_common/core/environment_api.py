@@ -81,7 +81,7 @@ class EnvironmentApi:
         )
 
         if await_creation:
-            self._environment_engine.await_environment_command(name)
+            self._environment_engine._await_environment_command(name)
 
         return env
 

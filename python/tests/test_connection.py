@@ -159,7 +159,7 @@ class TestProvideProject:
         hw_client = MagicMock()
         hw_client._project_name = None
         hw_client._is_external.return_value = True
-        hw_client.provide_project = MagicMock()
+        hw_client._provide_project = MagicMock()
         mocker.patch(
             "hopsworks_common.connection.client._get_instance", return_value=hw_client
         )
@@ -182,7 +182,7 @@ class TestProvideProject:
         conn._provide_project(name="proj")
 
         assert conn._project == "proj"
-        client_instance.provide_project.assert_called_once_with("proj")
+        client_instance._provide_project.assert_called_once_with("proj")
 
     def test_name_is_not_forwarded_when_internal(self, conn, client_instance):
         client_instance._is_external.return_value = False
@@ -191,7 +191,7 @@ class TestProvideProject:
         conn._provide_project(name="proj")
 
         assert conn._project == "proj"
-        client_instance.provide_project.assert_not_called()
+        client_instance._provide_project.assert_not_called()
 
     def test_uses_client_project_name_when_already_set(self, conn, client_instance):
         client_instance._project_name = "already-set"

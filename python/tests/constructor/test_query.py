@@ -714,9 +714,9 @@ class TestQuery:
 
         q._prep_read(online=False, read_options={})
 
-        mock_fs_query.register_external.assert_called()
-        mock_fs_query.register_delta_tables.assert_called()
-        mock_fs_query.register_hudi_tables.assert_called()
+        mock_fs_query._register_external.assert_called()
+        mock_fs_query._register_delta_tables.assert_called()
+        mock_fs_query._register_hudi_tables.assert_called()
 
     def test_prep_hudi_delta_fg_join(self, mocker):
         engine = spark.Engine()
@@ -740,9 +740,9 @@ class TestQuery:
 
         q._prep_read(online=False, read_options={})
 
-        mock_fs_query.register_external.assert_called()
-        mock_fs_query.register_delta_tables.assert_called()
-        mock_fs_query.register_hudi_tables.assert_called()
+        mock_fs_query._register_external.assert_called()
+        mock_fs_query._register_delta_tables.assert_called()
+        mock_fs_query._register_hudi_tables.assert_called()
 
     def test_limit_sets_limit(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")

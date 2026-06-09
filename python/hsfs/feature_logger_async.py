@@ -76,7 +76,7 @@ class AsyncWorkerThread(threading.Thread):
             threading.Event()
         )  # Stop event to stop input of new tasks after a close has been called.
 
-    def submit_task(self, task: tuple[dict, dict]):
+    def _submit_task(self, task: tuple[dict, dict]):
         """Function to submit a task to the queue from a different thread so that it can be processed by workers.
 
         Parameters:
@@ -134,9 +134,9 @@ class AsyncWorkerThread(threading.Thread):
         self._stop_event.set()
 
         # Stop the event loop
-        asyncio.run_coroutine_threadsafe(self.finalize_event_loop(), self._event_loop)
+        asyncio.run_coroutine_threadsafe(self._finalize_event_loop(), self._event_loop)
 
-    async def finalize_event_loop(self):
+    async def _finalize_event_loop(self):
         """Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed."""
         # Stop workers
         for _ in range(len(self._workers)):
@@ -197,7 +197,7 @@ class AsyncFeatureLogger(FeatureLogger):
             untransformed_features, transformed_features
         ):
             try:
-                self._async_worker_thread.submit_task(
+                self._async_worker_thread._submit_task(
                     (untransformed_feature, transformed_feature)
                 )
             except asyncio.QueueFull:

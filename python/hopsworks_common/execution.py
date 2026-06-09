@@ -237,7 +237,7 @@ class Execution:
             stdout: Path to downloaded log for stdout.
             stderr: Path to downloaded log for stderr.
         """
-        return self._execution_engine.download_logs(self, path)
+        return self._execution_engine._download_logs(self, path)
 
     @public
     @usage._method_logger
@@ -279,7 +279,7 @@ class Execution:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             hopsworks.client.exceptions.JobExecutionException: If the execution finished with a failure status.
         """
-        self._execution_engine.wait_until_finished(self._job, self, timeout)
+        self._execution_engine._wait_until_finished(self._job, self, timeout)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

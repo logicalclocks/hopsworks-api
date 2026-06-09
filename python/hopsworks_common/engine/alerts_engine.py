@@ -26,7 +26,7 @@ class AlertsEngine:
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
-    def await_receiver(
+    def _await_receiver(
         self, receiver_name, timeout: float | None = 120
     ) -> alert_receiver.AlertReceiver:
         """Waits for a receiver to be created. This is useful when creating a new receiver and you want to ensure that it is available before proceeding with other operations.
@@ -81,7 +81,7 @@ class AlertsEngine:
                     return receiver
         return None
 
-    def await_route(
+    def _await_route(
         self, receiver_name: str, match: list[dict], timeout: float | None = 120
     ) -> alert_route.AlertRoute:
         """Waits for a route to be created. This is useful when creating a new route and you want to ensure that it is available before proceeding with other operations.

@@ -127,9 +127,9 @@ class Query:
                 sql_query = self._to_string(fs_query, online)
                 # Register on demand feature groups as temporary tables
                 if isinstance(self._left_feature_group, fg_mod.SpineGroup):
-                    fs_query.register_external(self._left_feature_group.dataframe)
+                    fs_query._register_external(self._left_feature_group.dataframe)
                 else:
-                    fs_query.register_external()
+                    fs_query._register_external()
 
                 # In delta cdc queries return duplicate rows for upserts with old and new values
                 # as well as deleted rows. To avoid this, we set is_cdc_query to True to filter out
@@ -137,14 +137,14 @@ class Query:
                 is_cdc_query = bool(self.left_feature_group_start_time)
 
                 # Register on hudi/delta feature groups as temporary tables
-                fs_query.register_delta_tables(
+                fs_query._register_delta_tables(
                     feature_store_id=self._feature_store_id,
                     feature_store_name=self._feature_store_name,
                     read_options=read_options,
                     is_cdc_query=is_cdc_query,
                 )
 
-                fs_query.register_hudi_tables(
+                fs_query._register_hudi_tables(
                     self._feature_store_id,
                     self._feature_store_name,
                     read_options,

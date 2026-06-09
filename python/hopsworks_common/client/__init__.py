@@ -56,7 +56,7 @@ def _init(
                 api_key_value,
             )
     elif _client._is_external() and not _client._project_name:
-        _client.provide_project(project)
+        _client._provide_project(project)
 
 
 @also_available_as("hopsworks.client._get_instance")

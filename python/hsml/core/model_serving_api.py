@@ -20,7 +20,7 @@ from hsml import client
 from hsml.client.exceptions import ModelRegistryException
 from hsml.constants import INFERENCE_ENDPOINTS
 from hsml.core import dataset_api, serving_api
-from hsml.inference_endpoint import get_endpoint_by_type
+from hsml.inference_endpoint import _get_endpoint_by_type
 from hsml.model_serving import ModelServing
 
 
@@ -76,12 +76,12 @@ class ModelServingApi:
             inference_endpoints = self._serving_api._get_inference_endpoints()
             if not client._is_external():
                 # if internal, get node port
-                endpoint = get_endpoint_by_type(
+                endpoint = _get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_KUBE_CLUSTER
                 )
                 if endpoint is not None:
                     client.istio.init(
-                        endpoint.get_any_host(),
+                        endpoint._get_any_host(),
                         endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
                     )
                 else:
@@ -91,7 +91,7 @@ class ModelServingApi:
                         + "' not found"
                     )
             else:  # if external
-                endpoint = get_endpoint_by_type(
+                endpoint = _get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER
                 )
 
@@ -103,7 +103,7 @@ class ModelServingApi:
                     )
                     _client = client._get_instance()
                     client.istio.init(
-                        endpoint.get_any_host(),
+                        endpoint._get_any_host(),
                         port.number,
                         _client._project_name,
                         _client._auth._token,  # reuse hopsworks client token

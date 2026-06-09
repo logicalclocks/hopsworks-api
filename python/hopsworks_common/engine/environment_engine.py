@@ -23,14 +23,14 @@ from hopsworks_common.client.exceptions import EnvironmentException, RestAPIErro
 
 @also_available_as("hopsworks.engine.environment_engine.EnvironmentEngine")
 class EnvironmentEngine:
-    def await_library_command(self, environment_name, library_name):
+    def _await_library_command(self, environment_name, library_name):
         commands = [command.Command(status="ONGOING")]
         while len(commands) > 0 and not self._is_final_status(commands[0]):
             time.sleep(5)
             library = self._poll_commands_library(environment_name, library_name)
             commands = [] if library is None else library._commands
 
-    def await_environment_command(self, environment_name):
+    def _await_environment_command(self, environment_name):
         commands = [command.Command(status="ONGOING")]
         while len(commands) > 0 and not self._is_final_status(commands[0]):
             time.sleep(5)

@@ -340,7 +340,7 @@ def _get_hostname_replaced_url(sub_path: str) -> str:
         href url.
     """
     href = urljoin(client._get_instance()._base_url, sub_path)
-    url_parsed = client._get_instance().replace_public_host(urlparse(href))
+    url_parsed = client._get_instance()._replace_public_host(urlparse(href))
     return url_parsed.geturl()
 
 
@@ -398,7 +398,7 @@ def _get_job_url(href: str) -> str:
     project_id = url_splits[4]
     job_name = url_splits[6]
     ui_url = url._replace(path=f"p/{project_id}/jobs/named/{job_name}/executions")
-    ui_url = client._get_instance().replace_public_host(ui_url)
+    ui_url = client._get_instance()._replace_public_host(ui_url)
     return ui_url.geturl()
 
 

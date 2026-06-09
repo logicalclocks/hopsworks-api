@@ -109,8 +109,8 @@ class TrainingDatasetEngine:
         # like external feature groups/hudi feature groups
         # Here we register those tables before returning the query to the user
         # In this way, if they execute the query, it will be valid
-        fs_query.register_external()
-        fs_query.register_hudi_tables(
+        fs_query._register_external()
+        fs_query._register_hudi_tables(
             self._feature_store_id,
             None,  # No need to provide the feature store name for read operations
             {},

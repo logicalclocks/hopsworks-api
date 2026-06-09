@@ -86,7 +86,7 @@ class InferenceEndpoint:
         self._hosts = hosts
         self._ports = ports
 
-    def get_any_host(self):
+    def _get_any_host(self):
         """Get any host available."""
         return random.choice(self._hosts) if self._hosts is not None else None
 
@@ -155,7 +155,7 @@ class InferenceEndpoint:
         return f"InferenceEndpoint(type: {self._type!r})"
 
 
-def get_endpoint_by_type(endpoints, type) -> InferenceEndpoint:
+def _get_endpoint_by_type(endpoints, type) -> InferenceEndpoint:
     for endpoint in endpoints:
         if endpoint.type == type:
             return endpoint

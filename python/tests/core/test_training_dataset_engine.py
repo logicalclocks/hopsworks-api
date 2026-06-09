@@ -274,11 +274,11 @@ class TestTrainingDatasetEngine:
         # Assert
         assert mock_td_api.return_value._get_query.call_count == 1
         assert (
-            mock_td_api.return_value._get_query.return_value.register_external.call_count
+            mock_td_api.return_value._get_query.return_value._register_external.call_count
             == 1
         )
         assert (
-            mock_td_api.return_value._get_query.return_value.register_hudi_tables.call_count
+            mock_td_api.return_value._get_query.return_value._register_hudi_tables.call_count
             == 1
         )
         assert result == mock_td_api.return_value._get_query.return_value.query
@@ -299,11 +299,11 @@ class TestTrainingDatasetEngine:
         # Assert
         assert mock_td_api.return_value._get_query.call_count == 1
         assert (
-            mock_td_api.return_value._get_query.return_value.register_external.call_count
+            mock_td_api.return_value._get_query.return_value._register_external.call_count
             == 1
         )
         assert (
-            mock_td_api.return_value._get_query.return_value.register_hudi_tables.call_count
+            mock_td_api.return_value._get_query.return_value._register_hudi_tables.call_count
             == 1
         )
         assert result == mock_td_api.return_value._get_query.return_value.pit_query
@@ -324,11 +324,11 @@ class TestTrainingDatasetEngine:
         # Assert
         assert mock_td_api.return_value._get_query.call_count == 1
         assert (
-            mock_td_api.return_value._get_query.return_value.register_external.call_count
+            mock_td_api.return_value._get_query.return_value._register_external.call_count
             == 0
         )
         assert (
-            mock_td_api.return_value._get_query.return_value.register_hudi_tables.call_count
+            mock_td_api.return_value._get_query.return_value._register_hudi_tables.call_count
             == 0
         )
         assert result == mock_td_api.return_value._get_query.return_value.query_online

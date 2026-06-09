@@ -906,7 +906,7 @@ class AlertsApi:
             query_params=query_params,
             headers=headers,
         )
-        return alerts_engine.AlertsEngine().await_receiver(name)
+        return alerts_engine.AlertsEngine()._await_receiver(name)
 
     @public
     @usage._method_logger
@@ -1100,7 +1100,7 @@ class AlertsApi:
                 _client._send_request(
                     "POST", path_params, data=json.dumps(data), headers=headers
                 )
-                alerts_engine.AlertsEngine().await_route(
+                alerts_engine.AlertsEngine()._await_route(
                     receiver_name,
                     match,
                 )

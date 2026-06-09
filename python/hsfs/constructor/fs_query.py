@@ -115,7 +115,7 @@ class FsQuery:
     def hqs_payload_signature(self) -> str | None:
         return self._hqs_payload_signature
 
-    def register_external(
+    def _register_external(
         self,
         spine: TypeVar("pyspark.sql.DataFrame") | TypeVar("pyspark.RDD") | None = None,
     ) -> None:
@@ -130,7 +130,7 @@ class FsQuery:
                 external_fg_alias.alias,
             )
 
-    def register_hudi_tables(
+    def _register_hudi_tables(
         self,
         feature_store_id: int,
         feature_store_name: str,
@@ -141,7 +141,7 @@ class FsQuery:
                 hudi_fg, feature_store_id, feature_store_name, read_options
             )
 
-    def register_delta_tables(
+    def _register_delta_tables(
         self,
         feature_store_id: int,
         feature_store_name: str,
