@@ -335,13 +335,13 @@ class VectorServer:
             serving_keys=self.serving_keys,
             external=external,
         )
-        self.sql_client.init_prepared_statements(
+        self.sql_client._init_prepared_statements(
             entity,
             inference_helper_columns,
             with_logging_meta_data=self._feature_view_logging_enabled,
             feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
         )
-        self.sql_client.init_async_mysql_connection(options=options)
+        self.sql_client._init_async_mysql_connection(options=options)
 
     def setup_rest_client_and_engine(
         self,
@@ -500,7 +500,7 @@ class VectorServer:
         elif online_client_choice == self.DEFAULT_REST_CLIENT:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online REST client")
-            serving_vector = self.rest_client_engine.get_single_feature_vector(
+            serving_vector = self.rest_client_engine._get_single_feature_vector(
                 rondb_entry,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
@@ -508,7 +508,7 @@ class VectorServer:
         else:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online SQL client")
-            serving_vector = self.sql_client.get_single_feature_vector(
+            serving_vector = self.sql_client._get_single_feature_vector(
                 rondb_entry,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
@@ -676,7 +676,7 @@ class VectorServer:
         if online_client_choice == self.DEFAULT_REST_CLIENT and len(rondb_entries) > 0:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vector Online REST client")
-            batch_results = self.rest_client_engine.get_batch_feature_vectors(
+            batch_results = self.rest_client_engine._get_batch_feature_vectors(
                 entries=rondb_entries,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
@@ -685,7 +685,7 @@ class VectorServer:
             # get result row
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vectors through SQL client")
-            batch_results, _ = self.sql_client.get_batch_feature_vectors(
+            batch_results, _ = self.sql_client._get_batch_feature_vectors(
                 rondb_entries,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
@@ -1252,7 +1252,7 @@ class VectorServer:
             _logger.debug(f"entry: {entry} as return type: {return_type}")
         if default_client == self.DEFAULT_REST_CLIENT:
             return self.handle_feature_vector_return_type(
-                self.rest_client_engine.get_single_feature_vector(
+                self.rest_client_engine._get_single_feature_vector(
                     entry,
                     return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
                     inference_helpers_only=True,
@@ -1264,7 +1264,7 @@ class VectorServer:
                 on_demand_feature=False,
             )
         return self.handle_feature_vector_return_type(
-            self.sql_client.get_inference_helper_vector(entry),
+            self.sql_client._get_inference_helper_vector(entry),
             batch=False,
             inference_helper=True,
             return_type=return_type,
@@ -1300,14 +1300,14 @@ class VectorServer:
             _logger.debug(f"entries: {entries} as return type: {return_type}")
 
         if default_client == self.DEFAULT_REST_CLIENT:
-            batch_results = self.rest_client_engine.get_batch_feature_vectors(
+            batch_results = self.rest_client_engine._get_batch_feature_vectors(
                 entries,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
                 inference_helpers_only=True,
             )
         else:
             batch_results, serving_keys = (
-                self.sql_client.get_batch_inference_helper_vectors(entries)
+                self.sql_client._get_batch_inference_helper_vectors(entries)
             )
             # Batch retrieval of inference helper returns primary keys as well to enable merging of vectors retrieved from different feature groups
             # Filtering out the primary keys from the results

@@ -85,13 +85,13 @@ class OnlineStoreRestClientEngine:
                     self._is_inference_helpers_list.append(True)
                 elif not feat.training_helper_column:
                     self._is_inference_helpers_list.append(False)
-        self._feature_to_decode = self.get_feature_to_decode(features)
+        self._feature_to_decode = self._get_feature_to_decode(features)
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Mapping fg_id to feature names: {self._feature_names_per_fg_id}."
             )
 
-    def get_feature_to_decode(
+    def _get_feature_to_decode(
         self, features: list[td_feature_mod.TrainingDatasetFeature]
     ) -> dict[int, str]:
         """Get a mapping of feature indices to their types for features that need decoding.
@@ -114,7 +114,7 @@ class OnlineStoreRestClientEngine:
                 )
         return feature_to_decode
 
-    def build_base_payload(
+    def _build_base_payload(
         self,
         metadata_options: dict[str, bool] | None = None,
         validate_passed_features: bool = False,
@@ -161,7 +161,7 @@ class OnlineStoreRestClientEngine:
             _logger.debug(f"Base payload: {base_payload}")
         return base_payload
 
-    def decode_rdrs_feature_values(self, feature_values: list[Any]) -> list[Any]:
+    def _decode_rdrs_feature_values(self, feature_values: list[Any]) -> list[Any]:
         """Decode binary and date values from the RonDB Rest Server response.
 
         Parameters:
@@ -188,7 +188,7 @@ class OnlineStoreRestClientEngine:
                 ).date()
         return feature_values
 
-    def get_single_feature_vector(
+    def _get_single_feature_vector(
         self,
         entry: dict[str, Any],
         passed_features: dict[str, Any] | None = None,
@@ -232,7 +232,7 @@ class OnlineStoreRestClientEngine:
                 f"Getting single raw feature vector for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
             )
             _logger.debug(f"entry: {entry}, passed features: {passed_features}")
-        payload = self.build_base_payload(
+        payload = self._build_base_payload(
             metadata_options=metadata_options,
             # This ensures consistency with the sql client behaviour.
             validate_passed_features=False,
@@ -246,7 +246,7 @@ class OnlineStoreRestClientEngine:
             payload=payload
         )
         if return_type != self.RETURN_TYPE_RESPONSE_JSON:
-            return self.convert_rdrs_response_to_feature_value_row(
+            return self._convert_rdrs_response_to_feature_value_row(
                 row_feature_values=response["features"],
                 detailed_status=response.get("detailedStatus", None),
                 drop_missing=drop_missing,
@@ -255,7 +255,7 @@ class OnlineStoreRestClientEngine:
             )
         return response
 
-    def get_batch_feature_vectors(
+    def _get_batch_feature_vectors(
         self,
         entries: list[dict[str, Any]],
         passed_features: list[dict[str, Any]] | None = None,
@@ -299,7 +299,7 @@ class OnlineStoreRestClientEngine:
                 f"Getting batch raw feature vectors for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
             )
             _logger.debug(f"entries: {entries}\npassed features: {passed_features}")
-        payload = self.build_base_payload(
+        payload = self._build_base_payload(
             metadata_options=metadata_options,
             # This ensures consistency with the sql client behaviour.
             validate_passed_features=False,
@@ -329,7 +329,7 @@ class OnlineStoreRestClientEngine:
                     "Converting batch response to feature value rows for each."
                 )
             return [
-                self.convert_rdrs_response_to_feature_value_row(
+                self._convert_rdrs_response_to_feature_value_row(
                     row_feature_values=row,
                     detailed_status=detailed_status,
                     drop_missing=drop_missing,
@@ -342,7 +342,7 @@ class OnlineStoreRestClientEngine:
             ]
         return response
 
-    def convert_rdrs_response_to_feature_value_row(
+    def _convert_rdrs_response_to_feature_value_row(
         self,
         row_feature_values: list[Any] | None,
         drop_missing: bool,
@@ -367,7 +367,7 @@ class OnlineStoreRestClientEngine:
             A dictionary with the feature names as keys and the feature values as values. Values types are not guaranteed to
             match the feature type in the metadata. Timestamp SQL types are converted to python datetime.
         """
-        row_feature_values = self.decode_rdrs_feature_values(row_feature_values)
+        row_feature_values = self._decode_rdrs_feature_values(row_feature_values)
         if drop_missing and (
             detailed_status is None and row_feature_values is not None
         ):
