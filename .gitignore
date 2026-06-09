@@ -152,3 +152,6 @@ uv.lock
 
 # Local agent settings, user-specific
 /.claude/settings.local.json
+
+# agent worktrees (transient)
+.claude/worktrees/
