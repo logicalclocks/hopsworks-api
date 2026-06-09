@@ -90,7 +90,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra ${{ matrix.extra }} --project python
+        run: uv sync --extra ${{ matrix.extra }} --project python --reinstall-package hopsworks
 
       - name: Check every module is importable
         run: uv run --project python python python/scripts/check_importable.py
@@ -155,7 +155,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev --project python
+        run: uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Display Python version
         run: python --version
@@ -197,7 +197,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev-no-opt --project python
+        run: uv sync --extra dev-no-opt --project python --reinstall-package hopsworks
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
@@ -236,7 +236,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev-pandas1 --project python
+        run: uv sync --extra dev-pandas1 --project python --reinstall-package hopsworks
 
       - name: Display Python version
         run: python --version
@@ -278,7 +278,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev --project python
+        run: uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Pin Great Expectations and Polars to lower bounds
         run: uv pip install "great-expectations==0.18.12" "polars==0.20.31"
@@ -320,7 +320,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev --project python
+        run: uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Display Python version
         run: python --version
@@ -353,7 +353,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev --project python
+        run: uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
@@ -389,7 +389,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev --project python
+        run: uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Display Python version
         run: python --version
@@ -427,7 +427,7 @@ jobs:
           working-directory: python
 
       - name: Install dependencies
-        run: uv sync --extra dev --project python
+        run: uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Display Python version
         run: python --version
