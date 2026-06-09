@@ -51,19 +51,19 @@ class FeatureMonitoringType(str, Enum):
     PROBABILITY_DENSITY_FUNCTION = "PROBABILITY_DENSITY_FUNCTION"  # data distributions
 
     @classmethod
-    def list_str(cls) -> builtins.list[str]:
+    def _list_str(cls) -> builtins.list[str]:
         return [c.value for c in cls]
 
     @classmethod
-    def list(cls) -> builtins.list[FeatureMonitoringType]:
+    def _list(cls) -> builtins.list[FeatureMonitoringType]:
         return list(cls)
 
     @classmethod
-    def from_str(cls, value: str) -> FeatureMonitoringType:
-        if value in cls.list_str():
+    def _from_str(cls, value: str) -> FeatureMonitoringType:
+        if value in cls._list_str():
             return cls(value)
         raise ValueError(
-            f"Invalid value {value} for FeatureMonitoringType, allowed values are {cls.list_str()}"
+            f"Invalid value {value} for FeatureMonitoringType, allowed values are {cls._list_str()}"
         )
 
     def __eq__(self, other):

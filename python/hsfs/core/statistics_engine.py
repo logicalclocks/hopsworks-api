@@ -453,6 +453,6 @@ class StatisticsEngine:
         if isinstance(stats, str):
             stats = json.loads(stats)
         return [
-            FeatureDescriptiveStatistics.from_deequ_json(col_stats)
+            FeatureDescriptiveStatistics._from_deequ_json(col_stats)
             for col_stats in stats["columns"]
         ]

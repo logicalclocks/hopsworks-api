@@ -113,7 +113,7 @@ class FeatureDescriptiveStatistics:
         return cls(**json_decamelized)
 
     @classmethod
-    def from_deequ_json(cls, json_dict: dict) -> FeatureDescriptiveStatistics:
+    def _from_deequ_json(cls, json_dict: dict) -> FeatureDescriptiveStatistics:
         stats_dict = {"feature_name": json_dict["column"]}
 
         if "dataType" in json_dict:
