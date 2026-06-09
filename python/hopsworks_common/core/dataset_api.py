@@ -442,7 +442,7 @@ class DatasetApi:
         return _client._send_request("GET", path_params, headers=headers)
 
     @public
-    def get(self, path: str):
+    def get(self, path: str) -> dict:
         """**Deprecated**.
 
         Get dataset metadata.

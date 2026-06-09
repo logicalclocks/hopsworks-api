@@ -500,7 +500,7 @@ class TransformationFunction:
         )
 
     @public
-    def execute(self, *args) -> Any:
+    def execute(self, *args: Any) -> Any:
         """Execute the transformation function directly with the provided arguments.
 
         This is a convenience method for quick testing of simple transformations that don't

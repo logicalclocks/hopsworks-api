@@ -31,7 +31,7 @@ feature_statistics = TransformationStatistics("feature")
 
 @public
 @udf(float, drop=["feature"])
-def min_max_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def min_max_scaler(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     min_val = statistics.feature.min
     max_val = statistics.feature.max
     if pd.isna(min_val) or pd.isna(max_val) or max_val == min_val:
@@ -41,7 +41,7 @@ def min_max_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Seri
 
 @public
 @udf(float, drop=["feature"])
-def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def standard_scaler(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     mean = statistics.feature.mean
     stddev = statistics.feature.stddev
     if pd.isna(mean):
@@ -53,7 +53,7 @@ def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 
 @public
 @udf(float, drop=["feature"], mode="pandas")
-def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def robust_scaler(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     """Robust scaling using median and IQR.
 
     Scales a feature by removing the median and dividing by the interquartile range (IQR = Q3 - Q1).
@@ -86,7 +86,7 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 
 @public
 @udf(int, drop=["feature"], mode="pandas")
-def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def label_encoder(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     unique_data = sorted(statistics.feature.unique_values)
     value_to_index = {value: index for index, value in enumerate(unique_data)}
     # Unknown categories not present in training dataset are encoded as -1.
@@ -102,7 +102,7 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 
 @public
 @udf(bool, drop=["feature"], mode="pandas")
-def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def one_hot_encoder(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     """Encode a categorical feature as a boolean one-hot DataFrame.
 
     Creates one boolean column per category seen during training.
@@ -153,7 +153,7 @@ def log_transform(feature: pd.Series) -> pd.Series:
 @public
 @udf(int, drop=["feature"], mode="pandas")
 def equal_width_binner(
-    feature: pd.Series, statistics=feature_statistics, context: dict | None = None
+    feature: pd.Series, statistics: TransformationStatistics = feature_statistics, context: dict | None = None
 ) -> pd.Series:
     """Discretize numeric values into equal-width bins using training min/max.
 
@@ -211,7 +211,7 @@ def equal_width_binner(
 @public
 @udf(int, drop=["feature"], mode="pandas")
 def equal_frequency_binner(
-    feature: pd.Series, statistics=feature_statistics
+    feature: pd.Series, statistics: TransformationStatistics = feature_statistics
 ) -> pd.Series:
     """Discretize numeric values into equal-frequency bins using training quartiles.
 
@@ -271,7 +271,7 @@ def equal_frequency_binner(
 
 @public
 @udf(int, drop=["feature"], mode="pandas")
-def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def quantile_binner(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     """Discretize numeric values using quantile-based boundaries from training statistics.
 
     Default quantiles are quartiles (0%, 25%, 50%, 75%, 100%).
@@ -332,7 +332,7 @@ def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 @public
 @udf(float, drop=["feature"], mode="pandas")
 def quantile_transformer(
-    feature: pd.Series, statistics=feature_statistics
+    feature: pd.Series, statistics: TransformationStatistics = feature_statistics
 ) -> pd.Series:
     """Transform features using quantile information to map to a uniform [0, 1] distribution.
 
@@ -382,7 +382,7 @@ def quantile_transformer(
 
 @public
 @udf(float, drop=["feature"], mode="pandas")
-def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def rank_normalizer(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     """Replace each value with its percentile rank in the training distribution.
 
     Assigns each value a rank between 0 and 1 based on its position in the sorted training data distribution.
@@ -424,7 +424,7 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 @public
 @udf(float, drop=["feature"], mode="pandas")
 def winsorize(
-    feature: pd.Series, statistics=feature_statistics, context: dict | None = None
+    feature: pd.Series, statistics: TransformationStatistics = feature_statistics, context: dict | None = None
 ) -> pd.Series:
     """Winsorization (clipping) to limit extreme values and reduce outlier influence.
 
@@ -479,7 +479,7 @@ def winsorize(
 @public
 @udf(str, drop=["feature"], mode="pandas")
 def top_k_categorical_binner(
-    feature: pd.Series, statistics=feature_statistics, context: dict | None = None
+    feature: pd.Series, statistics: TransformationStatistics = feature_statistics, context: dict | None = None
 ) -> pd.Series:
     """Bin categorical features by grouping rare categories into an `"Other"` bucket.
 
@@ -542,7 +542,7 @@ def top_k_categorical_binner(
 
 @public
 @udf(float, drop=["feature"], mode="pandas")
-def impute_mean(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def impute_mean(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     """Replace NaN values with the training mean for numeric features.
 
     If the training mean is itself NaN (no non-null training data), NaN values are left unchanged.
@@ -561,7 +561,7 @@ def impute_mean(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
 
 @public
 @udf(float, drop=["feature"], mode="pandas")
-def impute_median(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def impute_median(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     """Replace NaN values with the training median (50th percentile) for numeric features.
 
     If the training median is NaN (no non-null training data), NaN values are left unchanged.
@@ -611,7 +611,7 @@ def impute_constant(
 
 @public
 @udf(str, drop=["feature"], mode="pandas")
-def impute_mode(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def impute_mode(feature: pd.Series, statistics: TransformationStatistics = feature_statistics) -> pd.Series:
     """Replace NaN values with the most frequent category from the training histogram for categorical features.
 
     The mode is derived from the training-time histogram (the category with the highest count).

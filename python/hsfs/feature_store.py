@@ -2273,7 +2273,7 @@ class FeatureStore:
         """Create a chart in the feature store.
 
         Registers an HTML file as a chart in Hopsworks.
-        This enables it to be used in a [`Dashboard`][hsfs.core.dashboard.Dashboard].
+        This enables it to be used in a `Dashboard`.
 
         Each chart with a set `job_id` has a refresh button which triggers the job and redraws the chart once the job finishes.
         You can use this job to conviniently extract and prepare the data from Hopsworks Feature Store using its Python API.
@@ -2500,9 +2500,9 @@ class FeatureStore:
            search_term: the term to search for.
            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
            offset: the number of results to skip (default is 0).
            limit: the number of search results to return (default is 100).
            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2597,9 +2597,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2655,9 +2655,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2713,9 +2713,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2771,9 +2771,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects
