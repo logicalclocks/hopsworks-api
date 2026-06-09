@@ -77,7 +77,7 @@ class GreatExpectationEngine:
                     "but Great Expectations is not installed. Please install it using `pip install great_expectations`.\n"
                     "Alternatively you can disable Great Expectations validation by setting `run_validation=False`"
                     "in the validation_options, or disable/delete the suite in the Feature Group Edit UI.\n"
-                    f"{util.get_feature_group_url(feature_group.feature_store_id, feature_group.id)}."
+                    f"{util._get_feature_group_url(feature_group.feature_store_id, feature_group.id)}."
                 )
 
             report = engine._get_instance()._validate_with_great_expectations(

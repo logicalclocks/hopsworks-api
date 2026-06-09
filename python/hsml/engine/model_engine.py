@@ -111,7 +111,7 @@ class ModelEngine:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 if model_instance._input_example is not None:
                     input_example_path = os.path.join(tmp_dir, "input_example.json")
-                    input_example = util.input_example_to_json(
+                    input_example = util._input_example_to_json(
                         model_instance._input_example
                     )
 
@@ -439,8 +439,8 @@ class ModelEngine:
             dataset_models_root_path = constants.MODEL_REGISTRY.MODELS_DATASET
             model_instance._project_name = _client._project_name
 
-        util.validate_metrics(model_instance.training_metrics)
-        util.validate_model_name(model_instance._name)
+        util._validate_metrics(model_instance.training_metrics)
+        util._validate_model_name(model_instance._name)
 
         if not self._dataset_api.path_exists(dataset_models_root_path):
             raise AssertionError(

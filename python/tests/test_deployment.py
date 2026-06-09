@@ -683,7 +683,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util._get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -710,7 +710,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["valid"]
+            "hopsworks_common.util._get_members", return_value=["valid"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -749,7 +749,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util._get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -776,7 +776,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util._get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -815,7 +815,7 @@ class TestDeployment:
         # Arrange
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         chunks = [
             self._make_chunk(content="hello\n"),
             self._make_chunk(content="world"),
@@ -839,7 +839,7 @@ class TestDeployment:
     ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         mock_api = mocker.patch(
             "hsml.core.serving_api.ServingApi._get_logs", return_value=[]
         )
@@ -866,7 +866,7 @@ class TestDeployment:
     ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         mocker.patch(
             "hsml.core.serving_api.ServingApi._get_logs",
             return_value=[
@@ -886,7 +886,7 @@ class TestDeployment:
     ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         # First poll: two new entries. Second poll: doc_id "x1" already
         # seen, doc_id "x3" is new → only "x3" should be yielded.
         first = [
@@ -930,7 +930,7 @@ class TestDeployment:
     def test_tail_logs_dedup_hash_for_kubernetes_source(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         # No timestamp / doc_id → engine falls back to (instance, content) hash.
         first = [self._make_chunk(content="boot\n")]
         second = [
@@ -956,7 +956,7 @@ class TestDeployment:
     def test_tail_logs_stops_on_status(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         mocker.patch("hsml.core.serving_api.ServingApi._get_logs", return_value=[])
         # First state probe returns Running, second returns Stopped → loop exits.
         states = [
@@ -977,7 +977,7 @@ class TestDeployment:
         # users who depend on its print behaviour are not silently broken.
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
 
         class MockLog:
             def __repr__(self):
@@ -1008,7 +1008,7 @@ class TestDeployment:
         path = "/p/" + str(mock_client._project_id) + "/deployments/" + str(d.id)
 
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks_common.util.get_hostname_replaced_url", return_value="url"
+            "hopsworks_common.util._get_hostname_replaced_url", return_value="url"
         )
         mock_client_get_instance = mocker.patch(
             "hopsworks_common.client._get_instance", return_value=mock_client
@@ -1138,7 +1138,7 @@ class TestDeployment:
         mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
         mocker.patch("hsml.predictor.Predictor._validate_resources")
         mocker.patch("hsml.predictor.Predictor._validate_script_file")
-        mocker.patch("hopsworks_common.util.get_obj_from_json")
+        mocker.patch("hopsworks_common.util._get_obj_from_json")
         return predictor.Predictor(
             id=p_json["id"],
             name=p_json["name"],

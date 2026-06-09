@@ -55,7 +55,7 @@ class TestPythonWriter:
             "hsfs.core.kafka_engine._kafka_produce"
         )
         mocker.patch("hsfs.core.job_api.JobApi")  # get, launch
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         topic_mock = mocker.MagicMock()
         topic_name = "test_topic"
         topic_metadata = TopicMetadata()
@@ -131,7 +131,7 @@ class TestPythonWriter:
         mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mocker.patch("hsfs.core.kafka_engine._kafka_produce")
         mocker.patch("hsfs.core.kafka_engine._encode_row", return_value=b"encoded")
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value="test_offsets",

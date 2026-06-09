@@ -532,7 +532,7 @@ class Model:
             + "/"
             + str(self.version)
         )
-        return util.get_hostname_replaced_url(sub_path=path)
+        return util._get_hostname_replaced_url(sub_path=path)
 
     @public
     def get_feature_view(
@@ -611,8 +611,8 @@ class Model:
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0:
                 return []
-            return [util.set_model_class(model) for model in json_decamelized["items"]]
-        return util.set_model_class(json_decamelized)
+            return [util._set_model_class(model) for model in json_decamelized["items"]]
+        return util._set_model_class(json_decamelized)
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -637,7 +637,7 @@ class Model:
             "metrics": self._training_metrics,
             "environment": self._environment,
             "program": self._program,
-            "featureView": util.feature_view_to_json(self._feature_view),
+            "featureView": util._feature_view_to_json(self._feature_view),
             "trainingDatasetVersion": self._training_dataset_version,
         }
 

@@ -87,7 +87,7 @@ class GitApi:
         _client = client._get_instance()
 
         # Support absolute and relative path to dataset
-        path = util.convert_to_abs(path, _client._project_name)
+        path = util._convert_to_abs(path, _client._project_name)
 
         if provider is None:
             provider = self._git_provider_api._get_default_configured_provider()
@@ -114,7 +114,7 @@ class GitApi:
         )
         print(
             "Git clone operation running, explore it at "
-            + util.get_hostname_replaced_url(
+            + util._get_hostname_replaced_url(
                 "/p/" + str(_client._project_id) + "/settings/git"
             )
         )
@@ -238,7 +238,7 @@ class GitApi:
         )
 
         if path is not None:
-            path = util.convert_to_abs(path, _client._project_name)
+            path = util._convert_to_abs(path, _client._project_name)
 
         filtered_repos = []
         for repository in repos:
@@ -529,7 +529,7 @@ class GitApi:
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
     def _checkout_files(self, repo_id, files: list[str] | list[GitFileStatus]):
-        files = util.convert_git_status_to_files(files)
+        files = util._convert_git_status_to_files(files)
 
         _client = client._get_instance()
         path_params = [

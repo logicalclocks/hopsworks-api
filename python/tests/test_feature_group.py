@@ -342,7 +342,7 @@ class TestFeatureGroup:
                 features=features,
             )
         with pytest.raises(FeatureStoreException):
-            util.verify_attribute_key_names(new_fg, False)
+            util._verify_attribute_key_names(new_fg, False)
 
         # Assert
         assert new_fg.event_time == "event_date"

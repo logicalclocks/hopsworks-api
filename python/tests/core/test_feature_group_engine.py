@@ -554,7 +554,7 @@ class TestFeatureGroupEngine:
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value="url",
         )
 
@@ -670,9 +670,9 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.util.get_timestamp_from_date_string")
+        mocker.patch("hsfs.util._get_timestamp_from_date_string")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
+        mocker.patch("hsfs.util._get_hudi_datestr_from_timestamp")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -705,9 +705,9 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.util.get_timestamp_from_date_string")
+        mocker.patch("hsfs.util._get_timestamp_from_date_string")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
+        mocker.patch("hsfs.util._get_hudi_datestr_from_timestamp")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -740,9 +740,9 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.util.get_timestamp_from_date_string")
+        mocker.patch("hsfs.util._get_timestamp_from_date_string")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
+        mocker.patch("hsfs.util._get_hudi_datestr_from_timestamp")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -770,10 +770,10 @@ class TestFeatureGroupEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.util.get_timestamp_from_date_string")
+        mocker.patch("hsfs.util._get_timestamp_from_date_string")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
         mock_util_get_hudi_datestr_from_timestamp = mocker.patch(
-            "hsfs.util.get_hudi_datestr_from_timestamp"
+            "hsfs.util._get_hudi_datestr_from_timestamp"
         )
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
@@ -1537,7 +1537,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
         )
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value=feature_group_url,
         )
         mock_print = mocker.patch("builtins.print")
@@ -1583,7 +1583,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
         mocker.patch("builtins.print")
         mock_job_api = mocker.patch(
             "hsfs.core.feature_group_engine.job_api.JobApi"
@@ -1645,7 +1645,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
         mocker.patch("builtins.print")
         mock_job_api = mocker.patch(
             "hsfs.core.feature_group_engine.job_api.JobApi"
@@ -1710,7 +1710,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
         mocker.patch("builtins.print")
         mock_job_api = mocker.patch(
             "hsfs.core.feature_group_engine.job_api.JobApi"
@@ -1790,7 +1790,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mocker.patch("hsfs.util.get_feature_group_url", return_value="url")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
         mocker.patch("builtins.print")
         mock_job_api = mocker.patch(
             "hsfs.core.feature_group_engine.job_api.JobApi"
@@ -1840,7 +1840,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
         )
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value=feature_group_url,
         )
         mock_print = mocker.patch("builtins.print")
@@ -1893,7 +1893,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
         )
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value=feature_group_url,
         )
         mock_print = mocker.patch("builtins.print")
@@ -1946,7 +1946,7 @@ class TestFeatureGroupEngine:
         )
 
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value=feature_group_url,
         )
 
@@ -2059,7 +2059,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
         )
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value=feature_group_url,
         )
         mock_print = mocker.patch("builtins.print")
@@ -2110,7 +2110,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
         )
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value=feature_group_url,
         )
         mock_print = mocker.patch("builtins.print")
@@ -2168,7 +2168,7 @@ class TestFeatureGroupEngine:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
         )
         mocker.patch(
-            "hsfs.util.get_feature_group_url",
+            "hsfs.util._get_feature_group_url",
             return_value=feature_group_url,
         )
         mocker.patch("builtins.print")

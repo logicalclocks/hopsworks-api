@@ -374,7 +374,7 @@ class TestModel:
             "hopsworks_common.client._get_instance", return_value=ClientMock()
         )
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks_common.util.get_hostname_replaced_url", return_value="full_path"
+            "hopsworks_common.util._get_hostname_replaced_url", return_value="full_path"
         )
         path_arg = "/p/1/models/" + m_json["name"] + "/" + str(m_json["version"])
 
@@ -742,7 +742,7 @@ class TestModelNameValidation:
     )
     def test_valid_model_names(self, valid_name):
         # Should not raise any exception
-        util.validate_model_name(valid_name)
+        util._validate_model_name(valid_name)
 
     @pytest.mark.parametrize(
         "invalid_name,description",
@@ -759,6 +759,6 @@ class TestModelNameValidation:
     )
     def test_invalid_model_names(self, invalid_name, description):
         with pytest.raises(ModelRegistryException) as exc_info:
-            util.validate_model_name(invalid_name)
+            util._validate_model_name(invalid_name)
         assert f"Invalid model name '{invalid_name}'" in str(exc_info.value)
         assert "[a-zA-Z0-9_]+" in str(exc_info.value)

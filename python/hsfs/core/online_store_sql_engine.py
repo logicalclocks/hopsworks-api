@@ -106,7 +106,7 @@ class OnlineStoreSqlClient:
         # Safely stop the async task thread.
         # The connection pool will be closed during garbage collection by aiomysql.
         if self._async_task_thread.is_alive():
-            self._async_task_thread.stop()
+            self._async_task_thread._stop()
 
     def _fetch_prepared_statements(
         self,
@@ -454,7 +454,7 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 f"Executing prepared statements for serving vector with entries: {bind_entries}"
             )
-        results_dict = self._async_task_thread.submit(
+        results_dict = self._async_task_thread._submit(
             AsyncTask(
                 task_function=self._execute_prep_statements,
                 task_args=(
@@ -535,7 +535,7 @@ class OnlineStoreSqlClient:
                 f"Executing prepared statements for batch vector with entries: {entry_values}"
             )
         # run all the prepared statements in parallel using aiomysql engine
-        parallel_results = self._async_task_thread.submit(
+        parallel_results = self._async_task_thread._submit(
             AsyncTask(
                 task_function=self._execute_prep_statements,
                 task_args=(prepared_stmts_to_execute, entry_values),
@@ -894,7 +894,7 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Build serving keys from prepared statements ignoring prefix to ensure compatibility with older version."
             )
-        self._serving_keys = util.build_serving_keys_from_prepared_statements(
+        self._serving_keys = util._build_serving_keys_from_prepared_statements(
             self.prepared_statements[
                 self.BATCH_VECTOR_KEY
             ],  # use batch to avoid issue with label_fg

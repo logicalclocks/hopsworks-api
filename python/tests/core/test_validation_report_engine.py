@@ -140,7 +140,7 @@ class TestValidationReportEngine:
 
         mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hsfs.util.get_hostname_replaced_url"
+            "hsfs.util._get_hostname_replaced_url"
         )
 
         vr_engine = validation_report_engine.ValidationReportEngine(

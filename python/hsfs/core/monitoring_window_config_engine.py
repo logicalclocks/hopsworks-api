@@ -420,4 +420,4 @@ class MonitoringWindowConfigEngine:
         Returns:
             datetime: Rounded and converted event time.
         """
-        return util.convert_event_time_to_timestamp(event_time)
+        return util._convert_event_time_to_timestamp(event_time)

@@ -122,4 +122,4 @@ class ValidationReportEngine:
             + "/fg/"
             + str(self._feature_group_id)
         )
-        return util.get_hostname_replaced_url(sub_path)
+        return util._get_hostname_replaced_url(sub_path)

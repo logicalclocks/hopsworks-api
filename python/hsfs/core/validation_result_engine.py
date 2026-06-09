@@ -113,8 +113,8 @@ class ValidationResultEngine:
         if (
             start_validation_time
             and end_validation_time
-            and util.convert_event_time_to_timestamp(start_validation_time)
-            > util.convert_event_time_to_timestamp(end_validation_time)
+            and util._convert_event_time_to_timestamp(start_validation_time)
+            > util._convert_event_time_to_timestamp(end_validation_time)
         ):
             raise ValueError(
                 f"start_validation_time : {start_validation_time} is posterior to end_validation_time : {end_validation_time}"
@@ -123,12 +123,12 @@ class ValidationResultEngine:
         if start_validation_time:
             query_params["filter_by"].append(
                 "validation_time_gte:"
-                + str(util.convert_event_time_to_timestamp(start_validation_time))
+                + str(util._convert_event_time_to_timestamp(start_validation_time))
             )
         if end_validation_time:
             query_params["filter_by"].append(
                 "validation_time_lte:"
-                + str(util.convert_event_time_to_timestamp(end_validation_time))
+                + str(util._convert_event_time_to_timestamp(end_validation_time))
             )
 
         return query_params

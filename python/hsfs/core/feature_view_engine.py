@@ -362,8 +362,8 @@ class FeatureViewEngine:
             query = self._feature_view_api._get_batch_query(
                 feature_view_obj.name,
                 feature_view_obj.version,
-                util.convert_event_time_to_timestamp(start_time),
-                util.convert_event_time_to_timestamp(end_time),
+                util._convert_event_time_to_timestamp(start_time),
+                util._convert_event_time_to_timestamp(end_time),
                 training_dataset_version=training_dataset_version,
                 is_python_engine=engine.get_type() == "python",
                 with_label=with_label,
@@ -424,8 +424,8 @@ class FeatureViewEngine:
             query_obj = self._feature_view_api._get_batch_query(
                 feature_view_obj.name,
                 feature_view_obj.version,
-                util.convert_event_time_to_timestamp(start_time),
-                util.convert_event_time_to_timestamp(end_time),
+                util._convert_event_time_to_timestamp(start_time),
+                util._convert_event_time_to_timestamp(end_time),
                 training_dataset_version=training_dataset_version,
                 is_python_engine=engine.get_type() == "python",
                 extra_filter=extra_filter,
@@ -1225,7 +1225,7 @@ class FeatureViewEngine:
             + "/version/"
             + str(fv.version)
         )
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)
 
     def _primary_keys_from_join(
         self, joins: list[Join], check_duplicate: bool, pk_names: set[str]
@@ -1246,7 +1246,7 @@ class FeatureViewEngine:
             }
 
             sub_query_pk_names = {
-                util.generate_fully_qualified_feature_name(
+                util._generate_fully_qualified_feature_name(
                     sub_query_feature_group, pk_name
                 )
                 if pk_name not in sub_query_selected_feature_names
@@ -1281,7 +1281,7 @@ class FeatureViewEngine:
             sub_query_event_time = sub_query_feature_group.event_time
 
             sub_query_event_time = (
-                util.generate_fully_qualified_feature_name(
+                util._generate_fully_qualified_feature_name(
                     sub_query_feature_group, sub_query_event_time
                 )
                 if sub_query_event_time not in sub_query_selected_feature_names
@@ -1324,7 +1324,7 @@ class FeatureViewEngine:
         }
 
         pk_names = {
-            util.generate_fully_qualified_feature_name(root_feature_group, pk_name)
+            util._generate_fully_qualified_feature_name(root_feature_group, pk_name)
             if pk_name not in root_feature_group_selected_features_name
             else pk_name
             for pk_name in root_feature_group_primary_keys_names
@@ -1354,7 +1354,7 @@ class FeatureViewEngine:
         root_feature_group_event_time = root_feature_group.event_time
 
         et_names = {
-            util.generate_fully_qualified_feature_name(
+            util._generate_fully_qualified_feature_name(
                 root_feature_group, root_feature_group_event_time
             )
             if root_feature_group_event_time

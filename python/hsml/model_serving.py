@@ -166,7 +166,7 @@ class ModelServing:
         return self._serving_api._get_all(model_name, status)
 
     def _validate_deployment_status(self, status):
-        statuses = list(util.get_members(PREDICTOR_STATE, prefix="STATUS"))
+        statuses = list(util._get_members(PREDICTOR_STATE, prefix="STATUS"))
         status = status.upper()
         if status not in statuses:
             raise ValueError(
@@ -513,7 +513,7 @@ class ModelServing:
         else:
             script_file = _build_and_install_package(ds_api, env, entry_abs, agent_dir)
         # The serving backend expects the script path under /Projects/<proj>/...
-        script_file = util.convert_to_abs(script_file, self._project_name)
+        script_file = util._convert_to_abs(script_file, self._project_name)
 
         if requirements is not None:
             requirements_abs = os.path.abspath(requirements)

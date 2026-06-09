@@ -618,4 +618,4 @@ class Job:
         """Get url to the job in Hopsworks."""
         _client = client._get_instance()
         path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)

@@ -101,7 +101,7 @@ from hopsworks_common.spark_connect_utils import (
     is_spark_connect_session,
     is_spark_dataframe,
 )
-from hopsworks_common.util import generate_fully_qualified_feature_name
+from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
     feature,
     feature_view,
@@ -392,10 +392,10 @@ class Engine:
 
         if is_spark_dataframe(dataframe):
             upper_case_features = [
-                c for c in dataframe.columns if util.contains_uppercase(c)
+                c for c in dataframe.columns if util._contains_uppercase(c)
             ]
             space_features = [
-                c for c in dataframe.columns if util.contains_whitespace(c)
+                c for c in dataframe.columns if util._contains_whitespace(c)
             ]
             if len(upper_case_features) > 0:
                 warnings.warn(
@@ -413,7 +413,7 @@ class Engine:
                 )
 
             lowercase_dataframe = dataframe.select(
-                [col(x).alias(util.autofix_feature_name(x)) for x in dataframe.columns]
+                [col(x).alias(util._autofix_feature_name(x)) for x in dataframe.columns]
             )
             # for streaming dataframes this will be handled in DeltaStreamerTransformer.java class
             if not lowercase_dataframe.isStreaming:
@@ -1424,7 +1424,9 @@ class Engine:
         if client._is_external() or not distribute or self._is_connect:
             tmp_file = f"/tmp/{file_name}"
             _logger.info("Reading key file from storage connector.")
-            response = self._dataset_api.read_content(file, util.get_dataset_type(file))
+            response = self._dataset_api.read_content(
+                file, util._get_dataset_type(file)
+            )
 
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
@@ -1601,7 +1603,7 @@ class Engine:
 
         using_hudi = time_travel_format == "HUDI"
         for feat in dataframe.schema:
-            name = util.autofix_feature_name(feat.name)
+            name = util._autofix_feature_name(feat.name)
             try:
                 converted_type = Engine._convert_spark_type_to_offline_type(
                     feat.dataType, using_hudi
@@ -1618,7 +1620,7 @@ class Engine:
     def _parse_schema_training_dataset(self, dataframe):
         return [
             training_dataset_feature.TrainingDatasetFeature(
-                util.autofix_feature_name(feat.name), feat.dataType.simpleString()
+                util._autofix_feature_name(feat.name), feat.dataType.simpleString()
             )
             for feat in dataframe.schema
         ]
@@ -1924,13 +1926,13 @@ class Engine:
             request_parameters: DataFrame containing request parameter values, if any.
         """
         # Extract primary keys and event time from fully qualified names
-        fully_qualified_root_fg_event_time = generate_fully_qualified_feature_name(
+        fully_qualified_root_fg_event_time = _generate_fully_qualified_feature_name(
             feature_view.query._left_feature_group,
             feature_view.query._left_feature_group.event_time,
         )
 
         fully_qualified_serving_key_mapper = {
-            generate_fully_qualified_feature_name(
+            _generate_fully_qualified_feature_name(
                 key._feature_group, key.feature_name
             ): key.feature_name
             for key in feature_view.serving_keys

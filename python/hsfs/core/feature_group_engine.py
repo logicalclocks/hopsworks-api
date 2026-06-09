@@ -126,7 +126,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     stacklevel=1,
                 )
 
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
 
@@ -256,7 +256,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 )
             )
 
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
 
@@ -292,7 +292,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if ge_report is not None and ge_report.ingestion_result == "REJECTED":
-            feature_group_url = util.get_feature_group_url(
+            feature_group_url = util._get_feature_group_url(
                 feature_store_id=feature_group.feature_store_id,
                 feature_group_id=feature_group.id,
             )
@@ -338,7 +338,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 "commit_details can only be used on time travel enabled feature groups"
             )
 
-        wallclock_timestamp = util.convert_event_time_to_timestamp(wallclock_time)
+        wallclock_timestamp = util._convert_event_time_to_timestamp(wallclock_time)
 
         feature_group_commits = self._feature_group_api._get_commit_details(
             feature_group, wallclock_timestamp, limit
@@ -346,7 +346,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         commit_details = {}
         for feature_group_commit in feature_group_commits:
             commit_details[feature_group_commit.commitid] = {
-                "committedOn": util.get_hudi_datestr_from_timestamp(
+                "committedOn": util._get_hudi_datestr_from_timestamp(
                     feature_group_commit.commitid
                 ),
                 "rowsUpdated": feature_group_commit.rows_updated,
@@ -564,7 +564,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted"
                 ) from e
 
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
 
@@ -635,7 +635,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
-        util.verify_attribute_key_names(feature_group)
+        util._verify_attribute_key_names(feature_group)
 
         for feat in feature_group.columns:
             if feat.name in feature_group.primary_key:
@@ -711,7 +711,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         print(
             "Feature Group created successfully, explore it at \n"
-            + util.get_feature_group_url(
+            + util._get_feature_group_url(
                 feature_store_id=feature_group.feature_store_id,
                 feature_group_id=feature_group.id,
             )
@@ -819,4 +819,4 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return sink_job_conf
 
     def _get_default_ingestion_job_name(self, feature_group: fg.FeatureGroup) -> str:
-        return f"{feature_group.storage_connector.name}_to_{util.feature_group_name(feature_group)}"
+        return f"{feature_group.storage_connector.name}_to_{util._feature_group_name(feature_group)}"

@@ -30,31 +30,31 @@ from hopsworks_common.util import (
     StorageWarning,
     ValidationWarning,
     VersionWarning,
+    _append_feature_store_suffix,
+    _autofix_feature_name,
+    _check_timestamp_format_from_date_string,
+    _contains_uppercase,
+    _contains_whitespace,
+    _convert_event_time_to_timestamp,
+    _convert_git_status_to_files,
+    _convert_to_abs,
+    _feature_group_name,
+    _generate_fully_qualified_feature_name,
+    _get_dataset_type,
+    _get_delta_datestr_from_timestamp,
+    _get_feature_group_url,
+    _get_hostname_replaced_url,
+    _get_hudi_datestr_from_timestamp,
+    _get_job_url,
+    _get_timestamp_from_date_string,
+    _is_interactive,
+    _is_runtime_notebook,
     _loading_animation,
-    append_feature_store_suffix,
-    autofix_feature_name,
-    check_timestamp_format_from_date_string,
-    contains_uppercase,
-    contains_whitespace,
-    convert_event_time_to_timestamp,
-    convert_git_status_to_files,
-    convert_to_abs,
-    feature_group_name,
-    generate_fully_qualified_feature_name,
-    get_dataset_type,
-    get_delta_datestr_from_timestamp,
-    get_feature_group_url,
-    get_hostname_replaced_url,
-    get_hudi_datestr_from_timestamp,
-    get_job_url,
-    get_timestamp_from_date_string,
-    is_interactive,
-    is_runtime_notebook,
-    run_with_loading_animation,
-    strip_feature_store_suffix,
-    validate_embedding_feature_type,
-    validate_job_conf,
-    verify_attribute_key_names,
+    _run_with_loading_animation,
+    _strip_feature_store_suffix,
+    _validate_embedding_feature_type,
+    _validate_job_conf,
+    _verify_attribute_key_names,
 )
 from hsfs import feature, serving_key
 from hsfs.core import feature_group_api
@@ -67,7 +67,7 @@ if TYPE_CHECKING:
 FeatureStoreEncoder = Encoder
 
 
-def check_missing_mandatory_tags(
+def _check_missing_mandatory_tags(
     missing_mandatory_tags: list[dict[str, Any]] | None,
     message: str = "Missing mandatory tags",
 ) -> None:
@@ -76,7 +76,7 @@ def check_missing_mandatory_tags(
         warnings.warn(f"{message}: {tag_names}", stacklevel=2)
 
 
-def validate_feature(
+def _validate_feature(
     ft: str | feature.Feature | dict[str, Any],
 ) -> feature.Feature:
     if isinstance(ft, feature.Feature):
@@ -88,13 +88,13 @@ def validate_feature(
     raise TypeError("Feature must be a string, Feature object, or dictionary.")
 
 
-def parse_features(
+def _parse_features(
     feature_names: str | feature.Feature | list[dict[str, Any] | str | feature.Feature],
 ) -> list[feature.Feature]:
     if isinstance(feature_names, (str, feature.Feature)):
-        return [validate_feature(feature_names)]
+        return [_validate_feature(feature_names)]
     if isinstance(feature_names, list) and len(feature_names) > 0:
-        return [validate_feature(feat) for feat in feature_names]
+        return [_validate_feature(feat) for feat in feature_names]
     return []
 
 
@@ -104,7 +104,7 @@ HOPS_START_TIME_ENV = "HOPS_START_TIME"
 HOPS_END_TIME_ENV = "HOPS_END_TIME"
 
 
-def apply_scheduler_time_defaults(
+def _apply_scheduler_time_defaults(
     start_time: Any,
     end_time: Any,
 ) -> tuple[Any, Any]:
@@ -122,8 +122,8 @@ def apply_scheduler_time_defaults(
         caller's `None` is preserved.
 
     This function does not validate the env-var string format. Any non-empty value is
-    returned verbatim and is parsed downstream by `convert_event_time_to_timestamp` /
-    `get_timestamp_from_date_string` at the point the time filter is built. A malformed
+    returned verbatim and is parsed downstream by `_convert_event_time_to_timestamp` /
+    `_get_timestamp_from_date_string` at the point the time filter is built. A malformed
     env var therefore raises there, not here — with a message that names the offending
     input, which is more useful for diagnosing scheduler misconfiguration than silently
     falling back to "read whole feature group".
@@ -172,7 +172,7 @@ def apply_scheduler_time_defaults(
     return resolved_start, resolved_end
 
 
-def build_time_filter(
+def _build_time_filter(
     event_time_feature: feature.Feature,
     start_time: Any,
     end_time: Any,
@@ -206,7 +206,7 @@ def build_time_filter(
     return time_filter
 
 
-def build_serving_keys_from_prepared_statements(
+def _build_serving_keys_from_prepared_statements(
     prepared_statements: list[serving_prepared_statement.ServingPreparedStatement],
     feature_store_id: int,
     ignore_prefix: bool = False,
@@ -240,32 +240,32 @@ __all__ = [
     "ValidationWarning",
     "VersionWarning",
     "_loading_animation",
-    "append_feature_store_suffix",
-    "autofix_feature_name",
-    "check_timestamp_format_from_date_string",
-    "contains_uppercase",
-    "contains_whitespace",
-    "convert_event_time_to_timestamp",
-    "convert_git_status_to_files",
-    "convert_to_abs",
-    "feature_group_name",
-    "generate_fully_qualified_feature_name",
-    "get_dataset_type",
-    "get_delta_datestr_from_timestamp",
-    "get_feature_group_url",
-    "get_hostname_replaced_url",
-    "get_hudi_datestr_from_timestamp",
-    "get_job_url",
-    "get_timestamp_from_date_string",
-    "is_interactive",
-    "is_runtime_notebook",
-    "run_with_loading_animation",
-    "strip_feature_store_suffix",
-    "validate_embedding_feature_type",
-    "validate_job_conf",
-    "verify_attribute_key_names",
-    "validate_feature",
-    "parse_features",
-    "build_time_filter",
-    "build_serving_keys_from_prepared_statements",
+    "_append_feature_store_suffix",
+    "_autofix_feature_name",
+    "_check_timestamp_format_from_date_string",
+    "_contains_uppercase",
+    "_contains_whitespace",
+    "_convert_event_time_to_timestamp",
+    "_convert_git_status_to_files",
+    "_convert_to_abs",
+    "_feature_group_name",
+    "_generate_fully_qualified_feature_name",
+    "_get_dataset_type",
+    "_get_delta_datestr_from_timestamp",
+    "_get_feature_group_url",
+    "_get_hostname_replaced_url",
+    "_get_hudi_datestr_from_timestamp",
+    "_get_job_url",
+    "_get_timestamp_from_date_string",
+    "_is_interactive",
+    "_is_runtime_notebook",
+    "_run_with_loading_animation",
+    "_strip_feature_store_suffix",
+    "_validate_embedding_feature_type",
+    "_validate_job_conf",
+    "_verify_attribute_key_names",
+    "_validate_feature",
+    "_parse_features",
+    "_build_time_filter",
+    "_build_serving_keys_from_prepared_statements",
 ]

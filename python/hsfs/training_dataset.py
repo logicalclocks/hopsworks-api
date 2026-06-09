@@ -120,8 +120,8 @@ class TrainingDatasetBase:
 
         # set up depending on user initialized or coming from backend response
         if created is None:
-            self._start_time = util.convert_event_time_to_timestamp(event_start_time)
-            self._end_time = util.convert_event_time_to_timestamp(event_end_time)
+            self._start_time = util._convert_event_time_to_timestamp(event_start_time)
+            self._end_time = util._convert_event_time_to_timestamp(event_end_time)
             # no type -> user init
             self._features = features
             self.splits = splits
@@ -168,7 +168,7 @@ class TrainingDatasetBase:
                 statistics_config
             )
             self._label = [
-                util.autofix_feature_name(feat.name)
+                util._autofix_feature_name(feat.name)
                 for feat in self._features
                 if feat.label
             ]
@@ -184,12 +184,12 @@ class TrainingDatasetBase:
         test_start=None,
         test_end=None,
     ):
-        train_start = util.convert_event_time_to_timestamp(train_start)
-        train_end = util.convert_event_time_to_timestamp(train_end)
-        validation_start = util.convert_event_time_to_timestamp(validation_start)
-        validation_end = util.convert_event_time_to_timestamp(validation_end)
-        test_start = util.convert_event_time_to_timestamp(test_start)
-        test_end = util.convert_event_time_to_timestamp(test_end)
+        train_start = util._convert_event_time_to_timestamp(train_start)
+        train_end = util._convert_event_time_to_timestamp(train_end)
+        validation_start = util._convert_event_time_to_timestamp(validation_start)
+        validation_end = util._convert_event_time_to_timestamp(validation_end)
+        test_start = util._convert_event_time_to_timestamp(test_start)
+        test_end = util._convert_event_time_to_timestamp(test_end)
 
         time_splits = []
         self._append_time_split(
@@ -1124,7 +1124,7 @@ class TrainingDataset(TrainingDatasetBase):
 
     @label.setter
     def label(self, label: str) -> None:
-        self._label = [util.autofix_feature_name(lb) for lb in label]
+        self._label = [util._autofix_feature_name(lb) for lb in label]
 
     @public
     @property
@@ -1143,7 +1143,7 @@ class TrainingDataset(TrainingDatasetBase):
     def serving_keys(self) -> set[str]:
         """Set of primary key names that is used as keys in input dict object for `get_serving_vector` method."""
         if self._serving_keys is None or len(self._serving_keys) == 0:
-            self._serving_keys = util.build_serving_keys_from_prepared_statements(
+            self._serving_keys = util._build_serving_keys_from_prepared_statements(
                 self._training_dataset_api._get_serving_prepared_statement(
                     entity=self, batch=False
                 ),

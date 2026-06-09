@@ -71,13 +71,13 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
-        util.verify_attribute_key_names(feature_group, True)
+        util._verify_attribute_key_names(feature_group, True)
         for feat in feature_group.columns:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
             if feat.name in feature_group.foreign_key:
                 feat.foreign = True
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, feature_group._features
         )
 
@@ -97,7 +97,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             )
 
         schema = engine._get_instance()._parse_schema_feature_group(feature_dataframe)
-        util.validate_embedding_feature_type(feature_group.embedding_index, schema)
+        util._validate_embedding_feature_type(feature_group.embedding_index, schema)
 
         if not feature_group._id:
             # only save metadata if feature group does not exist
@@ -117,7 +117,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         )
 
         if ge_report is not None and ge_report.ingestion_result == "REJECTED":
-            feature_group_url = util.get_feature_group_url(
+            feature_group_url = util._get_feature_group_url(
                 feature_store_id=feature_group.feature_store_id,
                 feature_group_id=feature_group.id,
             )

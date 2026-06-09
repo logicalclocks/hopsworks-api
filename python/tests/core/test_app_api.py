@@ -49,7 +49,7 @@ class TestAppApiCreate:
 
     def test_create_streamlit_app_defaults(self, mock_client, api, mocker):
         mocker.patch(
-            "hopsworks_common.core.app_api.util.convert_to_abs",
+            "hopsworks_common.core.app_api.util._convert_to_abs",
             return_value="/Projects/demo/Resources/app.py",
         )
 
@@ -123,7 +123,7 @@ class TestAppApiCreate:
 
     def test_create_custom_app_payload(self, mock_client, api, mocker):
         mocker.patch(
-            "hopsworks_common.core.app_api.util.convert_to_abs",
+            "hopsworks_common.core.app_api.util._convert_to_abs",
             return_value="/Projects/demo/Resources/fastapi_custom_app.py",
         )
 

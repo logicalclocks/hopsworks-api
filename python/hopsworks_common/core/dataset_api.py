@@ -791,7 +791,7 @@ class DatasetApi:
             self._upload_request(
                 query_params,
                 path,
-                util.feature_group_name(feature_group),
+                util._feature_group_name(feature_group),
                 df_parquet[i : i + self.DEFAULT_FLOW_CHUNK_SIZE],
             )
 
@@ -844,7 +844,7 @@ class DatasetApi:
         files = []
         for item in items:
             files.append(
-                util.convert_to_project_rel_path(item.path, _client._project_name)
+                util._convert_to_project_rel_path(item.path, _client._project_name)
             )
         return files
 

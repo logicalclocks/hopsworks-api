@@ -47,14 +47,14 @@ class Transformer(DeployableComponent):
     ):
         resources = (
             self._validate_resources(
-                util.get_obj_from_json(resources, TransformerResources)
+                util._get_obj_from_json(resources, TransformerResources)
             )
             or self._get_default_resources()
         )
         if self._get_raw_num_instances(resources) is None:
             resources._num_instances = self._get_default_num_instances()
 
-        self._scaling_configuration: TransformerScalingConfig = util.get_obj_from_json(
+        self._scaling_configuration: TransformerScalingConfig = util._get_obj_from_json(
             scaling_configuration, TransformerScalingConfig
         ) or TransformerScalingConfig.get_default_scaling_configuration(
             serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
@@ -71,7 +71,7 @@ class Transformer(DeployableComponent):
     @public
     def describe(self):
         """Print a JSON description of the transformer."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def _validate_resources(cls, resources):
@@ -109,7 +109,7 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
-        sf = util.extract_field_from_json(
+        sf = util._extract_field_from_json(
             json_decamelized, ["transformer", "script_file"]
         )
         if sf is None:

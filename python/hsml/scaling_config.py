@@ -102,7 +102,7 @@ class ComponentScalingConfig(ABC):
     @public
     def describe(self):
         """Print a JSON description of the scaling configuration."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -174,26 +174,26 @@ class ComponentScalingConfig(ABC):
         elif "scaling_configuration" in json_decamelized:
             json_decamelized = json_decamelized["scaling_configuration"]
 
-        kwargs["min_instances"] = util.extract_field_from_json(
+        kwargs["min_instances"] = util._extract_field_from_json(
             json_decamelized, "min_instances"
         )
-        kwargs["max_instances"] = util.extract_field_from_json(
+        kwargs["max_instances"] = util._extract_field_from_json(
             json_decamelized, "max_instances"
         )
-        scale_metric = util.extract_field_from_json(json_decamelized, "scale_metric")
+        scale_metric = util._extract_field_from_json(json_decamelized, "scale_metric")
         if scale_metric:
             kwargs["scale_metric"] = ScaleMetric(scale_metric)
-        kwargs["target"] = util.extract_field_from_json(json_decamelized, "target")
-        kwargs["panic_window_percentage"] = util.extract_field_from_json(
+        kwargs["target"] = util._extract_field_from_json(json_decamelized, "target")
+        kwargs["panic_window_percentage"] = util._extract_field_from_json(
             json_decamelized, "panic_window_percentage"
         )
-        kwargs["panic_threshold_percentage"] = util.extract_field_from_json(
+        kwargs["panic_threshold_percentage"] = util._extract_field_from_json(
             json_decamelized, "panic_threshold_percentage"
         )
-        kwargs["stable_window_seconds"] = util.extract_field_from_json(
+        kwargs["stable_window_seconds"] = util._extract_field_from_json(
             json_decamelized, "stable_window_seconds"
         )
-        kwargs["scale_to_zero_retention_seconds"] = util.extract_field_from_json(
+        kwargs["scale_to_zero_retention_seconds"] = util._extract_field_from_json(
             json_decamelized, "scale_to_zero_retention_seconds"
         )
         if kwargs["min_instances"] is None:

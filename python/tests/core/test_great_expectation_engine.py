@@ -649,7 +649,7 @@ class TestGreatExpectationEngine:
             meta={},
             run_validation=True,
         )
-        mocker.patch("hsfs.util.get_feature_group_url", return_value="https://url")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="https://url")
 
         # Act
         with pytest.raises(ModuleNotFoundError):

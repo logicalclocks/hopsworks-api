@@ -301,4 +301,4 @@ class Execution:
             + self.job_name
             + "/executions"
         )
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)

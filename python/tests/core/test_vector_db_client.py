@@ -17,7 +17,7 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
-from hopsworks_common.util import convert_event_time_to_timestamp
+from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import vector_db_client
 from hsfs.embedding import EmbeddingIndex
@@ -88,7 +88,7 @@ class TestVectorDbClient:
                     {
                         "range": {
                             "f_ts": {
-                                "gt": convert_event_time_to_timestamp(
+                                "gt": _convert_event_time_to_timestamp(
                                     "2024-04-18 12:00:25"
                                 )
                             }
@@ -149,7 +149,7 @@ class TestVectorDbClient:
                     {
                         "range": {
                             "46_f_ts": {
-                                "gt": convert_event_time_to_timestamp(
+                                "gt": _convert_event_time_to_timestamp(
                                     "2024-04-18 12:00:25"
                                 )
                             }

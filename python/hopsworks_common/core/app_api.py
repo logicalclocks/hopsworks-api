@@ -188,7 +188,7 @@ class AppApi:
                 )
 
         if app_path and not git_repo_app:
-            app_path = util.convert_to_abs(app_path, _client._project_name)
+            app_path = util._convert_to_abs(app_path, _client._project_name)
             if not app_path.startswith("hdfs://"):
                 app_path = "hdfs://" + app_path
 

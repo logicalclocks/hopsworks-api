@@ -91,7 +91,7 @@ class FlinkClusterApi:
     def _create_cluster(self, name: str, config: dict):
         _client = client._get_instance()
 
-        config = util.validate_job_conf(config, _client._project_name)
+        config = util._validate_job_conf(config, _client._project_name)
 
         path_params = ["project", _client._project_id, "jobs", name]
 

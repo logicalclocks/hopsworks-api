@@ -46,8 +46,8 @@ class InferenceEndpointPort:
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
-        kwargs["name"] = util.extract_field_from_json(json_decamelized, "name")
-        kwargs["number"] = util.extract_field_from_json(json_decamelized, "number")
+        kwargs["name"] = util._extract_field_from_json(json_decamelized, "name")
+        kwargs["number"] = util._extract_field_from_json(json_decamelized, "number")
         return kwargs
 
     def to_dict(self):
@@ -122,9 +122,9 @@ class InferenceEndpoint:
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
-        kwargs["type"] = util.extract_field_from_json(json_decamelized, "type")
-        kwargs["hosts"] = util.extract_field_from_json(json_decamelized, "hosts")
-        kwargs["ports"] = util.extract_field_from_json(
+        kwargs["type"] = util._extract_field_from_json(json_decamelized, "type")
+        kwargs["hosts"] = util._extract_field_from_json(json_decamelized, "hosts")
+        kwargs["ports"] = util._extract_field_from_json(
             obj=json_decamelized, fields="ports", as_instance_of=InferenceEndpointPort
         )
         return kwargs

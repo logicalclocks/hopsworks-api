@@ -442,7 +442,7 @@ class App:
             The URL to the app page in the Hopsworks UI.
         """
         _client = client._get_instance()
-        return util.get_hostname_replaced_url(
+        return util._get_hostname_replaced_url(
             "/p/" + str(_client._project_id) + "/apps"
         )
 

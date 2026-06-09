@@ -218,7 +218,7 @@ class DeltaEngine:
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time
-            _delta_commit_end_time = util.get_delta_datestr_from_timestamp(
+            _delta_commit_end_time = util._get_delta_datestr_from_timestamp(
                 delta_fg_alias.left_feature_group_end_timestamp
             )
             delta_options = {
@@ -226,7 +226,7 @@ class DeltaEngine:
             }
         elif delta_fg_alias.left_feature_group_start_timestamp is not None:
             # change data feed query with start and end time
-            _delta_commit_start_time = util.get_delta_datestr_from_timestamp(
+            _delta_commit_start_time = util._get_delta_datestr_from_timestamp(
                 delta_fg_alias.left_feature_group_start_timestamp,
             )
 
@@ -235,7 +235,7 @@ class DeltaEngine:
                 "startingTimestamp": _delta_commit_start_time,
             }
             if delta_fg_alias.left_feature_group_end_timestamp is not None:
-                _delta_commit_end_time = util.get_delta_datestr_from_timestamp(
+                _delta_commit_end_time = util._get_delta_datestr_from_timestamp(
                     delta_fg_alias.left_feature_group_end_timestamp,
                 )
                 delta_options["endingTimestamp"] = _delta_commit_end_time
@@ -970,14 +970,14 @@ class DeltaEngine:
     def _get_delta_feature_group_commit(last_commit, oldest_commit):
         _logger.debug(f"Extract info about the latest commit {last_commit}")
         operation = last_commit["operation"]
-        commit_timestamp = util.convert_event_time_to_timestamp(
+        commit_timestamp = util._convert_event_time_to_timestamp(
             last_commit["timestamp"]
         )
-        commit_date_string = util.get_hudi_datestr_from_timestamp(commit_timestamp)
+        commit_date_string = util._get_hudi_datestr_from_timestamp(commit_timestamp)
         operation_metrics = last_commit["operationMetrics"]
 
         # Extract info about the oldest remaining commit
-        oldest_commit_timestamp = util.convert_event_time_to_timestamp(
+        oldest_commit_timestamp = util._convert_event_time_to_timestamp(
             oldest_commit["timestamp"]
         )
 

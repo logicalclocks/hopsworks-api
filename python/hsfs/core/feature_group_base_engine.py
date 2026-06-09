@@ -186,7 +186,7 @@ class FeatureGroupBaseEngine:
         new_features = []
         for feature in feature_group.columns:
             if not any(
-                util.autofix_feature_name(updated.name) == feature.name
+                util._autofix_feature_name(updated.name) == feature.name
                 for updated in updated_features
             ):
                 new_features.append(feature)
@@ -195,11 +195,11 @@ class FeatureGroupBaseEngine:
     def _verify_schema_compatibility(self, feature_group_features, dataframe_features):
         err = []
         feature_df_dict = {
-            util.autofix_feature_name(feat.name): feat.type
+            util._autofix_feature_name(feat.name): feat.type
             for feat in dataframe_features
         }
         for feature_fg in feature_group_features:
-            name = util.autofix_feature_name(feature_fg.name)
+            name = util._autofix_feature_name(feature_fg.name)
             fg_type = feature_fg.type.lower().replace(" ", "")
             # check if feature exists dataframe
             if name in feature_df_dict:
@@ -227,7 +227,7 @@ class FeatureGroupBaseEngine:
         # any features that are left in lookup table are superfluous
         for feature_df_name, feature_df_type in feature_df_dict.items():
             err += [
-                f"{util.autofix_feature_name(feature_df_name)} (type: '{feature_df_type}') does not exist "
+                f"{util._autofix_feature_name(feature_df_name)} (type: '{feature_df_type}') does not exist "
                 f"in feature group."
             ]
 

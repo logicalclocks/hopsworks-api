@@ -958,7 +958,7 @@ class TestSpark:
         result_df = result.toPandas()
         assert list(result_df) != list(expected)
         for column in list(result_df):
-            assert result_df[util.autofix_feature_name(column)].equals(
+            assert result_df[util._autofix_feature_name(column)].equals(
                 result_df[column]
             )
 
@@ -10336,7 +10336,7 @@ class TestSpark:
         ]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
-        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
         untransformed_spark_df = (
             logging_test_dataframe.select(
                 "primary_key",
@@ -10506,7 +10506,7 @@ class TestSpark:
         ]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
-        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
         untransformed_spark_df = (
             logging_test_dataframe.select(
                 "primary_key",
@@ -10936,7 +10936,7 @@ class TestSparkConnectMode:
                 mock_patch("hsfs.engine.spark.util") as mock_util,
                 mock_patch("builtins.open", mock_open()),
             ):
-                mock_util.get_dataset_type.return_value = "DATASET"
+                mock_util._get_dataset_type.return_value = "DATASET"
                 result = engine._add_file("hdfs:///path/to/file.jks", distribute=True)
 
         # Should not have called sparkContext.addFile

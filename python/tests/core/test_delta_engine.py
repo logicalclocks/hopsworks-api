@@ -276,7 +276,7 @@ class TestDeltaEngine:
         alias = mock.Mock()
         alias.left_feature_group_end_timestamp = 1234567890
         alias.left_feature_group_start_timestamp = None
-        mocker.patch("hsfs.util.get_delta_datestr_from_timestamp", return_value="t")
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
 
         # Act
         result = engine._setup_delta_read_opts(alias, None)
@@ -292,7 +292,7 @@ class TestDeltaEngine:
         alias = mock.Mock()
         alias.left_feature_group_end_timestamp = 1234567890
         alias.left_feature_group_start_timestamp = None
-        mocker.patch("hsfs.util.get_delta_datestr_from_timestamp", return_value="t")
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
 
         # Act
         opts = engine._setup_delta_read_opts(alias, {"k": "v"})
@@ -1028,11 +1028,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1062,11 +1062,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1096,11 +1096,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1134,11 +1134,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1168,11 +1168,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1202,11 +1202,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 

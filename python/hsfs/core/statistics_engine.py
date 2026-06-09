@@ -77,7 +77,7 @@ class StatisticsEngine:
                     feature_dataframe = (
                         metadata_instance.select_all()
                         .as_of(
-                            util.get_hudi_datestr_from_timestamp(
+                            util._get_hudi_datestr_from_timestamp(
                                 feature_group_commit_id
                             )
                         )
@@ -306,7 +306,7 @@ class StatisticsEngine:
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
         """
-        computation_timestamp = util.convert_event_time_to_timestamp(computation_time)
+        computation_timestamp = util._convert_event_time_to_timestamp(computation_time)
         return self._statistics_api._get(
             metadata_instance,
             feature_names=feature_names,
@@ -370,8 +370,8 @@ class StatisticsEngine:
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
         """
-        start_commit_time = util.convert_event_time_to_timestamp(start_commit_time)
-        end_commit_time = util.convert_event_time_to_timestamp(end_commit_time)
+        start_commit_time = util._convert_event_time_to_timestamp(start_commit_time)
+        end_commit_time = util._convert_event_time_to_timestamp(end_commit_time)
         return self._statistics_api._get(
             metadata_instance,
             start_commit_time=start_commit_time,

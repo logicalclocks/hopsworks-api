@@ -204,7 +204,7 @@ class TestPredictor:
             "hsml.predictor.Predictor._validate_serving_tool",
             return_value=p_json["serving_tool"],
         )
-        mock_resources = util.get_obj_from_json(
+        mock_resources = util._get_obj_from_json(
             copy.deepcopy(p_json["predictor_resources"]), resources.PredictorResources
         )
         mock_validate_resources = mocker.patch(
@@ -640,7 +640,7 @@ class TestPredictor:
             pass
 
         mock_get_predictor_for_model = mocker.patch(
-            "hopsworks_common.util.get_predictor_for_model",
+            "hopsworks_common.util._get_predictor_for_model",
             return_value=True,
             spec=spec,
         )
@@ -1306,7 +1306,7 @@ class TestPredictor:
             )
 
         mocker.patch(
-            "hopsworks_common.util.get_predictor_for_model",
+            "hopsworks_common.util._get_predictor_for_model",
             side_effect=fake_get_predictor_for_model,
         )
 

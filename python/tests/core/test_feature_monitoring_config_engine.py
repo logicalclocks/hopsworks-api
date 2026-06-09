@@ -101,7 +101,9 @@ class TestFeatureMonitoringConfigEngine:
         )
 
         assert (
-            util.convert_event_time_to_timestamp(time_before)
-            <= util.convert_event_time_to_timestamp(config.job_schedule.start_date_time)
-            <= util.convert_event_time_to_timestamp(time_after)
+            util._convert_event_time_to_timestamp(time_before)
+            <= util._convert_event_time_to_timestamp(
+                config.job_schedule.start_date_time
+            )
+            <= util._convert_event_time_to_timestamp(time_after)
         )

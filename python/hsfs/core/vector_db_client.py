@@ -25,7 +25,7 @@ from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
 )
-from hopsworks_common.util import convert_event_time_to_timestamp
+from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton
@@ -363,7 +363,7 @@ class VectorDbClient:
             # Convert timestamp strings to epoch milliseconds for OpenSearch
             if isinstance(value, str):
                 # Convert timestamp string to epoch milliseconds
-                return convert_event_time_to_timestamp(value)
+                return _convert_event_time_to_timestamp(value)
             # If already int (epoch milliseconds), return as-is
             return value
 

@@ -1925,7 +1925,7 @@ class FeatureView:
             })
 
             feature_group = fs.get_or_create_feature_group(
-                name='feature_group_name',
+                name='_feature_group_name',
                 version=1,
                 primary_key=['category_col']
             )
@@ -3122,7 +3122,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
-        util.check_missing_mandatory_tags(td.missing_mandatory_tags)
+        util._check_missing_mandatory_tags(td.missing_mandatory_tags)
         return df
 
     @public
@@ -3304,7 +3304,7 @@ class FeatureView:
         """
         tds = self._feature_view_engine._get_training_datasets(self)
         for td in tds:
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 td.missing_mandatory_tags,
                 message=f"Training dataset '{td.name}' version {td.version} has missing mandatory tags",
             )
@@ -4879,7 +4879,7 @@ class FeatureView:
 
     @labels.setter
     def labels(self, labels: list[str]) -> None:
-        self._labels = [util.autofix_feature_name(lb) for lb in labels]
+        self._labels = [util._autofix_feature_name(lb) for lb in labels]
 
     @public
     @property
@@ -4893,7 +4893,7 @@ class FeatureView:
     @inference_helper_columns.setter
     def inference_helper_columns(self, inference_helper_columns: list[str]) -> None:
         self._inference_helper_columns = [
-            util.autofix_feature_name(exf) for exf in inference_helper_columns
+            util._autofix_feature_name(exf) for exf in inference_helper_columns
         ]
 
     @public
@@ -4908,7 +4908,7 @@ class FeatureView:
     @training_helper_columns.setter
     def training_helper_columns(self, training_helper_columns: list[str]) -> None:
         self._training_helper_columns = [
-            util.autofix_feature_name(exf) for exf in training_helper_columns
+            util._autofix_feature_name(exf) for exf in training_helper_columns
         ]
 
     @public
@@ -5066,7 +5066,7 @@ class FeatureView:
             or self._serving_keys is None
             or len(self._serving_keys) == 0
         ):
-            self._serving_keys = util.build_serving_keys_from_prepared_statements(
+            self._serving_keys = util._build_serving_keys_from_prepared_statements(
                 self._feature_view_engine._feature_view_api._get_serving_prepared_statement(
                     name=self.name,
                     version=self.version,

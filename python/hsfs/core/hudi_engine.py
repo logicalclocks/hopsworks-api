@@ -238,7 +238,7 @@ class HudiEngine:
             and hudi_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time
-            _hudi_commit_end_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_end_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_end_timestamp
             )
 
@@ -251,7 +251,7 @@ class HudiEngine:
             and hudi_fg_alias.left_feature_group_start_timestamp is not None
         ):
             # incremental query with start time until now
-            _hudi_commit_start_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_start_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_start_timestamp
             )
 
@@ -261,10 +261,10 @@ class HudiEngine:
             }
         else:
             # incremental query with start and end time
-            _hudi_commit_start_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_start_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_start_timestamp
             )
-            _hudi_commit_end_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_end_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_end_timestamp
             )
 
@@ -302,13 +302,13 @@ class HudiEngine:
         return feature_group_commit.FeatureGroupCommit(
             commitid=None,
             commit_date_string=latest_commit.getCompletionTime(),
-            commit_time=util.get_timestamp_from_date_string(
+            commit_time=util._get_timestamp_from_date_string(
                 latest_commit.getCompletionTime()
             ),
             rows_inserted=commit_metadata.fetchTotalInsertRecordsWritten(),
             rows_updated=commit_metadata.fetchTotalUpdateRecordsWritten(),
             rows_deleted=commit_metadata.getTotalRecordsDeleted(),
-            last_active_commit_time=util.get_timestamp_from_date_string(
+            last_active_commit_time=util._get_timestamp_from_date_string(
                 oldest_commit.getCompletionTime()
             ),
             table_size=table_size,

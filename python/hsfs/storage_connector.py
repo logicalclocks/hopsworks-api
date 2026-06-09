@@ -2965,7 +2965,7 @@ class SqlConnector(StorageConnector):
             self._wallet_path, distribute=False
         )
         if local_path.endswith(".zip") and os.path.isfile(local_path):
-            return util.extract_zip(local_path)
+            return util._extract_zip(local_path)
         return local_path
 
     def spark_options(self) -> dict[str, Any]:

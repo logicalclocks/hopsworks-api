@@ -58,7 +58,7 @@ from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hopsworks_common.core.type_systems import _create_extended_type
 from hopsworks_common.decorators import _uses_great_expectations, _uses_polars
-from hopsworks_common.util import generate_fully_qualified_feature_name
+from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
     feature,
     feature_view,
@@ -205,13 +205,13 @@ class Engine:
         """
         # Get the fully qualified names for the event time and serving keys.
         # This required since the since Hopsworks returns primary keys and event time as fully qualified names, if they are not explicitly selected in the feature view query.
-        fully_qualified_root_fg_event_time = generate_fully_qualified_feature_name(
+        fully_qualified_root_fg_event_time = _generate_fully_qualified_feature_name(
             feature_view.query._left_feature_group,
             feature_view.query._left_feature_group.event_time,
         )
 
         fully_qualified_serving_key_mapper = {
-            generate_fully_qualified_feature_name(
+            _generate_fully_qualified_feature_name(
                 key._feature_group, key.feature_name
             ): key.feature_name
             for key in feature_view.serving_keys
@@ -297,7 +297,7 @@ class Engine:
         if isinstance(sql_query, FsQuery):
             from hsfs.core import arrow_flight_client
 
-            result_df = util.run_with_loading_animation(
+            result_df = util._run_with_loading_animation(
                 "Reading data from Hopsworks, using Hopsworks Feature Query Service",
                 arrow_flight_client._get_instance()._read_query,
                 sql_query,
@@ -646,7 +646,7 @@ class Engine:
         )
         job = stat_api._compute(metadata_instance)
         print(
-            f"Statistics Job started successfully, you can follow the progress at \n{util.get_job_url(job.href)}"
+            f"Statistics Job started successfully, you can follow the progress at \n{util._get_job_url(job.href)}"
         )
 
         job._wait_for_job()
@@ -917,7 +917,7 @@ class Engine:
                     stacklevel=1,
                 )
             dataframe_copy.columns = [
-                util.autofix_feature_name(x) for x in dataframe_copy.columns
+                util._autofix_feature_name(x) for x in dataframe_copy.columns
             ]
 
             # convert timestamps with timezone to UTC
@@ -969,7 +969,7 @@ class Engine:
         features = []
         for i in range(len(arrow_schema.names)):
             feat_name = arrow_schema.names[i]
-            name = util.autofix_feature_name(feat_name)
+            name = util._autofix_feature_name(feat_name)
             try:
                 pd_type = arrow_schema.field(feat_name).type
                 if pa.types.is_null(pd_type) and feature_type_map.get(name):
@@ -1425,7 +1425,7 @@ class Engine:
                 result_df = df[
                     [
                         split.start_time
-                        <= util.convert_event_time_to_timestamp(t)
+                        <= util._convert_event_time_to_timestamp(t)
                         < split.end_time
                         for t in df[event_time]
                     ]
@@ -1470,7 +1470,7 @@ class Engine:
             and not transformation_context
         ):
             query_obj, _ = dataset._prep_read(False, user_write_options)
-            return util.run_with_loading_animation(
+            return util._run_with_loading_animation(
                 "Materializing data to Hopsworks, using Hopsworks Feature Query Service",
                 arrow_flight_client._get_instance()._create_training_dataset,
                 feature_view_obj,
@@ -1510,7 +1510,7 @@ class Engine:
             )
             td_job = td_api._compute(training_dataset, td_app_conf)
         print(
-            f"Training dataset job started successfully, you can follow the progress at \n{util.get_job_url(td_job.href)}"
+            f"Training dataset job started successfully, you can follow the progress at \n{util._get_job_url(td_job.href)}"
         )
 
         td_job._wait_for_job(
@@ -1605,7 +1605,7 @@ class Engine:
         local_file = os.path.join("/tmp", os.path.basename(file))
         if not os.path.exists(local_file):
             content_stream = self._dataset_api.read_content(
-                file, util.get_dataset_type(file)
+                file, util._get_dataset_type(file)
             )
             bytesio_object = BytesIO(content_stream.content)
             # Write the stuff

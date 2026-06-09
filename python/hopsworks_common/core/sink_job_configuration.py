@@ -82,7 +82,7 @@ class FeatureColumnMapping:
 
     @feature_name.setter
     def feature_name(self, feature_name: str) -> None:
-        self._feature_name = util.autofix_feature_name(feature_name, warn=True)
+        self._feature_name = util._autofix_feature_name(feature_name, warn=True)
 
 
 @public("hopsworks.core.FullLoadConfig")
@@ -197,7 +197,7 @@ class LoadingConfig:
                         )
                     else:
                         incremental_config["initialIngestionDate"] = (
-                            util.get_timestamp_from_date_string(initial_value)
+                            util._get_timestamp_from_date_string(initial_value)
                         )
             if all(value is None for value in incremental_config.values()):
                 incremental_config = None

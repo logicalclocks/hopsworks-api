@@ -86,7 +86,7 @@ class Query:
         self._feature_store_name = feature_store_name
         self._feature_store_id = feature_store_id
         self._left_feature_group = left_feature_group
-        self._left_features = util.parse_features(left_features)
+        self._left_features = util._parse_features(left_features)
         self._left_feature_group_start_time = left_feature_group_start_time
         self._left_feature_group_end_time = left_feature_group_end_time
         self._joins = joins or []
@@ -384,7 +384,7 @@ class Query:
         event_time_feature = self._left_feature_group.get_feature(
             self._left_feature_group.event_time
         )
-        time_filter = util.build_time_filter(event_time_feature, start_time, end_time)
+        time_filter = util._build_time_filter(event_time_feature, start_time, end_time)
         filtered_query = self.filter(time_filter)
         return filtered_query.read(
             online=online,
@@ -581,9 +581,9 @@ class Query:
         Returns:
             The query object with the applied time travel condition.
         """
-        wallclock_timestamp = util.convert_event_time_to_timestamp(wallclock_time)
+        wallclock_timestamp = util._convert_event_time_to_timestamp(wallclock_time)
 
-        exclude_until_timestamp = util.convert_event_time_to_timestamp(exclude_until)
+        exclude_until_timestamp = util._convert_event_time_to_timestamp(exclude_until)
 
         for _join in self._joins:
             _join.query.left_feature_group_end_time = wallclock_timestamp
@@ -615,10 +615,10 @@ class Query:
         Returns:
             The query object with the applied time travel condition.
         """
-        self.left_feature_group_start_time = util.convert_event_time_to_timestamp(
+        self.left_feature_group_start_time = util._convert_event_time_to_timestamp(
             wallclock_start_time
         )
-        self.left_feature_group_end_time = util.convert_event_time_to_timestamp(
+        self.left_feature_group_end_time = util._convert_event_time_to_timestamp(
             wallclock_end_time
         )
         return self
@@ -920,7 +920,7 @@ class Query:
         Returns:
             The query object with the appended feature.
         """
-        feature = util.validate_feature(feature)
+        feature = util._validate_feature(feature)
 
         self._left_features.append(feature)
 

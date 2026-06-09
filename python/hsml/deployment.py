@@ -315,7 +315,7 @@ class Deployment:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         # validate component
-        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
                 "Component '{}' is not valid. Possible values are '{}'".format(
@@ -363,7 +363,7 @@ class Deployment:
             matching lines; ``==> <instance> <==\\n`` block headers when
             multiple instances are present.
         """
-        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
                 "Component '{}' is not valid. Possible values are '{}'".format(
@@ -416,7 +416,7 @@ class Deployment:
         Yields:
             Plain-text log chunks containing only newly observed content.
         """
-        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
                 "Component '{}' is not valid. Possible values are '{}'".format(
@@ -442,7 +442,7 @@ class Deployment:
             + "/deployments/"
             + str(self.id)
         )
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)
 
     @public
     def get_endpoint_url(self) -> str | None:
@@ -513,7 +513,7 @@ class Deployment:
     @public
     def describe(self):
         """Print a JSON description of the deployment."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):

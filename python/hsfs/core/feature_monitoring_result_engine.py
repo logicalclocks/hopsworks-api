@@ -101,7 +101,7 @@ class FeatureMonitoringResultEngine:
             Saved Feature monitoring result.
         """
         monitoring_time = round(
-            util.convert_event_time_to_timestamp(datetime.now()), -3
+            util._convert_event_time_to_timestamp(datetime.now()), -3
         )
         if execution_id is None and job_name is not None:
             execution_id = self._get_monitoring_job_execution_id(job_name)
@@ -259,10 +259,10 @@ class FeatureMonitoringResultEngine:
 
         filter_by = []
         if start_time:
-            timestamp_start_time = util.convert_event_time_to_timestamp(start_time)
+            timestamp_start_time = util._convert_event_time_to_timestamp(start_time)
             filter_by.append(f"monitoring_time_gte:{timestamp_start_time}")
         if end_time:
-            timestamp_end_time = util.convert_event_time_to_timestamp(end_time)
+            timestamp_end_time = util._convert_event_time_to_timestamp(end_time)
             filter_by.append(f"monitoring_time_lte:{timestamp_end_time}")
         if len(filter_by) > 0:
             query_params["filter_by"] = filter_by

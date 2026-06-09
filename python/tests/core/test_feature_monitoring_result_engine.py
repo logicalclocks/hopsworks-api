@@ -188,7 +188,7 @@ class TestFeatureMonitoringResultEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(
+        before_time = util._convert_event_time_to_timestamp(
             datetime.now() - timedelta(seconds=1)
         )
         result = result_engine._build_feature_monitoring_result(
@@ -201,7 +201,7 @@ class TestFeatureMonitoringResultEngine:
             ),
             job_name=DEFAULT_JOB_NAME,
         )
-        after_time = util.convert_event_time_to_timestamp(
+        after_time = util._convert_event_time_to_timestamp(
             datetime.now() + timedelta(seconds=1)
         )
 
@@ -233,7 +233,7 @@ class TestFeatureMonitoringResultEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(
+        before_time = util._convert_event_time_to_timestamp(
             datetime.now() - timedelta(seconds=1)
         )
         result = result_engine._build_feature_monitoring_result(
@@ -252,7 +252,7 @@ class TestFeatureMonitoringResultEngine:
             job_name=DEFAULT_JOB_NAME,
             difference=DEFAULT_DIFFERENCE,
         )
-        after_time = util.convert_event_time_to_timestamp(
+        after_time = util._convert_event_time_to_timestamp(
             datetime.now() + timedelta(seconds=1)
         )
 
@@ -288,7 +288,7 @@ class TestFeatureMonitoringResultEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(
+        before_time = util._convert_event_time_to_timestamp(
             datetime.now() - timedelta(seconds=1)
         )
         result = result_engine._build_feature_monitoring_result(
@@ -304,7 +304,7 @@ class TestFeatureMonitoringResultEngine:
             difference=DEFAULT_DIFFERENCE,
             shift_detected=True,
         )
-        after_time = util.convert_event_time_to_timestamp(
+        after_time = util._convert_event_time_to_timestamp(
             datetime.now() + timedelta(seconds=1)
         )
 
@@ -343,14 +343,14 @@ class TestFeatureMonitoringResultEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(
+        before_time = util._convert_event_time_to_timestamp(
             datetime.now() - timedelta(seconds=1)
         )
         result_engine._save_feature_monitoring_result_with_exception(
             config_id=DEFAULT_CONFIG_ID,
             job_name=DEFAULT_JOB_NAME,
         )
-        after_time = util.convert_event_time_to_timestamp(
+        after_time = util._convert_event_time_to_timestamp(
             datetime.now() + timedelta(seconds=1)
         )
 

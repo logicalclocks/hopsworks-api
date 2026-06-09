@@ -259,7 +259,7 @@ class ValidationResult:
         # use the same function as the rest of the client to deal with conversion to timestamps
         # from various types
         if validation_time:
-            self._validation_time = util.convert_event_time_to_timestamp(
+            self._validation_time = util._convert_event_time_to_timestamp(
                 validation_time
             )
         else:

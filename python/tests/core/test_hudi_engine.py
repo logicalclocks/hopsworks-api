@@ -369,7 +369,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mock_util_get_hudi_datestr_from_timestamp = mocker.patch(
-            "hsfs.util.get_hudi_datestr_from_timestamp"
+            "hsfs.util._get_hudi_datestr_from_timestamp"
         )
 
         h_engine = hudi_engine.HudiEngine(
@@ -405,7 +405,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mock_util_get_hudi_datestr_from_timestamp = mocker.patch(
-            "hsfs.util.get_hudi_datestr_from_timestamp"
+            "hsfs.util._get_hudi_datestr_from_timestamp"
         )
 
         h_engine = hudi_engine.HudiEngine(
@@ -443,7 +443,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mock_util_get_timestamp_from_date_string = mocker.patch(
-            "hsfs.util.get_timestamp_from_date_string"
+            "hsfs.util._get_timestamp_from_date_string"
         )
 
         h_engine = hudi_engine.HudiEngine(

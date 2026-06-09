@@ -118,7 +118,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[0]["start_validation_time"]
         )
         filter_validation_lte = list(
@@ -129,7 +129,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_lte) == 1
         assert int(
             filter_validation_lte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[0]["end_validation_time"]
         )
 
@@ -144,7 +144,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[1]["start_validation_time"]
         )
         filter_validation_lte = list(
@@ -166,7 +166,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[2]["start_validation_time"]
         )
         filter_validation_lte = list(
@@ -177,7 +177,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_lte) == 1
         assert int(
             filter_validation_lte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[2]["end_validation_time"]
         )
 

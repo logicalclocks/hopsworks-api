@@ -2215,7 +2215,7 @@ class FeatureGroupBase:
     @primary_key.setter
     def primary_key(self, new_primary_key: list[str]) -> None:
         self._primary_key = [
-            util.autofix_feature_name(pk, warn=True) for pk in new_primary_key
+            util._autofix_feature_name(pk, warn=True) for pk in new_primary_key
         ]
 
     @public
@@ -2450,7 +2450,7 @@ class FeatureGroupBase:
             self._event_time = None
             return
         if isinstance(feature_name, str):
-            self._event_time = util.autofix_feature_name(feature_name, warn=True)
+            self._event_time = util._autofix_feature_name(feature_name, warn=True)
             return
         if (
             isinstance(feature_name, list)
@@ -2463,7 +2463,7 @@ class FeatureGroupBase:
                 DeprecationWarning,
                 stacklevel=2,
             )
-            self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
+            self._event_time = util._autofix_feature_name(feature_name[0], warn=True)
             return
 
         raise ValueError(
@@ -2755,7 +2755,7 @@ class FeatureGroupBase:
         self._features = new_columns
 
     def _get_project_name(self) -> str:
-        return util.strip_feature_store_suffix(self.feature_store_name)
+        return util._strip_feature_store_suffix(self.feature_store_name)
 
     @public
     @property
@@ -3039,7 +3039,7 @@ class FeatureGroup(FeatureGroupBase):
             self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
-                util.autofix_feature_name(hudi_precombine_key, warn=True)
+                util._autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
                 and self._time_travel_format == "HUDI"
                 else None
@@ -3370,7 +3370,7 @@ class FeatureGroup(FeatureGroupBase):
         # no event_time column there is nothing to filter on, so the env vars must stay a
         # no-op rather than be promoted into args that then trip the no-event_time guard.
         if wallclock_time is None and self.event_time is not None:
-            start_time, end_time = util.apply_scheduler_time_defaults(
+            start_time, end_time = util._apply_scheduler_time_defaults(
                 start_time, end_time
             )
 
@@ -3414,7 +3414,7 @@ class FeatureGroup(FeatureGroupBase):
 
         if start_time is not None or end_time is not None:
             event_time_feature = self.get_feature(self.event_time)
-            time_filter = util.build_time_filter(
+            time_filter = util._build_time_filter(
                 event_time_feature, start_time, end_time
             )
             query = query.filter(time_filter)
@@ -4817,10 +4817,10 @@ class FeatureGroup(FeatureGroupBase):
         """Get the Job object reference for the materialization job for this Feature Group."""
         if self._materialization_job is not None:
             return self._materialization_job
-        feature_group_name = util.feature_group_name(self)
+        _feature_group_name = util._feature_group_name(self)
         job_suffix_list = ["materialization", "backfill"]
         for job_suffix in job_suffix_list:
-            job_name = f"{feature_group_name}_offline_fg_{job_suffix}"
+            job_name = f"{_feature_group_name}_offline_fg_{job_suffix}"
             for _ in range(3):  # retry starting job
                 try:
                     self._materialization_job = job_api.JobApi().get(job_name)
@@ -4840,7 +4840,7 @@ class FeatureGroup(FeatureGroupBase):
         """Get the latest computed statistics for the whole feature group."""
         if self._is_time_travel_enabled():
             # retrieve the latests statistics computed on the whole Feature Group, including all the commits.
-            now = util.convert_event_time_to_timestamp(datetime.now())
+            now = util._convert_event_time_to_timestamp(datetime.now())
             return self._statistics_engine._get_by_time_window(
                 self,
                 start_commit_time=None,
@@ -4867,12 +4867,12 @@ class FeatureGroup(FeatureGroupBase):
     @partition_key.setter
     def partition_key(self, new_partition_key: list[str]) -> None:
         self._partition_key = [
-            util.autofix_feature_name(pk, warn=True) for pk in new_partition_key
+            util._autofix_feature_name(pk, warn=True) for pk in new_partition_key
         ]
 
     @hudi_precombine_key.setter
     def hudi_precombine_key(self, hudi_precombine_key: str) -> None:
-        self._hudi_precombine_key = util.autofix_feature_name(
+        self._hudi_precombine_key = util._autofix_feature_name(
             hudi_precombine_key, warn=True
         )
 
@@ -5359,7 +5359,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         # stay a no-op rather than be promoted into args that then trip the no-event_time
         # guard below.
         if self.event_time is not None:
-            start_time, end_time = util.apply_scheduler_time_defaults(
+            start_time, end_time = util._apply_scheduler_time_defaults(
                 start_time, end_time
             )
 
@@ -5411,7 +5411,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
         if start_time is not None or end_time is not None:
             event_time_feature = self.get_feature(self.event_time)
-            time_filter = util.build_time_filter(
+            time_filter = util._build_time_filter(
                 event_time_feature, start_time, end_time
             )
             query = query.filter(time_filter)

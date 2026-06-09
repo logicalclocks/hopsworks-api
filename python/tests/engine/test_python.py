@@ -3098,7 +3098,7 @@ class TestPython:
 
     def test_convert_to_unix_timestamp_pandas(self):
         # Act
-        result = util.convert_event_time_to_timestamp(
+        result = util._convert_event_time_to_timestamp(
             event_time=pd.Timestamp("2017-01-01")
         )
 
@@ -3108,13 +3108,13 @@ class TestPython:
     def test_convert_to_unix_timestamp_str(self, mocker):
         # Arrange
         mock_util_get_timestamp_from_date_string = mocker.patch(
-            "hopsworks_common.util.get_timestamp_from_date_string"
+            "hopsworks_common.util._get_timestamp_from_date_string"
         )
 
         mock_util_get_timestamp_from_date_string.return_value = 1483225200000
 
         # Act
-        result = util.convert_event_time_to_timestamp(
+        result = util._convert_event_time_to_timestamp(
             event_time="2017-01-01 00-00-00-000"
         )
 
@@ -3123,28 +3123,28 @@ class TestPython:
 
     def test_convert_to_unix_timestamp_int(self):
         # Act
-        result = util.convert_event_time_to_timestamp(event_time=1483225200)
+        result = util._convert_event_time_to_timestamp(event_time=1483225200)
 
         # Assert
         assert result == 1483225200000
 
     def test_convert_to_unix_timestamp_datetime(self):
         # Act
-        result = util.convert_event_time_to_timestamp(event_time=datetime(2022, 9, 18))
+        result = util._convert_event_time_to_timestamp(event_time=datetime(2022, 9, 18))
 
         # Assert
         assert result == 1663459200000
 
     def test_convert_to_unix_timestamp_date(self):
         # Act
-        result = util.convert_event_time_to_timestamp(event_time=date(2022, 9, 18))
+        result = util._convert_event_time_to_timestamp(event_time=date(2022, 9, 18))
 
         # Assert
         assert result == 1663459200000
 
     def test_convert_to_unix_timestamp_pandas_datetime(self):
         # Act
-        result = util.convert_event_time_to_timestamp(
+        result = util._convert_event_time_to_timestamp(
             event_time=pd.Timestamp("2022-09-18")
         )
 
@@ -3157,7 +3157,7 @@ class TestPython:
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mock_python_engine_wait_for_job = mocker.patch(
             "hopsworks_common.engine.execution_engine.ExecutionEngine.wait_until_finished"
         )
@@ -3195,7 +3195,7 @@ class TestPython:
 
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
         mock_td_api.return_value._compute.return_value = mock_job
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
 
         python_engine = python.Engine()
 
@@ -3239,7 +3239,7 @@ class TestPython:
         mock_fv_api.return_value._compute_training_dataset.return_value = mock_job
 
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
 
         python_engine = python.Engine()
 
@@ -3511,7 +3511,7 @@ class TestPython:
         mock_python_engine_kafka_produce = mocker.patch(
             "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value=" tests_offsets",
@@ -3576,7 +3576,7 @@ class TestPython:
         mock_python_engine_kafka_produce = mocker.patch(
             "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value="tests_offsets",
@@ -3641,7 +3641,7 @@ class TestPython:
         mock_python_engine_kafka_produce = mocker.patch(
             "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value="tests_offsets",
@@ -3705,7 +3705,7 @@ class TestPython:
         mock_python_engine_kafka_produce = mocker.patch(
             "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine._kafka_get_offsets",
             side_effect=["", "tests_offsets"],
@@ -4196,7 +4196,7 @@ class TestPython:
         ]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
-        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
         untransformed_df = pd.DataFrame(
             {
                 "test_fs_test1_1_primary_key": [1, 2, 3],
@@ -4391,7 +4391,7 @@ class TestPython:
         ]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
-        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
         untransformed_df = pd.DataFrame(
             {
                 "test_fs_test1_1_primary_key": [1, 2, 3],

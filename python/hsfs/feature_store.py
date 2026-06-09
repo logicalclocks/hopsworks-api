@@ -186,7 +186,7 @@ class FeatureStore:
         feature_group_object = self._feature_group_api._get(self.id, name, version)
         if feature_group_object:
             feature_group_object.feature_store = self
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 feature_group_object.missing_mandatory_tags
             )
             return feature_group_object
@@ -340,7 +340,7 @@ class FeatureStore:
         )
         if feature_group_object:
             feature_group_object.feature_store = self
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 feature_group_object.missing_mandatory_tags
             )
         return feature_group_object
@@ -440,7 +440,7 @@ class FeatureStore:
             version = self.DEFAULT_VERSION
         training_dataset_object = self._training_dataset_api._get(name, version)
         if training_dataset_object:
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 training_dataset_object.missing_mandatory_tags
             )
         return training_dataset_object
@@ -2223,7 +2223,7 @@ class FeatureStore:
             version = self.DEFAULT_VERSION
         feature_view_object = self._feature_view_engine._get(name, version)
         if feature_view_object:
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 feature_view_object.missing_mandatory_tags
             )
         return feature_view_object

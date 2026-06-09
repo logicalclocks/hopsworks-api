@@ -107,12 +107,12 @@ class TestMonitoringWindowConfigEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(datetime.now())
+        before_time = util._convert_event_time_to_timestamp(datetime.now())
         (
             start_time,
             end_time,
         ) = monitoring_window_config_engine._get_window_start_end_times(config)
-        after_time = util.convert_event_time_to_timestamp(datetime.now())
+        after_time = util._convert_event_time_to_timestamp(datetime.now())
 
         # Assert
         assert start_time is None
@@ -127,14 +127,14 @@ class TestMonitoringWindowConfigEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(datetime.now())
+        before_time = util._convert_event_time_to_timestamp(datetime.now())
         (
             start_time,
             end_time,
         ) = monitoring_window_config_engine._get_window_start_end_times(
             config,
         )
-        after_time = util.convert_event_time_to_timestamp(datetime.now())
+        after_time = util._convert_event_time_to_timestamp(datetime.now())
 
         # Assert
         assert (
@@ -157,7 +157,7 @@ class TestMonitoringWindowConfigEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(
+        before_time = util._convert_event_time_to_timestamp(
             datetime.now() - timedelta(seconds=1)
         )
         (
@@ -166,7 +166,7 @@ class TestMonitoringWindowConfigEngine:
         ) = monitoring_window_config_engine._get_window_start_end_times(
             config,
         )
-        after_time = util.convert_event_time_to_timestamp(
+        after_time = util._convert_event_time_to_timestamp(
             datetime.now() + timedelta(seconds=1)
         )
 
@@ -192,7 +192,7 @@ class TestMonitoringWindowConfigEngine:
         )
 
         # Act
-        before_time = util.convert_event_time_to_timestamp(
+        before_time = util._convert_event_time_to_timestamp(
             datetime.now() - timedelta(seconds=1)
         )
         (
@@ -201,7 +201,7 @@ class TestMonitoringWindowConfigEngine:
         ) = monitoring_window_config_engine._get_window_start_end_times(
             config,
         )
-        after_time = util.convert_event_time_to_timestamp(
+        after_time = util._convert_event_time_to_timestamp(
             datetime.now() + timedelta(seconds=1)
         )
 

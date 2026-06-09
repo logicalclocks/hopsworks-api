@@ -141,7 +141,7 @@ class OnlineStoreRestClientEngine:
                 f"Building base payload for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
             )
         base_payload = {
-            "featureStoreName": util.strip_feature_store_suffix(
+            "featureStoreName": util._strip_feature_store_suffix(
                 self._feature_store_name
             ),
             "featureViewName": self._feature_view_name,
