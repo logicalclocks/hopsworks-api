@@ -221,7 +221,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
-        assert transformation_engine.apply_transformation_functions.call_count == 1
+        assert transformation_engine._apply_transformation_functions.call_count == 1
 
     def test_save_ge_report(self, mocker):
         # Arrange
@@ -492,7 +492,7 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
         assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
-        assert tf_engine_patch.apply_transformation_functions.call_count == 1
+        assert tf_engine_patch._apply_transformation_functions.call_count == 1
 
     def test_insert_id(self, mocker):
         # Arrange
@@ -1323,7 +1323,7 @@ class TestFeatureGroupEngine:
         assert (
             mock_engine_get_instance.return_value._save_stream_dataframe.call_count == 1
         )
-        assert tf_engine_patch.apply_transformation_functions.call_count == 1
+        assert tf_engine_patch._apply_transformation_functions.call_count == 1
 
     def test_insert_stream_online_enabled_id(self, mocker):
         # Arrange

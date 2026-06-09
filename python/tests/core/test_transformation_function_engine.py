@@ -123,7 +123,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.save(transformation_fn_instance=tf)
+        tf_engine._save(transformation_fn_instance=tf)
 
         # Assert
         assert mock_tf_api.return_value.register_transformation_fn.call_count == 1
@@ -165,7 +165,7 @@ class TestTransformationFunctionEngine:
         mock_tf_api.return_value.get_transformation_fn.return_value = transformations
 
         # Act
-        result = tf_engine.get_transformation_fn(name=None, version=None)
+        result = tf_engine._get_transformation_fn(name=None, version=None)
 
         # Assert
         assert mock_tf_api.return_value.get_transformation_fn.call_count == 1
@@ -208,7 +208,7 @@ class TestTransformationFunctionEngine:
         mock_tf_api.return_value.get_transformation_fn.return_value = transformations
 
         # Act
-        result = tf_engine.get_transformation_fns()
+        result = tf_engine._get_transformation_fns()
 
         # Assert
         assert mock_tf_api.return_value.get_transformation_fn.call_count == 1
@@ -237,7 +237,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.delete(transformation_function_instance=tf1)
+        tf_engine._delete(transformation_function_instance=tf1)
 
         # Assert
         assert mock_tf_api.return_value.delete.call_count == 1
@@ -263,7 +263,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.compute_transformation_fn_statistics(
+        tf_engine._compute_transformation_fn_statistics(
             training_dataset_obj=td,
             statistics_features=None,
             label_encoder_features=None,
@@ -327,7 +327,7 @@ class TestTransformationFunctionEngine:
         dataset = pd.DataFrame()
 
         # Act
-        tf_engine.compute_and_set_feature_statistics(
+        tf_engine._compute_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, dataset=dataset
         )
 
@@ -386,7 +386,7 @@ class TestTransformationFunctionEngine:
         dataset = pd.DataFrame()
 
         # Act
-        tf_engine.compute_and_set_feature_statistics(
+        tf_engine._compute_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, dataset=dataset
         )
 
@@ -443,7 +443,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.get_and_set_feature_statistics(
+        tf_engine._get_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, training_dataset_version=1
         )
 
@@ -500,7 +500,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.get_and_set_feature_statistics(
+        tf_engine._get_and_set_feature_statistics(
             training_dataset=td, feature_view_obj=fv, training_dataset_version=1
         )
 
@@ -523,7 +523,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Act
-        tf_engine.execute_udf(
+        tf_engine._execute_udf(
             udf=add_one, data=pd.DataFrame(data={"col1": [1, 2, 3]}), online=False
         )
 
@@ -547,7 +547,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            tf_engine.execute_udf(udf=add_one, data=1, online=False)
+            tf_engine._execute_udf(udf=add_one, data=1, online=False)
 
         # Assert
         assert (
@@ -573,7 +573,7 @@ class TestTransformationFunctionEngine:
         )
         mocker.patch.object(
             transformation_function_engine.TransformationFunctionEngine,
-            "apply_udf_on_dict",
+            "_apply_udf_on_dict",
         )
         add_one.output_column_names = [
             "col1"
@@ -582,12 +582,12 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1}
 
         # Act
-        tf_engine.execute_udf(udf=add_one, data=data, online=False)
+        tf_engine._execute_udf(udf=add_one, data=data, online=False)
 
         # Assert
         assert mocker_engine._apply_udf_on_dataframe.call_count == 0
         assert (
-            transformation_function_engine.TransformationFunctionEngine.apply_udf_on_dict.call_count
+            transformation_function_engine.TransformationFunctionEngine._apply_udf_on_dict.call_count
             == 1
         )
 
@@ -609,7 +609,7 @@ class TestTransformationFunctionEngine:
         ]  # Mocking the output column names, this would be generated when a transformation function is created.
 
         # Act
-        result = tf_engine.apply_udf_on_dict(
+        result = tf_engine._apply_udf_on_dict(
             udf=add_one, data={"col1": 1}, online=False
         )
 
@@ -635,7 +635,7 @@ class TestTransformationFunctionEngine:
         ]  # Mocking the output column names, this would be generated when a transformation function is created.
 
         # Act
-        result = tf_engine.apply_udf_on_dict(udf=add_one, data={"col1": 1}, online=True)
+        result = tf_engine._apply_udf_on_dict(udf=add_one, data={"col1": 1}, online=True)
 
         # Assert
         assert isinstance(result, dict)
@@ -674,7 +674,7 @@ class TestTransformationFunctionEngine:
 
         dataset = pd.DataFrame(data={"col1": [1, 2, 3]})
 
-        tf_engine.apply_transformation_functions(
+        tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
@@ -704,7 +704,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch.object(
             transformation_function_engine.TransformationFunctionEngine,
-            "execute_udf",
+            "_execute_udf",
             return_value={"col1": 2},
         )
 
@@ -722,14 +722,14 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1}
 
-        tf_engine.apply_transformation_functions(
+        tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
         )
 
         assert (
-            transformation_function_engine.TransformationFunctionEngine.execute_udf.call_count
+            transformation_function_engine.TransformationFunctionEngine._execute_udf.call_count
             == 2
         )
 
@@ -765,7 +765,7 @@ class TestTransformationFunctionEngine:
         )
 
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=[tf1, tf2],
                 data=1,
                 online=False,
@@ -810,7 +810,7 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1}
         with pytest.raises(exceptions.TransformationFunctionException) as e_info:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=[tf1, tf2],
                 data=dataset,
                 online=False,
@@ -843,7 +843,7 @@ class TestTransformationFunctionEngine:
         mocker_return_df = mocker.Mock()
         mocker.patch.object(
             transformation_function_engine.TransformationFunctionEngine,
-            "execute_udf",
+            "_execute_udf",
             return_value=mocker_return_df,
         )
 
@@ -861,7 +861,7 @@ class TestTransformationFunctionEngine:
 
         dataset = pd.DataFrame(data={"col1": [1, 2, 3], "col2": [4, 5, 6]})
 
-        _ = tf_engine.apply_transformation_functions(
+        _ = tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
@@ -908,7 +908,7 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1, "col2": 4}
 
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=False,
@@ -953,7 +953,7 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1, "col2": 4}
 
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=[tf1, tf2],
             data=dataset,
             online=True,
@@ -1009,7 +1009,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"tf_name": [1, 2]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=df,
             online=online,
@@ -1068,7 +1068,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=True,
@@ -1125,7 +1125,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"tf_name": [1, 2]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=df,
             online=online,
@@ -1185,7 +1185,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1235,7 +1235,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1287,7 +1287,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1346,7 +1346,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1406,7 +1406,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1458,7 +1458,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1518,7 +1518,7 @@ class TestTransformationFunctionEngine:
         df = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1583,7 +1583,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1651,7 +1651,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1718,7 +1718,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1786,7 +1786,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 2}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1853,7 +1853,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -1914,7 +1914,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -1974,7 +1974,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -2039,7 +2039,7 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1, "col2": 10}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -2113,7 +2113,7 @@ class TestTransformationFunctionEngine:
         df = pl.DataFrame(data={"tf_name": [1, 2]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions, data=df, online=online
         )
 
@@ -2175,7 +2175,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fv.transformation_functions,
             data=data,
             online=online,
@@ -2216,7 +2216,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fg.transformation_functions, data=df
             )
 
@@ -2257,7 +2257,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fg.transformation_functions, data=data
             )
 
@@ -2304,7 +2304,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fv.transformation_functions, data=df
             )
 
@@ -2351,7 +2351,7 @@ class TestTransformationFunctionEngine:
 
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
-            tf_engine.apply_transformation_functions(
+            tf_engine._apply_transformation_functions(
                 transformation_functions=fv.transformation_functions, data=data
             )
 
@@ -2402,7 +2402,7 @@ class TestTransformationFunctionEngine:
         df = pd.DataFrame(data={"tf_name": [1]})
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fg.transformation_functions,
             data=df,
             request_parameters={"tf_name": 10},
@@ -2454,7 +2454,7 @@ class TestTransformationFunctionEngine:
         data = {"tf_name": 1}
 
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=fg.transformation_functions,
             data=data,
             request_parameters={"tf_name": 10},

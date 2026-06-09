@@ -131,7 +131,7 @@ class TransformationFunction:
             plus_one_meta.save()
             ```
         """
-        self._transformation_function_engine.save(self)
+        self._transformation_function_engine._save(self)
 
     @public
     def delete(self) -> None:
@@ -162,7 +162,7 @@ class TransformationFunction:
             plus_one_fn.delete()
             ```
         """
-        self._transformation_function_engine.delete(self)
+        self._transformation_function_engine._delete(self)
 
     def __call__(self, *features: list[str]) -> TransformationFunction:
         """Update the feature to be using in the transformation function.

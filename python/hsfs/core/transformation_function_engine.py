@@ -69,7 +69,7 @@ class TransformationFunctionEngine:
             feature_store_id
         )
 
-    def save(
+    def _save(
         self, transformation_fn_instance: transformation_function.TransformationFunction
     ):
         """Save a transformation function into the feature store.
@@ -81,7 +81,7 @@ class TransformationFunctionEngine:
             transformation_fn_instance
         )
 
-    def get_transformation_fn(
+    def _get_transformation_fn(
         self, name: str, version: int | None = None
     ) -> (
         transformation_function.TransformationFunction
@@ -102,7 +102,7 @@ class TransformationFunctionEngine:
         """
         return self._transformation_function_api.get_transformation_fn(name, version)
 
-    def get_transformation_fns(
+    def _get_transformation_fns(
         self,
     ) -> list[transformation_function.TransformationFunction]:
         """Get all the transformation functions in the feature store.
@@ -169,7 +169,7 @@ class TransformationFunctionEngine:
                 )
 
     @staticmethod
-    def apply_transformation_functions(
+    def _apply_transformation_functions(
         transformation_functions: list[transformation_function.TransformationFunction],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
@@ -203,7 +203,7 @@ class TransformationFunctionEngine:
 
         if isinstance(data, dict) or engine.get_type() != "spark":
             # If the data is a dictionary or if the engine is not spark, we execute the transformation functions using.
-            return TransformationFunctionEngine._apply_transformation_functions(
+            return TransformationFunctionEngine._apply_transformation_functions_impl(
                 transformation_functions=transformation_functions,
                 data=data,
                 online=online,
@@ -220,7 +220,7 @@ class TransformationFunctionEngine:
         )
 
     @staticmethod
-    def _apply_transformation_functions(
+    def _apply_transformation_functions_impl(
         transformation_functions: list[transformation_function.TransformationFunction],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
@@ -265,7 +265,7 @@ class TransformationFunctionEngine:
                     else udf.dropped_features
                 )  # Drop features that are not expected, this is required to avoid dropping features having same name that are available from other feature groups.
 
-            transformed_data = TransformationFunctionEngine.execute_udf(
+            transformed_data = TransformationFunctionEngine._execute_udf(
                 udf=udf, data=transformed_data, online=online
             )
 
@@ -281,7 +281,7 @@ class TransformationFunctionEngine:
         return transformed_data
 
     @staticmethod
-    def execute_udf(
+    def _execute_udf(
         udf: HopsworksUdf,
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
@@ -304,7 +304,7 @@ class TransformationFunctionEngine:
                 udf=udf, dataframe=data, online=online
             )
         if isinstance(data, dict):
-            return TransformationFunctionEngine.apply_udf_on_dict(
+            return TransformationFunctionEngine._apply_udf_on_dict(
                 udf=udf, data=data, online=online
             )
         raise exceptions.FeatureStoreException(
@@ -312,7 +312,7 @@ class TransformationFunctionEngine:
         )
 
     @staticmethod
-    def apply_udf_on_dict(
+    def _apply_udf_on_dict(
         udf: HopsworksUdf,
         data: dict[str, Any],
         online: bool | None = True,
@@ -374,7 +374,7 @@ class TransformationFunctionEngine:
 
         return data
 
-    def delete(
+    def _delete(
         self,
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> None:
@@ -386,7 +386,7 @@ class TransformationFunctionEngine:
         self._transformation_function_api.delete(transformation_function_instance)
 
     @staticmethod
-    def compute_transformation_fn_statistics(
+    def _compute_transformation_fn_statistics(
         training_dataset_obj: training_dataset.TrainingDataset,
         statistics_features: list[str],
         label_encoder_features: list[str],
@@ -416,7 +416,7 @@ class TransformationFunctionEngine:
         )
 
     @staticmethod
-    def get_ready_to_use_transformation_fns(
+    def _get_ready_to_use_transformation_fns(
         feature_view: feature_view.FeatureView,
         training_dataset_version: int | None = None,
     ) -> list[transformation_function.TransformationFunction]:
@@ -466,7 +466,7 @@ class TransformationFunctionEngine:
         return feature_view.transformation_functions
 
     @staticmethod
-    def compute_and_set_feature_statistics(
+    def _compute_and_set_feature_statistics(
         training_dataset: training_dataset.TrainingDataset,
         feature_view_obj: feature_view.FeatureView,
         dataset: dict[
@@ -501,7 +501,7 @@ class TransformationFunctionEngine:
             if training_dataset.splits:
                 # compute statistics before transformations are applied
                 stats = (
-                    TransformationFunctionEngine.compute_transformation_fn_statistics(
+                    TransformationFunctionEngine._compute_transformation_fn_statistics(
                         training_dataset,
                         list(statistics_features),
                         list(label_encoder_features),
@@ -511,7 +511,7 @@ class TransformationFunctionEngine:
                 )
             else:
                 stats = (
-                    TransformationFunctionEngine.compute_transformation_fn_statistics(
+                    TransformationFunctionEngine._compute_transformation_fn_statistics(
                         training_dataset,
                         list(statistics_features),
                         list(label_encoder_features),
@@ -525,7 +525,7 @@ class TransformationFunctionEngine:
                 tf.transformation_statistics = stats.feature_descriptive_statistics
 
     @staticmethod
-    def get_and_set_feature_statistics(
+    def _get_and_set_feature_statistics(
         training_dataset: training_dataset.TrainingDataset,
         feature_view_obj: feature_view.FeatureView,
         training_dataset_version: int = None,

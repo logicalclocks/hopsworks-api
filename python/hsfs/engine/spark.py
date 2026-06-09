@@ -1035,11 +1035,11 @@ class Engine:
                 raise ValueError("Dataset should be a query.")
 
             # if training_dataset_version is None:
-            transformation_function_engine.TransformationFunctionEngine.compute_and_set_feature_statistics(
+            transformation_function_engine.TransformationFunctionEngine._compute_and_set_feature_statistics(
                 training_dataset, feature_view_obj, dataset
             )
             # else:
-            #    transformation_function_engine.TransformationFunctionEngine.get_and_set_feature_statistics(
+            #    transformation_function_engine.TransformationFunctionEngine._get_and_set_feature_statistics(
             #        training_dataset, feature_view_obj, training_dataset_version
             #    )
 
@@ -1067,11 +1067,11 @@ class Engine:
             split_dataset[key] = split_dataset[key].cache()
 
         if training_dataset_version is None:
-            transformation_function_engine.TransformationFunctionEngine.compute_and_set_feature_statistics(
+            transformation_function_engine.TransformationFunctionEngine._compute_and_set_feature_statistics(
                 training_dataset, feature_view_obj, split_dataset
             )
         else:
-            transformation_function_engine.TransformationFunctionEngine.get_and_set_feature_statistics(
+            transformation_function_engine.TransformationFunctionEngine._get_and_set_feature_statistics(
                 training_dataset, feature_view_obj, training_dataset_version
             )
 
@@ -1288,7 +1288,7 @@ class Engine:
         transformation_context: dict[str, Any] = None,
     ):
         # apply transformation functions (they are applied separately to each split)
-        feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+        feature_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
             transformation_functions=transformation_functions,
             data=feature_dataframe,
             online=False,

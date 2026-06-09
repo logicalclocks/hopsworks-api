@@ -263,7 +263,7 @@ class VectorServer:
         entity: feature_view.FeatureView,
     ):
         # attach transformation functions
-        model_dependent_transformations = tf_engine_mod.TransformationFunctionEngine.get_ready_to_use_transformation_fns(
+        model_dependent_transformations = tf_engine_mod.TransformationFunctionEngine._get_ready_to_use_transformation_fns(
             entity,
             self._training_dataset_version,
         )
@@ -1014,7 +1014,7 @@ class VectorServer:
 
         transformed_feature_vectors = []
         for feature_vector in feature_vectors:
-            transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
@@ -1097,7 +1097,7 @@ class VectorServer:
         for feature_vector, request_parameter in zip(
             feature_vectors, request_parameters, strict=False
         ):
-            on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
@@ -1474,7 +1474,7 @@ class VectorServer:
             )
 
             # Apply on-demand transformations
-            feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            feature_dict = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_dict,
                 online=True,
                 transformation_context=transformation_context,
@@ -1492,7 +1492,7 @@ class VectorServer:
 
         if transform or logging_meta_data:
             # Apply model dependent transformations
-            encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_dict,
                 online=True,
                 transformation_context=transformation_context,

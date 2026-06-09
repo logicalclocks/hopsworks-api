@@ -51,7 +51,7 @@ def test_winsorize_default_thresholds():
     hopsworks_engine.set_instance(engine=engine, engine_type="python")
 
     # Act
-    result = TransformationFunctionEngine.apply_transformation_functions(
+    result = TransformationFunctionEngine._apply_transformation_functions(
         transformation_functions=[tf], data=df
     )
 
@@ -91,7 +91,7 @@ def test_winsorize_context_override():
     hopsworks_engine.set_instance(engine=engine, engine_type="python")
 
     # Act - Override percentile thresholds via context parameter
-    result = TransformationFunctionEngine.apply_transformation_functions(
+    result = TransformationFunctionEngine._apply_transformation_functions(
         transformation_functions=[tf],
         data=df,
         transformation_context={"p_low": 5, "p_high": 95},

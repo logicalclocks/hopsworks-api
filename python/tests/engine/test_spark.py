@@ -3509,7 +3509,7 @@ class TestSpark:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine._setup_storage_connector"
@@ -3556,7 +3556,7 @@ class TestSpark:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine._setup_storage_connector"
@@ -3603,7 +3603,7 @@ class TestSpark:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine._setup_storage_connector"

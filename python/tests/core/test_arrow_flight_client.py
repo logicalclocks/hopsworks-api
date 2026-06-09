@@ -80,7 +80,7 @@ class TestArrowFlightClient:
             return_value=fg.select_all(),
         )
         mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
         )
 
         # required for batch query

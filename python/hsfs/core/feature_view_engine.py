@@ -276,7 +276,7 @@ class FeatureViewEngine:
                 )
 
             # Get transformation functions with correct statistics based on training dataset version.
-            transformation_functions = self._transformation_function_engine.get_ready_to_use_transformation_fns(
+            transformation_functions = self._transformation_function_engine._get_ready_to_use_transformation_fns(
                 feature_view=feature_view,
                 training_dataset_version=training_dataset_version,
             )
@@ -999,7 +999,7 @@ class FeatureViewEngine:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
         try:
-            df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            df = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
                 transformation_functions=transformation_functions,
                 data=data,
                 online=online,
@@ -1060,7 +1060,7 @@ class FeatureViewEngine:
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if (transformation_functions and transformed) or logging_data:
             try:
-                transformed_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                transformed_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
                     transformation_functions=transformation_functions,
                     data=feature_dataframe,
                     online=False,

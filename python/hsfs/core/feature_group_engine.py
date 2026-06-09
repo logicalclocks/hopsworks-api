@@ -114,7 +114,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # Currently on-demand transformation functions not supported in external feature groups.
         if feature_group.transformation_functions:
             if not isinstance(feature_group, fg.ExternalFeatureGroup):
-                feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                feature_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
                     transformation_functions=feature_group.transformation_functions,
                     data=feature_dataframe,
                     online=False,
@@ -199,7 +199,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             The updated dataframe or list of dictionaries with the transformations applied.
         """
         try:
-            df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+            df = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
                 transformation_functions=transformation_functions,
                 data=data,
                 online=online,
@@ -238,7 +238,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and transform
         ):
             try:
-                feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                feature_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
                     transformation_functions=feature_group.transformation_functions,
                     data=feature_dataframe,
                     transformation_context=transformation_context,
@@ -552,7 +552,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if feature_group.transformation_functions and transform:
             try:
-                dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+                dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
                     transformation_functions=feature_group.transformation_functions,
                     data=dataframe,
                     online=False,

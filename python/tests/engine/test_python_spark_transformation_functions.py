@@ -80,7 +80,7 @@ class TestPythonSparkTransformationFunctions:
         tf_engine = TransformationFunctionEngine(feature_store_id=99)
         engine.set_instance(engine=python_engine, engine_type="python")
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=transformation_functions,
             data=df,
         )
@@ -101,7 +101,7 @@ class TestPythonSparkTransformationFunctions:
         tf_engine = TransformationFunctionEngine(feature_store_id=99)
         engine.set_instance(engine=spark_engine, engine_type="spark")
         # Act
-        result = tf_engine.apply_transformation_functions(
+        result = tf_engine._apply_transformation_functions(
             transformation_functions=transformation_functions,
             data=spark_df,
         )

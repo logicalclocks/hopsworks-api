@@ -2564,12 +2564,12 @@ class TestFeatureViewEngine:
 
         # Assert
         assert (
-            tf_engine_patch.apply_transformation_functions.call_args[1][
+            tf_engine_patch._apply_transformation_functions.call_args[1][
                 "transformation_functions"
             ][0].hopsworks_udf.function_name
             == tf_value.hopsworks_udf.function_name
         )
-        assert tf_engine_patch.apply_transformation_functions.call_count == 1
+        assert tf_engine_patch._apply_transformation_functions.call_count == 1
 
     def test_get_batch_data_with_extra_filter(self, mocker):
         # Arrange
@@ -4593,7 +4593,7 @@ class TestFeatureViewEngine:
         ]
         mocker.patch.object(
             fv_engine._transformation_function_engine,
-            "get_ready_to_use_transformation_fns",
+            "_get_ready_to_use_transformation_fns",
             return_value=[mock_one_hot_stats],
         )
 
