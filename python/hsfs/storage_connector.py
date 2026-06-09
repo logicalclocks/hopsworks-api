@@ -20,7 +20,6 @@ import logging
 import os
 import posixpath
 import re
-
 import time
 import warnings
 from abc import ABC, abstractmethod
@@ -3398,18 +3397,17 @@ class SqlConnector(StorageConnector):
                     return engine.get_instance().read_jdbc_on_driver(
                         options, dataframe_type
                     )
-                else:
-                    # No JKS — fall back to Oracle wallet (requires oraclepki.jar
-                    # + osdt_core.jar + osdt_cert.jar on classpath).
-                    options["oracle.net.tns_admin"] = wallet_dir
-                    options["oracle.net.wallet_location"] = (
-                        f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
-                    )
-                    if self._wallet_password:
-                        options["oracle.net.wallet_password"] = self._wallet_password
-                    return engine.get_instance().read_jdbc_on_driver(
-                        options, dataframe_type
-                    )
+                # No JKS — fall back to Oracle wallet (requires oraclepki.jar
+                # + osdt_core.jar + osdt_cert.jar on classpath).
+                options["oracle.net.tns_admin"] = wallet_dir
+                options["oracle.net.wallet_location"] = (
+                    f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
+                )
+                if self._wallet_password:
+                    options["oracle.net.wallet_password"] = self._wallet_password
+                return engine.get_instance().read_jdbc_on_driver(
+                    options, dataframe_type
+                )
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
