@@ -294,7 +294,7 @@ class FeatureView:
             util.JobWarning,
             stacklevel=2,
         )
-        self._feature_view_engine.delete(self.name, self.version, force)
+        self._feature_view_engine._delete(self.name, self.version, force)
 
     @public
     @staticmethod
@@ -365,7 +365,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.update(self)
+        return self._feature_view_engine._update(self)
 
     @public
     @usage.method_logger
@@ -603,7 +603,7 @@ class FeatureView:
         Returns:
             The batch query.
         """
-        return self._feature_view_engine.get_batch_query_string(
+        return self._feature_view_engine._get_batch_query_string(
             self,
             start_time,
             end_time,
@@ -1311,7 +1311,7 @@ class FeatureView:
         if not self._batch_scoring_server._serving_initialized:
             self.init_batch_scoring()
 
-        return self._feature_view_engine.get_batch_data(
+        return self._feature_view_engine._get_batch_data(
             self,
             start_time,
             end_time,
@@ -1357,7 +1357,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.add_tag(self, name, value)
+        return self._feature_view_engine._add_tag(self, name, value)
 
     @public
     def get_tag(self, name: str) -> tag.Tag | None:
@@ -1384,7 +1384,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.get_tag(self, name)
+        return self._feature_view_engine._get_tag(self, name)
 
     @public
     def get_tags(self) -> dict[str, tag.Tag]:
@@ -1408,7 +1408,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.get_tags(self)
+        return self._feature_view_engine._get_tags(self)
 
     @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
@@ -1425,7 +1425,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_view_engine.get_parent_feature_groups(self)
+        return self._feature_view_engine._get_parent_feature_groups(self)
 
     @public
     def get_newest_model(
@@ -1493,7 +1493,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.get_models_provenance(
+        return self._feature_view_engine._get_models_provenance(
             self, training_dataset_version=training_dataset_version
         )
 
@@ -1519,7 +1519,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.delete_tag(self, name)
+        return self._feature_view_engine._delete_tag(self, name)
 
     @public
     def update_last_accessed_training_dataset(self, version: int) -> None:
@@ -1757,7 +1757,7 @@ class FeatureView:
             tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
-        td, td_job = self._feature_view_engine.create_training_dataset(
+        td, td_job = self._feature_view_engine._create_training_dataset(
             self,
             td,
             write_options or {},
@@ -2058,7 +2058,7 @@ class FeatureView:
             tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
-        td, td_job = self._feature_view_engine.create_training_dataset(
+        td, td_job = self._feature_view_engine._create_training_dataset(
             self,
             td,
             write_options or {},
@@ -2354,7 +2354,7 @@ class FeatureView:
             tags=normalized_tags,
         )
         # td_job is used only if the python engine is used
-        td, td_job = self._feature_view_engine.create_training_dataset(
+        td, td_job = self._feature_view_engine._create_training_dataset(
             self,
             td,
             write_options or {},
@@ -2441,7 +2441,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        td, td_job = self._feature_view_engine.recreate_training_dataset(
+        td, td_job = self._feature_view_engine._recreate_training_dataset(
             self,
             training_dataset_version=training_dataset_version,
             statistics_config=statistics_config,
@@ -2595,7 +2595,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
         )
-        td, df = self._feature_view_engine.get_training_data(
+        td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
             training_dataset_obj=td,
@@ -2779,7 +2779,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
         )
-        td, df = self._feature_view_engine.get_training_data(
+        td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
             training_dataset_obj=td,
@@ -3003,7 +3003,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
         )
-        td, df = self._feature_view_engine.get_training_data(
+        td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
             training_dataset_obj=td,
@@ -3111,7 +3111,7 @@ class FeatureView:
         Returns:
             (X, y): Tuple of dataframe of features and labels
         """
-        td, df = self._feature_view_engine.get_training_data(
+        td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
             training_dataset_version=training_dataset_version,
@@ -3185,7 +3185,7 @@ class FeatureView:
             (X_train, X_test, y_train, y_test):
                 Tuple of dataframe of features and labels
         """
-        td, df = self._feature_view_engine.get_training_data(
+        td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
             training_dataset_version=training_dataset_version,
@@ -3261,7 +3261,7 @@ class FeatureView:
             (X_train, X_val, X_test, y_train, y_val, y_test):
                 Tuple of dataframe of features and labels
         """
-        td, df = self._feature_view_engine.get_training_data(
+        td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
             training_dataset_version=training_dataset_version,
@@ -3302,7 +3302,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        tds = self._feature_view_engine.get_training_datasets(self)
+        tds = self._feature_view_engine._get_training_datasets(self)
         for td in tds:
             util.check_missing_mandatory_tags(
                 td.missing_mandatory_tags,
@@ -3340,7 +3340,7 @@ class FeatureView:
         Returns:
             `Statistics`
         """
-        return self._statistics_engine.get(
+        return self._statistics_engine._get(
             self,
             training_dataset_version=training_dataset_version,
             before_transformation=before_transformation,
@@ -3381,7 +3381,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_view_engine.add_tag(
+        return self._feature_view_engine._add_tag(
             self, name, value, training_dataset_version=training_dataset_version
         )
 
@@ -3417,7 +3417,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_view_engine.get_tag(
+        return self._feature_view_engine._get_tag(
             self, name, training_dataset_version=training_dataset_version
         )
 
@@ -3451,7 +3451,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_view_engine.get_tags(
+        return self._feature_view_engine._get_tags(
             self, training_dataset_version=training_dataset_version
         )
 
@@ -3484,7 +3484,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_view_engine.delete_tag(
+        return self._feature_view_engine._delete_tag(
             self, name, training_dataset_version=training_dataset_version
         )
 
@@ -3513,7 +3513,7 @@ class FeatureView:
         """
         if self._last_accessed_training_dataset == training_dataset_version:
             self.update_last_accessed_training_dataset(None)
-        self._feature_view_engine.delete_training_dataset_only(
+        self._feature_view_engine._delete_training_dataset_only(
             self, training_data_version=training_dataset_version
         )
 
@@ -3539,7 +3539,7 @@ class FeatureView:
         """
         if self._last_accessed_training_dataset is not None:
             self.update_last_accessed_training_dataset(None)
-        self._feature_view_engine.delete_training_dataset_only(self)
+        self._feature_view_engine._delete_training_dataset_only(self)
 
     @public
     @usage.method_logger
@@ -3568,7 +3568,7 @@ class FeatureView:
         """
         if self._last_accessed_training_dataset == training_dataset_version:
             self.update_last_accessed_training_dataset(None)
-        self._feature_view_engine.delete_training_data(
+        self._feature_view_engine._delete_training_data(
             self, training_data_version=training_dataset_version
         )
 
@@ -3594,7 +3594,7 @@ class FeatureView:
         """
         if self._last_accessed_training_dataset is not None:
             self.update_last_accessed_training_dataset(None)
-        self._feature_view_engine.delete_training_data(self)
+        self._feature_view_engine._delete_training_data(self)
 
     @public
     def get_feature_monitoring_configs(
@@ -3646,7 +3646,7 @@ class FeatureView:
                 "Only Feature Group registered with Hopsworks can fetch feature monitoring configurations."
             )
 
-        return self._feature_monitoring_config_engine.get_feature_monitoring_configs(
+        return self._feature_monitoring_config_engine._get_feature_monitoring_configs(
             name=name,
             feature_name=feature_name,
             config_id=config_id,
@@ -3707,7 +3707,7 @@ class FeatureView:
                 "Only Feature View registered with Hopsworks can fetch feature monitoring history."
             )
 
-        return self._feature_monitoring_result_engine.get_feature_monitoring_results(
+        return self._feature_monitoring_result_engine._get_feature_monitoring_results(
             config_name=config_name,
             config_id=config_id,
             start_time=start_time,
@@ -4137,8 +4137,8 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
-        fv = self._feature_view_engine.enable_feature_logging(self, extra_log_columns)
-        self._feature_logging = self._feature_view_engine.get_feature_logging(fv)
+        fv = self._feature_view_engine._enable_feature_logging(self, extra_log_columns)
+        self._feature_logging = self._feature_view_engine._get_feature_logging(fv)
         return fv
 
     @public
@@ -4317,7 +4317,7 @@ class FeatureView:
                 stacklevel=1,
             )
             logging_features = (
-                self._feature_view_engine.get_logging_feature_from_dataframe(
+                self._feature_view_engine._get_logging_feature_from_dataframe(
                     dataframes=[
                         untransformed_features,
                         transformed_features,
@@ -4332,7 +4332,7 @@ class FeatureView:
                 )
             )
             self.enable_logging(extra_log_columns=logging_features)
-        return self._feature_view_engine.log_features(
+        return self._feature_view_engine._log_features(
             self,
             feature_logging=self.feature_logging,
             logs=logging_data,
@@ -4384,7 +4384,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the log timeline.
         """
-        return self._feature_view_engine.get_log_timeline(
+        return self._feature_view_engine._get_log_timeline(
             self, wallclock_time, limit, transformed
         )
 
@@ -4434,7 +4434,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to read the log entries.
         """
-        return self._feature_view_engine.read_feature_logs(
+        return self._feature_view_engine._read_feature_logs(
             self,
             start_time,
             end_time,
@@ -4459,7 +4459,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to pause feature logging.
         """
-        self._feature_view_engine.pause_logging(self)
+        self._feature_view_engine._pause_logging(self)
 
     @public
     def resume_logging(self) -> None:
@@ -4474,7 +4474,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to pause feature logging.
         """
-        self._feature_view_engine.resume_logging(self)
+        self._feature_view_engine._resume_logging(self)
 
     @public
     def materialize_log(
@@ -4498,7 +4498,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to materialize the log.
         """
-        return self._feature_view_engine.materialize_feature_logs(
+        return self._feature_view_engine._materialize_feature_logs(
             self, wait, transformed
         )
 
@@ -4519,7 +4519,7 @@ class FeatureView:
              hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the log.
         """
         if self.feature_logging is not None:
-            self._feature_view_engine.delete_feature_logs(
+            self._feature_view_engine._delete_feature_logs(
                 self, self.feature_logging, transformed
             )
 
@@ -4624,7 +4624,7 @@ class FeatureView:
                 - `dict[str, Any]` if input was a dictionary
         """
         if self._on_demand_transformation_functions:
-            data = self._feature_view_engine.apply_transformations(
+            data = self._feature_view_engine._apply_transformations(
                 transformation_functions=self._on_demand_transformation_functions,
                 data=data,
                 online=online,
@@ -4698,7 +4698,7 @@ class FeatureView:
                 - `dict[str, Any]` if input was a dictionary
         """
         if self.transformation_functions:
-            data = self._feature_view_engine.apply_transformations(
+            data = self._feature_view_engine._apply_transformations(
                 transformation_functions=self.transformation_functions,
                 data=data,
                 online=online,
@@ -4812,7 +4812,7 @@ class FeatureView:
         Returns:
             List of training dataset features objects.
         """
-        return self._feature_view_engine.get_training_dataset_schema(
+        return self._feature_view_engine._get_training_dataset_schema(
             self, training_dataset_version
         )
 
@@ -5097,7 +5097,7 @@ class FeatureView:
     def feature_logging(self) -> FeatureLogging | None:
         """Feature logging feature groups of this feature view."""
         if self.logging_enabled and self._feature_logging is None:
-            self._feature_logging = self._feature_view_engine.get_feature_logging(self)
+            self._feature_logging = self._feature_view_engine._get_feature_logging(self)
         return self._feature_logging
 
     def _get_spine_fg_ids(self) -> list[feature_group.SpineGroup]:

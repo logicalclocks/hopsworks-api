@@ -46,42 +46,42 @@ class TestMonitoringWindowConfigEngine:
         just_years_expression = "9y"
 
         # Act
-        all_one = monitoring_window_config_engine.time_range_str_to_time_delta(
+        all_one = monitoring_window_config_engine._time_range_str_to_time_delta(
             all_one_expression
         )
-        just_days = monitoring_window_config_engine.time_range_str_to_time_delta(
+        just_days = monitoring_window_config_engine._time_range_str_to_time_delta(
             just_days_expression
         )
-        just_hours = monitoring_window_config_engine.time_range_str_to_time_delta(
+        just_hours = monitoring_window_config_engine._time_range_str_to_time_delta(
             just_hours_expression
         )
-        just_weeks = monitoring_window_config_engine.time_range_str_to_time_delta(
+        just_weeks = monitoring_window_config_engine._time_range_str_to_time_delta(
             just_weeks_expression
         )
-        disordered = monitoring_window_config_engine.time_range_str_to_time_delta(
+        disordered = monitoring_window_config_engine._time_range_str_to_time_delta(
             disordered_expression
         )
-        double = monitoring_window_config_engine.time_range_str_to_time_delta(
+        double = monitoring_window_config_engine._time_range_str_to_time_delta(
             double_expression
         )
         with pytest.raises(ValueError, match=r"window_length"):
-            monitoring_window_config_engine.time_range_str_to_time_delta(
+            monitoring_window_config_engine._time_range_str_to_time_delta(
                 negative_expression, "window_length"
             )
         with pytest.raises(ValueError, match=r"window_length"):
-            monitoring_window_config_engine.time_range_str_to_time_delta(
+            monitoring_window_config_engine._time_range_str_to_time_delta(
                 just_minutes_expression, "window_length"
             )
         with pytest.raises(ValueError, match=r"window_length"):
-            monitoring_window_config_engine.time_range_str_to_time_delta(
+            monitoring_window_config_engine._time_range_str_to_time_delta(
                 just_seconds_expression, "window_length"
             )
         with pytest.raises(ValueError, match=r"window_length"):
-            monitoring_window_config_engine.time_range_str_to_time_delta(
+            monitoring_window_config_engine._time_range_str_to_time_delta(
                 just_months_expression, "window_length"
             )
         with pytest.raises(ValueError, match=r"window_length"):
-            monitoring_window_config_engine.time_range_str_to_time_delta(
+            monitoring_window_config_engine._time_range_str_to_time_delta(
                 just_years_expression, "window_length"
             )
 
@@ -111,7 +111,7 @@ class TestMonitoringWindowConfigEngine:
         (
             start_time,
             end_time,
-        ) = monitoring_window_config_engine.get_window_start_end_times(config)
+        ) = monitoring_window_config_engine._get_window_start_end_times(config)
         after_time = util.convert_event_time_to_timestamp(datetime.now())
 
         # Assert
@@ -131,7 +131,7 @@ class TestMonitoringWindowConfigEngine:
         (
             start_time,
             end_time,
-        ) = monitoring_window_config_engine.get_window_start_end_times(
+        ) = monitoring_window_config_engine._get_window_start_end_times(
             config,
         )
         after_time = util.convert_event_time_to_timestamp(datetime.now())
@@ -163,7 +163,7 @@ class TestMonitoringWindowConfigEngine:
         (
             start_time,
             end_time,
-        ) = monitoring_window_config_engine.get_window_start_end_times(
+        ) = monitoring_window_config_engine._get_window_start_end_times(
             config,
         )
         after_time = util.convert_event_time_to_timestamp(
@@ -198,7 +198,7 @@ class TestMonitoringWindowConfigEngine:
         (
             start_time,
             end_time,
-        ) = monitoring_window_config_engine.get_window_start_end_times(
+        ) = monitoring_window_config_engine._get_window_start_end_times(
             config,
         )
         after_time = util.convert_event_time_to_timestamp(
@@ -237,25 +237,25 @@ class TestMonitoringWindowConfigEngine:
         end_time = datetime.now().timestamp()
 
         # Act
-        _ = config_engine.fetch_feature_group_data(
+        _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
             feature_name=None,
             start_time=None,
             end_time=None,
         )
-        _ = config_engine.fetch_feature_group_data(
+        _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
             feature_name=DEFAULT_FEATURE_NAME,
             start_time=start_time,
             end_time=end_time,
         )
-        _ = config_engine.fetch_feature_group_data(
+        _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
             feature_name=None,
             start_time=start_time,
             end_time=None,
         )
-        _ = config_engine.fetch_feature_group_data(
+        _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
             feature_name=DEFAULT_FEATURE_NAME,
             start_time=None,
@@ -301,13 +301,13 @@ class TestMonitoringWindowConfigEngine:
         # Act
 
         # use as_of
-        _ = config_engine.fetch_feature_view_data(
+        _ = config_engine._fetch_feature_view_data(
             entity=unit_test_fv,
             feature_name=None,
             start_time=None,
             end_time=None,
         )
-        _ = config_engine.fetch_feature_view_data(
+        _ = config_engine._fetch_feature_view_data(
             entity=unit_test_fv,
             feature_name=DEFAULT_FEATURE_NAME,
             start_time=start_time,
@@ -331,10 +331,10 @@ class TestMonitoringWindowConfigEngine:
         mocker.patch("hopsworks_common.client.get_instance")
 
         fetch_feature_group_data_mocker = mocker.patch(
-            "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine.fetch_feature_group_data",
+            "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine._fetch_feature_group_data",
         )
         fetch_feature_view_data_mocker = mocker.patch(
-            "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine.fetch_feature_view_data",
+            "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine._fetch_feature_view_data",
         )
         unit_test_fg = feature_group.FeatureGroup.from_response_json(
             backend_fixtures["feature_group"]["get"]["response"]
@@ -347,13 +347,13 @@ class TestMonitoringWindowConfigEngine:
         config_engine_fv = mwce.MonitoringWindowConfigEngine()
 
         # Act
-        config_engine_fg.fetch_entity_data_in_monitoring_window(
+        config_engine_fg._fetch_entity_data_in_monitoring_window(
             entity=unit_test_fg,
             start_time=None,
             end_time=None,
             row_percentage=0.5,
         )
-        config_engine_fv.fetch_entity_data_in_monitoring_window(
+        config_engine_fv._fetch_entity_data_in_monitoring_window(
             entity=unit_test_fv,
             start_time=None,
             end_time=None,

@@ -46,7 +46,7 @@ class ValidationReportEngine:
             feature_store_id=feature_store_id, feature_group_id=feature_group_id
         )
 
-    def save(
+    def _save(
         self,
         validation_report: ValidationReport,
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
@@ -58,7 +58,7 @@ class ValidationReportEngine:
             return saved_report.to_ge_type()
         return saved_report
 
-    def get_last(
+    def _get_last(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
     ) -> (
         ValidationReport
@@ -85,7 +85,7 @@ class ValidationReportEngine:
             return reports[0].to_ge_type()
         return reports[0]
 
-    def get_all(
+    def _get_all(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
     ) -> (
         list[ValidationReport]
@@ -109,7 +109,7 @@ class ValidationReportEngine:
             return [report.to_ge_type() for report in reports]
         return reports
 
-    def delete(self, validation_report_id: int):
+    def _delete(self, validation_report_id: int):
         self._validation_report_api.delete(validation_report_id)
 
     def _get_validation_report_url(self) -> str:

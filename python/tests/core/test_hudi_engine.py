@@ -37,7 +37,7 @@ class TestHudiEngine:
         )
 
         # Act
-        h_engine.save_hudi_fg(
+        h_engine._save_hudi_fg(
             dataset=None,
             save_mode=None,
             operation=None,
@@ -67,7 +67,7 @@ class TestHudiEngine:
         )
 
         # Act
-        h_engine.delete_record(delete_df=None, write_options={})
+        h_engine._delete_record(delete_df=None, write_options={})
 
         # Assert
         assert mock_fg_api.return_value.commit.call_count == 1
@@ -107,7 +107,7 @@ class TestHudiEngine:
         )
 
         # Act
-        h_engine.register_temporary_table(
+        h_engine._register_temporary_table(
             hudi_fg_alias=hudi_fg_alias, read_options=None
         )
 

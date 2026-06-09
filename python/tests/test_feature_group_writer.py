@@ -66,7 +66,7 @@ class TestFeatureGroupWriter:
             "hsfs.core.kafka_engine._init_kafka_resources",
             return_value=(producer, headers, feature_writers, writer_m),
         )
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mocker.patch("hsfs.core.job.Job")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -124,7 +124,7 @@ class TestFeatureGroupWriter:
             "hsfs.core.kafka_engine._init_kafka_resources",
             return_value=(producer, headers, feature_writers, writer_m),
         )
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mocker.patch("hsfs.core.job.Job")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 

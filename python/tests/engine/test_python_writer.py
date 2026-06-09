@@ -30,7 +30,7 @@ class TestPythonWriter:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         avro_schema_mock = mocker.patch(
             "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema"
         )
@@ -52,7 +52,7 @@ class TestPythonWriter:
         )
         avro_schema_mock.side_effect = [avro_schema]
         mock_python_engine_kafka_produce = mocker.patch(
-            "hsfs.core.kafka_engine.kafka_produce"
+            "hsfs.core.kafka_engine._kafka_produce"
         )
         mocker.patch("hsfs.core.job_api.JobApi")  # get, launch
         mocker.patch("hsfs.util.get_job_url")
@@ -125,15 +125,15 @@ class TestPythonWriter:
     def _setup_kafka_mocks(self, mocker):
         """Common mock setup for _run_materialization_job tests."""
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
-        mocker.patch("hsfs.core.kafka_engine.kafka_produce")
-        mocker.patch("hsfs.core.kafka_engine.encode_row", return_value=b"encoded")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._kafka_produce")
+        mocker.patch("hsfs.core.kafka_engine._encode_row", return_value=b"encoded")
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
-            "hsfs.core.kafka_engine.kafka_get_offsets",
+            "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value="test_offsets",
         )
         mocker.patch(
@@ -170,7 +170,7 @@ class TestPythonWriter:
         # Arrange
         self._setup_kafka_mocks(mocker)
         mock_init_kafka_resources = mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_resources",
+            "hsfs.core.kafka_engine._get_kafka_resources",
             return_value=(mocker.MagicMock(), {}, {}, mocker.MagicMock()),
         )
         python_engine = python.Engine()
@@ -193,7 +193,7 @@ class TestPythonWriter:
         # Arrange
         self._setup_kafka_mocks(mocker)
         mock_init_kafka_resources = mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_resources",
+            "hsfs.core.kafka_engine._get_kafka_resources",
             return_value=(mocker.MagicMock(), {}, {}, mocker.MagicMock()),
         )
         python_engine = python.Engine()

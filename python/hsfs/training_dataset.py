@@ -689,7 +689,7 @@ class TrainingDataset(TrainingDatasetBase):
         user_version = self._version
         user_stats_config = self._statistics_config
         # td_job is used only if the python engine is used
-        training_dataset, td_job = self._training_dataset_engine.save(
+        training_dataset, td_job = self._training_dataset_engine._save(
             self, features, write_options or {}
         )
         self.data_source = training_dataset.data_source
@@ -745,7 +745,7 @@ class TrainingDataset(TrainingDatasetBase):
             hopsworks.client.exceptions.RestAPIError: Unable to create training dataset metadata.
         """
         # td_job is used only if the python engine is used
-        td_job = self._training_dataset_engine.insert(
+        td_job = self._training_dataset_engine._insert(
             self, features, write_options or {}, overwrite
         )
 
@@ -775,14 +775,14 @@ class TrainingDataset(TrainingDatasetBase):
                 "The training dataset has splits, please specify the split you want to read"
             )
 
-        return self._training_dataset_engine.read(self, split, read_options or {})
+        return self._training_dataset_engine._read(self, split, read_options or {})
 
     @public
     def compute_statistics(self):
         """Compute the statistics for the training dataset and save them to the feature store."""
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             try:
-                registered_stats = self._statistics_engine.get(
+                registered_stats = self._statistics_engine._get(
                     self,
                     before_transformation=False,
                 )
@@ -797,8 +797,8 @@ class TrainingDataset(TrainingDatasetBase):
             if registered_stats is not None:
                 return registered_stats
             if self.splits:
-                return self._statistics_engine.compute_and_save_split_statistics(self)
-            return self._statistics_engine.compute_and_save_statistics(
+                return self._statistics_engine._compute_and_save_split_statistics(self)
+            return self._statistics_engine._compute_and_save_statistics(
                 self, self.read()
             )
         return None
@@ -830,7 +830,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
         """
-        self._training_dataset_engine.add_tag(self, name, value)
+        self._training_dataset_engine._add_tag(self, name, value)
 
     @public
     def delete_tag(self, name: str):
@@ -842,7 +842,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
         """
-        self._training_dataset_engine.delete_tag(self, name)
+        self._training_dataset_engine._delete_tag(self, name)
 
     @public
     def get_tag(self, name: str) -> Any:
@@ -857,7 +857,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
         """
-        return self._training_dataset_engine.get_tag(self, name)
+        return self._training_dataset_engine._get_tag(self, name)
 
     @public
     def get_tags(self) -> dict[str, tag.Tag]:
@@ -869,7 +869,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
         """
-        return self._training_dataset_engine.get_tags(self)
+        return self._training_dataset_engine._get_tags(self)
 
     @public
     def update_statistics_config(self) -> TrainingDataset:
@@ -884,7 +884,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend encounters an issue
         """
-        self._training_dataset_engine.update_statistics_config(self)
+        self._training_dataset_engine._update_statistics_config(self)
         return self
 
     @public
@@ -1035,13 +1035,13 @@ class TrainingDataset(TrainingDatasetBase):
     @property
     def statistics(self) -> Statistics:
         """Get computed statistics for the training dataset."""
-        return self._statistics_engine.get(self, before_transformation=False)
+        return self._statistics_engine._get(self, before_transformation=False)
 
     @public
     @property
     def query(self):
         """Query to generate this training dataset from online feature store."""
-        return self._training_dataset_engine.query(self, True, True, False)
+        return self._training_dataset_engine._query(self, True, True, False)
 
     @public
     def get_query(self, online: bool = True, with_label: bool = False) -> str | None:
@@ -1054,7 +1054,7 @@ class TrainingDataset(TrainingDatasetBase):
         Returns:
             Query string for the chosen storage used to generate this training dataset.
         """
-        return self._training_dataset_engine.query(
+        return self._training_dataset_engine._query(
             self, online, with_label, engine.get_type() == "python"
         )
 

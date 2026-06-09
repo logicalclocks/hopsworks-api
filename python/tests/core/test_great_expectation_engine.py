@@ -94,7 +94,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = None
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg, dataframe=None, save_report=None, validation_options={}
         )
 
@@ -133,7 +133,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = suite
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg,
             dataframe=None,
             save_report=None,
@@ -179,7 +179,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = suite
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg,
             dataframe=None,
             validation_options=validation_options,
@@ -224,7 +224,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = suite
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg,
             dataframe=None,
             save_report=True,
@@ -267,7 +267,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_suite = ge_engine.fetch_or_convert_expectation_suite(
+        converted_suite = ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg, expectation_suite=suite
         )
 
@@ -310,7 +310,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_suite = ge_engine.fetch_or_convert_expectation_suite(
+        converted_suite = ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg, expectation_suite=suite
         )
 
@@ -351,7 +351,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        ge_engine.fetch_or_convert_expectation_suite(
+        ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg, expectation_suite=suite
         )
 
@@ -390,7 +390,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        result = ge_engine.fetch_or_convert_expectation_suite(
+        result = ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg,
             expectation_suite=suite,
             validation_options={"fetch_expectation_suite": False},
@@ -416,7 +416,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={}
         )
 
@@ -438,7 +438,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={}
         )
 
@@ -460,7 +460,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={"run_validation": False}
         )
 
@@ -482,7 +482,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={"run_validation": True}
         )
 
@@ -522,7 +522,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_report = ge_engine.save_or_convert_report(
+        converted_report = ge_engine._save_or_convert_report(
             save_report=save_report,
             ge_type=ge_type,
             feature_group=fg,
@@ -567,7 +567,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        ge_engine.save_or_convert_report(
+        ge_engine._save_or_convert_report(
             save_report=save_report,
             ge_type=ge_type,
             feature_group=fg,
@@ -612,7 +612,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_report = ge_engine.save_or_convert_report(
+        converted_report = ge_engine._save_or_convert_report(
             save_report=save_report,
             ge_type=ge_type,
             feature_group=fg,
@@ -653,7 +653,7 @@ class TestGreatExpectationEngine:
 
         # Act
         with pytest.raises(ModuleNotFoundError):
-            ge_engine.validate(
+            ge_engine._validate(
                 feature_group=fg,
                 dataframe=df,
                 expectation_suite=suite,
@@ -898,7 +898,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        result = ge_engine.validate(
+        result = ge_engine._validate(
             feature_group=fg,
             dataframe=df,
             expectation_suite=suite,

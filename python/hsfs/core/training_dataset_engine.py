@@ -38,7 +38,7 @@ class TrainingDatasetEngine:
         )
         self._tags_api = tags_api.TagsApi(feature_store_id, self.ENTITY_TYPE)
 
-    def save(self, training_dataset, features, user_write_options):
+    def _save(self, training_dataset, features, user_write_options):
         if isinstance(features, query.Query):
             training_dataset._querydto = features
             training_dataset._features = [
@@ -71,7 +71,7 @@ class TrainingDatasetEngine:
         )
         return updated_instance, td_job
 
-    def insert(self, training_dataset, dataset, user_write_options, overwrite):
+    def _insert(self, training_dataset, dataset, user_write_options, overwrite):
         return engine.get_instance().write_training_dataset(
             training_dataset,
             dataset,
@@ -79,7 +79,7 @@ class TrainingDatasetEngine:
             self.OVERWRITE if overwrite else self.APPEND,
         )
 
-    def read(self, training_dataset, split, user_read_options):
+    def _read(self, training_dataset, split, user_read_options):
         read_options = engine.get_instance().read_options(
             training_dataset.data_format, user_read_options
         )
@@ -97,7 +97,7 @@ class TrainingDatasetEngine:
             path=path,
         )
 
-    def query(self, training_dataset, online, with_label, is_hive_query):
+    def _query(self, training_dataset, online, with_label, is_hive_query):
         fs_query = self._training_dataset_api.get_query(
             training_dataset, with_label, is_hive_query
         )
@@ -120,7 +120,7 @@ class TrainingDatasetEngine:
 
         return fs_query.query
 
-    def add_tag(self, training_dataset, name, value):
+    def _add_tag(self, training_dataset, name, value):
         """Attach a name/value tag to a training dataset.
 
         Parameters:
@@ -130,7 +130,7 @@ class TrainingDatasetEngine:
         """
         self._tags_api.add(training_dataset, name, value)
 
-    def delete_tag(self, training_dataset, name):
+    def _delete_tag(self, training_dataset, name):
         """Remove a tag from a training dataset.
 
         Parameters:
@@ -139,7 +139,7 @@ class TrainingDatasetEngine:
         """
         self._tags_api.delete(training_dataset, name)
 
-    def get_tag(self, training_dataset, name):
+    def _get_tag(self, training_dataset, name):
         """Get tag with a certain name for a training dataset.
 
         Parameters:
@@ -148,7 +148,7 @@ class TrainingDatasetEngine:
         """
         return self._tags_api.get(training_dataset, name)[name]
 
-    def get_tags(self, training_dataset):
+    def _get_tags(self, training_dataset):
         """Get all tags for a training dataset.
 
         Parameters:
@@ -156,7 +156,7 @@ class TrainingDatasetEngine:
         """
         return self._tags_api.get(training_dataset)
 
-    def update_statistics_config(self, training_dataset):
+    def _update_statistics_config(self, training_dataset):
         """Update the statistics configuration of a training dataset.
 
         Parameters:

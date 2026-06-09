@@ -244,8 +244,9 @@ class Predictor(DeployableComponent):
         )
         return PredictorResources(num_instances)
 
+    @public
     @classmethod
-    def _for_model(cls, model, **kwargs):
+    def for_model(cls, model, **kwargs):
         kwargs["model_name"] = model.name
         kwargs["model_path"] = model.model_path
         kwargs["model_version"] = model.version

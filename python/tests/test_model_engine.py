@@ -99,7 +99,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert
         assert result == cache_path
@@ -129,7 +129,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert - second location used, first cleaned up, marker written
         assert result == _leaf(base2)
@@ -160,7 +160,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert
         assert result == _leaf(base2)
@@ -183,7 +183,7 @@ class TestModelEngineDownload:
 
         # Act / Assert
         with pytest.raises(OSError) as exc:
-            eng.download(m)
+            eng._download(m)
         assert exc.value.errno == errno.ENOSPC
 
     def test_explicit_local_path_does_not_fall_back(self, mocker, tmp_path):
@@ -200,7 +200,7 @@ class TestModelEngineDownload:
 
         # Act / Assert - the user's chosen path is honoured, no cache fallback
         with pytest.raises(PermissionError):
-            eng.download(m, local_path=local_path)
+            eng._download(m, local_path=local_path)
         base_dirs_spy.assert_not_called()
 
     def test_explicit_local_path_success(self, mocker, tmp_path):
@@ -213,7 +213,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m, local_path=local_path)
+        result = eng._download(m, local_path=local_path)
 
         # Assert - dir created, files downloaded, no completion marker for explicit paths
         assert result == local_path
@@ -232,7 +232,7 @@ class TestModelEngineDownload:
         mocker.patch.object(model_engine.ModelEngine, "_download_model_files")
 
         # Act
-        eng.download(m, local_path=local_path)
+        eng._download(m, local_path=local_path)
 
         # Assert - the user's pre-existing file is not wiped
         assert os.path.exists(os.path.join(local_path, "keep.txt"))
@@ -261,7 +261,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert - stale file removed, fresh download present and marked complete
         assert result == cache_path
@@ -294,7 +294,7 @@ class TestModelEngineDownload:
 
         # Act / Assert - not reused as valid, and not overwritten (we don't own it)
         with pytest.raises(PermissionError):
-            eng.download(m)
+            eng._download(m)
         download_spy.assert_not_called()
         assert os.path.exists(os.path.join(cache_path, "model.pkl"))
 
@@ -309,7 +309,7 @@ class TestModelEngineDownload:
         mocker.patch.object(model_engine.ModelEngine, "_download_model_files")
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert - owner-only permissions (POSIX only)
         if hasattr(os, "getuid"):
@@ -343,7 +343,7 @@ class TestModelEngineDownload:
         recreated = _make_model(mocker, model_id=11)
 
         # Act
-        result = eng.download(recreated)
+        result = eng._download(recreated)
 
         # Assert - fresh dir for the new id, re-downloaded, stale id pruned
         assert result == _leaf(base, model_id=11)

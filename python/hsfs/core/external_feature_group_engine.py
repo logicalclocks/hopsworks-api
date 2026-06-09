@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
-    def save(self, feature_group):
+    def _save(self, feature_group):
         if not feature_group.data_source:
             raise FeatureStoreException(
                 "A data source needs to be provided when creating an external feature group."
@@ -83,7 +83,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
 
         self._feature_group_api.save(feature_group)
 
-    def insert(
+    def _insert(
         self,
         feature_group,
         feature_dataframe,
@@ -102,13 +102,13 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         if not feature_group._id:
             # only save metadata if feature group does not exist
             feature_group.columns = schema
-            self.save(feature_group)
+            self._save(feature_group)
         else:
             # else, just verify that feature group schema matches user-provided dataframe
             self._verify_schema_compatibility(feature_group.columns, schema)
 
         # ge validation on python and non stream feature groups on spark
-        ge_report = feature_group._great_expectation_engine.validate(
+        ge_report = feature_group._great_expectation_engine._validate(
             feature_group=feature_group,
             dataframe=feature_dataframe,
             validation_options=validation_options or {},
@@ -150,7 +150,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_features(
+    def _update_features(
         self, feature_group: FeatureGroup, updated_features: list[Feature]
     ):
         """Updates features safely.
@@ -162,10 +162,10 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 This will replace the existing list of features.
         """
         self._update_features_metadata(
-            feature_group, self.new_feature_list(feature_group, updated_features)
+            feature_group, self._new_feature_list(feature_group, updated_features)
         )
 
-    def append_features(self, feature_group: FeatureGroup, new_features: list[Feature]):
+    def _append_features(self, feature_group: FeatureGroup, new_features: list[Feature]):
         """Appends features to a feature group.
 
         Parameters:
@@ -177,7 +177,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group.columns + new_features,  # todo allows for duplicates
         )
 
-    def update_description(self, feature_group: FeatureGroup, description: str):
+    def _update_description(self, feature_group: FeatureGroup, description: str):
         """Updates the description of a feature group.
 
         Parameters:
@@ -191,7 +191,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_deprecated(self, feature_group: FeatureGroup, deprecate: bool):
+    def _update_deprecated(self, feature_group: FeatureGroup, deprecate: bool):
         """Updates the deprecation status of a feature group.
 
         Parameters:

@@ -31,14 +31,14 @@ class LocalEngine:
         except Exception:
             self._hdfs_api = None
 
-    def mkdir(self, remote_path: str):
+    def _mkdir(self, remote_path: str):
         remote_path = self._prepend_project_path(remote_path)
         self._dataset_api.mkdir(remote_path)
 
-    def delete(self, model_instance):
+    def _delete(self, model_instance):
         self._model_api.delete(model_instance)
 
-    def upload(self, local_path: str, remote_path: str, upload_configuration=None):
+    def _upload(self, local_path: str, remote_path: str, upload_configuration=None):
         local_path = self._get_abs_path(local_path)
         remote_path = self._prepend_project_path(remote_path)
 
@@ -72,7 +72,7 @@ class LocalEngine:
                 ),
             )
 
-    def download(self, remote_path: str, local_path: str, download_configuration=None):
+    def _download(self, remote_path: str, local_path: str, download_configuration=None):
         local_path = self._get_abs_path(local_path)
         remote_path = self._prepend_project_path(remote_path)
 
@@ -94,12 +94,12 @@ class LocalEngine:
             # otherwise, use the REST API
             self._dataset_api.download(remote_path, local_path)
 
-    def copy(self, source_path, destination_path):
+    def _copy(self, source_path, destination_path):
         source_path = self._prepend_project_path(source_path)
         destination_path = self._prepend_project_path(destination_path)
         self._dataset_api.copy(source_path, destination_path)
 
-    def move(self, source_path, destination_path):
+    def _move(self, source_path, destination_path):
         source_path = self._prepend_project_path(source_path)
         destination_path = self._prepend_project_path(destination_path)
         self._dataset_api.move(source_path, destination_path)

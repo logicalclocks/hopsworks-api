@@ -88,7 +88,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.save(self, await_update)
+        self._serving_engine._save(self, await_update)
 
     @public
     @usage.method_logger
@@ -103,7 +103,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.start(self, await_status=await_running)
+        self._serving_engine._start(self, await_status=await_running)
 
     @public
     @usage.method_logger
@@ -118,7 +118,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.stop(self, await_status=await_stopped)
+        self._serving_engine._stop(self, await_status=await_stopped)
 
     @public
     @usage.method_logger
@@ -158,7 +158,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.delete(self, force)
+        self._serving_engine._delete(self, force)
 
     @public
     def get_state(self) -> PredictorState:
@@ -170,7 +170,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        return self._serving_engine.get_state(self)
+        return self._serving_engine._get_state(self)
 
     @public
     def is_created(self) -> bool:
@@ -183,7 +183,7 @@ class Deployment:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return (
-            self._serving_engine.get_state(self).status
+            self._serving_engine._get_state(self).status
             != PREDICTOR_STATE.STATUS_CREATING
         )
 
@@ -201,7 +201,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        status = self._serving_engine.get_state(self).status
+        status = self._serving_engine._get_state(self).status
         return (
             status == PREDICTOR_STATE.STATUS_RUNNING
             or (or_idle and status == PREDICTOR_STATE.STATUS_IDLE)
@@ -221,7 +221,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        status = self._serving_engine.get_state(self).status
+        status = self._serving_engine._get_state(self).status
         return status == PREDICTOR_STATE.STATUS_STOPPED or (
             or_created
             and (
@@ -273,7 +273,7 @@ class Deployment:
             predictions = my_deployment.predict(data)
             ```
         """
-        return self._serving_engine.predict(self, data, inputs)
+        return self._serving_engine._predict(self, data, inputs)
 
     @public
     def get_model(self):
@@ -293,7 +293,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        return self._serving_engine.download_artifact_files(self, local_path=local_path)
+        return self._serving_engine._download_artifact_files(self, local_path=local_path)
 
     @public
     def get_logs(self, component: str = "predictor", tail: int = 10):
@@ -321,7 +321,7 @@ class Deployment:
                 )
             )
 
-        logs = self._serving_engine.get_logs(self, component, tail)
+        logs = self._serving_engine._get_logs(self, component, tail)
         if logs is not None:
             for log in logs:
                 print(log, end="\n\n")
@@ -368,7 +368,7 @@ class Deployment:
                     component, ", ".join(components)
                 )
             )
-        return self._serving_engine.read_logs(
+        return self._serving_engine._read_logs(
             self,
             component=component,
             tail=tail,
@@ -421,7 +421,7 @@ class Deployment:
                     component, ", ".join(components)
                 )
             )
-        yield from self._serving_engine.tail_logs(
+        yield from self._serving_engine._tail_logs(
             self,
             component=component,
             interval=interval,

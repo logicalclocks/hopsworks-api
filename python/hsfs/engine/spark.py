@@ -310,7 +310,7 @@ class Engine:
             self._spark_session,
         )
 
-        hudi_engine_instance.register_temporary_table(
+        hudi_engine_instance._register_temporary_table(
             hudi_fg_alias,
             read_options,
         )
@@ -331,7 +331,7 @@ class Engine:
             spark_context=self._spark_context,
         )
 
-        delta_engine_instance.register_temporary_table(
+        delta_engine_instance._register_temporary_table(
             delta_fg_alias=delta_fg_alias,
             read_options=read_options,
             is_cdc_query=is_cdc_query,
@@ -612,7 +612,7 @@ class Engine:
         checkpoint_dir: str | None,
         write_options: dict[str, Any] | None,
     ):
-        write_options = kafka_engine.get_kafka_config(
+        write_options = kafka_engine._get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
@@ -681,7 +681,7 @@ class Engine:
                 self._spark_context,
             )
 
-            hudi_engine_instance.save_hudi_fg(
+            hudi_engine_instance._save_hudi_fg(
                 dataframe, self.APPEND, operation, write_options, validation_id
             )
         elif feature_group.time_travel_format == "DELTA":
@@ -692,7 +692,7 @@ class Engine:
                 self._spark_session,
                 None if self._is_connect else self._spark_context,
             )
-            delta_engine_instance.save_delta_fg(
+            delta_engine_instance._save_delta_fg(
                 dataframe, write_options, validation_id, operation=operation
             )
         else:
@@ -741,7 +741,7 @@ class Engine:
         return dataframe
 
     def _save_online_dataframe(self, feature_group, dataframe, write_options):
-        write_options = kafka_engine.get_kafka_config(
+        write_options = kafka_engine._get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
@@ -787,7 +787,7 @@ class Engine:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
-                for key, value in kafka_engine.get_headers(
+                for key, value in kafka_engine._get_headers(
                     feature_group, num_entries, options
                 ).items()
             ]

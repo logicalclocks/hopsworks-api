@@ -1114,7 +1114,7 @@ class Engine:
                 spark_context=None,
                 spark_session=None,
             )
-            delta_engine_instance.save_delta_fg(
+            delta_engine_instance._save_delta_fg(
                 dataframe,
                 write_options=offline_write_options,
                 validation_id=validation_id,
@@ -1801,13 +1801,13 @@ class Engine:
             # if we are writing to offline or not marking online rows, all rows will be produced, so count the entire dataframe
             n_rows = len(dataframe)
 
-        producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
+        producer, headers, feature_writers, writer = kafka_engine._get_kafka_resources(
             feature_group,
             offline_write_options,
             num_entries=n_rows,
         )
 
-        acked, progress_bar = kafka_engine.build_ack_callback_and_optional_progress_bar(
+        acked, progress_bar = kafka_engine._build_ack_callback_and_optional_progress_bar(
             n_rows=n_rows,
             is_multi_part_insert=feature_group._multi_part_insert,
             offline_write_options=offline_write_options,
@@ -1840,12 +1840,12 @@ class Engine:
                     "storage": b"1" if online_flag else b"0",
                 }
 
-            encoded_row = kafka_engine.encode_row(feature_writers, writer, row)
+            encoded_row = kafka_engine._encode_row(feature_writers, writer, row)
 
             # assemble key
             key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
 
-            kafka_engine.kafka_produce(
+            kafka_engine._kafka_produce(
                 producer=producer,
                 key=key,
                 encoded_row=encoded_row,
@@ -1880,7 +1880,7 @@ class Engine:
 
         if not feature_group._multi_part_insert:
             # set initial_check_point to the current offset
-            initial_check_point = kafka_engine.kafka_get_offsets(
+            initial_check_point = kafka_engine._kafka_get_offsets(
                 topic_name=feature_group._online_topic_name,
                 feature_store_id=feature_group.feature_store_id,
                 offline_write_options=offline_write_options,
@@ -1903,7 +1903,7 @@ class Engine:
                     stacklevel=1,
                 )
             # set the initial_check_point to the lowest offset (it was not set previously due to topic not existing)
-            initial_check_point = kafka_engine.kafka_get_offsets(
+            initial_check_point = kafka_engine._kafka_get_offsets(
                 topic_name=feature_group._online_topic_name,
                 feature_store_id=feature_group.feature_store_id,
                 offline_write_options=offline_write_options,

@@ -39,7 +39,7 @@ class TestValidationReportEngine:
         mock_vr_engine_get_validation_report_url.return_value = validation_report_url
 
         # Act
-        vr_engine.save(validation_report=None)
+        vr_engine._save(validation_report=None)
 
         # Assert
         assert mock_vr_api.return_value.create.call_count == 1
@@ -70,7 +70,7 @@ class TestValidationReportEngine:
         mock_vr_engine_get_validation_report_url.return_value = validation_report_url
 
         # Act
-        vr_engine.get_last()
+        vr_engine._get_last()
 
         # Assert
         assert mock_vr_api.return_value.get_last.call_count == 1
@@ -102,7 +102,7 @@ class TestValidationReportEngine:
         mock_vr_engine_get_validation_report_url.return_value = validation_report_url
 
         # Act
-        vr_engine.get_all()
+        vr_engine._get_all()
 
         # Assert
         assert mock_vr_api.return_value.get_all.call_count == 1
@@ -128,7 +128,7 @@ class TestValidationReportEngine:
         )
 
         # Act
-        vr_engine.delete(validation_report_id=validation_report_id)
+        vr_engine._delete(validation_report_id=validation_report_id)
 
         # Assert
         assert mock_vr_api.return_value.delete.call_count == 1

@@ -51,7 +51,7 @@ class TestStatisticsEngine:
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.profile_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._profile_statistics",
             return_value=None,
         )
         mocker.patch("hsfs.statistics.Statistics")
@@ -74,7 +74,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_statistics(
+        s_engine._compute_and_save_statistics(
             metadata_instance=fg,
             feature_dataframe=None,
             feature_group_commit_id=None,
@@ -94,7 +94,7 @@ class TestStatisticsEngine:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.profile_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._profile_statistics",
             return_value=None,
         )
         mocker.patch("hsfs.statistics.Statistics")
@@ -117,7 +117,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_statistics(
+        s_engine._compute_and_save_statistics(
             metadata_instance=fg,
             feature_dataframe=None,
             feature_group_commit_id=None,
@@ -137,7 +137,7 @@ class TestStatisticsEngine:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.profile_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._profile_statistics",
             return_value=None,
         )
         mocker.patch("hsfs.statistics.Statistics")
@@ -168,7 +168,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_statistics(
+        s_engine._compute_and_save_statistics(
             metadata_instance=fg,
             feature_dataframe=None,
             feature_group_commit_id=None,
@@ -195,7 +195,7 @@ class TestStatisticsEngine:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.profile_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._profile_statistics",
             return_value=statistics,
         )
         mocker.patch("hsfs.statistics.Statistics")
@@ -218,7 +218,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_statistics(
+        s_engine._compute_and_save_statistics(
             metadata_instance=fg,
             feature_dataframe=None,
             feature_group_commit_id=None,
@@ -245,7 +245,7 @@ class TestStatisticsEngine:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.profile_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._profile_statistics",
             return_value=statistics,
         )
         mocker.patch("hsfs.statistics.Statistics")
@@ -276,7 +276,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_statistics(
+        s_engine._compute_and_save_statistics(
             metadata_instance=fg,
             feature_dataframe=None,
             feature_group_commit_id=None,
@@ -298,7 +298,7 @@ class TestStatisticsEngine:
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.profile_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._profile_statistics",
             return_value=None,
         )
         mocker.patch("hsfs.statistics.Statistics")
@@ -321,7 +321,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_statistics(
+        s_engine._compute_and_save_statistics(
             metadata_instance=fg,
             feature_dataframe=None,
             feature_group_commit_id=1,
@@ -343,7 +343,7 @@ class TestStatisticsEngine:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.profile_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._profile_statistics",
             return_value=None,
         )
         mocker.patch("hsfs.statistics.Statistics")
@@ -374,7 +374,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_statistics(
+        s_engine._compute_and_save_statistics(
             metadata_instance=fg,
             feature_dataframe=None,
             feature_group_commit_id=1,
@@ -417,7 +417,7 @@ class TestStatisticsEngine:
         feature_dataframe.head.return_value = []
 
         # Act
-        s_engine.profile_statistics_with_config(
+        s_engine._profile_statistics_with_config(
             feature_dataframe=feature_dataframe,
             statistics_config=fg.statistics_config,
         )
@@ -460,7 +460,7 @@ class TestStatisticsEngine:
         feature_dataframe.head.return_value = [1]
 
         # Act
-        s_engine.profile_statistics_with_config(
+        s_engine._profile_statistics_with_config(
             feature_dataframe=feature_dataframe,
             statistics_config=fg.statistics_config,
         )
@@ -556,7 +556,7 @@ class TestStatisticsEngine:
         feature_store_id = 99
 
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.core.statistics_engine.StatisticsEngine.profile_statistics")
+        mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._profile_statistics")
         mock_split_statistics = mocker.patch("hsfs.split_statistics.SplitStatistics")
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
@@ -575,7 +575,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_split_statistics(
+        s_engine._compute_and_save_split_statistics(
             td_metadata_instance=td, feature_view_obj=None, feature_dataframes=None
         )
 
@@ -589,7 +589,7 @@ class TestStatisticsEngine:
         feature_store_id = 99
 
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.core.statistics_engine.StatisticsEngine.profile_statistics")
+        mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._profile_statistics")
         mock_split_statistics = mocker.patch("hsfs.split_statistics.SplitStatistics")
         mock_statistics_engine_save_statistics = mocker.patch(
             "hsfs.core.statistics_engine.StatisticsEngine._save_statistics"
@@ -608,7 +608,7 @@ class TestStatisticsEngine:
         )
 
         # Act
-        s_engine.compute_and_save_split_statistics(
+        s_engine._compute_and_save_split_statistics(
             td_metadata_instance=td,
             feature_view_obj=None,
             feature_dataframes={"split_name": "value"},
@@ -634,7 +634,7 @@ class TestStatisticsEngine:
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
         # Act
-        s_engine.compute_transformation_fn_statistics(
+        s_engine._compute_transformation_fn_statistics(
             td_metadata_instance=None,
             columns=None,
             label_encoder_features=None,
@@ -654,7 +654,7 @@ class TestStatisticsEngine:
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
         # Act
-        s_engine.get(
+        s_engine._get(
             metadata_instance=None,
             feature_names=None,
             computation_time=None,
@@ -675,7 +675,7 @@ class TestStatisticsEngine:
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
         # Act
-        s_engine.get_all(
+        s_engine._get_all(
             metadata_instance=None,
             feature_names=None,
             computation_time=None,
@@ -695,7 +695,7 @@ class TestStatisticsEngine:
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
         # Act
-        s_engine.get_by_time_window(
+        s_engine._get_by_time_window(
             metadata_instance=None,
             start_commit_time=None,
             end_commit_time=None,
@@ -724,7 +724,7 @@ class TestStatisticsEngine:
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
         # Act
-        s = s_engine.get_by_time_window(
+        s = s_engine._get_by_time_window(
             metadata_instance=None,
             start_commit_time=None,
             end_commit_time=None,
@@ -752,7 +752,7 @@ class TestStatisticsEngine:
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
         # Act
-        s = s_engine.get_by_time_window(
+        s = s_engine._get_by_time_window(
             metadata_instance=None,
             start_commit_time=None,
             end_commit_time=None,

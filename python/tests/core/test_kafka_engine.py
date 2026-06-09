@@ -30,7 +30,7 @@ class TestKafkaEngine:
         producer = mocker.Mock()
 
         # Act
-        kafka_engine.kafka_produce(
+        kafka_engine._kafka_produce(
             producer=producer,
             topic_name="test_topic",
             headers={},
@@ -52,7 +52,7 @@ class TestKafkaEngine:
         producer = mocker.Mock()
         producer.produce.side_effect = [BufferError("test_error"), None]
         # Act
-        kafka_engine.kafka_produce(
+        kafka_engine._kafka_produce(
             producer=producer,
             topic_name="test_topic",
             headers={},
@@ -74,7 +74,7 @@ class TestKafkaEngine:
             bytes_io.write(bytes(value, "utf-8"))
 
         # Act
-        result = kafka_engine.encode_complex_features(
+        result = kafka_engine._encode_complex_features(
             feature_writers={"one": test_utf, "two": test_utf},
             row={"one": "1", "two": "2"},
         )
@@ -92,7 +92,7 @@ class TestKafkaEngine:
         importlib.reload(kafka_engine)
 
         # Act
-        result = kafka_engine.get_encoder_func(
+        result = kafka_engine._get_encoder_func(
             writer_schema='{"type" : "record",'
             '"namespace" : "Tutorialspoint",'
             '"name" : "Employee",'
@@ -125,7 +125,7 @@ class TestKafkaEngine:
         importlib.reload(kafka_engine)
 
         # Act
-        result = kafka_engine.get_encoder_func(
+        result = kafka_engine._get_encoder_func(
             writer_schema='{"type" : "record",'
             '"namespace" : "Tutorialspoint",'
             '"name" : "Employee",'
@@ -158,7 +158,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -200,7 +200,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -242,7 +242,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -288,7 +288,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -328,12 +328,12 @@ class TestKafkaEngine:
         consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
         consumer.get_watermark_offsets = mocker.MagicMock(return_value=(0, 11))
         mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_consumer",
+            "hsfs.core.kafka_engine._init_kafka_consumer",
             return_value=consumer,
         )
 
         # Act
-        result = kafka_engine.kafka_get_offsets(
+        result = kafka_engine._kafka_get_offsets(
             topic_name=topic_name,
             feature_store_id=feature_store_id,
             offline_write_options={},
@@ -360,12 +360,12 @@ class TestKafkaEngine:
         consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
         consumer.get_watermark_offsets = mocker.MagicMock(return_value=(0, 11))
         mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_consumer",
+            "hsfs.core.kafka_engine._init_kafka_consumer",
             return_value=consumer,
         )
 
         # Act
-        result = kafka_engine.kafka_get_offsets(
+        result = kafka_engine._kafka_get_offsets(
             feature_store_id=feature_store_id,
             topic_name=topic_name,
             offline_write_options={},
@@ -387,11 +387,11 @@ class TestKafkaEngine:
         consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
         consumer.get_watermark_offsets = mocker.MagicMock(return_value=(0, 11))
         mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_consumer",
+            "hsfs.core.kafka_engine._init_kafka_consumer",
             return_value=consumer,
         )
         # Act
-        result = kafka_engine.kafka_get_offsets(
+        result = kafka_engine._kafka_get_offsets(
             topic_name=topic_name,
             feature_store_id=99,
             offline_write_options={},
@@ -418,7 +418,7 @@ class TestKafkaEngine:
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         # Act
-        results = kafka_engine.get_kafka_config(
+        results = kafka_engine._get_kafka_config(
             1, write_options={"user_opt": "ABC"}, engine="spark"
         )
 
@@ -460,7 +460,7 @@ class TestKafkaEngine:
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
 
         # Act
-        results = kafka_engine.get_kafka_config(
+        results = kafka_engine._get_kafka_config(
             1, write_options={"user_opt": "ABC"}, engine="spark"
         )
 
@@ -502,7 +502,7 @@ class TestKafkaEngine:
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
 
         # Act
-        results = kafka_engine.get_kafka_config(
+        results = kafka_engine._get_kafka_config(
             1, write_options={"user_opt": "ABC", "internal_kafka": True}, engine="spark"
         )
 
@@ -544,7 +544,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(fg, num_entries=10)
+        results = kafka_engine._get_headers(fg, num_entries=10)
 
         # Assert
         assert results == {
@@ -576,7 +576,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(fg, num_entries=10)
+        results = kafka_engine._get_headers(fg, num_entries=10)
 
         # Assert
         assert results == {
@@ -609,7 +609,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(
+        results = kafka_engine._get_headers(
             fg,
             num_entries=10,
             options={"online_ingestion_options": {"upsert_if_newer": True}},
@@ -647,7 +647,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(
+        results = kafka_engine._get_headers(
             fg,
             num_entries=10,
             options={"online_ingestion_options": {"upsert_if_newer": False}},

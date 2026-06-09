@@ -33,7 +33,7 @@ from hsfs.core.feature_logging_client import (
 from hsfs.core.feature_logging_client import (
     init_client,
 )
-from hsfs.core.kafka_engine import encode_row, get_writer_function
+from hsfs.core.kafka_engine import _encode_row, _get_writer_function
 from hsfs.feature_logger import FeatureLogger
 
 
@@ -280,11 +280,11 @@ class AsyncFeatureLogger(FeatureLogger):
     def _init_kafka_resource(self, feature_view):
         for transformed in [True, False]:
             fg = feature_view.feature_logging.get_feature_group(transformed)
-            feature_writers, writer = get_writer_function(fg)
+            feature_writers, writer = _get_writer_function(fg)
             self._feature_encoders[transformed] = (feature_writers, writer)
 
     def _avro_encode_features(self, complex_feature_encoder, feature_encoder, features):
-        return encode_row(complex_feature_encoder, feature_encoder, features)
+        return _encode_row(complex_feature_encoder, feature_encoder, features)
 
     @public
     def close(self):

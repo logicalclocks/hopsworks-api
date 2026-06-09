@@ -716,7 +716,7 @@ class TestFeatureGroup:
 
     def test_save_feature_list(self, mocker):
         mock_save_metadata = mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata",
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata",
             return_value=None,
         )
 
@@ -743,7 +743,7 @@ class TestFeatureGroup:
 
     def test_save_feature_in_create(self, mocker):
         mock_save_metadata = mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata",
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata",
             return_value=None,
         )
 
@@ -793,7 +793,7 @@ class TestFeatureGroup:
             "hsfs.engine.python.Engine.convert_to_default_dataframe"
         )
         mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save",
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save",
             return_value=(None, None),
         )
         mock_commit_details = mocker.patch(
@@ -803,7 +803,7 @@ class TestFeatureGroup:
             },  # non-empty dict to simulate successful commit
         )
         mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
             return_value=None,
         )
 
@@ -833,7 +833,7 @@ class TestFeatureGroup:
             return_value=dataframe_fixture_basic,
         )
         mock_insert = mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._insert",
             return_value=(None, None),
         )
         mock_commit_details = mocker.patch(
@@ -843,7 +843,7 @@ class TestFeatureGroup:
             },  # non-empty dict to simulate successful commit
         )
         mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
             return_value=None,
         )
 
@@ -882,7 +882,7 @@ class TestFeatureGroup:
             return_value=dataframe_fixture_basic,
         )
         mock_insert = mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._insert",
             return_value=(None, None),
         )
         mock_commit_details = mocker.patch(
@@ -892,7 +892,7 @@ class TestFeatureGroup:
             },  # non-empty dict to simulate successful commit
         )
         mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
+            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
             return_value=None,
         )
 
@@ -1530,7 +1530,7 @@ class TestFeatureGroupExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fg._feature_group_engine,
-            "apply_on_demand_transformations",
+            "_apply_on_demand_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 
@@ -1598,7 +1598,7 @@ class TestFeatureGroupExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fg._feature_group_engine,
-            "apply_on_demand_transformations",
+            "_apply_on_demand_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 
@@ -1654,7 +1654,7 @@ class TestFeatureGroupExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fg._feature_group_engine,
-            "apply_on_demand_transformations",
+            "_apply_on_demand_transformations",
         )
 
         # Act
@@ -1711,7 +1711,7 @@ class TestFeatureGroupExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fg._feature_group_engine,
-            "apply_on_demand_transformations",
+            "_apply_on_demand_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 

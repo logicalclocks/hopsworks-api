@@ -273,7 +273,7 @@ class TestTransformationFunctionEngine:
 
         # Assert
         assert (
-            mock_s_engine.return_value.compute_transformation_fn_statistics.call_count
+            mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 1
         )
 
@@ -333,7 +333,7 @@ class TestTransformationFunctionEngine:
 
         # Assert
         assert (
-            mock_s_engine.return_value.compute_transformation_fn_statistics.call_count
+            mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 0
         )
 
@@ -392,7 +392,7 @@ class TestTransformationFunctionEngine:
 
         # Assert
         assert (
-            mock_s_engine.return_value.compute_transformation_fn_statistics.call_count
+            mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 0
         )
 
@@ -448,7 +448,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Assert
-        assert mock_s_engine.return_value.get.call_count == 0
+        assert mock_s_engine.return_value._get.call_count == 0
 
     def test_get_and_set_feature_statistics_statistics_required(self, mocker):
         feature_store_id = 99
@@ -505,7 +505,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Assert
-        assert mock_s_engine.return_value.get.call_count == 1
+        assert mock_s_engine.return_value._get.call_count == 1
 
     def test_execute_udf_on_supported_dataframe(self, mocker):
         # Arrange

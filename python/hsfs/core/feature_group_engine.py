@@ -94,7 +94,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 updated_schema.append(feat)
         return updated_schema + transformed_features
 
-    def save(
+    def _save(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
         feature_dataframe,
@@ -141,14 +141,14 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group, feature_dataframe, dataframe_features
             )
 
-        self.save_feature_group_metadata(
+        self._save_feature_group_metadata(
             feature_group,
             dataframe_features,
             write_options,
         )
 
         # ge validation on python and non stream feature groups on spark
-        ge_report = feature_group._great_expectation_engine.validate(
+        ge_report = feature_group._great_expectation_engine._validate(
             feature_group=feature_group,
             dataframe=feature_dataframe,
             validation_options=validation_options or {},
@@ -178,7 +178,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
-    def apply_on_demand_transformations(
+    def _apply_on_demand_transformations(
         self,
         transformation_functions: list[TransformationFunction],
         data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
@@ -213,7 +213,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ) from e
         return df
 
-    def insert(
+    def _insert(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
         feature_dataframe,
@@ -273,7 +273,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if not feature_group._id:
             # only save metadata if feature group does not exist
-            self.save_feature_group_metadata(
+            self._save_feature_group_metadata(
                 feature_group,
                 dataframe_features,
                 write_options,
@@ -283,7 +283,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._verify_schema_compatibility(feature_group.columns, dataframe_features)
 
         # ge validation on python and non stream feature groups on spark
-        ge_report = feature_group._great_expectation_engine.validate(
+        ge_report = feature_group._great_expectation_engine._validate(
             feature_group=feature_group,
             dataframe=feature_dataframe,
             validation_options=validation_options or {},
@@ -326,10 +326,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
-    def delete(self, feature_group):
+    def _delete(self, feature_group):
         self._feature_group_api.delete(feature_group)
 
-    def commit_details(self, feature_group, wallclock_time, limit):
+    def _commit_details(self, feature_group, wallclock_time, limit):
         if (
             feature_group._time_travel_format is None
             or feature_group._time_travel_format.upper() not in ["HUDI", "DELTA"]
@@ -365,7 +365,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return None, None
 
     @staticmethod
-    def commit_delete(feature_group, delete_df, write_options):
+    def _commit_delete(feature_group, delete_df, write_options):
         spark_session, spark_context = (
             FeatureGroupEngine._get_spark_session_and_context()
         )
@@ -377,7 +377,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            return delta_engine_instance.delete_record(delete_df)
+            return delta_engine_instance._delete_record(delete_df)
         if spark_context is None:
             raise exceptions.FeatureStoreException(
                 "Hudi feature group deletes are not supported with Spark Connect. "
@@ -390,10 +390,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             spark_context,
             spark_session,
         )
-        return hudi_engine_instance.delete_record(delete_df, write_options)
+        return hudi_engine_instance._delete_record(delete_df, write_options)
 
     @staticmethod
-    def delta_vacuum(feature_group, retention_hours):
+    def _delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
             spark_session, spark_context = (
                 FeatureGroupEngine._get_spark_session_and_context()
@@ -406,10 +406,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            return delta_engine_instance.vacuum(retention_hours)
+            return delta_engine_instance._vacuum(retention_hours)
         return None
 
-    def sql(self, query, feature_store_name, dataframe_type, online, read_options):
+    def _sql(self, query, feature_store_name, dataframe_type, online, read_options):
         if online and self._online_conn is None:
             self._online_conn = self._storage_connector_api.get_online_connector(
                 self._feature_store_id
@@ -431,7 +431,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_features(
+    def _update_features(
         self, feature_group: fg.FeatureGroup, updated_features: list[Feature]
     ) -> None:
         """Updates features safely.
@@ -443,10 +443,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 This will replace the existing list of features.
         """
         self._update_features_metadata(
-            feature_group, self.new_feature_list(feature_group, updated_features)
+            feature_group, self._new_feature_list(feature_group, updated_features)
         )
 
-    def append_features(
+    def _append_features(
         self, feature_group: fg.FeatureGroup, new_features: list[Feature]
     ) -> None:
         """Appends features to a feature group.
@@ -463,7 +463,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # write empty dataframe to update parquet schema
         engine.get_instance().update_table_schema(feature_group)
 
-    def update_description(
+    def _update_description(
         self, feature_group: fg.FeatureGroup, description: str
     ) -> None:
         """Updates the description of a feature group.
@@ -478,7 +478,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_topic_name(
+    def _update_topic_name(
         self, feature_group: fg.FeatureGroup, topic_name: str
     ) -> None:
         """Updates the topic_name of a feature group.
@@ -493,7 +493,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_notification_topic_name(
+    def _update_notification_topic_name(
         self, feature_group: fg.FeatureGroup, notification_topic_name: str
     ) -> None:
         """Updates the notification_topic_name of a feature group.
@@ -508,7 +508,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_deprecated(
+    def _update_deprecated(
         self, feature_group: fg.FeatureGroup, deprecate: bool
     ) -> None:
         """Updates the deprecation status of a feature group.
@@ -522,7 +522,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "deprecate", deprecate
         )
 
-    def insert_stream(
+    def _insert_stream(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
         dataframe,
@@ -569,7 +569,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if not feature_group._id:
-            self.save_feature_group_metadata(
+            self._save_feature_group_metadata(
                 feature_group,
                 dataframe_features,
                 write_options,
@@ -615,7 +615,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             write_options,
         )
 
-    def save_feature_group_metadata(
+    def _save_feature_group_metadata(
         self,
         feature_group,
         dataframe_features,
@@ -707,7 +707,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if feature_schema_available:
             # create empty table to write feature schema to table path
-            self.save_empty_table(feature_group, write_options=write_options)
+            self._save_empty_table(feature_group, write_options=write_options)
 
         print(
             "Feature Group created successfully, explore it at \n"
@@ -717,7 +717,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         )
 
-    def update_ttl(
+    def _update_ttl(
         self,
         feature_group: fg.FeatureGroup,
         ttl: int | None = None,
@@ -741,7 +741,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def save_empty_table(self, feature_group, write_options=None):
+    def _save_empty_table(self, feature_group, write_options=None):
         # If time travel format is DELTA, an empty table is needed to be created
         # such that the feature schema is written to the table and
         # the subsequent writes in python can refer to that schema.
@@ -760,7 +760,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            delta_engine_instance.save_empty_table(write_options=write_options)
+            delta_engine_instance._save_empty_table(write_options=write_options)
 
     def _create_sink_job_if_needed(
         self,

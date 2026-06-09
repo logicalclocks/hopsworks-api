@@ -168,7 +168,7 @@ class Model:
                     stacklevel=1,
                 )
 
-        return self._model_engine.save(
+        return self._model_engine._save(
             model_instance=self,
             model_path=model_path,
             await_registration=await_registration,
@@ -203,7 +203,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
-        return self._model_engine.download(model_instance=self, local_path=local_path)
+        return self._model_engine._download(model_instance=self, local_path=local_path)
 
     @public
     @usage.method_logger
@@ -217,7 +217,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
-        self._model_engine.delete(model_instance=self)
+        self._model_engine._delete(model_instance=self)
 
     @public
     @staticmethod
@@ -427,7 +427,7 @@ class Model:
         if name is None:
             name = self._get_default_serving_name()
 
-        predictor = Predictor._for_model(
+        predictor = Predictor.for_model(
             self,
             name=name,
             description=description,
@@ -463,7 +463,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
         """
-        self._model_engine.set_tag(model_instance=self, name=name, value=value)
+        self._model_engine._set_tag(model_instance=self, name=name, value=value)
 
     @public
     @usage.method_logger
@@ -479,7 +479,7 @@ class Model:
             DeprecationWarning,
             stacklevel=2,
         )
-        self._model_engine.set_tag(model_instance=self, name=name, value=value)
+        self._model_engine._set_tag(model_instance=self, name=name, value=value)
 
     @public
     @usage.method_logger
@@ -492,7 +492,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
         """
-        self._model_engine.delete_tag(model_instance=self, name=name)
+        self._model_engine._delete_tag(model_instance=self, name=name)
 
     @public
     def get_tag(self, name: str) -> str | None:
@@ -507,7 +507,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
         """
-        return self._model_engine.get_tag(model_instance=self, name=name)
+        return self._model_engine._get_tag(model_instance=self, name=name)
 
     @public
     def get_tags(self) -> dict[str, tag.Tag]:
@@ -519,7 +519,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
-        return self._model_engine.get_tags(model_instance=self)
+        return self._model_engine._get_tags(model_instance=self)
 
     @public
     def get_url(self):
@@ -585,7 +585,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view provenance.
         """
-        return self._model_engine.get_feature_view_provenance(model_instance=self)
+        return self._model_engine._get_feature_view_provenance(model_instance=self)
 
     @public
     def get_training_dataset_provenance(self) -> explicit_provenance.Links:
@@ -600,7 +600,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the training dataset provenance.
         """
-        return self._model_engine.get_training_dataset_provenance(model_instance=self)
+        return self._model_engine._get_training_dataset_provenance(model_instance=self)
 
     def _get_default_serving_name(self):
         return re.sub(r"[^a-zA-Z0-9]", "", self._name)
@@ -706,7 +706,7 @@ class Model:
     def environment(self):
         """Input example of the model."""
         if self._environment is not None:
-            return self._model_engine.read_file(
+            return self._model_engine._read_file(
                 model_instance=self, resource="environment.yml"
             )
         return self._environment
@@ -730,7 +730,7 @@ class Model:
     def program(self):
         """Executable used to export the model."""
         if self._program is not None:
-            return self._model_engine.read_file(
+            return self._model_engine._read_file(
                 model_instance=self, resource=self._program
             )
         return None
@@ -753,7 +753,7 @@ class Model:
     @property
     def input_example(self):
         """input_example of the model."""
-        return self._model_engine.read_json(
+        return self._model_engine._read_json(
             model_instance=self, resource="input_example.json"
         )
 
@@ -775,7 +775,7 @@ class Model:
     @property
     def model_schema(self):
         """Model schema of the model."""
-        return self._model_engine.read_json(
+        return self._model_engine._read_json(
             model_instance=self, resource="model_schema.json"
         )
 

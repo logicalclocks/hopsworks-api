@@ -30,7 +30,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.delete(feature_group=None)
+        fg_base_engine._delete(feature_group=None)
 
         # Assert
         assert mock_fg_api.return_value.delete.call_count == 1
@@ -46,7 +46,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.add_tag(feature_group=None, name=None, value=None)
+        fg_base_engine._add_tag(feature_group=None, name=None, value=None)
 
         # Assert
         assert mock_tags_api.return_value.add.call_count == 1
@@ -62,7 +62,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.delete_tag(feature_group=None, name=None)
+        fg_base_engine._delete_tag(feature_group=None, name=None)
 
         # Assert
         assert mock_tags_api.return_value.delete.call_count == 1
@@ -78,7 +78,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.get_tag(feature_group=None, name=None)
+        fg_base_engine._get_tag(feature_group=None, name=None)
 
         # Assert
         assert mock_tags_api.return_value.get.call_count == 1
@@ -94,7 +94,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.get_tags(feature_group=None)
+        fg_base_engine._get_tags(feature_group=None)
 
         # Assert
         assert mock_tags_api.return_value.get.call_count == 1
@@ -110,7 +110,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.update_statistics_config(feature_group=None)
+        fg_base_engine._update_statistics_config(feature_group=None)
 
         # Assert
         assert mock_fg_api.return_value.update_metadata.call_count == 1
@@ -142,7 +142,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        result = fg_base_engine.new_feature_list(
+        result = fg_base_engine._new_feature_list(
             feature_group=fg, updated_features=[f1, f2]
         )
 

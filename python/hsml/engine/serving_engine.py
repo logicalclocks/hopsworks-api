@@ -112,7 +112,7 @@ class ServingEngine:
             )
         return None
 
-    def start(self, deployment_instance, await_status: int) -> bool:
+    def _start(self, deployment_instance, await_status: int) -> bool:
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_RUNNING
         )
@@ -156,7 +156,7 @@ class ServingEngine:
                     update_progress,
                 )
             except RestAPIError as re:
-                self.stop(deployment_instance, await_status=0)
+                self._stop(deployment_instance, await_status=0)
                 raise re
 
         if state.status == PREDICTOR_STATE.STATUS_RUNNING:
@@ -167,7 +167,7 @@ class ServingEngine:
             else:
                 print("Start making predictions by using `.predict()`")
 
-    def stop(self, deployment_instance, await_status: int) -> bool:
+    def _stop(self, deployment_instance, await_status: int) -> bool:
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_STOPPED
         )
@@ -363,7 +363,7 @@ class ServingEngine:
             else:
                 # if it's a file, download it
                 local_file_path = os.path.join(to_local_path, basename)
-                self._engine.download(entry.path, local_file_path)
+                self._engine._download(entry.path, local_file_path)
                 n_files += 1
                 update_download_progress(n_dirs=n_dirs, n_files=n_files)
 
@@ -382,7 +382,7 @@ class ServingEngine:
         )
         update_download_progress(n_dirs=n_dirs, n_files=n_files, done=True)
 
-    def download_artifact_files(self, deployment_instance, local_path=None):
+    def _download_artifact_files(self, deployment_instance, local_path=None):
         if deployment_instance.id is None:
             raise ModelServingException(
                 "Deployment is not created yet. To create the deployment use `.save()`"
@@ -440,7 +440,7 @@ class ServingEngine:
 
         return local_path
 
-    def create(self, deployment_instance):
+    def _create(self, deployment_instance):
         try:
             self._serving_api.put(deployment_instance)
             print("Deployment created, explore it at " + deployment_instance.get_url())
@@ -470,7 +470,7 @@ class ServingEngine:
         if deployment_instance.is_stopped():
             print("Before making predictions, start the deployment by using `.start()`")
 
-    def update(self, deployment_instance, await_update):
+    def _update(self, deployment_instance, await_update):
         state = deployment_instance.get_state()
         if state is None:
             return
@@ -518,16 +518,16 @@ class ServingEngine:
 
         raise ValueError("Unknown deployment status: " + state.status)
 
-    def save(self, deployment_instance, await_update: int):
+    def _save(self, deployment_instance, await_update: int):
         if deployment_instance.id is None:
             # if new deployment
-            self.create(deployment_instance)
+            self._create(deployment_instance)
             return
 
         # if existing deployment
-        self.update(deployment_instance, await_update)
+        self._update(deployment_instance, await_update)
 
-    def delete(self, deployment_instance, force=False):
+    def _delete(self, deployment_instance, force=False):
         state = deployment_instance.get_state()
         if state is None:
             return
@@ -544,7 +544,7 @@ class ServingEngine:
         self._serving_api.delete(deployment_instance)
         print("Deployment deleted successfully")
 
-    def get_state(self, deployment_instance):
+    def _get_state(self, deployment_instance):
         try:
             state = self._serving_api.get_state(deployment_instance)
         except RestAPIError as re:
@@ -554,8 +554,8 @@ class ServingEngine:
         deployment_instance._predictor._set_state(state)
         return state
 
-    def get_logs(self, deployment_instance, component, tail):
-        state = self.get_state(deployment_instance)
+    def _get_logs(self, deployment_instance, component, tail):
+        state = self._get_state(deployment_instance)
         if state is None:
             return None
 
@@ -588,7 +588,7 @@ class ServingEngine:
     # the legacy "deployment is stopping → return None" guard would just hide
     # data that is in fact retrievable.
 
-    def read_logs(
+    def _read_logs(
         self,
         deployment_instance,
         component: str = "predictor",
@@ -626,7 +626,7 @@ class ServingEngine:
         )
         return self._format_log_chunks(chunks or [])
 
-    def tail_logs(
+    def _tail_logs(
         self,
         deployment_instance,
         component: str = "predictor",
@@ -726,7 +726,7 @@ class ServingEngine:
                 yield self._format_log_chunks(new_chunks)
 
             if stop_on_status is not None:
-                state = self.get_state(deployment_instance)
+                state = self._get_state(deployment_instance)
                 if state is not None and state.status == stop_on_status:
                     return
 
@@ -762,7 +762,7 @@ class ServingEngine:
 
     # Model inference
 
-    def predict(
+    def _predict(
         self,
         deployment_instance,
         data: dict | list[InferInput],

@@ -118,7 +118,7 @@ class ModelEngine:
                     with open(input_example_path, "w+") as out:
                         json.dump(input_example, out, cls=util.NumpyEncoder)
 
-                    self._engine.upload(input_example_path, model_instance.version_path)
+                    self._engine._upload(input_example_path, model_instance.version_path)
                     model_instance.input_example = None
                 if model_instance._model_schema is not None:
                     model_schema_path = os.path.join(tmp_dir, "model_schema.json")
@@ -127,7 +127,7 @@ class ModelEngine:
                     with open(model_schema_path, "w+") as out:
                         out.write(model_schema.json())
 
-                    self._engine.upload(model_schema_path, model_instance.version_path)
+                    self._engine._upload(model_schema_path, model_instance.version_path)
                     model_instance.model_schema = None
         return model_instance
 
@@ -137,9 +137,9 @@ class ModelEngine:
         """Copy or move model item from a hdfs path to the model version folder in the Models dataset. It works with files and folders."""
         to_hdfs_path = os.path.join(to_model_files_path, os.path.basename(from_path))
         if keep_original_files:
-            self._engine.copy(from_path, to_hdfs_path)
+            self._engine._copy(from_path, to_hdfs_path)
         else:
-            self._engine.move(from_path, to_hdfs_path)
+            self._engine._move(from_path, to_hdfs_path)
 
     def _copy_or_move_hopsfs_model(
         self,
@@ -238,7 +238,7 @@ class ModelEngine:
             else:
                 # if it's a file, download it
                 local_file_path = os.path.join(to_local_path, basename)
-                self._engine.download(entry.path, local_file_path)
+                self._engine._download(entry.path, local_file_path)
                 n_files += 1
                 update_download_progress(n_dirs=n_dirs, n_files=n_files)
 
@@ -278,11 +278,11 @@ class ModelEngine:
                     from_local_model_path, to_model_files_path
                 ).replace(os.sep, "/")
                 for d_name in dirs:
-                    self._engine.mkdir(remote_base_path + "/" + d_name)
+                    self._engine._mkdir(remote_base_path + "/" + d_name)
                     n_dirs += 1
                     update_upload_progress(n_dirs, n_files)
                 for f_name in files:
-                    self._engine.upload(
+                    self._engine._upload(
                         root + "/" + f_name,
                         remote_base_path,
                         upload_configuration=upload_configuration,
@@ -291,7 +291,7 @@ class ModelEngine:
                     update_upload_progress(n_dirs, n_files)
         else:
             # if path is a file, upload file
-            self._engine.upload(
+            self._engine._upload(
                 from_local_model_path,
                 to_model_files_path,
                 upload_configuration=upload_configuration,
@@ -418,7 +418,7 @@ class ModelEngine:
     def _build_resource_path(self, model_instance, artifact):
         return f"{model_instance.version_path}/{artifact}"
 
-    def save(
+    def _save(
         self,
         model_instance,
         model_path,
@@ -448,7 +448,7 @@ class ModelEngine:
         # Create /Models/{model_instance._name} folder
         dataset_model_name_path = dataset_models_root_path + "/" + model_instance._name
         if not self._dataset_api.path_exists(dataset_model_name_path):
-            self._engine.mkdir(dataset_model_name_path)
+            self._engine._mkdir(dataset_model_name_path)
 
         model_instance = self._set_model_version(
             model_instance, dataset_models_root_path, dataset_model_name_path
@@ -478,8 +478,8 @@ class ModelEngine:
                 pbar.set_description("{}".format(step["desc"]))
                 if step["id"] == 0:
                     # Create folders
-                    self._engine.mkdir(model_instance.version_path)
-                    self._engine.mkdir(model_instance.model_files_path)
+                    self._engine._mkdir(model_instance.version_path)
+                    self._engine._mkdir(model_instance.model_files_path)
                 if step["id"] == 1:
                     if not keep_original_files:
                         print(
@@ -551,7 +551,7 @@ class ModelEngine:
 
         return model_instance
 
-    def download(self, model_instance, local_path=None):
+    def _download(self, model_instance, local_path=None):
         # User provided an explicit path - honour it exactly, no cache fallback.
         if local_path is not None:
             try:
@@ -877,7 +877,7 @@ class ModelEngine:
         except BaseException as be:
             raise be
 
-    def read_file(self, model_instance, resource):
+    def _read_file(self, model_instance, resource):
         hdfs_resource_path = self._build_resource_path(
             model_instance, os.path.basename(resource)
         )
@@ -886,7 +886,7 @@ class ModelEngine:
                 resource = os.path.basename(resource)
                 tmp_dir = tempfile.TemporaryDirectory()
                 local_resource_path = os.path.join(tmp_dir.name, resource)
-                self._engine.download(
+                self._engine._download(
                     hdfs_resource_path,
                     local_resource_path,
                 )
@@ -897,13 +897,13 @@ class ModelEngine:
                     tmp_dir.cleanup()
         return None
 
-    def read_json(self, model_instance, resource):
+    def _read_json(self, model_instance, resource):
         hdfs_resource_path = self._build_resource_path(model_instance, resource)
         if self._dataset_api.path_exists(hdfs_resource_path):
             try:
                 tmp_dir = tempfile.TemporaryDirectory()
                 local_resource_path = os.path.join(tmp_dir.name, resource)
-                self._engine.download(
+                self._engine._download(
                     hdfs_resource_path,
                     local_resource_path,
                 )
@@ -914,10 +914,10 @@ class ModelEngine:
                     tmp_dir.cleanup()
         return None
 
-    def delete(self, model_instance):
-        self._engine.delete(model_instance)
+    def _delete(self, model_instance):
+        self._engine._delete(model_instance)
 
-    def set_tag(self, model_instance, name, value):
+    def _set_tag(self, model_instance, name, value):
         """Attach a name/value tag to a model.
 
         Parameters:
@@ -927,7 +927,7 @@ class ModelEngine:
         """
         self._model_api.set_tag(model_instance, name, value)
 
-    def delete_tag(self, model_instance, name):
+    def _delete_tag(self, model_instance, name):
         """Remove a tag from a model.
 
         Parameters:
@@ -936,7 +936,7 @@ class ModelEngine:
         """
         self._model_api.delete_tag(model_instance, name)
 
-    def get_tag(self, model_instance, name):
+    def _get_tag(self, model_instance, name):
         """Get tag with a certain name.
 
         Parameters:
@@ -945,7 +945,7 @@ class ModelEngine:
         """
         return self._model_api.get_tag(model_instance, name)
 
-    def get_tags(self, model_instance):
+    def _get_tags(self, model_instance):
         """Get all tags for a model.
 
         Parameters:
@@ -953,7 +953,7 @@ class ModelEngine:
         """
         return self._model_api.get_tags(model_instance)
 
-    def get_feature_view_provenance(
+    def _get_feature_view_provenance(
         self, model_instance
     ) -> explicit_provenance.Links | None:
         """Get the parent feature view of this model, based on explicit provenance.
@@ -970,7 +970,7 @@ class ModelEngine:
         """
         return self._model_api.get_feature_view_provenance(model_instance)
 
-    def get_training_dataset_provenance(
+    def _get_training_dataset_provenance(
         self, model_instance
     ) -> explicit_provenance.Links | None:
         """Get the parent training dataset of this model, based on explicit provenance.

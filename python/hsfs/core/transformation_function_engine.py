@@ -407,7 +407,7 @@ class TransformationFunctionEngine:
         Returns:
             The statistics object that contains the statistics for each features.
         """
-        return training_dataset_obj._statistics_engine.compute_transformation_fn_statistics(
+        return training_dataset_obj._statistics_engine._compute_transformation_fn_statistics(
             td_metadata_instance=training_dataset_obj,
             columns=statistics_features,
             label_encoder_features=label_encoder_features,  # label encoded features only
@@ -446,7 +446,7 @@ class TransformationFunctionEngine:
                     "or `feature_view.init_batch_scoring(version)` to pass the training dataset version."
                     "Training data can be created by `feature_view.create_training_data` or `feature_view.training_data`."
                 )
-            td_tffn_stats = feature_view._statistics_engine.get(
+            td_tffn_stats = feature_view._statistics_engine._get(
                 feature_view,
                 before_transformation=True,
                 training_dataset_version=training_dataset_version,
@@ -548,7 +548,7 @@ class TransformationFunctionEngine:
         )
 
         if is_stat_required:
-            td_tffn_stats = training_dataset._statistics_engine.get(
+            td_tffn_stats = training_dataset._statistics_engine._get(
                 feature_view_obj,
                 before_transformation=True,
                 training_dataset_version=training_dataset_version,

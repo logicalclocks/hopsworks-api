@@ -467,7 +467,7 @@ class FeatureMonitoringConfig:
         Returns:
             The saved FeatureMonitoringConfig object.
         """
-        registered_config = self._feature_monitoring_config_engine.save(self)
+        registered_config = self._feature_monitoring_config_engine._save(self)
         self.detection_window_config = registered_config._detection_window_config
         self.job_schedule = registered_config._job_schedule
 
@@ -502,7 +502,7 @@ class FeatureMonitoringConfig:
         Returns:
             The updated FeatureMonitoringConfig object.
         """
-        return self._feature_monitoring_config_engine.update(self)
+        return self._feature_monitoring_config_engine._update(self)
 
     @public
     def run_job(self) -> Job:
@@ -533,7 +533,7 @@ class FeatureMonitoringConfig:
                 "Feature monitoring config must be registered via `.save()` before computing statistics."
             )
 
-        return self._feature_monitoring_config_engine.trigger_monitoring_job(
+        return self._feature_monitoring_config_engine._trigger_monitoring_job(
             job_name=self.job_name
         )
 
@@ -562,7 +562,7 @@ class FeatureMonitoringConfig:
                 "the associated job."
             )
 
-        return self._feature_monitoring_config_engine.get_monitoring_job(
+        return self._feature_monitoring_config_engine._get_monitoring_job(
             job_name=self.job_name
         )
 
@@ -588,7 +588,7 @@ class FeatureMonitoringConfig:
                 "Feature monitoring config must be registered via `.save()` before deleting."
             )
 
-        self._feature_monitoring_config_engine.delete(config_id=self._id)
+        self._feature_monitoring_config_engine._delete(config_id=self._id)
 
     @public
     def disable(self):
@@ -683,7 +683,7 @@ class FeatureMonitoringConfig:
                 "Feature monitoring config must be registered via `.save()` before fetching"
                 "the associated history."
             )
-        return self._feature_monitoring_result_engine.fetch_all_feature_monitoring_results_by_config_id(
+        return self._feature_monitoring_result_engine._fetch_all_feature_monitoring_results_by_config_id(
             config_id=self._id,
             start_time=start_time,
             end_time=end_time,
@@ -840,7 +840,7 @@ class FeatureMonitoringConfig:
             self._detection_window_config = detection_window_config
         elif isinstance(detection_window_config, dict):
             self._detection_window_config = (
-                self._monitoring_window_config_engine.build_monitoring_window_config(
+                self._monitoring_window_config_engine._build_monitoring_window_config(
                     **detection_window_config
                 )
             )
@@ -883,7 +883,7 @@ class FeatureMonitoringConfig:
             self._reference_window_config = reference_window_config
         elif isinstance(reference_window_config, dict):
             self._reference_window_config = (
-                self._monitoring_window_config_engine.build_monitoring_window_config(
+                self._monitoring_window_config_engine._build_monitoring_window_config(
                     **reference_window_config
                 )
             )
@@ -917,7 +917,7 @@ class FeatureMonitoringConfig:
                 " not for scheduled statistics."
             )
         if isinstance(statistics_comparison_config, dict):
-            self._statistics_comparison_config = self._feature_monitoring_config_engine.validate_statistics_comparison_config(
+            self._statistics_comparison_config = self._feature_monitoring_config_engine._validate_statistics_comparison_config(
                 **statistics_comparison_config
             )
         elif statistics_comparison_config is None:

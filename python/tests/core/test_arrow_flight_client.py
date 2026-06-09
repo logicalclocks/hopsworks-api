@@ -76,7 +76,7 @@ class TestArrowFlightClient:
 
         fg = self._arrange_featuregroup_mocks(backend_fixtures)
         mocker.patch(
-            "hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query",
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query",
             return_value=fg.select_all(),
         )
         mocker.patch(

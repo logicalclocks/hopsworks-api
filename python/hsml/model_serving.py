@@ -257,7 +257,7 @@ class ModelServing:
         if name is None:
             name = model._get_default_serving_name()
 
-        return Predictor._for_model(
+        return Predictor.for_model(
             model,
             name=name,
             serving_tool=serving_tool,

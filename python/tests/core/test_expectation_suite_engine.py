@@ -41,7 +41,7 @@ class TestExpectationSuiteEngine:
         mock_es_engine_get_expectation_suite_url.return_value = expectation_suite_url
 
         # Act
-        es_engine.create(expectation_suite=None)
+        es_engine._create(expectation_suite=None)
 
         # Assert
         assert mock_es_api.return_value.create.call_count == 1
@@ -73,7 +73,7 @@ class TestExpectationSuiteEngine:
         mock_es_engine_get_expectation_suite_url.return_value = expectation_suite_url
 
         # Act
-        es_engine.update(expectation_suite=None)
+        es_engine._update(expectation_suite=None)
 
         # Assert
         assert mock_es_api.return_value.update.call_count == 1
@@ -105,7 +105,7 @@ class TestExpectationSuiteEngine:
         mock_es_engine_get_expectation_suite_url.return_value = expectation_suite_url
 
         # Act
-        es_engine.save(
+        es_engine._save(
             expectation_suite=es.ExpectationSuite("test_fake", expectations=[], meta={})
         )
 
@@ -132,7 +132,7 @@ class TestExpectationSuiteEngine:
         )
 
         # Act
-        es_engine.get()
+        es_engine._get()
 
         # Assert
         assert mock_es_api.return_value.get.call_count == 1
@@ -153,7 +153,7 @@ class TestExpectationSuiteEngine:
         )
 
         # Act
-        es_engine.delete(expectation_suite_id=expectation_suite_id)
+        es_engine._delete(expectation_suite_id=expectation_suite_id)
 
         # Assert
         assert mock_es_api.return_value.delete.call_count == 1

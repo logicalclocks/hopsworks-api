@@ -252,7 +252,7 @@ class MonitoringWindowConfig:
                 "Window length can only be set for if window_config_type is ROLLING_TIME."
             )
         elif isinstance(window_length, str):
-            self._window_config_engine.time_range_str_to_time_delta(window_length)
+            self._window_config_engine._time_range_str_to_time_delta(window_length)
             self._window_length = window_length
         else:
             raise TypeError("window_length must be a string.")

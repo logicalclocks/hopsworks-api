@@ -38,7 +38,7 @@ class TestValidationResultEngine:
         )
 
         # Act
-        vr_engine.get_validation_history(expectation_id=expectation_id)
+        vr_engine._get_validation_history(expectation_id=expectation_id)
 
         # Assert
         assert (

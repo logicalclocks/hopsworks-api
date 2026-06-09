@@ -149,7 +149,7 @@ class DeltaEngine:
         self._project_api = project_api.ProjectApi()
         self._setup_delta_rs()
 
-    def save_delta_fg(
+    def _save_delta_fg(
         self,
         dataset: pd.DataFrame | pa.Table | pl.DataFrame,
         write_options: dict[str, Any] | None,
@@ -172,7 +172,7 @@ class DeltaEngine:
         fg_commit.validation_id = validation_id
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
-    def register_temporary_table(
+    def _register_temporary_table(
         self,
         delta_fg_alias,
         read_options: dict[str, Any] | None = None,
@@ -254,7 +254,7 @@ class DeltaEngine:
 
         return delta_options
 
-    def delete_record(self, delete_df):
+    def _delete_record(self, delete_df):
         storage_options = None
         if self._spark_session is not None:
             location = self._feature_group.prepare_spark_location()
@@ -716,7 +716,7 @@ class DeltaEngine:
         _logger.debug("Creating new PyArrow Table with modified columns")
         return pa.Table.from_arrays(new_cols, names=table.column_names)
 
-    def save_empty_delta_table_pyspark(self, write_options=None):
+    def _save_empty_delta_table_pyspark(self, write_options=None):
         """Create an empty Delta table with the schema from the feature group features.
 
         This method builds a DDL schema string from the feature group's features
@@ -747,7 +747,7 @@ class DeltaEngine:
 
         self._write_delta_dataset(empty_df, write_options or {})
 
-    def save_empty_delta_table_python(self, write_options=None):
+    def _save_empty_delta_table_python(self, write_options=None):
         """Create an empty Delta table with the schema from the feature group features using delta-rs.
 
         This method converts feature types directly to PyArrow types without requiring Spark,
@@ -797,13 +797,13 @@ class DeltaEngine:
 
         self._write_delta_rs_dataset(empty_arrow_table, write_options=write_options)
 
-    def save_empty_table(self, write_options=None):
+    def _save_empty_table(self, write_options=None):
         if self._spark_session is not None:
-            self.save_empty_delta_table_pyspark(write_options=write_options)
+            self._save_empty_delta_table_pyspark(write_options=write_options)
         else:
-            self.save_empty_delta_table_python(write_options=write_options)
+            self._save_empty_delta_table_python(write_options=write_options)
 
-    def vacuum(self, retention_hours: int):
+    def _vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
         _logger.debug(
             f"Vacuuming Delta table for feature group {self._feature_group.name} v{self._feature_group.version} at location {location} with retention {retention_hours} hours"

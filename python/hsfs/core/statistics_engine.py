@@ -37,7 +37,7 @@ class StatisticsEngine:
             feature_store_id, entity_type
         )
 
-    def compute_and_save_statistics(
+    def _compute_and_save_statistics(
         self,
         metadata_instance,
         feature_dataframe=None,
@@ -87,7 +87,7 @@ class StatisticsEngine:
                     feature_dataframe = metadata_instance.read()
 
             computation_time = int(float(datetime.now().timestamp()) * 1000)
-            stats_str = self.profile_statistics_with_config(
+            stats_str = self._profile_statistics_with_config(
                 feature_dataframe, metadata_instance.statistics_config
             )
             desc_stats = self._parse_deequ_statistics(stats_str)
@@ -103,7 +103,7 @@ class StatisticsEngine:
             return engine.get_instance().profile_by_spark(metadata_instance)
         return None
 
-    def compute_and_save_monitoring_statistics(
+    def _compute_and_save_monitoring_statistics(
         self,
         metadata_instance: feature_group.FeatureGroup
         | training_dataset.TrainingDataset,
@@ -136,7 +136,7 @@ class StatisticsEngine:
 
         if engine.get_type() == "spark":
             commit_time = int(float(datetime.now().timestamp()) * 1000)
-            stats_str = self.profile_statistics(
+            stats_str = self._profile_statistics(
                 feature_dataframe, feature_names, False, False, False
             )
             desc_stats = self._parse_deequ_statistics(stats_str)
@@ -158,7 +158,7 @@ class StatisticsEngine:
         )
 
     @staticmethod
-    def profile_statistics_with_config(feature_dataframe, statistics_config) -> str:
+    def _profile_statistics_with_config(feature_dataframe, statistics_config) -> str:
         """Compute statistics on a feature DataFrame based on a given configuration.
 
         Parameters:
@@ -168,7 +168,7 @@ class StatisticsEngine:
         Returns:
             str. Serialized features statistics.
         """
-        return StatisticsEngine.profile_statistics(
+        return StatisticsEngine._profile_statistics(
             feature_dataframe,
             statistics_config.columns,
             statistics_config.correlations,
@@ -177,7 +177,7 @@ class StatisticsEngine:
         )
 
     @staticmethod
-    def profile_statistics(
+    def _profile_statistics(
         feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame,
         columns: list[str],
         correlations: bool,
@@ -211,7 +211,7 @@ class StatisticsEngine:
             feature_dataframe, columns, correlations, histograms, exact_uniqueness
         )
 
-    def compute_and_save_split_statistics(
+    def _compute_and_save_split_statistics(
         self, td_metadata_instance, feature_view_obj=None, feature_dataframes=None
     ) -> statistics.Statistics:
         """Compute statistics on Training Dataset splits.
@@ -227,7 +227,7 @@ class StatisticsEngine:
         statistics_of_splits = []
         for split in td_metadata_instance.splits:
             split_name = split.name
-            stats_str = self.profile_statistics_with_config(
+            stats_str = self._profile_statistics_with_config(
                 (
                     feature_dataframes.get(split_name)
                     if feature_dataframes
@@ -248,7 +248,7 @@ class StatisticsEngine:
         )
         return self._save_statistics(stats, td_metadata_instance, feature_view_obj)
 
-    def compute_transformation_fn_statistics(
+    def _compute_transformation_fn_statistics(
         self,
         td_metadata_instance: training_dataset.TrainingDataset,
         columns: list[str],
@@ -283,7 +283,7 @@ class StatisticsEngine:
         return self._save_statistics(stats, td_metadata_instance, feature_view_obj)
 
     @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
-    def get(
+    def _get(
         self,
         metadata_instance: feature_group.FeatureGroup
         | training_dataset.TrainingDataset,
@@ -316,7 +316,7 @@ class StatisticsEngine:
         )
 
     @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
-    def get_all(
+    def _get_all(
         self,
         metadata_instance: feature_group.FeatureGroup
         | training_dataset.TrainingDataset,
@@ -349,7 +349,7 @@ class StatisticsEngine:
         "hsfs.feature_group_commit.FeatureGroupCommit",
         fallback_return=None,
     )
-    def get_by_time_window(
+    def _get_by_time_window(
         self,
         metadata_instance: feature_group.FeatureGroup
         | training_dataset.TrainingDataset,

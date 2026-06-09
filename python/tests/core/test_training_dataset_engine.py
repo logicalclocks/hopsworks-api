@@ -55,7 +55,7 @@ class TestTrainingDatasetEngine:
         mock_engine_get_instance.return_value.parse_schema_training_dataset.return_value = features
 
         # Act
-        td_engine.save(training_dataset=td, features=None, user_write_options=None)
+        td_engine._save(training_dataset=td, features=None, user_write_options=None)
 
         # Assert
         assert mock_td_api.return_value.post.call_count == 1
@@ -90,7 +90,7 @@ class TestTrainingDatasetEngine:
         q = query.Query(left_feature_group=fg, left_features=fg.columns)
 
         # Act
-        td_engine.save(training_dataset=td, features=q, user_write_options=None)
+        td_engine._save(training_dataset=td, features=q, user_write_options=None)
 
         # Assert
         assert mock_td_api.return_value.post.call_count == 1
@@ -131,7 +131,7 @@ class TestTrainingDatasetEngine:
         mock_engine_get_instance.return_value.parse_schema_training_dataset.return_value = features
 
         # Act
-        td_engine.save(training_dataset=td, features=None, user_write_options=None)
+        td_engine._save(training_dataset=td, features=None, user_write_options=None)
 
         # Assert
         assert mock_td_api.return_value.post.call_count == 1
@@ -154,7 +154,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        td_engine.insert(
+        td_engine._insert(
             training_dataset=None,
             dataset=None,
             user_write_options=None,
@@ -179,7 +179,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        td_engine.insert(
+        td_engine._insert(
             training_dataset=None, dataset=None, user_write_options=None, overwrite=True
         )
 
@@ -215,7 +215,7 @@ class TestTrainingDatasetEngine:
         )
 
         # Act
-        td_engine.read(training_dataset=td, split=None, user_read_options=None)
+        td_engine._read(training_dataset=td, split=None, user_read_options=None)
 
         # Assert
         assert mock_storage_connector_read.call_count == 1
@@ -244,7 +244,7 @@ class TestTrainingDatasetEngine:
         )
 
         # Act
-        td_engine.read(training_dataset=td, split="split", user_read_options=None)
+        td_engine._read(training_dataset=td, split="split", user_read_options=None)
 
         # Assert
         assert mock_storage_connector_read.call_count == 1
@@ -261,7 +261,7 @@ class TestTrainingDatasetEngine:
         mock_td_api.return_value.get_query.return_value.pit_query = None
 
         # Act
-        result = td_engine.query(
+        result = td_engine._query(
             training_dataset=None, online=None, with_label=None, is_hive_query=None
         )
 
@@ -286,7 +286,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        result = td_engine.query(
+        result = td_engine._query(
             training_dataset=None, online=None, with_label=None, is_hive_query=None
         )
 
@@ -311,7 +311,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        result = td_engine.query(
+        result = td_engine._query(
             training_dataset=None, online=True, with_label=None, is_hive_query=None
         )
 
@@ -336,7 +336,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        td_engine.add_tag(training_dataset=None, name=None, value=None)
+        td_engine._add_tag(training_dataset=None, name=None, value=None)
 
         # Assert
         assert mock_tags_api.return_value.add.call_count == 1
@@ -350,7 +350,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        td_engine.delete_tag(training_dataset=None, name=None)
+        td_engine._delete_tag(training_dataset=None, name=None)
 
         # Assert
         assert mock_tags_api.return_value.delete.call_count == 1
@@ -364,7 +364,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        td_engine.get_tag(training_dataset=None, name=None)
+        td_engine._get_tag(training_dataset=None, name=None)
 
         # Assert
         assert mock_tags_api.return_value.get.call_count == 1
@@ -378,7 +378,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        td_engine.get_tags(training_dataset=None)
+        td_engine._get_tags(training_dataset=None)
 
         # Assert
         assert mock_tags_api.return_value.get.call_count == 1
@@ -392,7 +392,7 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         # Act
-        td_engine.update_statistics_config(training_dataset=None)
+        td_engine._update_statistics_config(training_dataset=None)
 
         # Assert
         assert mock_td_api.return_value.update_metadata.call_count == 1

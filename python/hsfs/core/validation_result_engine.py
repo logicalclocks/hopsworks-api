@@ -41,7 +41,7 @@ class ValidationResultEngine:
             feature_store_id=feature_store_id, feature_group_id=feature_group_id
         )
 
-    def get_validation_history(
+    def _get_validation_history(
         self,
         expectation_id: int,
         start_validation_time: str | int | datetime | date | None = None,

@@ -50,7 +50,7 @@ class TestExternalFeatureGroupEngine:
         ]
 
         # Act
-        external_fg_engine.save(feature_group=fg)
+        external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
@@ -84,7 +84,7 @@ class TestExternalFeatureGroupEngine:
         mock_get_data.return_value = dsd.DataSourceData(features=[f])
 
         # Act
-        external_fg_engine.save(feature_group=fg)
+        external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
@@ -118,7 +118,7 @@ class TestExternalFeatureGroupEngine:
         mock_get_data.return_value = dsd.DataSourceData(features=[f])
 
         # Act
-        external_fg_engine.save(feature_group=fg)
+        external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
@@ -152,7 +152,7 @@ class TestExternalFeatureGroupEngine:
         mock_get_data.return_value = dsd.DataSourceData(features=[f])
 
         # Act
-        external_fg_engine.save(feature_group=fg)
+        external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert mock_get_data.call_count == 1
@@ -187,7 +187,7 @@ class TestExternalFeatureGroupEngine:
         ]
 
         # Act
-        external_fg_engine.save(feature_group=fg)
+        external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
@@ -219,7 +219,7 @@ class TestExternalFeatureGroupEngine:
         )
 
         # Act
-        external_fg_engine.save(feature_group=fg)
+        external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1
@@ -278,7 +278,7 @@ class TestExternalFeatureGroupEngine:
         feature_store_id = 99
 
         mock_external_fg_engine_new_feature_list = mocker.patch(
-            "hsfs.core.external_feature_group_engine.ExternalFeatureGroupEngine.new_feature_list"
+            "hsfs.core.external_feature_group_engine.ExternalFeatureGroupEngine._new_feature_list"
         )
         mock_external_fg_engine_update_features_metadata = mocker.patch(
             "hsfs.core.external_feature_group_engine.ExternalFeatureGroupEngine._update_features_metadata"
@@ -289,7 +289,7 @@ class TestExternalFeatureGroupEngine:
         )
 
         # Act
-        external_fg_engine.update_features(feature_group=None, updated_features=None)
+        external_fg_engine._update_features(feature_group=None, updated_features=None)
 
         # Assert
         assert mock_external_fg_engine_new_feature_list.call_count == 1
@@ -319,7 +319,7 @@ class TestExternalFeatureGroupEngine:
         )
 
         # Act
-        external_fg_engine.append_features(
+        external_fg_engine._append_features(
             feature_group=external_fg, new_features=[f1, f2]
         )
 
@@ -354,7 +354,7 @@ class TestExternalFeatureGroupEngine:
         )
 
         # Act
-        external_fg_engine.update_description(
+        external_fg_engine._update_description(
             feature_group=external_fg, description=description
         )
 
@@ -440,7 +440,7 @@ class TestExternalFeatureGroupEngine:
         )
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_save_info:
-            external_fg_engine.save(feature_group=fg)
+            external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert e_save_info.type == exceptions.FeatureStoreException
@@ -478,7 +478,7 @@ class TestExternalFeatureGroupEngine:
             id=10,
         )
         # Act
-        external_fg_engine.save(feature_group=fg)
+        external_fg_engine._save(feature_group=fg)
 
         # Assert
         assert mock_fg_api.return_value.save.call_count == 1

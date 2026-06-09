@@ -38,10 +38,10 @@ class FeatureGroupBaseEngine:
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._kafka_api = kafka_api.KafkaApi()
 
-    def delete(self, feature_group):
+    def _delete(self, feature_group):
         self._feature_group_api.delete(feature_group)
 
-    def add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
+    def _add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
         """Attach a name/value tag to a feature group.
 
         Parameters:
@@ -51,7 +51,7 @@ class FeatureGroupBaseEngine:
         """
         self._tags_api.add(feature_group, name, value)
 
-    def delete_tag(self, feature_group: FeatureGroup, name: str):
+    def _delete_tag(self, feature_group: FeatureGroup, name: str):
         """Remove a tag from a feature group.
 
         Parameters:
@@ -60,7 +60,7 @@ class FeatureGroupBaseEngine:
         """
         self._tags_api.delete(feature_group, name)
 
-    def get_tag(self, feature_group: FeatureGroup, name: str) -> Any:
+    def _get_tag(self, feature_group: FeatureGroup, name: str) -> Any:
         """Get tag with a certain name.
 
         Parameters:
@@ -75,7 +75,7 @@ class FeatureGroupBaseEngine:
             return tag[name]
         return None
 
-    def get_tags(self, feature_group: FeatureGroup) -> dict[str, Any]:
+    def _get_tags(self, feature_group: FeatureGroup) -> dict[str, Any]:
         """Get all tags for a feature group.
 
         Parameters:
@@ -89,7 +89,7 @@ class FeatureGroupBaseEngine:
             return tags
         return {}
 
-    def get_parent_feature_groups(
+    def _get_parent_feature_groups(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
@@ -109,7 +109,7 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def get_storage_connector_provenance(
+    def _get_storage_connector_provenance(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
@@ -129,7 +129,7 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def get_generated_feature_views(
+    def _get_generated_feature_views(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the generated feature view using this feature group, based on explicit provenance.
@@ -149,7 +149,7 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def get_generated_feature_groups(
+    def _get_generated_feature_groups(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the generated feature groups using this feature group, based on explicit provenance.
@@ -169,7 +169,7 @@ class FeatureGroupBaseEngine:
             return links
         return None
 
-    def update_statistics_config(self, feature_group: FeatureGroup):
+    def _update_statistics_config(self, feature_group: FeatureGroup):
         """Update the statistics configuration of a feature group.
 
         Parameters:
@@ -179,7 +179,7 @@ class FeatureGroupBaseEngine:
             feature_group, feature_group, "updateStatsConfig"
         )
 
-    def new_feature_list(
+    def _new_feature_list(
         self, feature_group: FeatureGroup, updated_features: list[Feature]
     ) -> list[Feature]:
         # take original schema and replaces the updated features and returns the new list
@@ -240,7 +240,7 @@ class FeatureGroupBaseEngine:
                 "spaces are automatically replaced with underscores."
             )
 
-    def get_subject(self, feature_group):
+    def _get_subject(self, feature_group):
         return self._kafka_api.get_subject(
             feature_group._feature_store_id,
             feature_group.get_fg_name(),

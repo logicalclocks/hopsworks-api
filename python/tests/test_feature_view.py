@@ -518,7 +518,7 @@ class TestFeatureView:
     def test_delete_feature_view_force(self, mocker, backend_fixtures):
         # Arrange
         mock_engine = mocker.patch(
-            "hsfs.core.feature_view_engine.FeatureViewEngine.delete"
+            "hsfs.core.feature_view_engine.FeatureViewEngine._delete"
         )
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -579,7 +579,7 @@ class TestFeatureViewExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 
@@ -652,7 +652,7 @@ class TestFeatureViewExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 
@@ -713,7 +713,7 @@ class TestFeatureViewExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
         )
 
         # Act
@@ -777,7 +777,7 @@ class TestFeatureViewExecuteOdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 
@@ -839,7 +839,7 @@ class TestFeatureViewExecuteMdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 
@@ -906,7 +906,7 @@ class TestFeatureViewExecuteMdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 
@@ -980,7 +980,7 @@ class TestFeatureViewExecuteMdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
             return_value=expected_result,
         )
 
@@ -1018,7 +1018,7 @@ class TestFeatureViewExecuteMdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
         )
 
         # Act
@@ -1076,7 +1076,7 @@ class TestFeatureViewExecuteMdts:
 
         mock_apply = mocker.patch.object(
             fv._feature_view_engine,
-            "apply_transformations",
+            "_apply_transformations",
             side_effect=lambda **kwargs: kwargs["data"],
         )
 

@@ -653,7 +653,7 @@ class TestPredictor:
         mock_model = MockModel()
 
         # Act
-        predictor.Predictor._for_model(mock_model)
+        predictor.Predictor.for_model(mock_model)
 
         # Assert
         mock_get_predictor_for_model.assert_called_once_with(
@@ -1318,7 +1318,7 @@ class TestPredictor:
         mock_model = MockModel()
 
         # Act
-        p = predictor.Predictor._for_model(
+        p = predictor.Predictor.for_model(
             mock_model,
             vllm_variant=PREDICTOR.VLLM_VARIANT_OMNI,
             vllm_image_tag="v0.14.0",

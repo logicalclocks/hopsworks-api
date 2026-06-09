@@ -380,8 +380,8 @@ class ExpectationSuite:
         """
         if self.id and self._expectation_engine:
             if ge_type:
-                return self._expectation_engine.get(expectation_id).to_ge_type()
-            return self._expectation_engine.get(expectation_id)
+                return self._expectation_engine._get(expectation_id).to_ge_type()
+            return self._expectation_engine._get(expectation_id)
         raise FeatureStoreException(
             initialise_expectation_suite_for_single_expectation_api_message
         )
@@ -434,10 +434,10 @@ class ExpectationSuite:
         """
         if self.id:
             converted_expectation = self._convert_expectation(expectation=expectation)
-            converted_expectation = self._expectation_engine.create(
+            converted_expectation = self._expectation_engine._create(
                 expectation=converted_expectation
             )
-            self.expectations = self._expectation_engine.get_expectations_by_suite_id()
+            self.expectations = self._expectation_engine._get_expectations_by_suite_id()
             if ge_type:
                 return converted_expectation.to_ge_type()
             return converted_expectation
@@ -474,12 +474,12 @@ class ExpectationSuite:
         if self.id:
             converted_expectation = self._convert_expectation(expectation=expectation)
             # To update an expectation we need an id either from meta field or from self.id
-            self._expectation_engine.check_for_id(converted_expectation)
-            converted_expectation = self._expectation_engine.update(
+            self._expectation_engine._check_for_id(converted_expectation)
+            converted_expectation = self._expectation_engine._update(
                 expectation=converted_expectation
             )
             # Fetch the expectations from backend to avoid sync issues
-            self.expectations = self._expectation_engine.get_expectations_by_suite_id()
+            self.expectations = self._expectation_engine._get_expectations_by_suite_id()
 
             if ge_type:
                 return converted_expectation.to_ge_type()
@@ -507,8 +507,8 @@ class ExpectationSuite:
             hopsworks.client.exceptions.FeatureStoreException: If the expectation suite is not registered yet.
         """
         if self.id:
-            self._expectation_engine.delete(expectation_id=expectation_id)
-            self.expectations = self._expectation_engine.get_expectations_by_suite_id()
+            self._expectation_engine._delete(expectation_id=expectation_id)
+            self.expectations = self._expectation_engine._get_expectations_by_suite_id()
         else:
             raise FeatureStoreException(
                 initialise_expectation_suite_for_single_expectation_api_message
@@ -560,7 +560,7 @@ class ExpectationSuite:
     def expectation_suite_name(self, expectation_suite_name: str) -> None:
         self._expectation_suite_name = expectation_suite_name
         if self.id:
-            self._expectation_suite_engine.update_metadata_from_fields(
+            self._expectation_suite_engine._update_metadata_from_fields(
                 **humps.decamelize(self.to_dict())
             )
 
@@ -594,7 +594,7 @@ class ExpectationSuite:
     def run_validation(self, run_validation: bool) -> None:
         self._run_validation = run_validation
         if self.id:
-            self._expectation_suite_engine.update_metadata_from_fields(
+            self._expectation_suite_engine._update_metadata_from_fields(
                 **humps.decamelize(self.to_dict())
             )
 
@@ -614,7 +614,7 @@ class ExpectationSuite:
     ) -> None:
         self._validation_ingestion_policy = validation_ingestion_policy.upper()
         if self.id:
-            self._expectation_suite_engine.update_metadata_from_fields(
+            self._expectation_suite_engine._update_metadata_from_fields(
                 **humps.decamelize(self.to_dict())
             )
 
@@ -660,6 +660,6 @@ class ExpectationSuite:
 
         if self._id and hasattr(self, "_expectation_suite_engine"):
             # Adding test on suite_engine allows to not run it on init
-            self._expectation_suite_engine.update_metadata_from_fields(
+            self._expectation_suite_engine._update_metadata_from_fields(
                 **humps.decamelize(self.to_dict())
             )

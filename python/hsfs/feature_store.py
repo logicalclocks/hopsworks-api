@@ -642,7 +642,7 @@ class FeatureStore:
         Returns:
             DataFrame depending on the chosen type.
         """
-        return self._feature_group_engine.sql(
+        return self._feature_group_engine._sql(
             query, self._name, dataframe_type, online, read_options or {}
         )
 
@@ -2091,7 +2091,7 @@ class FeatureStore:
             extra_log_columns=extra_log_columns,
             tags=normalized_tags,
         )
-        return self._feature_view_engine.save(feat_view)
+        return self._feature_view_engine._save(feat_view)
 
     @public
     @usage.method_logger
@@ -2163,7 +2163,7 @@ class FeatureStore:
         Returns:
             The feature view metadata object.
         """
-        fv_object = self._feature_view_engine.get(name, version)
+        fv_object = self._feature_view_engine._get(name, version)
         if not fv_object:
             fv_object = self.create_feature_view(
                 name=name,
@@ -2217,7 +2217,7 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        feature_view_object = self._feature_view_engine.get(name, version)
+        feature_view_object = self._feature_view_engine._get(name, version)
         if feature_view_object:
             util.check_missing_mandatory_tags(
                 feature_view_object.missing_mandatory_tags
@@ -2251,7 +2251,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.get(name)
+        return self._feature_view_engine._get(name)
 
     def _disable_hopsworks_feature_query_service_client(self):
         """Disable Hopsworks feature query service for the current session. This behaviour is not persisted on reset."""
