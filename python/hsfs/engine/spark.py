@@ -85,10 +85,10 @@ try:
 
     if pd.__version__ >= "2.0.0" and pyspark.__version__ < "3.2.3":
 
-        def iteritems(self):
+        def _iteritems(self):
             return self.items()
 
-        pd.DataFrame.iteritems = iteritems
+        pd.DataFrame.iteritems = _iteritems
 except ImportError:
     pass
 

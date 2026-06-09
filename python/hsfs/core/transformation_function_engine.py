@@ -345,7 +345,7 @@ class TransformationFunctionEngine:
             feature_value = data.get(prefixed_feature, data.get(unprefixed_feature))
 
             if (
-                udf.execution_mode.get_current_execution_mode(online=online)
+                udf.execution_mode._get_current_execution_mode(online=online)
                 == UDFExecutionMode.PANDAS
             ):
                 features.append(pd.Series(feature_value))
@@ -355,7 +355,7 @@ class TransformationFunctionEngine:
         transformed_result = udf._get_udf(online=online)(*features)
 
         if (
-            udf.execution_mode.get_current_execution_mode(online=online)
+            udf.execution_mode._get_current_execution_mode(online=online)
             == UDFExecutionMode.PANDAS
         ):
             # Pandas UDF return can return a pandas series or a pandas dataframe, so we need to cast it back to a dictionary.

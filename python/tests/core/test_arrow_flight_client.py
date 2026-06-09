@@ -105,7 +105,7 @@ class TestArrowFlightClient:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata",
             return_value=td_hopsfs,
         )
-        mocker.patch("hsfs.storage_connector.StorageConnector.refetch")
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
         inode_path = mocker.MagicMock()
         inode_path.path = "/path/test.parquet"
         mocker.patch(

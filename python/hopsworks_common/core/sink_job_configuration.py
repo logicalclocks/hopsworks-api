@@ -422,7 +422,7 @@ class SinkJobConfiguration:
             ),
         )
 
-    def set_extra_params(self, **kwargs) -> None:
+    def _set_extra_params(self, **kwargs) -> None:
         self._featuregroup_id = kwargs.get("featuregroup_id")
         self._featurestore_id = kwargs.get("featurestore_id")
         self._storage_connector_id = kwargs.get("storage_connector_id")

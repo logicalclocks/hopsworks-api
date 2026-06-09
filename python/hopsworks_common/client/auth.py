@@ -72,8 +72,8 @@ class OnlineStoreKeyAuth(requests.auth.AuthBase):
         return r
 
 
-@also_available_as("hsml.client.auth.get_api_key")
-def get_api_key(api_key_value, api_key_file):
+@also_available_as("hsml.client.auth._get_api_key")
+def _get_api_key(api_key_value, api_key_file):
     if api_key_value is not None:
         return api_key_value
     if api_key_file is not None:

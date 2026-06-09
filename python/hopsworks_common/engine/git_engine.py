@@ -34,7 +34,7 @@ class GitEngine:
         self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi()
         self._log = logging.getLogger(__name__)
 
-    def execute_op_blocking(
+    def _execute_op_blocking(
         self, git_op: GitOpExecution, command: str
     ) -> GitOpExecution:
         """Poll a git execution status until it reaches a terminal state.

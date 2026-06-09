@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import public
 from hopsworks_common import usage
 from hsml.llm.model import Model
 
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 _mr = None
 
 
+@public
 @usage._method_logger
 def create_model(
     name: str,

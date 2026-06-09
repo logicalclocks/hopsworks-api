@@ -118,7 +118,7 @@ class GitApi:
                 "/p/" + str(_client._project_id) + "/settings/git"
             )
         )
-        git_op = self._git_engine.execute_op_blocking(git_op, "CLONE")
+        git_op = self._git_engine._execute_op_blocking(git_op, "CLONE")
         return self.get_repo(git_op.repository.name, git_op.repository.path)
 
     @public
@@ -288,7 +288,7 @@ class GitApi:
                 "POST", path_params, headers=headers, query_params=query_params
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _delete(self, repo_id, branch: str):
         _client = client._get_instance()
@@ -313,7 +313,7 @@ class GitApi:
                 "POST", path_params, headers=headers, query_params=query_params
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _checkout(
         self, repo_id, branch: str = None, commit: str = None, force: bool = False
@@ -341,7 +341,7 @@ class GitApi:
                 "POST", path_params, headers=headers, query_params=query_params
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _status(self, repo_id):
         _client = client._get_instance()
@@ -364,7 +364,7 @@ class GitApi:
                 query_params=query_params,
             )
         )
-        git_op = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        git_op = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
         status_dict = json.loads(git_op.command_result_message)
         file_status = None
@@ -407,7 +407,7 @@ class GitApi:
                 data=json.dumps(commit_config),
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _push(self, repo_id, branch: str, force: bool = False, remote: str = None):
         _client = client._get_instance()
@@ -437,7 +437,7 @@ class GitApi:
                 data=json.dumps(push_config),
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _pull(self, repo_id, branch: str, force: bool = False, remote: str = None):
         _client = client._get_instance()
@@ -467,7 +467,7 @@ class GitApi:
                 data=json.dumps(push_config),
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _fetch(self, repo_id, remote: str, branch: str):
         _client = client._get_instance()
@@ -496,7 +496,7 @@ class GitApi:
                 data=json.dumps(fetch_config),
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _reset(self, repo_id, remote: str, branch: str, commit: str):
         _client = client._get_instance()
@@ -526,7 +526,7 @@ class GitApi:
                 data=json.dumps(reset_config),
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+        _ = self._git_engine._execute_op_blocking(git_op, query_params["action"])
 
     def _checkout_files(self, repo_id, files: list[str] | list[GitFileStatus]):
         files = util._convert_git_status_to_files(files)
@@ -553,7 +553,7 @@ class GitApi:
                 data=json.dumps({"files": files}),
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, "CHECKOUT_FILES")
+        _ = self._git_engine._execute_op_blocking(git_op, "CHECKOUT_FILES")
 
     def _get_commits(self, repo_id, branch: str):
         _client = client._get_instance()

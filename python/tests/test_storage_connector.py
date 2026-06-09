@@ -104,7 +104,7 @@ class TestS3Connector:
     def test_default_path(self, mocker):
         mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
         mocker.patch(
-            "hsfs.storage_connector.StorageConnector.refetch", return_value=None
+            "hsfs.storage_connector.StorageConnector._refetch", return_value=None
         )
         mock_engine_read = mocker.patch("hsfs.engine.spark.Engine._read")
 
@@ -1248,7 +1248,7 @@ class TestSqlConnector:
         # Arrange
         connector = self._make_connector(database_type)
         mock_read = mocker.patch("hsfs.engine._get_instance")
-        mocker.patch.object(connector, "refetch")
+        mocker.patch.object(connector, "_refetch")
 
         # Act
         connector.read(query="SELECT 1")
@@ -1272,7 +1272,7 @@ class TestSqlConnector:
             password="tiger",
         )
         mock_engine = mocker.patch("hsfs.engine._get_instance")
-        mocker.patch.object(connector, "refetch")
+        mocker.patch.object(connector, "_refetch")
 
         # Act
         connector.read(query="SELECT 1 FROM DUAL")
@@ -1457,7 +1457,7 @@ class TestOracleConnector:
 
         mock_engine = mocker.patch("hsfs.engine._get_instance")
         mock_engine.return_value._add_file.return_value = str(wallet_zip)
-        mocker.patch.object(sc, "refetch")
+        mocker.patch.object(sc, "_refetch")
 
         sc.read(query="SELECT 1")
 
@@ -1703,7 +1703,7 @@ class TestSapHanaConnector:
         # SapHanaConnector.read() refetches before reading (so a connector
         # loaded as basic info refreshes its credentials); stub it out so
         # the test doesn't try to talk to a backend.
-        mocker.patch.object(sc, "refetch")
+        mocker.patch.object(sc, "_refetch")
         query = "SELECT * FROM ANALYTICS.TBL"
         sc.read(query=query)
 

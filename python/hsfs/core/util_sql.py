@@ -74,7 +74,7 @@ def _create_mysql_engine(
     return create_engine(sql_alchemy_conn_str, **options)
 
 
-async def create_async_engine(
+async def _create_async_engine(
     online_conn: Any,
     external: bool,
     default_min_size: int,

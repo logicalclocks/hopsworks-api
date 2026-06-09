@@ -4975,7 +4975,7 @@ class TestSpark:
 
     def test_setup_storage_connector_s3(self, mocker):
         # Arrange
-        mocker.patch("hsfs.storage_connector.S3Connector.refetch")
+        mocker.patch("hsfs.storage_connector.S3Connector._refetch")
         mock_spark_engine_setup_s3_hadoop_conf = mocker.patch(
             "hsfs.engine.spark.Engine._setup_s3_hadoop_conf"
         )
@@ -5007,7 +5007,7 @@ class TestSpark:
 
     def test_setup_storage_connector_adls(self, mocker):
         # Arrange
-        mocker.patch("hsfs.storage_connector.AdlsConnector.refetch")
+        mocker.patch("hsfs.storage_connector.AdlsConnector._refetch")
         mock_spark_engine_setup_s3_hadoop_conf = mocker.patch(
             "hsfs.engine.spark.Engine._setup_s3_hadoop_conf"
         )
@@ -5039,7 +5039,7 @@ class TestSpark:
 
     def test_setup_storage_connector_gcs(self, mocker):
         # Arrange
-        mocker.patch("hsfs.storage_connector.GcsConnector.refetch")
+        mocker.patch("hsfs.storage_connector.GcsConnector._refetch")
         mock_spark_engine_setup_s3_hadoop_conf = mocker.patch(
             "hsfs.engine.spark.Engine._setup_s3_hadoop_conf"
         )
@@ -5071,7 +5071,7 @@ class TestSpark:
 
     def test_setup_storage_connector_jdbc(self, mocker):
         # Arrange
-        mocker.patch("hsfs.storage_connector.JdbcConnector.refetch")
+        mocker.patch("hsfs.storage_connector.JdbcConnector._refetch")
         mock_spark_engine_setup_s3_hadoop_conf = mocker.patch(
             "hsfs.engine.spark.Engine._setup_s3_hadoop_conf"
         )

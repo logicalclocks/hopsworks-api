@@ -35,9 +35,9 @@ _online_store_rest_client = None
 
 
 @also_available_as(
-    "hsfs.client.online_store_rest_client.init_or_reset_online_store_rest_client"
+    "hsfs.client.online_store_rest_client._init_or_reset_online_store_rest_client"
 )
-def init_or_reset_online_store_rest_client(
+def _init_or_reset_online_store_rest_client(
     transport: requests.adapters.HTTPAdapter
     | requests.adapters.BaseAdapter
     | None = None,

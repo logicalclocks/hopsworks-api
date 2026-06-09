@@ -1643,7 +1643,7 @@ class Engine:
             The dataframe with the UDF applied.
         """
         if (
-            udf.execution_mode.get_current_execution_mode(online=online)
+            udf.execution_mode._get_current_execution_mode(online=online)
             == UDFExecutionMode.PANDAS
         ):
             return self._apply_pandas_udf(

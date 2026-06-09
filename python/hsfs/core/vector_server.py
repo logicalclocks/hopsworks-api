@@ -361,7 +361,7 @@ class VectorServer:
             )
         )
         # This logic needs to move to the above engine init
-        online_store_rest_client.init_or_reset_online_store_rest_client(
+        online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
             reset_client=reset_rest_client,
         )
@@ -1390,7 +1390,7 @@ class VectorServer:
     def _parse_transformed_result(self, transformed_results, transformation_function):
         rows = {}
         if (
-            transformation_function.hopsworks_udf.execution_mode.get_current_execution_mode(
+            transformation_function.hopsworks_udf.execution_mode._get_current_execution_mode(
                 online=True
             )
             == UDFExecutionMode.PANDAS

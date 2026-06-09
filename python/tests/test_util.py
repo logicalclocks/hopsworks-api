@@ -970,4 +970,4 @@ class TestUtil:
                 RuntimeError,
                 match="Event loop is not running. Please invoke this co-routine from a running loop or provide an event loop.",
             ):
-                asyncio.run(util_sql.create_async_engine(online_connector, True, 1))
+                asyncio.run(util_sql._create_async_engine(online_connector, True, 1))

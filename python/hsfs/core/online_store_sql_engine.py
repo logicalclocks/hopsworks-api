@@ -130,7 +130,7 @@ class OnlineStoreSqlClient:
                 _logger.debug(
                     f"Initialising prepared statements for feature view {entity.name} version {entity.version}."
                 )
-            for key in self.get_prepared_statement_labels(
+            for key in self._get_prepared_statement_labels(
                 inference_helper_columns,
                 with_logging_meta_data,
                 feature_vector_with_inference_helpers,
@@ -155,7 +155,7 @@ class OnlineStoreSqlClient:
                 _logger.debug(
                     f"Initialising prepared statements for training dataset {entity.name} version {entity.version}."
                 )
-            for key in self.get_prepared_statement_labels(
+            for key in self._get_prepared_statement_labels(
                 with_inference_helper_column=False,
                 with_logging_meta_data=with_logging_meta_data,
             ):
@@ -204,7 +204,7 @@ class OnlineStoreSqlClient:
             self.prepared_statements[self.BATCH_VECTOR_KEY]
         )
 
-        for key in self.get_prepared_statement_labels(
+        for key in self._get_prepared_statement_labels(
             inference_helper_columns,
             with_logging_meta_data,
             feature_vector_with_inference_helpers,
@@ -682,7 +682,7 @@ class OnlineStoreSqlClient:
         return tuple(result_key)
 
     @staticmethod
-    def get_prepared_statement_labels(
+    def _get_prepared_statement_labels(
         with_inference_helper_column: bool = False,
         with_logging_meta_data: bool = False,
         feature_vector_with_inference_helpers: bool = False,
@@ -712,7 +712,7 @@ class OnlineStoreSqlClient:
         return prepared_statements_list
 
     async def _get_connection_pool(self, default_min_size: int) -> None:
-        return await util_sql.create_async_engine(
+        return await util_sql._create_async_engine(
             self._online_connector,
             self._external,
             default_min_size,

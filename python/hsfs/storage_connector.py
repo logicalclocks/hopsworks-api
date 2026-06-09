@@ -248,7 +248,7 @@ class StorageConnector(ABC):
             self, data_format, options or {}, path, dataframe_type
         )
 
-    def refetch(self) -> None:
+    def _refetch(self) -> None:
         """Refetch storage connector."""
         self._storage_connector_api._refetch(self)
 
@@ -764,13 +764,13 @@ class S3Connector(StorageConnector):
         Parameters:
             path: Path to prepare for reading from cloud storage.
         """
-        self.refetch()
+        self._refetch()
         return engine._get_instance()._setup_storage_connector(self, path)
 
     @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external S3 connector library."""
-        self.refetch()
+        self._refetch()
         options = {
             "access_key": self.access_key,
             "secret_key": self.secret_key,
@@ -832,7 +832,7 @@ class S3Connector(StorageConnector):
         """
         if path is None:
             path = ""
-        self.refetch()
+        self._refetch()
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -1073,7 +1073,7 @@ class RedshiftConnector(StorageConnector):
         )
 
     @public
-    def refetch(self) -> None:
+    def _refetch(self) -> None:
         """Refetch storage connector in order to retrieve updated temporary credentials."""
         self._storage_connector_api._refetch(self)
 
@@ -1695,7 +1695,7 @@ class SapHanaConnector(StorageConnector):
             raise NotImplementedError(
                 "SAP HANA connector not yet supported for engine: " + engine._get_type()
             )
-        self.refetch()
+        self._refetch()
         merged = (
             {**self.spark_options(), **options}
             if options is not None
@@ -1931,7 +1931,7 @@ class MongoDBConnector(StorageConnector):
             raise NotImplementedError(
                 "MongoDB connector not yet supported for engine: " + engine._get_type()
             )
-        self.refetch()
+        self._refetch()
         merged = (
             {**self.spark_options(), **options}
             if options is not None
@@ -2032,7 +2032,7 @@ class JdbcConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        self.refetch()
+        self._refetch()
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -3058,7 +3058,7 @@ class SqlConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        self.refetch()
+        self._refetch()
         options = (
             {**self.spark_options(), **options}
             if options is not None

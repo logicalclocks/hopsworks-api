@@ -1411,7 +1411,7 @@ class TestExternalFeatureGroup:
         # Arrange
         engine = spark.Engine()
         engine_instance = mocker.patch("hsfs.engine._get_instance", return_value=engine)
-        refetch_api = mocker.patch("hsfs.storage_connector.S3Connector.refetch")
+        refetch_api = mocker.patch("hsfs.storage_connector.S3Connector._refetch")
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
@@ -1433,7 +1433,7 @@ class TestExternalFeatureGroup:
         # Arrange
         engine = python.Engine()
         engine_instance = mocker.patch("hsfs.engine._get_instance", return_value=engine)
-        mocker.patch("hsfs.storage_connector.S3Connector.refetch")
+        mocker.patch("hsfs.storage_connector.S3Connector._refetch")
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"

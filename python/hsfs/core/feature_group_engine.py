@@ -789,7 +789,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and feature_group.data_source.rest_endpoint
         ):
             kwargs["endpoint_config"] = feature_group.data_source.rest_endpoint
-        sink_job_conf.set_extra_params(**kwargs)
+        sink_job_conf._set_extra_params(**kwargs)
         job = self._job_api.create(job_name, sink_job_conf)
         feature_group._sink_job = job
         feature_group._sink_job_conf = sink_job_conf

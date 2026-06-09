@@ -53,7 +53,7 @@ class UDFExecutionMode(Enum):
     PYTHON = "python"
     PANDAS = "pandas"
 
-    def get_current_execution_mode(self, online):
+    def _get_current_execution_mode(self, online):
         if self == UDFExecutionMode.DEFAULT and online:
             return UDFExecutionMode.PYTHON
         if self == UDFExecutionMode.DEFAULT and not online:
@@ -832,7 +832,7 @@ def renaming_wrapper(*args):
             Pandas UDF in the spark engine otherwise returns a python function for the UDF.
         """
         if (
-            self.execution_mode.get_current_execution_mode(online)
+            self.execution_mode._get_current_execution_mode(online)
             == UDFExecutionMode.PANDAS
         ):
             if engine._get_type() in ["python", "training"] or online:
@@ -844,7 +844,7 @@ def renaming_wrapper(*args):
                 returnType=self._create_pandas_udf_return_schema_from_list(),
             )
         if (
-            self.execution_mode.get_current_execution_mode(online)
+            self.execution_mode._get_current_execution_mode(online)
             == UDFExecutionMode.PYTHON
         ):
             if engine._get_type() in ["python", "training"] or online:

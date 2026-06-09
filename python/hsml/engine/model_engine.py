@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
-def model_cache_base_dirs():
+def _model_cache_base_dirs():
     """Ordered list of base directories where downloaded models are cached.
 
     Downloads are attempted in this order, falling back to the next location
@@ -603,13 +603,13 @@ class ModelEngine:
                     raise
 
         # Defensive: only reachable if candidates is empty, which should not
-        # happen because model_cache_base_dirs always returns at least one entry.
+        # happen because _model_cache_base_dirs always returns at least one entry.
         if last_error is not None:
             raise last_error
         raise RuntimeError("No cache location available to download the model.")
 
     def _model_cache_paths(self, model_instance):
-        """Per-model cache paths, one for each base in `model_cache_base_dirs`.
+        """Per-model cache paths, one for each base in `_model_cache_base_dirs`.
 
         The backend model `id` is the leaf segment so that a model version which
         is deleted and recreated (same name and version, new `id`) resolves to a
@@ -638,7 +638,7 @@ class ModelEngine:
 
         return [
             os.path.join(base, project_name, model_name, version, model_id)
-            for base in model_cache_base_dirs()
+            for base in _model_cache_base_dirs()
         ]
 
     def _prepare_download_dir(self, path, clean_existing=False, restrict_perms=False):

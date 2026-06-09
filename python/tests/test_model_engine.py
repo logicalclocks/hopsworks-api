@@ -50,7 +50,7 @@ class TestModelCacheBaseDirs:
         mocker.patch("os.getcwd", return_value=work)
 
         # Act
-        bases = model_engine.model_cache_base_dirs()
+        bases = model_engine._model_cache_base_dirs()
 
         # Assert
         assert bases == [
@@ -72,7 +72,7 @@ class TestModelCacheBaseDirs:
         mocker.patch("os.getcwd", return_value=work)
 
         # Act
-        bases = model_engine.model_cache_base_dirs()
+        bases = model_engine._model_cache_base_dirs()
 
         # Assert - the duplicate path appears only once; home base remains
         assert len(bases) == 2
@@ -84,7 +84,7 @@ class TestModelEngineDownload:
         # Arrange
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
@@ -110,7 +110,7 @@ class TestModelEngineDownload:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         eng = model_engine.ModelEngine()
@@ -141,7 +141,7 @@ class TestModelEngineDownload:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         eng = model_engine.ModelEngine()
@@ -170,7 +170,7 @@ class TestModelEngineDownload:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         eng = model_engine.ModelEngine()
@@ -189,7 +189,7 @@ class TestModelEngineDownload:
     def test_explicit_local_path_does_not_fall_back(self, mocker, tmp_path):
         # Arrange
         local_path = str(tmp_path / "explicit")
-        base_dirs_spy = mocker.patch("hsml.engine.model_engine.model_cache_base_dirs")
+        base_dirs_spy = mocker.patch("hsml.engine.model_engine._model_cache_base_dirs")
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
         mocker.patch.object(
@@ -241,7 +241,7 @@ class TestModelEngineDownload:
         # Arrange - a cache dir with stale files but no completion marker
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
@@ -273,7 +273,7 @@ class TestModelEngineDownload:
         # Arrange - a complete-looking cache dir that belongs to another user
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
@@ -302,7 +302,7 @@ class TestModelEngineDownload:
         # Arrange
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
@@ -319,7 +319,7 @@ class TestModelEngineDownload:
         # Arrange - a complete cache for an older id of the same name+version
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         old_cache = _leaf(base, model_id=10)
@@ -365,7 +365,7 @@ class TestModelClearCache:
     def test_clear_all(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}, "p2": {"m3": [1]}})
 
@@ -377,7 +377,7 @@ class TestModelClearCache:
     def test_clear_project_scope(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}, "p2": {"m3": [1]}})
 
@@ -390,7 +390,7 @@ class TestModelClearCache:
     def test_clear_model_scope(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}})
 
@@ -403,7 +403,7 @@ class TestModelClearCache:
     def test_clear_version_scope(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2]}})
 
@@ -418,7 +418,7 @@ class TestModelClearCache:
     def test_clear_nonexistent_returns_zero(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1]}})
 
@@ -428,7 +428,7 @@ class TestModelClearCache:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         _seed_cache(base1, {"p1": {"m1": [1]}})
@@ -449,7 +449,7 @@ class TestModelClearCache:
     def test_invalid_combination_does_not_delete(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         base_dirs_spy = mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1]}})
 

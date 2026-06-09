@@ -279,7 +279,7 @@ class Model:
 
         return sum(
             Model._clear_cache_base(cache_base, project_name, model_name, version)
-            for cache_base in model_engine.model_cache_base_dirs()
+            for cache_base in model_engine._model_cache_base_dirs()
         )
 
     @staticmethod

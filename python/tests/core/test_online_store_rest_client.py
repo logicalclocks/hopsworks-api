@@ -34,7 +34,7 @@ class TestOnlineStoreRestClient:
         )
 
         # Act
-        online_store_rest_client.init_or_reset_online_store_rest_client()
+        online_store_rest_client._init_or_reset_online_store_rest_client()
         online_store_rest_client_instance = online_store_rest_client._get_instance()
 
         # Assert
@@ -67,8 +67,8 @@ class TestOnlineStoreRestClient:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException):
-            online_store_rest_client.init_or_reset_online_store_rest_client()
-        online_store_rest_client.init_or_reset_online_store_rest_client(
+            online_store_rest_client._init_or_reset_online_store_rest_client()
+        online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=optional_config
         )
         online_store_rest_client_instance = online_store_rest_client._get_instance()

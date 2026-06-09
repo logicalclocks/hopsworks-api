@@ -84,7 +84,7 @@ class GitRemoteApi:
                 "POST", path_params, headers=headers, query_params=query_params
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, "ADD_REMOTE")
+        _ = self._git_engine._execute_op_blocking(git_op, "ADD_REMOTE")
         return self._get(repo_id, name)
 
     def _delete(self, repo_id, name: str):
@@ -110,4 +110,4 @@ class GitRemoteApi:
                 "POST", path_params, headers=headers, query_params=query_params
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, "DELETE_REMOTE")
+        _ = self._git_engine._execute_op_blocking(git_op, "DELETE_REMOTE")

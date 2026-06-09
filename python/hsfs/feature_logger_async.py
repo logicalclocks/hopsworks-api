@@ -31,7 +31,7 @@ from hsfs.core.feature_logging_client import (
     _get_instance as get_feature_logging_client,
 )
 from hsfs.core.feature_logging_client import (
-    init_client,
+    _init_client,
 )
 from hsfs.core.kafka_engine import _encode_row, _get_writer_function
 from hsfs.feature_logger import FeatureLogger
@@ -108,7 +108,7 @@ class AsyncWorkerThread(threading.Thread):
         self._event_loop.run_forever()
 
         # Closing the feature logging client inside the thread.
-        self._event_loop.run_until_complete(get_feature_logging_client().close())
+        self._event_loop.run_until_complete(get_feature_logging_client()._close())
 
         # Close the event loop
         self._event_loop.close()
@@ -231,7 +231,7 @@ class AsyncFeatureLogger(FeatureLogger):
                         )
                     )
 
-            responses = await get_feature_logging_client().post(
+            responses = await get_feature_logging_client()._post(
                 json.dumps(events, cls=EventEncoder),
                 headers=self._create_cloud_headers(),
             )
@@ -269,7 +269,7 @@ class AsyncFeatureLogger(FeatureLogger):
     def init(self, feature_view: FeatureView) -> None:
         self._feature_view = feature_view
         self._init_kafka_resource(feature_view)
-        init_client(self._feature_logger_config)
+        _init_client(self._feature_logger_config)
 
         # Start worker thread after initializing the client.
         self._async_worker_thread._initialize_workers(
