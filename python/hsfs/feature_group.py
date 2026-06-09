@@ -285,7 +285,7 @@ class FeatureGroupBase:
             )
 
     @public
-    def delete(self) -> None:
+    def delete(self, force: bool = False, delete_feature_views: bool = False) -> None:
         """Drop the entire feature group along with its feature data.
 
         Example:
@@ -306,6 +306,11 @@ class FeatureGroupBase:
         Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the feature group **and** all the feature data in offline and online storage associated with it.
 
+        Parameters:
+            force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place (degraded) rather than failing.
+                When False, deletion fails if the feature group is used by a feature view.
+            delete_feature_views: When True, also delete the feature views that depend on this feature group, along with their training data.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
@@ -314,7 +319,9 @@ class FeatureGroupBase:
             util.JobWarning,
             stacklevel=1,
         )
-        self._feature_group_engine._delete(self)
+        self._feature_group_engine._delete(
+            self, force=force, delete_feature_views=delete_feature_views
+        )
 
     @public
     def select_all(

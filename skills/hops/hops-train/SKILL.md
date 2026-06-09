@@ -1,8 +1,6 @@
 ---
 name: hops-train
 description: Use when training an ML model. Load training data from an existing feature view, train a model with an appropriate ML framework, evaluate it, and register the model and its evaluation (metrics, plots) in the Hopsworks model registry. Input - a feature view; Output - a registered model.
-model: claude-sonnet-4-6
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 Train a model from a feature view and register it. This is the **T** of the
