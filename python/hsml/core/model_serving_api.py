@@ -16,8 +16,8 @@
 
 import socket
 
+from hopsworks_common.client.exceptions import ModelRegistryException
 from hsml import client
-from hsml.client.exceptions import ModelRegistryException
 from hsml.constants import INFERENCE_ENDPOINTS
 from hsml.core import dataset_api, serving_api
 from hsml.inference_endpoint import _get_endpoint_by_type

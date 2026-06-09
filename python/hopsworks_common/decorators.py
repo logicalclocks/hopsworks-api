@@ -73,7 +73,7 @@ def _catch_not_found(*class_import_paths, fallback_return=None):
         @functools.wraps(f)
         def g(*args, **kwds):
             # Needs to be imported inside function to avoid circular dependency
-            from hopsworks.client.exceptions import RestAPIError
+            from hopsworks_common.client.exceptions import RestAPIError
 
             not_found_error_codes = []
             for class_import_path in class_import_paths:

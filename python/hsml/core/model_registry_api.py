@@ -16,8 +16,8 @@
 
 from __future__ import annotations
 
+from hopsworks_common.client.exceptions import ModelRegistryException
 from hsml import client
-from hsml.client.exceptions import ModelRegistryException
 from hsml.core import dataset_api
 from hsml.model_registry import ModelRegistry
 

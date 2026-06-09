@@ -25,13 +25,6 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
-# Lightweight imports happen eagerly. Heavy submodules (`hsfs`, `hsml`,
-# `hopsworks.connection`, …) are loaded on first attribute access via the
-# PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
-# entry points (the ``hops`` CLI, dependent libraries' import-time checks)
-# that don't need the full feature-store / model-registry surface area.
-from hopsworks.core import project_api, secret_api
-from hopsworks.decorators import NoHopsworksConnectionError
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
 from hopsworks_common.client.exceptions import (
@@ -40,7 +33,14 @@ from hopsworks_common.client.exceptions import (
     RestAPIError,
 )
 from hopsworks_common.constants import CLIENT
-from hopsworks_common.core import env_var_api
+
+# Lightweight imports happen eagerly. Heavy submodules (`hsfs`, `hsml`,
+# `hopsworks.connection`, …) are loaded on first attribute access via the
+# PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
+# entry points (the ``hops`` CLI, dependent libraries' import-time checks)
+# that don't need the full feature-store / model-registry surface area.
+from hopsworks_common.core import env_var_api, project_api, secret_api
+from hopsworks_common.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
 
@@ -86,7 +86,7 @@ def _load_hsml():  # type: ignore[no-untyped-def]
 
 
 def _load_connection_class():  # type: ignore[no-untyped-def]
-    from hopsworks.connection import Connection
+    from hopsworks_common.connection import Connection
 
     return Connection
 

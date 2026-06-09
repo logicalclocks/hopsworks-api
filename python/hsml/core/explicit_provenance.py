@@ -176,7 +176,13 @@ class Links:
         return self._faulty
 
     @public
-    def is_empty(self):
+    def is_empty(self) -> bool:
+        """Whether these links contain no artifacts in any category.
+
+        Returns:
+            True if there are no accessible, inaccessible, deleted, or faulty
+            artifacts, False otherwise.
+        """
         return (
             len(self.accessible) == 0
             and len(self.inaccessible) == 0
@@ -204,6 +210,18 @@ class Links:
     @public
     @staticmethod
     def get_one_accessible_parent(links):
+        """Return the single accessible parent artifact from the given links.
+
+        Parameters:
+            links: The provenance links to extract the parent from.
+
+        Returns:
+            The accessible parent artifact, or None when there is no parent
+            information or the parent is deleted, inaccessible, or invalid.
+
+        Raises:
+            Exception: If the backend returns more than one parent.
+        """
         if links is None:
             _logger.info("There is no parent information")
             return None
