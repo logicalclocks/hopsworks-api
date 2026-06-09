@@ -67,7 +67,7 @@ class HsmlModel:
         )
 
     @classmethod
-    def from_model(cls, model):
+    def _from_model(cls, model):
         return cls(
             model_registry_id=model.model_registry_id,
             model_name=model.name,
@@ -75,7 +75,7 @@ class HsmlModel:
         )
 
     # should get from backend because of authorisation check (unshared project etc)
-    def get_model(self):
+    def _get_model(self):
         try:
             from hsml.model import Model
         except ModuleNotFoundError as err:
@@ -146,7 +146,7 @@ class EmbeddingFeature:
         json_decamelized = humps.decamelize(json_dict)
         hsml_model_json = json_decamelized.get("model")
         hsml_model = (
-            HsmlModel.from_response_json(hsml_model_json).get_model()
+            HsmlModel.from_response_json(hsml_model_json)._get_model()
             if hsml_model_json
             else None
         )
@@ -228,7 +228,7 @@ class EmbeddingFeature:
             "similarityFunctionType": self._similarity_function_type,
         }
         if self._model:
-            d["model"] = HsmlModel.from_model(self._model)
+            d["model"] = HsmlModel._from_model(self._model)
         return d
 
     def __repr__(self):
