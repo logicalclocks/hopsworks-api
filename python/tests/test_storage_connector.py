@@ -2133,7 +2133,7 @@ class TestStorageConnectorToDict:
 
         d = sc.to_dict()
 
-        assert d["type"] == "featurestoreGcsConnectorDTO"
+        assert d["type"] == "featureStoreGcsConnectorDTO"
         assert d["storageConnectorType"] == "GCS"
         assert d["keyPath"] == "test_key_path"
         assert d["bucket"] == "test_bucket"
@@ -2147,7 +2147,7 @@ class TestStorageConnectorToDict:
 
         d = sc.to_dict()
 
-        assert d["type"] == "featurestoreBigQueryConnectorDTO"
+        assert d["type"] == "featurestoreBigqueryConnectorDTO"
         assert d["storageConnectorType"] == "BIGQUERY"
         assert d["keyPath"] == "test_key_path"
         assert d["parentProject"] == "test_parent_project"
