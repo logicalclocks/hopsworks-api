@@ -26,7 +26,6 @@ from hopsworks_common.core import (
     app_api,
     dataset_api,
     environment_api,
-    flink_cluster_api,
     git_api,
     job_api,
     kafka_api,
@@ -85,7 +84,6 @@ class Project:
         self._kafka_api = kafka_api.KafkaApi()
         self._job_api = job_api.JobApi()
         self._jobs_api = self._job_api  # deprecated
-        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi()
         self._git_api = git_api.GitApi()
         self._dataset_api = dataset_api.DatasetApi()
         self._environment_api = environment_api.EnvironmentApi()
@@ -279,15 +277,6 @@ class Project:
     def get_jobs_api(self):
         """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage."""
         return self.get_job_api()
-
-    @public
-    def get_flink_cluster_api(self) -> flink_cluster_api.FlinkClusterApi:
-        """Get the flink cluster API for the project.
-
-        Returns:
-            The Flink Cluster Api handle.
-        """
-        return self._flink_cluster_api
 
     @public
     def get_git_api(self) -> git_api.GitApi:
