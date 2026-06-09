@@ -2124,9 +2124,7 @@ class MongoDBConnector(StorageConnector):
         """Read a collection from MongoDB into a dataframe.
 
         Parameters:
-            query: Collection name to read; overrides the connector's default collection.
-                For advanced cases, pass a JSON-encoded aggregation pipeline; the engine
-                forwards it via the ``aggregation.pipeline`` option.
+            query: Not used for MongoDB.
             data_format: Not used for MongoDB.
             options: Extra key/value options merged into the Spark reader configuration.
             path: Not used for MongoDB.
@@ -2139,18 +2137,11 @@ class MongoDBConnector(StorageConnector):
             raise NotImplementedError(
                 "MongoDB connector not yet supported for engine: " + engine.get_type()
             )
-        self.refetch()
         merged = (
             {**self.spark_options(), **options}
             if options is not None
             else self.spark_options()
         )
-        if query:
-            stripped = query.strip()
-            if stripped.startswith("["):
-                merged["aggregation.pipeline"] = stripped
-            else:
-                merged["collection"] = stripped
         return engine.get_instance().read(
             self, self.MONGODB_FORMAT, merged, None, dataframe_type
         )
@@ -3349,7 +3340,6 @@ class SqlConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        self.refetch()
         options = (
             {**self.spark_options(), **options}
             if options is not None

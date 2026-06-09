@@ -287,6 +287,22 @@ class Engine:
                     external_fg.data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
+            if external_fg.data_source.storage_connector.type == StorageConnector.MONGODB:
+                # The query constructor response omits features from the
+                # on-demand FG payload. Fetch the full FG to get column_name
+                # mappings so we can rename source fields to feature names.
+                # Needed for MongoDB since the field names cannot be set using
+                # the query constructor's select statement (unlike with file-based
+                # sources where we can use "SELECT col AS feature_name").
+                full_fg = external_fg._feature_group_engine._feature_group_api.get(
+                    external_fg.feature_store_id, external_fg.name, external_fg.version
+                )
+                columns = full_fg.columns if full_fg else []
+                for feat in columns:
+                    if feat.column_name != feat.name:
+                        external_dataset = external_dataset.withColumnRenamed(
+                            feat.column_name, feat.name
+                        )
         else:
             external_dataset = external_fg.dataframe
 
