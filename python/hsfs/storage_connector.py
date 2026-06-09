@@ -244,7 +244,7 @@ class StorageConnector(ABC):
         Returns:
             The read dataframe.
         """
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
@@ -635,7 +635,7 @@ class HopsFSConnector(StorageConnector):
             path = ""
         if not path.startswith("hopsfs://"):
             path = self._get_path(path)
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
@@ -765,7 +765,7 @@ class S3Connector(StorageConnector):
             path: Path to prepare for reading from cloud storage.
         """
         self.refetch()
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine.get_instance()._setup_storage_connector(self, path)
 
     @public
     def connector_options(self) -> dict[str, Any]:
@@ -844,7 +844,7 @@ class S3Connector(StorageConnector):
                 f"Prepending default bucket specified on connector, final path: {path}"
             )
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, data_format, options, path, dataframe_type
         )
 
@@ -1068,7 +1068,7 @@ class RedshiftConnector(StorageConnector):
             # if table also specified we override to use query
             options.pop("dbtable", None)
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
@@ -1177,7 +1177,7 @@ class AdlsConnector(StorageConnector):
         Parameters:
             path: Path to prepare for reading from cloud storage.
         """
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine.get_instance()._setup_storage_connector(self, path)
 
     def _get_path(self, sub_path: str) -> str:
         return os.path.join(self.path, sub_path)
@@ -1223,7 +1223,7 @@ class AdlsConnector(StorageConnector):
             path = self._get_path(path)
             print(f"Using default container specified on connector, final path: {path}")
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
@@ -1483,7 +1483,7 @@ class SnowflakeConnector(StorageConnector):
             `DataFrame`.
         """
         # validate engine supports connector type
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine.get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
                 "Snowflake connector not yet supported for engine: " + engine.get_type()
             )
@@ -1498,13 +1498,13 @@ class SnowflakeConnector(StorageConnector):
             # if table also specified we override to use query
             options.pop("dbtable", None)
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
         )
 
     @public
     def prepare_spark(self, path=None):
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine.get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -1690,7 +1690,7 @@ class SapHanaConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine.get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
                 "SAP HANA connector not yet supported for engine: " + engine.get_type()
             )
@@ -1703,14 +1703,14 @@ class SapHanaConnector(StorageConnector):
         if query:
             merged["query"] = query
             merged.pop("dbtable", None)
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, self.JDBC_FORMAT, merged, None, dataframe_type
         )
 
     @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare the Spark session with the SAP HANA driver classpath when needed."""
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine.get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -1926,7 +1926,7 @@ class MongoDBConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine.get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
                 "MongoDB connector not yet supported for engine: " + engine.get_type()
             )
@@ -1942,14 +1942,14 @@ class MongoDBConnector(StorageConnector):
                 merged["aggregation.pipeline"] = stripped
             else:
                 merged["collection"] = stripped
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, self.MONGODB_FORMAT, merged, None, dataframe_type
         )
 
     @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Ensure the Spark session is wired with the ``mongo-spark-connector`` classpath."""
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine.get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -2040,7 +2040,7 @@ class JdbcConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
@@ -2198,11 +2198,11 @@ class KafkaConnector(StorageConnector):
             ssl_keystore_password = client.get_instance()._cert_key
             ssl_key_password = client.get_instance()._cert_key
         else:
-            ssl_truststore_location = engine.get_instance().add_file(
+            ssl_truststore_location = engine.get_instance()._add_file(
                 self._ssl_truststore_location, distribute=distribute
             )
             ssl_truststore_password = self._ssl_truststore_password
-            ssl_keystore_location = engine.get_instance().add_file(
+            ssl_keystore_location = engine.get_instance()._add_file(
                 self._ssl_keystore_location, distribute=distribute
             )
             ssl_keystore_password = self._ssl_keystore_password
@@ -2336,7 +2336,7 @@ class KafkaConnector(StorageConnector):
         from packaging import version
 
         kafka_client_supports_pem = version.parse(
-            engine.get_instance().get_spark_version()
+            engine.get_instance()._get_spark_version()
         ) >= version.parse("3.2.0")
 
         pem_files_assigned = False
@@ -2449,7 +2449,7 @@ class KafkaConnector(StorageConnector):
         else:
             options["subscribe"] = topic
 
-        return engine.get_instance().read_stream(
+        return engine.get_instance()._read_stream(
             self,
             message_format.lower(),
             schema,
@@ -2597,7 +2597,7 @@ class GcsConnector(StorageConnector):
         if path is None:
             path = ""
         # validate engine supports connector type
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine.get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
                 "GCS connector not yet supported for engine: " + engine.get_type()
             )
@@ -2609,7 +2609,7 @@ class GcsConnector(StorageConnector):
                 f"Prepending default bucket specified on connector, final path: {path}"
             )
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
@@ -2627,7 +2627,7 @@ class GcsConnector(StorageConnector):
         Parameters:
             path: Path to prepare for reading from Google cloud storage.
         """
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine.get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -2736,7 +2736,7 @@ class BigQueryConnector(StorageConnector):
         properties = self._arguments
         properties[self.BIGQ_PARENT_PROJECT] = self._parent_project
 
-        local_key_path = engine.get_instance().add_file(self._key_path)
+        local_key_path = engine.get_instance()._add_file(self._key_path)
         with open(local_key_path, "rb") as credentials_file:
             properties[self.BIGQ_CREDENTIALS] = str(
                 base64.b64encode(credentials_file.read()), "utf-8"
@@ -2809,7 +2809,7 @@ class BigQueryConnector(StorageConnector):
             A Spark dataframe.
         """
         # validate engine supports connector type
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine.get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
                 "BigQuery connector not yet supported for engine: " + engine.get_type()
             )
@@ -2840,7 +2840,7 @@ class BigQueryConnector(StorageConnector):
                 "or Query Project,Dataset and Table should be set"
             )
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
 
@@ -2961,7 +2961,7 @@ class SqlConnector(StorageConnector):
         """
         if not self._wallet_path:
             return None
-        local_path = engine.get_instance().add_file(self._wallet_path, distribute=False)
+        local_path = engine.get_instance()._add_file(self._wallet_path, distribute=False)
         if local_path.endswith(".zip") and os.path.isfile(local_path):
             return util.extract_zip(local_path)
         return local_path
@@ -3076,7 +3076,7 @@ class SqlConnector(StorageConnector):
                 if self._wallet_password:
                     options["oracle.net.wallet_password"] = self._wallet_password
 
-        return engine.get_instance().read(
+        return engine.get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
@@ -3196,7 +3196,7 @@ class OpenSearchConnector(StorageConnector):
             return None
 
         # Download the truststore from HDFS / remote storage to a local path first
-        local_trust_store_path = engine.get_instance().add_file(self._trust_store_path)
+        local_trust_store_path = engine.get_instance()._add_file(self._trust_store_path)
 
         # Reuse the same truststore for both keystore and truststore inputs since
         # we only need a CA chain for server verification.

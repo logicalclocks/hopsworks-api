@@ -693,7 +693,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df, expectation_suite=suite
         )
 
@@ -724,7 +724,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df, expectation_suite=suite
         )
 
@@ -748,7 +748,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df, expectation_suite=suite
         )
 
@@ -778,7 +778,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act: COMPLETE format must surface the per-row indices that SUMMARY omits.
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df,
             expectation_suite=suite,
             ge_validate_kwargs={"result_format": "COMPLETE"},
@@ -815,12 +815,12 @@ class TestGreatExpectationEngineEndToEnd:
         engine = python_engine.Engine()
 
         # Act
-        passing = engine.validate_with_great_expectations(
+        passing = engine._validate_with_great_expectations(
             dataframe=df,
             expectation_suite=suite,
             ge_validate_kwargs={"expectation_parameters": {"lo": 5}},
         )
-        failing = engine.validate_with_great_expectations(
+        failing = engine._validate_with_great_expectations(
             dataframe=df,
             expectation_suite=suite,
             ge_validate_kwargs={"expectation_parameters": {"lo": 100}},
@@ -854,7 +854,7 @@ class TestGreatExpectationEngineEndToEnd:
 
         # Act
         with pytest.warns(util_warning_for_polars()):
-            report = python_engine.Engine().validate_with_great_expectations(
+            report = python_engine.Engine()._validate_with_great_expectations(
                 dataframe=df, expectation_suite=suite
             )
 

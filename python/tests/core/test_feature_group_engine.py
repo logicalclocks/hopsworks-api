@@ -173,7 +173,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
 
     def test_save_dataframe_transformation_functions(self, mocker):
         # Arrange
@@ -220,7 +220,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
         assert transformation_engine.apply_transformation_functions.call_count == 1
 
     def test_save_ge_report(self, mocker):
@@ -268,7 +268,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
 
     def test_save_empty_table_creates_delta_table_for_delta_format(self, mocker):
         # Arrange
@@ -393,7 +393,7 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
         assert mock_fg_api.return_value.delete_content.call_count == 0
         assert mock_validate_schema.called == should_validate_schema
 
@@ -438,7 +438,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
         assert (
             str(e_info.value) == "Online storage is not enabled for this feature group."
         )
@@ -491,7 +491,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
         assert tf_engine_patch.apply_transformation_functions.call_count == 1
 
     def test_insert_id(self, mocker):
@@ -535,7 +535,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
 
     def test_insert_ge_report(self, mocker):
         # Arrange
@@ -594,7 +594,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
 
     def test_insert_overwrite(self, mocker):
         # Arrange
@@ -636,7 +636,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 1
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
 
     def test_delete(self, mocker):
         # Arrange
@@ -1067,7 +1067,7 @@ class TestFeatureGroupEngine:
         fg_engine._append_features(feature_group=fg, new_features=[f1, f2])
 
         # Assert
-        assert mock_engine_get_instance.return_value.update_table_schema.call_count == 1
+        assert mock_engine_get_instance.return_value._update_table_schema.call_count == 1
         assert len(mock_fg_engine_update_features_metadata.call_args[0][1]) == 4
 
     def test_update_description(self, mocker):
@@ -1166,9 +1166,9 @@ class TestFeatureGroupEngine:
             )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
         assert (
-            mock_engine_get_instance.return_value.save_stream_dataframe.call_count == 0
+            mock_engine_get_instance.return_value._save_stream_dataframe.call_count == 0
         )
         assert (
             str(e_info.value)
@@ -1216,9 +1216,9 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 1
         assert (
-            mock_engine_get_instance.return_value.save_stream_dataframe.call_count == 1
+            mock_engine_get_instance.return_value._save_stream_dataframe.call_count == 1
         )
         assert (
             mock_warnings_warn.call_args[0][0]
@@ -1266,9 +1266,9 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
         assert (
-            mock_engine_get_instance.return_value.save_stream_dataframe.call_count == 1
+            mock_engine_get_instance.return_value._save_stream_dataframe.call_count == 1
         )
 
     def test_insert_stream_stream_transformation_functions(self, mocker):
@@ -1319,9 +1319,9 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
         assert (
-            mock_engine_get_instance.return_value.save_stream_dataframe.call_count == 1
+            mock_engine_get_instance.return_value._save_stream_dataframe.call_count == 1
         )
         assert tf_engine_patch.apply_transformation_functions.call_count == 1
 
@@ -1367,9 +1367,9 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        assert mock_engine_get_instance.return_value._save_dataframe.call_count == 0
         assert (
-            mock_engine_get_instance.return_value.save_stream_dataframe.call_count == 1
+            mock_engine_get_instance.return_value._save_stream_dataframe.call_count == 1
         )
         assert (
             mock_warnings_warn.call_args[0][0]

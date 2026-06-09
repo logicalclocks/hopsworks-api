@@ -790,7 +790,7 @@ class TestFeatureGroup:
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mock_convert_to_default_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.convert_to_default_dataframe"
+            "hsfs.engine.python.Engine._convert_to_default_dataframe"
         )
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save",
@@ -829,7 +829,7 @@ class TestFeatureGroup:
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch(
-            "hsfs.engine.python.Engine.convert_to_default_dataframe",
+            "hsfs.engine.python.Engine._convert_to_default_dataframe",
             return_value=dataframe_fixture_basic,
         )
         mock_insert = mocker.patch(
@@ -878,7 +878,7 @@ class TestFeatureGroup:
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch(
-            "hsfs.engine.python.Engine.convert_to_default_dataframe",
+            "hsfs.engine.python.Engine._convert_to_default_dataframe",
             return_value=dataframe_fixture_basic,
         )
         mock_insert = mocker.patch(

@@ -52,7 +52,7 @@ class TestTrainingDatasetEngine:
 
         features = [f, f1]
 
-        mock_engine_get_instance.return_value.parse_schema_training_dataset.return_value = features
+        mock_engine_get_instance.return_value._parse_schema_training_dataset.return_value = features
 
         # Act
         td_engine._save(training_dataset=td, features=None, user_write_options=None)
@@ -128,7 +128,7 @@ class TestTrainingDatasetEngine:
 
         features = [f, f1]
 
-        mock_engine_get_instance.return_value.parse_schema_training_dataset.return_value = features
+        mock_engine_get_instance.return_value._parse_schema_training_dataset.return_value = features
 
         # Act
         td_engine._save(training_dataset=td, features=None, user_write_options=None)
@@ -163,10 +163,10 @@ class TestTrainingDatasetEngine:
 
         # Assert
         assert (
-            mock_engine_get_instance.return_value.write_training_dataset.call_count == 1
+            mock_engine_get_instance.return_value._write_training_dataset.call_count == 1
         )
         assert (
-            mock_engine_get_instance.return_value.write_training_dataset.call_args[0][3]
+            mock_engine_get_instance.return_value._write_training_dataset.call_args[0][3]
             == td_engine.APPEND
         )
 
@@ -185,10 +185,10 @@ class TestTrainingDatasetEngine:
 
         # Assert
         assert (
-            mock_engine_get_instance.return_value.write_training_dataset.call_count == 1
+            mock_engine_get_instance.return_value._write_training_dataset.call_count == 1
         )
         assert (
-            mock_engine_get_instance.return_value.write_training_dataset.call_args[0][3]
+            mock_engine_get_instance.return_value._write_training_dataset.call_args[0][3]
             == td_engine.OVERWRITE
         )
 

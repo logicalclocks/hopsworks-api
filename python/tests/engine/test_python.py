@@ -315,7 +315,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.sql(
+        python_engine._sql(
             sql_query=None,
             feature_store=None,
             online_conn=None,
@@ -337,7 +337,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.sql(
+        python_engine._sql(
             sql_query=None,
             feature_store=None,
             online_conn=mocker.Mock(),
@@ -425,7 +425,7 @@ class TestPython:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.read(
+            python_engine._read(
                 storage_connector=None,
                 data_format=None,
                 read_options=None,
@@ -444,7 +444,7 @@ class TestPython:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.read(
+            python_engine._read(
                 storage_connector=None,
                 data_format="",
                 read_options=None,
@@ -473,7 +473,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.read(
+        python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -504,7 +504,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.read(
+        python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -535,7 +535,7 @@ class TestPython:
         )
 
         # Act
-        dataframe = python_engine.read(
+        dataframe = python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -568,7 +568,7 @@ class TestPython:
         )
 
         # Act
-        dataframe = python_engine.read(
+        dataframe = python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -596,7 +596,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.read(
+        python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -623,7 +623,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.read(
+            python_engine._read(
                 storage_connector=connector,
                 data_format="csv",
                 read_options=None,
@@ -932,7 +932,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.read_options(data_format=None, provided_options=None)
+        result = python_engine._read_options(data_format=None, provided_options=None)
 
         # Assert
         assert result == {}
@@ -943,7 +943,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.read_stream(
+            python_engine._read_stream(
                 storage_connector=None,
                 message_format=None,
                 schema=None,
@@ -959,12 +959,12 @@ class TestPython:
 
     def test_show(self, mocker):
         # Arrange
-        mock_python_engine_sql = mocker.patch("hsfs.engine.python.Engine.sql")
+        mock_python_engine_sql = mocker.patch("hsfs.engine.python.Engine._sql")
 
         python_engine = python.Engine()
 
         # Act
-        python_engine.show(sql_query=None, feature_store=None, n=None, online_conn=None)
+        python_engine._show(sql_query=None, feature_store=None, n=None, online_conn=None)
 
         # Assert
         assert mock_python_engine_sql.call_count == 1
@@ -1004,7 +1004,7 @@ class TestPython:
             TrainingDatasetFeature("struc", type="struct<label:string,index:int>"),
             TrainingDatasetFeature("decimal", type="decimal"),
         ]
-        cast_df = python_engine.cast_columns(df, schema)
+        cast_df = python_engine._cast_columns(df, schema)
         arrow_schema = pa.Schema.from_pandas(cast_df)
         expected = {
             "string": object,
@@ -1035,7 +1035,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.register_external_temporary_table(
+        result = python_engine._register_external_temporary_table(
             external_fg=None, alias=None
         )
 
@@ -1047,7 +1047,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.register_hudi_temporary_table(
+        result = python_engine._register_hudi_temporary_table(
             hudi_fg_alias=None,
             feature_store_id=None,
             feature_store_name=None,
@@ -1077,7 +1077,7 @@ class TestPython:
         )
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.register_hudi_temporary_table(
+            python_engine._register_hudi_temporary_table(
                 hudi_fg_alias=q,
                 feature_store_id=None,
                 feature_store_name=None,
@@ -1111,7 +1111,7 @@ class TestPython:
         )
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.register_hudi_temporary_table(
+            python_engine._register_hudi_temporary_table(
                 hudi_fg_alias=q,
                 feature_store_id=None,
                 feature_store_name=None,
@@ -1143,7 +1143,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1181,7 +1181,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1223,7 +1223,7 @@ class TestPython:
         df = pl.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1257,7 +1257,7 @@ class TestPython:
         df = pl.DataFrame({"col1": [1, 2, 3, 4], "col2": ["a", "b", "c", "d"]})
 
         result = json.loads(
-            python_engine.profile(
+            python_engine._profile(
                 df=df,
                 relevant_columns=["col1", "col2"],
                 correlations=None,
@@ -1298,7 +1298,7 @@ class TestPython:
 
         # Act — relevant_columns contains only the complex column; must not raise
         # KeyError: 'statistic' from the Polars zip-conversion path
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col_list"],
             correlations=None,
@@ -1343,7 +1343,7 @@ class TestPython:
         # Act - the cast branch turns timestamp/date columns into strings; if it
         # didn't run, describe() would surface raw timestamp objects and the min
         # values below would not match these string literals.
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1380,7 +1380,7 @@ class TestPython:
         df = pl.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1417,7 +1417,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col1"],
             correlations=None,
@@ -1450,7 +1450,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col1", "col3"],
             correlations=None,
@@ -1497,7 +1497,7 @@ class TestPython:
         df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1548,7 +1548,7 @@ class TestPython:
         df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
 
         # Act — relevant_columns contains only the complex column; must not hang
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=[col_name],
             correlations=None,
@@ -1597,7 +1597,7 @@ class TestPython:
         df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
 
         # Act — relevant_columns contains both a non-complex and a complex column
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col_int", col_name],
             correlations=None,
@@ -1754,7 +1754,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.validate(dataframe=None, expectations=None, log_activity=True)
+            python_engine._validate(dataframe=None, expectations=None, log_activity=True)
 
         # Assert
         assert (
@@ -1773,7 +1773,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.validate_with_great_expectations(
+        python_engine._validate_with_great_expectations(
             dataframe=None, expectation_suite=None, ge_validate_kwargs={}
         )
 
@@ -1790,7 +1790,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.validate_with_great_expectations(
+        python_engine._validate_with_great_expectations(
             dataframe=None, expectation_suite=None, ge_validate_kwargs={}
         )
 
@@ -1813,7 +1813,7 @@ class TestPython:
 
         # Act
         with pytest.raises(ModuleNotFoundError):
-            python_engine.validate_with_great_expectations(
+            python_engine._validate_with_great_expectations(
                 dataframe=None, expectation_suite=suite, ge_validate_kwargs={}
             )
 
@@ -1822,7 +1822,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.set_job_group(group_id=None, description=None)
+        result = python_engine._set_job_group(group_id=None, description=None)
 
         # Assert
         assert result is None
@@ -1837,7 +1837,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.convert_to_default_dataframe(dataframe=df)
+        result = python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         assert str(result) == "   col1  col2\n0     1     3\n1     2     4"
@@ -1856,7 +1856,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.convert_to_default_dataframe(dataframe=df)
+        result = python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         assert result.columns.values.tolist() == ["col_1", "co_2_co"]
@@ -1908,7 +1908,7 @@ class TestPython:
         )
 
         # Act
-        result = python_engine.convert_to_default_dataframe(dataframe=df)
+        result = python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         polars_assert_frame_equal(result, expected_converted_df)
@@ -1946,8 +1946,8 @@ class TestPython:
         )
 
         # Act
-        pandas_result = python_engine.convert_to_default_dataframe(dataframe=pandas_df)
-        polars_result = python_engine.convert_to_default_dataframe(dataframe=polars_df)
+        pandas_result = python_engine._convert_to_default_dataframe(dataframe=pandas_df)
+        polars_result = python_engine._convert_to_default_dataframe(dataframe=polars_df)
 
         # Assert - both branches produce the same UTC-naive instant
         assert pandas_result["ts"].iloc[0] == datetime(2024, 1, 1, 17, 0)
@@ -1960,7 +1960,7 @@ class TestPython:
         df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act
-        copy = python_engine.shallow_copy_dataframe(df)
+        copy = python_engine._shallow_copy_dataframe(df)
 
         # Assert - separate object but shares underlying arrays
         assert copy is not df
@@ -1975,7 +1975,7 @@ class TestPython:
         original_columns = list(df.columns)
 
         # Act
-        copy = python_engine.shallow_copy_dataframe(df)
+        copy = python_engine._shallow_copy_dataframe(df)
         copy["c"] = [5, 6]
         copy["a"] = [99, 99]
 
@@ -1991,7 +1991,7 @@ class TestPython:
         original_columns = list(df.columns)
 
         # Act
-        python_engine.convert_to_default_dataframe(dataframe=df)
+        python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert - original column names must be unchanged
         assert list(df.columns) == original_columns
@@ -2005,7 +2005,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.convert_to_default_dataframe(dataframe=df)
+        python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert - original column must still be tz-aware
         assert df["ts"].dt.tz is not None
@@ -2019,7 +2019,7 @@ class TestPython:
         original_values = df.to_numpy().copy()
 
         # Act
-        python_engine.convert_to_default_dataframe(dataframe=df)
+        python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         assert (df.to_numpy() == original_values).all()
@@ -2034,7 +2034,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.parse_schema_feature_group(
+        result = python_engine._parse_schema_feature_group(
             dataframe=df, time_travel_format=None
         )
 
@@ -2069,7 +2069,7 @@ class TestPython:
         )
 
         # Act
-        result = python_engine.parse_schema_feature_group(
+        result = python_engine._parse_schema_feature_group(
             dataframe=df, time_travel_format=None
         )
 
@@ -2085,7 +2085,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.parse_schema_training_dataset(dataframe=None)
+            python_engine._parse_schema_training_dataset(dataframe=None)
 
         # Assert
         assert (
@@ -2099,7 +2099,7 @@ class TestPython:
             "hsfs.engine.python.Engine._write_dataframe_kafka"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
         mocker.patch("hsfs.engine.get_type")
 
@@ -2117,7 +2117,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.save_dataframe(
+        python_engine._save_dataframe(
             feature_group=fg,
             dataframe=None,
             operation=None,
@@ -2138,7 +2138,7 @@ class TestPython:
             "hsfs.engine.python.Engine._run_materialization_job"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
 
         python_engine = python.Engine()
@@ -2154,7 +2154,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.save_dataframe(
+        python_engine._save_dataframe(
             feature_group=fg,
             dataframe=None,
             operation=None,
@@ -2175,7 +2175,7 @@ class TestPython:
             "hsfs.engine.python.Engine._write_dataframe_kafka"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
         mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
@@ -2196,7 +2196,7 @@ class TestPython:
         test_dataframe = pd.DataFrame({"col1": [1, 2, 3], "col2": [4, 5, 6]})
 
         # Act
-        python_engine.save_dataframe(
+        python_engine._save_dataframe(
             feature_group=fg,
             dataframe=test_dataframe,
             operation="insert",
@@ -2285,7 +2285,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.legacy_save_dataframe(
+        python_engine._legacy_save_dataframe(
             feature_group=mocker.Mock(),
             dataframe=None,
             operation=None,
@@ -2326,7 +2326,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.get_training_data(
+        python_engine._get_training_data(
             training_dataset_obj=td,
             feature_view_obj=mock_feature_view,
             query_obj=mocker.Mock(),
@@ -2360,7 +2360,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.get_training_data(
+        python_engine._get_training_data(
             training_dataset_obj=td,
             feature_view_obj=None,
             query_obj=mocker.Mock(),
@@ -2379,7 +2379,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels=None
         )
 
@@ -2395,7 +2395,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels=None
         )
 
@@ -2411,7 +2411,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="pandas", labels=None
         )
 
@@ -2430,7 +2430,7 @@ class TestPython:
         d = {"Col1": [1, 2], "col2": [3, 4]}
 
         df = pl.DataFrame(data=d)
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="polars", labels=None
         )
 
@@ -2445,7 +2445,7 @@ class TestPython:
         d = {"Col1": [1, 2], "col2": [3, 4]}
 
         df = pd.DataFrame(data=d)
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="python", labels=None
         )
 
@@ -2460,7 +2460,7 @@ class TestPython:
         d = {"Col1": [1, 2], "col2": [3, 4]}
 
         df = pd.DataFrame(data=d)
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="numpy", labels=None
         )
 
@@ -2476,7 +2476,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels="col1"
         )
 
@@ -2492,7 +2492,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels="col1"
         )
 
@@ -2508,7 +2508,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="pandas", labels="col1"
         )
 
@@ -2528,7 +2528,7 @@ class TestPython:
         df = pl.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="polars", labels="col1"
         )
 
@@ -2544,7 +2544,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="python", labels="col1"
         )
 
@@ -2560,7 +2560,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="numpy", labels="col1"
         )
 
@@ -3162,7 +3162,7 @@ class TestPython:
 
         # Act
         with pytest.raises(Exception) as e_info:
-            python_engine.write_training_dataset(
+            python_engine._write_training_dataset(
                 training_dataset=None,
                 dataset=None,
                 user_write_options={},
@@ -3211,7 +3211,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.write_training_dataset(
+        python_engine._write_training_dataset(
             training_dataset=td,
             dataset=q,
             user_write_options={},
@@ -3263,7 +3263,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.write_training_dataset(
+        python_engine._write_training_dataset(
             training_dataset=td,
             dataset=q,
             user_write_options={},
@@ -3397,7 +3397,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.is_spark_dataframe(dataframe=None)
+        result = python_engine._is_spark_dataframe(dataframe=None)
 
         # Assert
         assert result is False
@@ -3408,7 +3408,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.save_stream_dataframe(
+            python_engine._save_stream_dataframe(
                 feature_group=None,
                 dataframe=None,
                 query_name=None,
@@ -3435,7 +3435,7 @@ class TestPython:
         )
 
         # Act
-        result = python_engine.update_table_schema(feature_group=None)
+        result = python_engine._update_table_schema(feature_group=None)
 
         # Assert
         assert result is None
@@ -3473,10 +3473,10 @@ class TestPython:
         # Act
         if distribute_arg is None:
             # Call without distribute argument
-            result = python_engine.add_file(file=file)
+            result = python_engine._add_file(file=file)
         else:
             # Call with distribute argument
-            result = python_engine.add_file(file=file, distribute=distribute_arg)
+            result = python_engine._add_file(file=file, distribute=distribute_arg)
 
         # Assert
         assert result == file
@@ -3488,7 +3488,7 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        result = python_engine.get_unique_values(
+        result = python_engine._get_unique_values(
             feature_dataframe=df, feature_name="col1"
         )
 
@@ -3861,7 +3861,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -3872,7 +3872,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4055,7 +4055,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4066,7 +4066,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4229,7 +4229,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4240,7 +4240,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4424,7 +4424,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4435,7 +4435,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4542,7 +4542,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
             # Assert expected columns and values
             expected_log_data, expected_columns, _, _ = (
@@ -4588,7 +4588,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -4634,7 +4634,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -4693,7 +4693,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -4735,7 +4735,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -4781,7 +4781,7 @@ class TestPython:
                 logging_feature_group_features=logging_feature_group_features,
                 column_names=column_names,
             )
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -4818,7 +4818,7 @@ class TestPython:
                 column_names=column_names,
             )
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
             logging_feature_names = [feature.name for feature in logging_features]
 
@@ -4878,7 +4878,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -4924,7 +4924,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -4974,7 +4974,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5026,7 +5026,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -5090,7 +5090,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -5130,7 +5130,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -5188,7 +5188,7 @@ class TestPython:
                 column_names=column_names,
             )
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5240,7 +5240,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -5275,7 +5275,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -5320,7 +5320,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5356,7 +5356,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -5399,7 +5399,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -5481,7 +5481,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5537,7 +5537,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -5606,7 +5606,7 @@ class TestPython:
             )
 
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -5651,7 +5651,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -5696,7 +5696,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -5741,7 +5741,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -5799,7 +5799,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert
@@ -5846,7 +5846,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -5895,7 +5895,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -5939,7 +5939,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -5984,7 +5984,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -6028,7 +6028,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6080,7 +6080,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -6131,7 +6131,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -6169,7 +6169,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -6214,7 +6214,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -6260,7 +6260,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -6305,7 +6305,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -6356,7 +6356,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -6406,7 +6406,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6444,7 +6444,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -6487,7 +6487,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
             # Assert expected columns and values
             assert all(logging_dataframe.columns == expected_columns)
@@ -6528,7 +6528,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert all(logging_dataframe.columns == expected_columns)
@@ -6569,7 +6569,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert all(logging_dataframe.columns == expected_columns)
@@ -6614,7 +6614,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
             # Assert
             assert all(logging_dataframe.columns == expected_columns)
@@ -6656,7 +6656,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         assert all(logging_dataframe.columns == expected_columns)
@@ -6698,7 +6698,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         assert all(logging_dataframe.columns == expected_columns)
@@ -6747,7 +6747,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -6794,7 +6794,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -6836,7 +6836,7 @@ class TestPython:
             column_names=column_names,
         )
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6890,7 +6890,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert
@@ -6943,7 +6943,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6981,7 +6981,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -7012,7 +7012,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7131,7 +7131,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -7261,7 +7261,7 @@ class TestPython:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         expected_log_data, expected_columns, _, _ = (
             TestPython.create_expected_logging_dataframe(
@@ -7403,7 +7403,7 @@ class TestPython:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -7440,7 +7440,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7454,13 +7454,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -7473,7 +7473,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7498,7 +7498,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -7524,7 +7524,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7545,7 +7545,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -7561,7 +7561,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7577,7 +7577,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,
@@ -7601,7 +7601,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7619,13 +7619,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -7638,7 +7638,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7657,7 +7657,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             untransformed_features=untransformed_features_df,
@@ -7681,7 +7681,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7699,7 +7699,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -7716,7 +7716,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7737,7 +7737,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             untransformed_features=untransformed_features_df,
@@ -7761,7 +7761,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7779,13 +7779,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -7797,7 +7797,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7816,7 +7816,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             transformed_features=transformed_features_df,
@@ -7841,7 +7841,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7861,7 +7861,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -7878,7 +7878,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7898,7 +7898,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -7923,7 +7923,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7941,13 +7941,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -7960,7 +7960,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7980,7 +7980,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             predictions=predictions_df,
@@ -8005,7 +8005,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8030,7 +8030,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8047,7 +8047,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8069,7 +8069,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8092,7 +8092,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8109,13 +8109,13 @@ class TestPython:
             column_names=column_names,
         )
 
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8128,7 +8128,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8149,7 +8149,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8173,7 +8173,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8197,7 +8197,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8214,7 +8214,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8235,7 +8235,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8259,7 +8259,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8276,13 +8276,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8295,7 +8295,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8314,7 +8314,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8338,7 +8338,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8362,7 +8362,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8379,7 +8379,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8397,7 +8397,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             helper_columns=inference_helpers_df,
@@ -8422,7 +8422,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8437,13 +8437,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8456,7 +8456,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8477,7 +8477,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8501,7 +8501,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8524,7 +8524,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8541,7 +8541,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8563,7 +8563,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8587,7 +8587,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8604,13 +8604,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8623,7 +8623,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8643,7 +8643,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8667,7 +8667,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8685,7 +8685,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8710,7 +8710,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8725,13 +8725,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8744,7 +8744,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8762,7 +8762,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8787,7 +8787,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8806,7 +8806,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8830,7 +8830,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8847,13 +8847,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8866,7 +8866,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8888,7 +8888,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8914,7 +8914,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8937,7 +8937,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8954,7 +8954,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8976,7 +8976,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             extra_logging_features=extra_logging_features_df,
@@ -9000,7 +9000,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -9112,7 +9112,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,
@@ -9146,7 +9146,7 @@ class TestPython:
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -9262,7 +9262,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,

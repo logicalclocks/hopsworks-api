@@ -2973,8 +2973,8 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         engine = mocker.patch("hsfs.engine.get_instance", autospec=True).return_value
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        engine.check_supported_dataframe.return_value = True
-        engine.parse_schema_feature_group.return_value = [
+        engine._check_supported_dataframe.return_value = True
+        engine._parse_schema_feature_group.return_value = [
             feature.Feature(name="id", type="bigint"),
             feature.Feature(name="feature1", type="bigint"),
             feature.Feature(name="feature2", type="string"),
@@ -3032,7 +3032,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine.get_feature_logging_df.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3170,8 +3170,8 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mocked_engine.get_feature_logging_df.call_count == 1
-        call_args = mocked_engine.get_feature_logging_df.call_args
+        assert mocked_engine._get_feature_logging_df.call_count == 1
+        call_args = mocked_engine._get_feature_logging_df.call_args
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
@@ -3276,7 +3276,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine.get_feature_logging_df.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3413,8 +3413,8 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mocked_engine.get_feature_logging_df.call_count == 1
-        call_args = mocked_engine.get_feature_logging_df.call_args
+        assert mocked_engine._get_feature_logging_df.call_count == 1
+        call_args = mocked_engine._get_feature_logging_df.call_args
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
@@ -3519,7 +3519,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine.get_feature_logging_df.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3686,8 +3686,8 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mocked_engine.get_feature_logging_df.call_count == 1
-        call_args = mocked_engine.get_feature_logging_df.call_args
+        assert mocked_engine._get_feature_logging_df.call_count == 1
+        call_args = mocked_engine._get_feature_logging_df.call_args
 
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
@@ -3798,7 +3798,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine.get_feature_logging_list.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_list.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3897,12 +3897,12 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mocked_engine.get_feature_logging_list.call_count == 1
+        assert mocked_engine._get_feature_logging_list.call_count == 1
         assert (
-            mocked_engine.get_feature_logging_df.call_count == 0
+            mocked_engine._get_feature_logging_df.call_count == 0
         )  # Should not be called when return_list=True
 
-        call_args = mocked_engine.get_feature_logging_list.call_args
+        call_args = mocked_engine._get_feature_logging_list.call_args
 
         # Verify the main arguments for list version
         assert call_args[1]["logging_data"] is logging_data
@@ -3926,7 +3926,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine.get_feature_logging_list.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_list.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -4074,12 +4074,12 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mocked_engine.get_feature_logging_list.call_count == 1
+        assert mocked_engine._get_feature_logging_list.call_count == 1
         assert (
-            mocked_engine.get_feature_logging_df.call_count == 0
+            mocked_engine._get_feature_logging_df.call_count == 0
         )  # Should not be called when return_list=True
 
-        call_args = mocked_engine.get_feature_logging_list.call_args
+        call_args = mocked_engine._get_feature_logging_list.call_args
 
         # Verify the main arguments for list version
         assert (
@@ -4126,7 +4126,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
-        mocked_engine.get_feature_logging_list.return_value = (pd.DataFrame, None, None)
+        mocked_engine._get_feature_logging_list.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -4309,12 +4309,12 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mocked_engine.get_feature_logging_list.call_count == 1
+        assert mocked_engine._get_feature_logging_list.call_count == 1
         assert (
-            mocked_engine.get_feature_logging_df.call_count == 0
+            mocked_engine._get_feature_logging_df.call_count == 0
         )  # Should not be called when return_list=True
 
-        call_args = mocked_engine.get_feature_logging_list.call_args
+        call_args = mocked_engine._get_feature_logging_list.call_args
 
         # Verify the main arguments for list version
         assert (

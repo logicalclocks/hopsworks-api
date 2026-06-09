@@ -478,7 +478,7 @@ class TestSpark:
         mock_spark_engine_sql_offline = mocker.patch(
             "hsfs.engine.spark.Engine._sql_offline"
         )
-        mocker.patch("hsfs.engine.spark.Engine.set_job_group")
+        mocker.patch("hsfs.engine.spark.Engine._set_job_group")
         mock_spark_engine_return_dataframe_type = mocker.patch(
             "hsfs.engine.spark.Engine._return_dataframe_type"
         )
@@ -486,7 +486,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        spark_engine.sql(
+        spark_engine._sql(
             sql_query=None,
             feature_store=None,
             connector=None,
@@ -503,7 +503,7 @@ class TestSpark:
         mock_spark_engine_sql_offline = mocker.patch(
             "hsfs.engine.spark.Engine._sql_offline"
         )
-        mocker.patch("hsfs.engine.spark.Engine.set_job_group")
+        mocker.patch("hsfs.engine.spark.Engine._set_job_group")
         mock_spark_engine_return_dataframe_type = mocker.patch(
             "hsfs.engine.spark.Engine._return_dataframe_type"
         )
@@ -513,7 +513,7 @@ class TestSpark:
         connector = mocker.Mock()
 
         # Act
-        spark_engine.sql(
+        spark_engine._sql(
             sql_query=None,
             feature_store=None,
             connector=connector,
@@ -550,12 +550,12 @@ class TestSpark:
 
     def test_show(self, mocker):
         # Arrange
-        mock_spark_engine_sql = mocker.patch("hsfs.engine.spark.Engine.sql")
+        mock_spark_engine_sql = mocker.patch("hsfs.engine.spark.Engine._sql")
 
         spark_engine = spark.Engine()
 
         # Act
-        spark_engine.show(
+        spark_engine._show(
             sql_query=None,
             feature_store=None,
             n=None,
@@ -578,7 +578,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        spark_engine.set_job_group(
+        spark_engine._set_job_group(
             group_id=None,
             description=None,
         )
@@ -608,7 +608,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.register_external_temporary_table(
+        spark_engine._register_external_temporary_table(
             external_fg=external_fg,
             alias=None,
         )
@@ -628,7 +628,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.register_hudi_temporary_table(
+        spark_engine._register_hudi_temporary_table(
             hudi_fg_alias=hudi_fg_alias,
             feature_store_id=None,
             feature_store_name=None,
@@ -650,7 +650,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.register_delta_temporary_table(
+        spark_engine._register_delta_temporary_table(
             delta_fg_alias=hudi_fg_alias,
             feature_store_id=None,
             feature_store_name=None,
@@ -789,7 +789,7 @@ class TestSpark:
 
         # Act
         with pytest.raises(TypeError) as e_info:
-            spark_engine.convert_to_default_dataframe(
+            spark_engine._convert_to_default_dataframe(
                 dataframe=[],
             )
 
@@ -807,7 +807,7 @@ class TestSpark:
         expected = pd.DataFrame(data=d)
 
         # Act
-        result = spark_engine.convert_to_default_dataframe(
+        result = spark_engine._convert_to_default_dataframe(
             dataframe=[[1, "test_1"], [2, "test_2"]],
         )
 
@@ -825,7 +825,7 @@ class TestSpark:
         expected = pd.DataFrame(data=d)
 
         # Act
-        result = spark_engine.convert_to_default_dataframe(
+        result = spark_engine._convert_to_default_dataframe(
             dataframe=numpy.array([[1, "test_1"], [2, "test_2"]]),
         )
 
@@ -843,7 +843,7 @@ class TestSpark:
         expected = pd.DataFrame(data=d)
 
         # Act
-        result = spark_engine.convert_to_default_dataframe(
+        result = spark_engine._convert_to_default_dataframe(
             dataframe=expected,
         )
 
@@ -867,7 +867,7 @@ class TestSpark:
         )
 
         # Act
-        result = spark_engine.convert_to_default_dataframe(dataframe=original)
+        result = spark_engine._convert_to_default_dataframe(dataframe=original)
 
         # Assert — every field is nullable, regardless of source nullability.
         for field in result.schema.fields:
@@ -893,7 +893,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.convert_to_default_dataframe(dataframe=original)
+        spark_engine._convert_to_default_dataframe(dataframe=original)
 
         # Assert — the conversion path no longer touches ``.rdd``.
         rdd_spy.assert_not_called()
@@ -910,7 +910,7 @@ class TestSpark:
         )
 
         # Act
-        result = spark_engine.convert_to_default_dataframe(
+        result = spark_engine._convert_to_default_dataframe(
             dataframe=rdd,
         )
 
@@ -930,7 +930,7 @@ class TestSpark:
         df = spark_engine._spark_session.createDataFrame(expected)
 
         # Act
-        result = spark_engine.convert_to_default_dataframe(
+        result = spark_engine._convert_to_default_dataframe(
             dataframe=df,
         )
 
@@ -950,7 +950,7 @@ class TestSpark:
         df = spark_engine._spark_session.createDataFrame(expected)
 
         # Act
-        result = spark_engine.convert_to_default_dataframe(
+        result = spark_engine._convert_to_default_dataframe(
             dataframe=df,
         )
 
@@ -968,7 +968,7 @@ class TestSpark:
 
         # Act
         with pytest.raises(TypeError) as e_info:
-            spark_engine.convert_to_default_dataframe(
+            spark_engine._convert_to_default_dataframe(
                 dataframe=None,
             )
 
@@ -995,7 +995,7 @@ class TestSpark:
         original_df = spark_engine._spark_session.createDataFrame(data, schema=schema)
 
         # Act
-        result_df = spark_engine.convert_to_default_dataframe(dataframe=original_df)
+        result_df = spark_engine._convert_to_default_dataframe(dataframe=original_df)
 
         # Assert
         original_schema = StructType(
@@ -1033,7 +1033,7 @@ class TestSpark:
         original_df = spark_engine._spark_session.createDataFrame(data, schema=schema)
 
         # Act
-        result_df = spark_engine.convert_to_default_dataframe(dataframe=original_df)
+        result_df = spark_engine._convert_to_default_dataframe(dataframe=original_df)
 
         # Assert
         original_schema = StructType(
@@ -1060,7 +1060,7 @@ class TestSpark:
         df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act
-        copy = spark_engine.shallow_copy_dataframe(df)
+        copy = spark_engine._shallow_copy_dataframe(df)
 
         # Assert - separate object but shares underlying arrays
         assert copy is not df
@@ -1075,7 +1075,7 @@ class TestSpark:
         original_columns = list(df.columns)
 
         # Act
-        copy = spark_engine.shallow_copy_dataframe(df)
+        copy = spark_engine._shallow_copy_dataframe(df)
         copy["c"] = [5, 6]
         copy["a"] = [99, 99]
 
@@ -1136,7 +1136,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.save_dataframe(
+        spark_engine._save_dataframe(
             feature_group=fg,
             dataframe=None,
             operation=None,
@@ -1193,7 +1193,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.save_dataframe(
+        spark_engine._save_dataframe(
             feature_group=fg,
             dataframe=None,
             operation=None,
@@ -1224,8 +1224,8 @@ class TestSpark:
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
 
@@ -1261,7 +1261,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        spark_engine.save_stream_dataframe(
+        spark_engine._save_stream_dataframe(
             feature_group=fg,
             dataframe=spark_df,
             query_name=None,
@@ -1352,8 +1352,8 @@ class TestSpark:
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
 
@@ -1387,7 +1387,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        spark_engine.save_stream_dataframe(
+        spark_engine._save_stream_dataframe(
             feature_group=fg,
             dataframe=spark_df,
             query_name="test_query_name",
@@ -1484,8 +1484,8 @@ class TestSpark:
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
 
@@ -1521,7 +1521,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        spark_engine.save_stream_dataframe(
+        spark_engine._save_stream_dataframe(
             feature_group=fg,
             dataframe=spark_df,
             query_name=None,
@@ -1612,8 +1612,8 @@ class TestSpark:
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
 
@@ -1649,7 +1649,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        spark_engine.save_stream_dataframe(
+        spark_engine._save_stream_dataframe(
             feature_group=fg,
             dataframe=spark_df,
             query_name=None,
@@ -1883,8 +1883,8 @@ class TestSpark:
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
 
@@ -1980,8 +1980,8 @@ class TestSpark:
         mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
 
@@ -2054,8 +2054,8 @@ class TestSpark:
         mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
 
@@ -2353,13 +2353,13 @@ class TestSpark:
     def test_get_training_data(self, mocker):
         # Arrange
         mock_spark_engine_write_training_dataset = mocker.patch(
-            "hsfs.engine.spark.Engine.write_training_dataset"
+            "hsfs.engine.spark.Engine._write_training_dataset"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        spark_engine.get_training_data(
+        spark_engine._get_training_data(
             training_dataset=None,
             feature_view_obj=None,
             query_obj=None,
@@ -2378,7 +2378,7 @@ class TestSpark:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = spark_engine.split_labels(df=df, labels=None, dataframe_type="default")
+        result = spark_engine._split_labels(df=df, labels=None, dataframe_type="default")
 
         # Assert
         assert result == (df, None)
@@ -2396,7 +2396,7 @@ class TestSpark:
         expected_labels_df = pd.DataFrame(data={"col_0": [1, 2]})
 
         # Act
-        df_new, labels_df = spark_engine.split_labels(
+        df_new, labels_df = spark_engine._split_labels(
             df=spark_df, labels=["col_0"], dataframe_type="default"
         )
 
@@ -2409,9 +2409,9 @@ class TestSpark:
     def test_write_training_dataset(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.spark.Engine.write_options")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine.convert_to_default_dataframe"
+            "hsfs.engine.spark.Engine._convert_to_default_dataframe"
         )
         mock_spark_engine_write_training_dataset_single = mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_single"
@@ -2433,7 +2433,7 @@ class TestSpark:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            spark_engine.write_training_dataset(
+            spark_engine._write_training_dataset(
                 training_dataset=td,
                 query_obj=None,
                 user_write_options=None,
@@ -2508,7 +2508,7 @@ class TestSpark:
         )
 
         # Act
-        df_returned = spark_engine.write_training_dataset(
+        df_returned = spark_engine._write_training_dataset(
             training_dataset=td,
             query_obj=q,
             user_write_options={},
@@ -2584,7 +2584,7 @@ class TestSpark:
         )
 
         # Act
-        split_dfs_returned = spark_engine.write_training_dataset(
+        split_dfs_returned = spark_engine._write_training_dataset(
             training_dataset=td,
             query_obj=q,
             user_write_options={},
@@ -2608,9 +2608,9 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
-        mocker.patch("hsfs.engine.spark.Engine.write_options")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine.convert_to_default_dataframe"
+            "hsfs.engine.spark.Engine._convert_to_default_dataframe"
         )
         mock_spark_engine_write_training_dataset_single = mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_single"
@@ -2651,7 +2651,7 @@ class TestSpark:
         q = query.Query(left_feature_group=None, left_features=None)
 
         # Act
-        spark_engine.write_training_dataset(
+        spark_engine._write_training_dataset(
             training_dataset=td,
             query_obj=q,
             user_write_options=None,
@@ -2674,9 +2674,9 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
-        mocker.patch("hsfs.engine.spark.Engine.write_options")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine.convert_to_default_dataframe"
+            "hsfs.engine.spark.Engine._convert_to_default_dataframe"
         )
         mock_spark_engine_write_training_dataset_single = mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_single"
@@ -2718,7 +2718,7 @@ class TestSpark:
         q = query.Query(left_feature_group=None, left_features=None)
 
         # Act
-        spark_engine.write_training_dataset(
+        spark_engine._write_training_dataset(
             training_dataset=td,
             query_obj=q,
             user_write_options=None,
@@ -2741,9 +2741,9 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
-        mocker.patch("hsfs.engine.spark.Engine.write_options")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine.convert_to_default_dataframe"
+            "hsfs.engine.spark.Engine._convert_to_default_dataframe"
         )
         mock_spark_engine_write_training_dataset_single = mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_single"
@@ -2788,7 +2788,7 @@ class TestSpark:
         mock_spark_engine_split_df.return_value = {"temp": m}
 
         # Act
-        spark_engine.write_training_dataset(
+        spark_engine._write_training_dataset(
             training_dataset=td,
             query_obj=q,
             user_write_options=None,
@@ -2812,9 +2812,9 @@ class TestSpark:
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
-        mocker.patch("hsfs.engine.spark.Engine.write_options")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine.convert_to_default_dataframe"
+            "hsfs.engine.spark.Engine._convert_to_default_dataframe"
         )
         mock_spark_engine_write_training_dataset_single = mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_single"
@@ -2860,7 +2860,7 @@ class TestSpark:
         mock_spark_engine_split_df.return_value = {"temp": m}
 
         # Act
-        spark_engine.write_training_dataset(
+        spark_engine._write_training_dataset(
             training_dataset=td,
             query_obj=q,
             user_write_options=None,
@@ -3512,7 +3512,7 @@ class TestSpark:
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         @udf(int)
@@ -3559,7 +3559,7 @@ class TestSpark:
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         @udf(int)
@@ -3606,7 +3606,7 @@ class TestSpark:
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
         )
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         @udf(int)
@@ -3646,7 +3646,7 @@ class TestSpark:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine.read(
+            spark_engine._read(
                 storage_connector=None,
                 data_format=None,
                 read_options=None,
@@ -3663,7 +3663,7 @@ class TestSpark:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine.read(
+            spark_engine._read(
                 storage_connector=None,
                 data_format="",
                 read_options=None,
@@ -3688,13 +3688,13 @@ class TestSpark:
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="csv",
             read_options={"name": "value"},
@@ -3724,13 +3724,13 @@ class TestSpark:
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="delta",
             read_options={"header": "true"},
@@ -3762,13 +3762,13 @@ class TestSpark:
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="parquet",
             read_options={"header": "true"},
@@ -3800,13 +3800,13 @@ class TestSpark:
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="hudi",
             read_options={"header": "true"},
@@ -3838,13 +3838,13 @@ class TestSpark:
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="orc",
             read_options={"header": "true"},
@@ -3876,13 +3876,13 @@ class TestSpark:
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="bigquery",
             read_options={"header": "true"},
@@ -3914,13 +3914,13 @@ class TestSpark:
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="csv",
             read_options={"header": "true"},
@@ -3953,13 +3953,13 @@ class TestSpark:
 
         # Patch Engine.setup_storage_connector as before
         mock_spark_engine_setup_storage_connector = mocker.patch(
-            "hsfs.engine.spark.Engine.setup_storage_connector"
+            "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read(
+        result = spark_engine._read(
             storage_connector=None,
             data_format="csv",
             read_options={"header": "true"},
@@ -3981,7 +3981,7 @@ class TestSpark:
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         mock_read_stream = MagicMock()
         mocker.patch.object(
@@ -4004,7 +4004,7 @@ class TestSpark:
         )
 
         # Act
-        result = spark_engine.read_stream(
+        result = spark_engine._read_stream(
             storage_connector=kafka_connector,
             message_format=None,
             schema=None,
@@ -4283,10 +4283,10 @@ class TestSpark:
         # Act
         if distribute_arg is None:
             # Call without distribute argument
-            spark_engine.add_file(file="test_file")
+            spark_engine._add_file(file="test_file")
         else:
             # Call with distribute argument
-            spark_engine.add_file(file="test_file", distribute=distribute_arg)
+            spark_engine._add_file(file="test_file", distribute=distribute_arg)
 
         # Assert
         if distribute_arg is False:
@@ -4316,7 +4316,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        path = spark_engine.add_file(
+        path = spark_engine._add_file(
             file="/Projects/test_file",
         )
 
@@ -4337,7 +4337,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        spark_engine.profile(
+        spark_engine._profile(
             dataframe=mocker.Mock(),
             relevant_columns=None,
             correlations=None,
@@ -4369,7 +4369,7 @@ class TestSpark:
         )
 
         # Act
-        result = spark_engine.validate_with_great_expectations(
+        result = spark_engine._validate_with_great_expectations(
             dataframe=spark_df,
             expectation_suite=es.to_ge_type(),
             ge_validate_kwargs={"run_name": "test_run_id"},
@@ -4434,7 +4434,7 @@ class TestSpark:
         )
 
         # Act
-        result = spark_engine.validate_with_great_expectations(
+        result = spark_engine._validate_with_great_expectations(
             dataframe=spark_df,
             expectation_suite=ge_suite,
             ge_validate_kwargs={},
@@ -4463,7 +4463,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.write_options(
+        result = spark_engine._write_options(
             data_format="",
             provided_options={"test_key": "test_value"},
         )
@@ -4476,7 +4476,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.write_options(
+        result = spark_engine._write_options(
             data_format="tfrecords",
             provided_options={"test_key": "test_value"},
         )
@@ -4489,7 +4489,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.write_options(
+        result = spark_engine._write_options(
             data_format="tfrecord",
             provided_options={"test_key": "test_value"},
         )
@@ -4502,7 +4502,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.write_options(
+        result = spark_engine._write_options(
             data_format="csv",
             provided_options={"test_key": "test_value"},
         )
@@ -4515,7 +4515,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.write_options(
+        result = spark_engine._write_options(
             data_format="tsv",
             provided_options={"test_key": "test_value"},
         )
@@ -4528,7 +4528,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read_options(
+        result = spark_engine._read_options(
             data_format="",
             provided_options=None,
         )
@@ -4541,7 +4541,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read_options(
+        result = spark_engine._read_options(
             data_format="",
             provided_options={"test_key": "test_value"},
         )
@@ -4554,7 +4554,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read_options(
+        result = spark_engine._read_options(
             data_format="tfrecords",
             provided_options={"test_key": "test_value"},
         )
@@ -4567,7 +4567,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read_options(
+        result = spark_engine._read_options(
             data_format="tfrecord",
             provided_options={"test_key": "test_value"},
         )
@@ -4580,7 +4580,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read_options(
+        result = spark_engine._read_options(
             data_format="csv",
             provided_options={"test_key": "test_value"},
         )
@@ -4598,7 +4598,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.read_options(
+        result = spark_engine._read_options(
             data_format="tsv",
             provided_options={"test_key": "test_value"},
         )
@@ -4625,7 +4625,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        result = spark_engine.parse_schema_feature_group(
+        result = spark_engine._parse_schema_feature_group(
             dataframe=spark_df,
             time_travel_format=None,
         )
@@ -4650,7 +4650,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        result = spark_engine.parse_schema_feature_group(
+        result = spark_engine._parse_schema_feature_group(
             dataframe=spark_df,
             time_travel_format="HUDI",
         )
@@ -4680,7 +4680,7 @@ class TestSpark:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine.parse_schema_feature_group(
+            spark_engine._parse_schema_feature_group(
                 dataframe=spark_df,
                 time_travel_format=None,
             )
@@ -4698,7 +4698,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        result = spark_engine.parse_schema_training_dataset(
+        result = spark_engine._parse_schema_training_dataset(
             dataframe=spark_df,
         )
 
@@ -4760,7 +4760,7 @@ class TestSpark:
             TrainingDatasetFeature("struc", type="struct<label:string,index:int>"),
             TrainingDatasetFeature("decimal", type="decimal"),
         ]
-        cast_df = spark_engine.cast_columns(spark_df, schema)
+        cast_df = spark_engine._cast_columns(spark_df, schema)
         expected = {
             "string": StringType(),
             "bigint": LongType(),
@@ -4993,7 +4993,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.setup_storage_connector(
+        spark_engine._setup_storage_connector(
             storage_connector=s3_connector,
             path="test_path",
         )
@@ -5025,7 +5025,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.setup_storage_connector(
+        spark_engine._setup_storage_connector(
             storage_connector=adls_connector,
             path="test_path",
         )
@@ -5057,7 +5057,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.setup_storage_connector(
+        spark_engine._setup_storage_connector(
             storage_connector=gcs_connector,
             path="test_path",
         )
@@ -5089,7 +5089,7 @@ class TestSpark:
         )
 
         # Act
-        result = spark_engine.setup_storage_connector(
+        result = spark_engine._setup_storage_connector(
             storage_connector=jdbc_connector,
             path="test_path",
         )
@@ -5379,7 +5379,7 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         # Act
-        result = spark_engine.is_spark_dataframe(
+        result = spark_engine._is_spark_dataframe(
             dataframe=None,
         )
 
@@ -5396,7 +5396,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        result = spark_engine.is_spark_dataframe(
+        result = spark_engine._is_spark_dataframe(
             dataframe=spark_df,
         )
 
@@ -5406,7 +5406,7 @@ class TestSpark:
     def test_update_table_schema_hudi(self, mocker):
         # Arrange
         mock_spark_engine_save_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine.save_dataframe"
+            "hsfs.engine.spark.Engine._save_dataframe"
         )
         mock_spark_read = mocker.patch("pyspark.sql.SparkSession.read")
         mock_format = mocker.Mock()
@@ -5427,7 +5427,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.update_table_schema(feature_group=fg)
+        spark_engine._update_table_schema(feature_group=fg)
 
         # Assert
         assert mock_spark_engine_save_dataframe.call_count == 1
@@ -5463,7 +5463,7 @@ class TestSpark:
         )
 
         # Act
-        spark_engine.update_table_schema(feature_group=fg)
+        spark_engine._update_table_schema(feature_group=fg)
 
         # Assert
         assert mock_spark_read.format.call_count == 1
@@ -6491,7 +6491,7 @@ class TestSpark:
 
     def test_setup_gcp_hadoop_conf(self, mocker):
         # Arrange
-        mock_spark_engine_add_file = mocker.patch("hsfs.engine.spark.Engine.add_file")
+        mock_spark_engine_add_file = mocker.patch("hsfs.engine.spark.Engine._add_file")
 
         mock_spark_context = MagicMock()
         mocker.patch.object(
@@ -6567,7 +6567,7 @@ class TestSpark:
 
     def test_setup_gcp_hadoop_conf_algorithm(self, mocker):
         # Arrange
-        mock_spark_engine_add_file = mocker.patch("hsfs.engine.spark.Engine.add_file")
+        mock_spark_engine_add_file = mocker.patch("hsfs.engine.spark.Engine._add_file")
 
         mock_spark_context = MagicMock()
         mocker.patch.object(
@@ -6657,7 +6657,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        result = spark_engine.get_unique_values(
+        result = spark_engine._get_unique_values(
             feature_dataframe=spark_df,
             feature_name="col_0",
         )
@@ -6675,7 +6675,7 @@ class TestSpark:
         spark_df = spark_engine._spark_session.createDataFrame(df)
 
         # Act
-        result = spark_engine.create_empty_df(
+        result = spark_engine._create_empty_df(
             streaming_df=spark_df,
         )
 
@@ -6701,7 +6701,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6756,7 +6756,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6811,7 +6811,7 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe, _, _ = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = spark_engine._get_feature_logging_df(**args)
 
         logging_feature_names = [feature.name for feature in logging_features]
         expected_dataframe, expected_columns, _, _ = TestSpark.get_expected_logging_df(
@@ -6860,7 +6860,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -6909,7 +6909,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -6959,7 +6959,7 @@ class TestSpark:
                 column_names=column_names,
             )
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -6989,7 +6989,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7041,7 +7041,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7091,7 +7091,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7139,7 +7139,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7192,7 +7192,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7241,7 +7241,7 @@ class TestSpark:
                 column_names=column_names,
             )
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -7269,7 +7269,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7317,7 +7317,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**arg)
+            spark_engine._get_feature_logging_df(**arg)
         )
 
         # Assert
@@ -7366,7 +7366,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7414,7 +7414,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7467,7 +7467,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7515,7 +7515,7 @@ class TestSpark:
                 column_names=column_names,
             )
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -7541,7 +7541,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7591,7 +7591,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7637,7 +7637,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7704,7 +7704,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7773,7 +7773,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7842,7 +7842,7 @@ class TestSpark:
                 column_names=column_names,
             )
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         assert (
             str(exp.value)
@@ -7869,7 +7869,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7917,7 +7917,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7965,7 +7965,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8022,7 +8022,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8081,7 +8081,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8135,7 +8135,7 @@ class TestSpark:
                 column_names=column_names,
             )
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -8164,7 +8164,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8212,7 +8212,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8260,7 +8260,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8311,7 +8311,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8366,7 +8366,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8417,7 +8417,7 @@ class TestSpark:
                 column_names=column_names,
             )
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -8447,7 +8447,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8496,7 +8496,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8550,7 +8550,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8604,7 +8604,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8656,7 +8656,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8707,7 +8707,7 @@ class TestSpark:
             )
 
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -8736,7 +8736,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8783,7 +8783,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8832,7 +8832,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8879,7 +8879,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8928,7 +8928,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -8977,7 +8977,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9023,7 +9023,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9072,7 +9072,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9121,7 +9121,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9176,7 +9176,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9231,7 +9231,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9279,7 +9279,7 @@ class TestSpark:
                 column_names=column_names,
             )
             # Act
-            _ = spark_engine.get_feature_logging_df(**args)
+            _ = spark_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -9474,7 +9474,7 @@ class TestSpark:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9716,7 +9716,7 @@ class TestSpark:
             column_names=column_names,
         )
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -9955,7 +9955,7 @@ class TestSpark:
         )
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            spark_engine.get_feature_logging_df(**args)
+            spark_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -10055,7 +10055,7 @@ class TestSpark:
         request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
-        untransformed_result = spark_engine.extract_logging_metadata(
+        untransformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10066,7 +10066,7 @@ class TestSpark:
             request_parameters=request_parameters_spark_df,
         )
 
-        transformed_result = spark_engine.extract_logging_metadata(
+        transformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10205,7 +10205,7 @@ class TestSpark:
         request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
-        untransformed_result = spark_engine.extract_logging_metadata(
+        untransformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10216,7 +10216,7 @@ class TestSpark:
             request_parameters=request_parameters_spark_df,
         )
 
-        transformed_result = spark_engine.extract_logging_metadata(
+        transformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10359,7 +10359,7 @@ class TestSpark:
         request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
-        untransformed_result = spark_engine.extract_logging_metadata(
+        untransformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10370,7 +10370,7 @@ class TestSpark:
             request_parameters=request_parameters_spark_df,
         )
 
-        transformed_result = spark_engine.extract_logging_metadata(
+        transformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10529,7 +10529,7 @@ class TestSpark:
         request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
-        untransformed_result = spark_engine.extract_logging_metadata(
+        untransformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10540,7 +10540,7 @@ class TestSpark:
             request_parameters=request_parameters_spark_df,
         )
 
-        transformed_result = spark_engine.extract_logging_metadata(
+        transformed_result = spark_engine._extract_logging_metadata(
             untransformed_features=untransformed_spark_df,
             transformed_features=transformed_spark_df,
             feature_view=fv,
@@ -10863,7 +10863,7 @@ class TestSparkConnectMode:
     def test_set_job_group_noop_in_connect(self):
         engine = self._make_connect_engine()
         # Should not raise even though sparkContext is None
-        engine.set_job_group("group1", "description")
+        engine._set_job_group("group1", "description")
 
     def test_set_hadoop_conf_uses_spark_conf(self):
         engine = self._make_connect_engine()
@@ -10894,7 +10894,7 @@ class TestSparkConnectMode:
         engine = self._make_connect_engine()
         mock_streaming_df = MagicMock()
         mock_streaming_df.schema = StructType([StructField("col1", StringType())])
-        engine.create_empty_df(mock_streaming_df)
+        engine._create_empty_df(mock_streaming_df)
         engine._spark_session.createDataFrame.assert_called_once_with(
             [], mock_streaming_df.schema
         )
@@ -10917,7 +10917,7 @@ class TestSparkConnectMode:
         with pytest.raises(
             exceptions.FeatureStoreException, match="RDD input is not supported"
         ):
-            engine.convert_to_default_dataframe(mock_rdd)
+            engine._convert_to_default_dataframe(mock_rdd)
 
     def test_add_file_skips_spark_context(self, tmp_path):
         from unittest.mock import patch as mock_patch
@@ -10935,7 +10935,7 @@ class TestSparkConnectMode:
                 mock_patch("builtins.open", mock_open()),
             ):
                 mock_util.get_dataset_type.return_value = "DATASET"
-                result = engine.add_file("hdfs:///path/to/file.jks", distribute=True)
+                result = engine._add_file("hdfs:///path/to/file.jks", distribute=True)
 
         # Should not have called sparkContext.addFile
         assert engine._spark_context is None

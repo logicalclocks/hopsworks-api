@@ -137,7 +137,7 @@ class Engine:
         self._mysql_online_fs_engine = None
         _logger.info("Python Engine initialized.")
 
-    def sql(
+    def _sql(
         self,
         sql_query: str,
         feature_store: str,
@@ -157,7 +157,7 @@ class Engine:
             )
         return self._jdbc(sql_query, online_conn, dataframe_type, read_options, schema)
 
-    def is_flyingduck_query_supported(
+    def _is_flyingduck_query_supported(
         self, query: query.Query, read_options: dict[str, Any] | None = None
     ) -> bool:
         from hsfs.core import arrow_flight_client
@@ -176,7 +176,7 @@ class Engine:
                 f'dataframe_type : {dataframe_type} not supported. Possible values are "default", "pandas", "polars", "numpy" or "python"'
             )
 
-    def extract_logging_metadata(
+    def _extract_logging_metadata(
         self,
         untransformed_features: pd.DataFrame | pl.DataFrame,
         transformed_features: pd.DataFrame | pl.DataFrame,
@@ -259,10 +259,10 @@ class Engine:
             dropped_columns.extend(feature_view._fully_qualified_primary_keys)
 
         if dropped_columns:
-            untransformed_features = self.drop_columns(
+            untransformed_features = self._drop_columns(
                 untransformed_features, drop_cols=dropped_columns
             )
-            transformed_features = self.drop_columns(
+            transformed_features = self._drop_columns(
                 transformed_features, drop_cols=dropped_columns
             )
 
@@ -309,7 +309,7 @@ class Engine:
                 "Reading data with Hive is not supported when using hopsworks client version >= 4.0"
             )
         if schema:
-            result_df = Engine.cast_columns(result_df, schema)
+            result_df = Engine._cast_columns(result_df, schema)
         return self._return_dataframe_type(result_df, dataframe_type)
 
     def _jdbc(
@@ -340,10 +340,10 @@ class Engine:
             else:
                 result_df = pd.read_sql(sql_query, mysql_conn)
             if schema:
-                result_df = Engine.cast_columns(result_df, schema, online=True)
+                result_df = Engine._cast_columns(result_df, schema, online=True)
         return self._return_dataframe_type(result_df, dataframe_type)
 
-    def read(
+    def _read(
         self,
         storage_connector: sc.StorageConnector,
         data_format: str,
@@ -551,12 +551,12 @@ class Engine:
                         df_list.append(self._read_pandas(data_format, obj["Body"]))
         return df_list
 
-    def read_options(
+    def _read_options(
         self, data_format: str | None, provided_options: dict[str, Any] | None
     ) -> dict[str, Any]:
         return provided_options or {}
 
-    def read_stream(
+    def _read_stream(
         self,
         storage_connector: sc.StorageConnector,
         message_format: Any,
@@ -568,7 +568,7 @@ class Engine:
             "Streaming Sources are not supported for pure Python Environments."
         )
 
-    def show(
+    def _show(
         self,
         sql_query: str,
         feature_store: str,
@@ -576,11 +576,11 @@ class Engine:
         online_conn: sc.JdbcConnector,
         read_options: dict[str, Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
-        return self.sql(
+        return self._sql(
             sql_query, feature_store, online_conn, "default", read_options or {}
         ).head(n)
 
-    def read_vector_db(
+    def _read_vector_db(
         self,
         feature_group: hsfs.feature_group.FeatureGroup,
         n: int = None,
@@ -600,13 +600,13 @@ class Engine:
             df = pd.DataFrame(results, columns=feature_names, index=None)
         return self._return_dataframe_type(df, dataframe_type)
 
-    def register_external_temporary_table(
+    def _register_external_temporary_table(
         self, external_fg: ExternalFeatureGroup, alias: str
     ) -> None:
         # No op to avoid query failure
         pass
 
-    def register_delta_temporary_table(
+    def _register_delta_temporary_table(
         self,
         delta_fg_alias,
         feature_store_id,
@@ -617,7 +617,7 @@ class Engine:
         # No op to avoid query failure
         pass
 
-    def register_hudi_temporary_table(
+    def _register_hudi_temporary_table(
         self,
         hudi_fg_alias: hsfs.constructor.hudi_feature_group_alias.HudiFeatureGroupAlias,
         feature_store_id: int,
@@ -634,7 +634,7 @@ class Engine:
                 "environment with Spark Engine."
             )
 
-    def profile_by_spark(
+    def _profile_by_spark(
         self,
         metadata_instance: FeatureGroup
         | ExternalFeatureGroup
@@ -652,7 +652,7 @@ class Engine:
         job._wait_for_job()
         return job
 
-    def profile(
+    def _profile(
         self,
         df: pd.DataFrame | pl.DataFrame,
         relevant_columns: list[str],
@@ -836,7 +836,7 @@ class Engine:
 
         return content_dict
 
-    def validate(
+    def _validate(
         self, dataframe: pd.DataFrame, expectations: Any, log_activity: bool = True
     ) -> None:
         raise NotImplementedError(
@@ -844,7 +844,7 @@ class Engine:
         )
 
     @uses_great_expectations
-    def validate_with_great_expectations(
+    def _validate_with_great_expectations(
         self,
         dataframe: pl.DataFrame | pd.DataFrame,
         expectation_suite: great_expectations.core.ExpectationSuite,
@@ -879,10 +879,10 @@ class Engine:
             dataframe, expectation_suite=expectation_suite
         ).validate(**ge_validate_kwargs)
 
-    def set_job_group(self, group_id: str, description: str | None) -> None:
+    def _set_job_group(self, group_id: str, description: str | None) -> None:
         pass
 
-    def convert_to_default_dataframe(
+    def _convert_to_default_dataframe(
         self, dataframe: pd.DataFrame | pl.DataFrame | pl.dataframe.frame.DataFrame
     ) -> pd.DataFrame | None:
         if isinstance(dataframe, pd.DataFrame) or (
@@ -948,7 +948,7 @@ class Engine:
             f"The provided dataframe has type: {type(dataframe)}"
         )
 
-    def parse_schema_feature_group(
+    def _parse_schema_feature_group(
         self,
         dataframe: pd.DataFrame | pl.DataFrame,
         time_travel_format: str | None = None,
@@ -982,7 +982,7 @@ class Engine:
 
         return features
 
-    def parse_schema_training_dataset(
+    def _parse_schema_training_dataset(
         self, dataframe: pd.DataFrame | pl.DataFrame
     ) -> list[feature.Feature]:
         raise NotImplementedError(
@@ -1077,7 +1077,7 @@ class Engine:
         flags.loc[max_idx] = True
         return flags.tolist()
 
-    def save_dataframe(
+    def _save_dataframe(
         self,
         feature_group: FeatureGroup,
         dataframe: pd.DataFrame | pl.DataFrame,
@@ -1129,7 +1129,7 @@ class Engine:
 
         if not inserted:
             # for backwards compatibility
-            return self.legacy_save_dataframe(
+            return self._legacy_save_dataframe(
                 feature_group,
                 dataframe,
                 operation,
@@ -1141,7 +1141,7 @@ class Engine:
             )
         return None
 
-    def legacy_save_dataframe(
+    def _legacy_save_dataframe(
         self,
         feature_group: FeatureGroup,
         dataframe: pd.DataFrame | pl.DataFrame,
@@ -1174,7 +1174,7 @@ class Engine:
 
         return ingestion_job.job
 
-    def get_training_data(
+    def _get_training_data(
         self,
         training_dataset_obj: TrainingDataset,
         feature_view_obj: feature_view.FeatureView,
@@ -1235,7 +1235,7 @@ class Engine:
             request_parameters=None,
         )
 
-    def split_labels(
+    def _split_labels(
         self,
         df: pd.DataFrame | pl.DataFrame,
         labels: list[str],
@@ -1255,7 +1255,7 @@ class Engine:
             )
         return self._return_dataframe_type(df, dataframe_type), None
 
-    def drop_columns(
+    def _drop_columns(
         self, df: pd.DataFrame | pl.DataFrame, drop_cols: list[str]
     ) -> pd.DataFrame | pl.DataFrame:
         if HAS_POLARS and (
@@ -1438,7 +1438,7 @@ class Engine:
             result_dfs[split.name] = result_df
         return result_dfs
 
-    def write_training_dataset(
+    def _write_training_dataset(
         self,
         training_dataset: TrainingDataset,
         dataset: query.Query | pd.DataFrame | pl.DataFrame,
@@ -1547,12 +1547,12 @@ class Engine:
             f"Dataframe type `{dataframe_type}` not supported on this platform."
         )
 
-    def is_spark_dataframe(
+    def _is_spark_dataframe(
         self, dataframe: pd.DataFrame | pl.DataFrame
     ) -> Literal[False]:
         return False
 
-    def save_stream_dataframe(
+    def _save_stream_dataframe(
         self,
         feature_group: FeatureGroup | ExternalFeatureGroup,
         dataframe: pd.DataFrame | pl.DataFrame,
@@ -1566,7 +1566,7 @@ class Engine:
             "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def update_table_schema(
+    def _update_table_schema(
         self, feature_group: FeatureGroup | ExternalFeatureGroup
     ) -> None:
         _job = self._feature_group_api.update_table_schema(feature_group)
@@ -1594,7 +1594,7 @@ class Engine:
             spark_job_configuration=spark_job_configuration,
         )
 
-    def add_file(self, file: str | None, distribute=True) -> str | None:
+    def _add_file(self, file: str | None, distribute=True) -> str | None:
         if not file:
             return file
 
@@ -1613,7 +1613,7 @@ class Engine:
                 f.write(bytesio_object.getbuffer())
         return local_file
 
-    def shallow_copy_dataframe(
+    def _shallow_copy_dataframe(
         self, dataframe: pd.DataFrame | pl.DataFrame
     ) -> pd.DataFrame | pl.DataFrame:
         if HAS_POLARS and (
@@ -1626,7 +1626,7 @@ class Engine:
             f"Dataframe type {type(dataframe)} not supported in the Python engine."
         )
 
-    def apply_udf_on_dataframe(
+    def _apply_udf_on_dataframe(
         self,
         udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
@@ -1766,7 +1766,7 @@ class Engine:
         return dataframe
 
     @staticmethod
-    def get_unique_values(
+    def _get_unique_values(
         feature_dataframe: pd.DataFrame | pl.DataFrame, feature_name: str
     ) -> np.ndarray:
         return feature_dataframe[feature_name].unique()
@@ -1957,7 +1957,7 @@ class Engine:
         return feature_group.materialization_job
 
     @staticmethod
-    def cast_columns(
+    def _cast_columns(
         df: pd.DataFrame, schema: list[feature.Feature], online: bool = False
     ) -> pd.DataFrame:
         for _feat in schema:
@@ -1970,7 +1970,7 @@ class Engine:
         return df
 
     @staticmethod
-    def is_connector_type_supported(connector_type: str) -> bool:
+    def _is_connector_type_supported(connector_type: str) -> bool:
         return connector_type in [
             sc.StorageConnector.HOPSFS,
             sc.StorageConnector.S3,
@@ -2057,7 +2057,7 @@ class Engine:
         )
 
     @staticmethod
-    def get_logging_metadata(
+    def _get_logging_metadata(
         size=None,
         td_col_name: str | None = None,
         time_col_name: str | None = None,
@@ -2092,7 +2092,7 @@ class Engine:
                 metadata[k] = v[0]
         return metadata
 
-    def get_feature_logging_df(
+    def _get_feature_logging_df(
         self,
         logging_data: pd.DataFrame
         | pl.DataFrame
@@ -2342,7 +2342,7 @@ class Engine:
             )
 
         # Add meta data columns
-        logging_metadata = Engine.get_logging_metadata(
+        logging_metadata = Engine._get_logging_metadata(
             size=len(logging_df),
             td_col_name=td_col_name,
             time_col_name=time_col_name,
@@ -2397,7 +2397,7 @@ class Engine:
             missing_logging_features,
         )
 
-    def get_feature_logging_list(
+    def _get_feature_logging_list(
         self,
         logging_data: pd.DataFrame
         | pl.DataFrame
@@ -2549,7 +2549,7 @@ class Engine:
             ]
         ):
             logging_data, additional_logging_features, missing_logging_features = (
-                self.get_feature_logging_df(
+                self._get_feature_logging_df(
                     logging_data=logging_data,
                     logging_feature_group_features=logging_feature_group_features,
                     logging_feature_group_feature_names=logging_feature_group_feature_names,
@@ -2737,7 +2737,7 @@ class Engine:
         # get metadata
         for row in log_vectors:
             row.update(
-                Engine.get_logging_metadata(
+                Engine._get_logging_metadata(
                     td_col_name=td_col_name,
                     time_col_name=time_col_name,
                     model_col_name=model_col_name,
@@ -2757,11 +2757,11 @@ class Engine:
         return log_vectors, None, None
 
     @staticmethod
-    def read_feature_log(query, time_col):
+    def _read_feature_log(query, time_col):
         df = query.read()
         return df.drop(["log_id", time_col], axis=1)
 
-    def check_supported_dataframe(self, dataframe: Any) -> bool:
+    def _check_supported_dataframe(self, dataframe: Any) -> bool:
         """Check if a dataframe is supported by the engine.
 
         Both Pandas and Polars dataframes are supported in the Python Engine.

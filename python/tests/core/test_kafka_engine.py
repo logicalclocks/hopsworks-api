@@ -405,7 +405,7 @@ class TestKafkaEngine:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
         mock_storage_connector_api = mocker.patch(
@@ -414,7 +414,7 @@ class TestKafkaEngine:
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         # Act
@@ -448,7 +448,7 @@ class TestKafkaEngine:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
         mock_storage_connector_api = mocker.patch(
@@ -457,7 +457,7 @@ class TestKafkaEngine:
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         # Act
         results = kafka_engine._get_kafka_config(
@@ -490,7 +490,7 @@ class TestKafkaEngine:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
         mock_storage_connector_api = mocker.patch(
@@ -499,7 +499,7 @@ class TestKafkaEngine:
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         # Act
         results = kafka_engine._get_kafka_config(

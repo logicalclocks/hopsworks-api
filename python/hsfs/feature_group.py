@@ -1736,7 +1736,7 @@ class FeatureGroupBase:
 
         return self._great_expectation_engine._validate(
             self,
-            dataframe=engine.get_instance().convert_to_default_dataframe(dataframe),
+            dataframe=engine.get_instance()._convert_to_default_dataframe(dataframe),
             expectation_suite=expectation_suite,
             save_report=save_report,
             validation_options=validation_options or {},
@@ -3402,7 +3402,7 @@ class FeatureGroup(FeatureGroupBase):
                     "start_time/end_time filter on the event_time column values."
                 )
 
-        engine.get_instance().set_job_group(
+        engine.get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -3561,7 +3561,7 @@ class FeatureGroup(FeatureGroupBase):
         Returns:
             A list of rows, where each row is represented as a list of feature values.
         """
-        engine.get_instance().set_job_group(
+        engine.get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -3715,7 +3715,7 @@ class FeatureGroup(FeatureGroupBase):
                 " Please provide a list of features or a Dataframe"
             )
 
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
 
         user_version = self._version
 
@@ -3910,7 +3910,7 @@ class FeatureGroup(FeatureGroupBase):
                 stacklevel=1,
             )
 
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
 
         if validation_options is None:
             validation_options = {}
@@ -4201,14 +4201,14 @@ class FeatureGroup(FeatureGroupBase):
             Spark Structured Streaming Query object.
         """
         if (
-            not engine.get_instance().is_spark_dataframe(features)
+            not engine.get_instance()._is_spark_dataframe(features)
             or not features.isStreaming
         ):
             raise TypeError(
                 "Features have to be a streaming type spark dataframe. Use `insert()` method instead."
             )
         # lower casing feature names
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
         warnings.warn(
             (
                 f"Stream ingestion for feature group `{self._name}`, with version"
@@ -5174,7 +5174,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 If data validation fails and the expectation suite `validation_ingestion_policy` is set to `STRICT`.
                 Data is NOT ingested.
         """
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine.get_instance()._convert_to_default_dataframe(features)
 
         if validation_options is None:
             validation_options = {}
@@ -5372,7 +5372,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         if (
             engine.get_type() == "python"
             and not online
-            and not engine.get_instance().is_flyingduck_query_supported(
+            and not engine.get_instance()._is_flyingduck_query_supported(
                 self.select_all()
             )
         ):
@@ -5392,7 +5392,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 "to enable time-based filtering."
             )
 
-        engine.get_instance().set_job_group(
+        engine.get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -5435,7 +5435,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         Returns:
             A list of rows, where each row is represented as a list of feature values.
         """
-        engine.get_instance().set_job_group(
+        engine.get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -5791,7 +5791,7 @@ class SpineGroup(FeatureGroupBase):
                 None  # if metadata fetched from backend the dataframe is not set
             )
         else:
-            self._dataframe = engine.get_instance().convert_to_default_dataframe(
+            self._dataframe = engine.get_instance()._convert_to_default_dataframe(
                 dataframe
             )
 
@@ -5801,7 +5801,7 @@ class SpineGroup(FeatureGroupBase):
             and self._dataframe is not None
             and self._features is not None
         ):
-            dataframe_features = engine.get_instance().parse_schema_feature_group(
+            dataframe_features = engine.get_instance()._parse_schema_feature_group(
                 self._dataframe
             )
             self._feature_group_engine._verify_schema_compatibility(

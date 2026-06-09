@@ -385,7 +385,7 @@ class FeatureViewEngine:
             if isinstance(spine, feature_group.SpineGroup):
                 # schema of original fg on left side needs to be consistent with schema contained in the
                 # spine group to overwrite the feature group
-                dataframe_features = engine.get_instance().parse_schema_feature_group(
+                dataframe_features = engine.get_instance()._parse_schema_feature_group(
                     spine.dataframe
                 )
                 spine._feature_group_engine._verify_schema_compatibility(
@@ -523,7 +523,7 @@ class FeatureViewEngine:
                 f"Incorrect `get` method is used. Use `feature_view.{method_name}` instead."
             )
 
-        read_options = engine.get_instance().read_options(
+        read_options = engine.get_instance()._read_options(
             td_updated.data_format, read_options
         )
 
@@ -574,7 +574,7 @@ class FeatureViewEngine:
                 spine=spine,
                 lookback=td_updated._lookback,
             )
-            split_df = engine.get_instance().get_training_data(
+            split_df = engine.get_instance()._get_training_data(
                 td_updated,
                 feature_view_obj,
                 query,
@@ -613,7 +613,7 @@ class FeatureViewEngine:
         if td_updated.splits:
             for split in td_updated.splits:
                 split_name = split.name
-                split_df[split_name] = engine.get_instance().split_labels(
+                split_df[split_name] = engine.get_instance()._split_labels(
                     split_df[split_name], labels, dataframe_type
                 )
             feature_dfs = []
@@ -622,7 +622,7 @@ class FeatureViewEngine:
                 feature_dfs.append(split_df[split][0])
                 label_dfs.append(split_df[split][1])
             return td_updated, feature_dfs + label_dfs
-        split_df = engine.get_instance().split_labels(split_df, labels, dataframe_type)
+        split_df = engine.get_instance()._split_labels(split_df, labels, dataframe_type)
         return td_updated, split_df
 
     def _set_event_time(self, feature_view_obj, training_dataset_obj):
@@ -740,7 +740,7 @@ class FeatureViewEngine:
         if data_format == "csv" or data_format == "tsv":
             if not schema:
                 raise FeatureStoreException("Reading csv, tsv requires a schema.")
-            return engine.get_instance().cast_columns(df, schema)
+            return engine.get_instance()._cast_columns(df, schema)
         return df
 
     def _read_dir_from_storage_connector(
@@ -823,7 +823,7 @@ class FeatureViewEngine:
             if not training_helper:
                 drop_cols = list(set(drop_cols).difference(feature_view_features))
             if drop_cols:
-                df = engine.get_instance().drop_columns(df, drop_cols)
+                df = engine.get_instance()._drop_columns(df, drop_cols)
         return df
 
     # This method is used by hsfs_utils to launch a job for python client
@@ -871,7 +871,7 @@ class FeatureViewEngine:
         user_write_options["primary_keys"] = primary_keys
         user_write_options["event_time"] = event_time
 
-        td_job = engine.get_instance().write_training_dataset(
+        td_job = engine.get_instance()._write_training_dataset(
             training_dataset_obj,
             batch_query,
             user_write_options,
@@ -1081,7 +1081,7 @@ class FeatureViewEngine:
         )
 
         if logging_data:
-            batch_dataframe = engine.get_instance().extract_logging_metadata(
+            batch_dataframe = engine.get_instance()._extract_logging_metadata(
                 untransformed_features=feature_dataframe,
                 transformed_features=transformed_dataframe,
                 feature_view=feature_view_obj,
@@ -1395,9 +1395,9 @@ class FeatureViewEngine:
             feature.name for feature in feature_view_obj.features if feature.label
         ]
         for df in dataframes:
-            if df is not None and engine.get_instance().check_supported_dataframe(df):
-                supported_df = engine.get_instance().convert_to_default_dataframe(df)
-                features = engine.get_instance().parse_schema_feature_group(
+            if df is not None and engine.get_instance()._check_supported_dataframe(df):
+                supported_df = engine.get_instance()._convert_to_default_dataframe(df)
+                features = engine.get_instance()._parse_schema_feature_group(
                     supported_df
                 )
                 for feature in features:
@@ -1782,7 +1782,7 @@ class FeatureViewEngine:
 
         if return_list:
             logging_data, additional_logging_features, missing_logging_features = (
-                engine.get_instance().get_feature_logging_list(
+                engine.get_instance()._get_feature_logging_list(
                     logging_data=logging_data,
                     logging_feature_group_features=logging_feature_group_features,
                     logging_feature_group_feature_names=logging_feature_group_feature_names,
@@ -1842,7 +1842,7 @@ class FeatureViewEngine:
             )
         else:
             logging_data, additional_logging_features, missing_logging_features = (
-                engine.get_instance().get_feature_logging_df(
+                engine.get_instance()._get_feature_logging_df(
                     logging_data=logging_data,
                     logging_feature_group_features=logging_feature_group_features,
                     logging_feature_group_feature_names=logging_feature_group_feature_names,
@@ -1969,7 +1969,7 @@ class FeatureViewEngine:
             query = query.filter(
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
             )
-        return engine.get_instance().read_feature_log(
+        return engine.get_instance()._read_feature_log(
             query, constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME
         )
 

@@ -48,9 +48,9 @@ class TrainingDatasetEngine:
                 for label_name in training_dataset.label
             ]
         else:
-            features = engine.get_instance().convert_to_default_dataframe(features)
+            features = engine.get_instance()._convert_to_default_dataframe(features)
             training_dataset._features = (
-                engine.get_instance().parse_schema_training_dataset(features)
+                engine.get_instance()._parse_schema_training_dataset(features)
             )
             for label_name in training_dataset.label:
                 for feature in training_dataset._features:
@@ -66,13 +66,13 @@ class TrainingDatasetEngine:
             )
 
         updated_instance = self._training_dataset_api.post(training_dataset)
-        td_job = engine.get_instance().write_training_dataset(
+        td_job = engine.get_instance()._write_training_dataset(
             training_dataset, features, user_write_options, self.OVERWRITE
         )
         return updated_instance, td_job
 
     def _insert(self, training_dataset, dataset, user_write_options, overwrite):
-        return engine.get_instance().write_training_dataset(
+        return engine.get_instance()._write_training_dataset(
             training_dataset,
             dataset,
             user_write_options,
@@ -80,7 +80,7 @@ class TrainingDatasetEngine:
         )
 
     def _read(self, training_dataset, split, user_read_options):
-        read_options = engine.get_instance().read_options(
+        read_options = engine.get_instance()._read_options(
             training_dataset.data_format, user_read_options
         )
 

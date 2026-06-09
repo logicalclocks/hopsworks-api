@@ -112,7 +112,7 @@ class TestArrowFlightClient:
             "hsfs.core.dataset_api.DatasetApi._list_dataset_path",
             return_value=(1, [inode_path]),
         )
-        mocker.patch("hsfs.engine.python.Engine.split_labels", return_value=None)
+        mocker.patch("hsfs.engine.python.Engine._split_labels", return_value=None)
 
     def test_read_feature_group(self, mocker, backend_fixtures):
         # Arrange

@@ -84,7 +84,7 @@ class TestStatisticsEngine:
         # Assert
         assert mock_statistics_engine_profile_statistics.call_count == 0
         assert mock_statistics_engine_save_statistics.call_count == 0
-        assert mock_engine_get_instance.return_value.profile_by_spark.call_count == 1
+        assert mock_engine_get_instance.return_value._profile_by_spark.call_count == 1
 
     def test_compute_and_save_statistics_get_type_spark(self, mocker):
         # Arrange
@@ -127,7 +127,7 @@ class TestStatisticsEngine:
         # Assert
         assert mock_statistics_engine_profile_statistics.call_count == 1
         assert mock_statistics_engine_save_statistics.call_count == 0
-        assert mock_engine_get_instance.return_value.profile_by_spark.call_count == 0
+        assert mock_engine_get_instance.return_value._profile_by_spark.call_count == 0
 
     def test_compute_and_save_statistics_feature_view_obj(self, mocker):
         # Arrange
@@ -178,7 +178,7 @@ class TestStatisticsEngine:
         # Assert
         assert mock_statistics_engine_profile_statistics.call_count == 1
         assert mock_statistics_engine_save_statistics.call_count == 0
-        assert mock_engine_get_instance.return_value.profile_by_spark.call_count == 0
+        assert mock_engine_get_instance.return_value._profile_by_spark.call_count == 0
 
     def test_compute_and_save_statistics_get_type_spark_content_str(
         self, mocker, backend_fixtures
@@ -228,7 +228,7 @@ class TestStatisticsEngine:
         # Assert
         assert mock_statistics_engine_profile_statistics.call_count == 1
         assert mock_statistics_engine_save_statistics.call_count == 1
-        assert mock_engine_get_instance.return_value.profile_by_spark.call_count == 0
+        assert mock_engine_get_instance.return_value._profile_by_spark.call_count == 0
 
     def test_compute_and_save_statistics_feature_view_obj_content_str(
         self, mocker, backend_fixtures
@@ -286,7 +286,7 @@ class TestStatisticsEngine:
         # Assert
         assert mock_statistics_engine_profile_statistics.call_count == 1
         assert mock_statistics_engine_save_statistics.call_count == 1
-        assert mock_engine_get_instance.return_value.profile_by_spark.call_count == 0
+        assert mock_engine_get_instance.return_value._profile_by_spark.call_count == 0
 
     def test_compute_and_save_statistics_get_type_spark_feature_group_commit_id(
         self, mocker
@@ -331,7 +331,7 @@ class TestStatisticsEngine:
         # Assert
         assert mock_statistics_engine_profile_statistics.call_count == 1
         assert mock_statistics_engine_save_statistics.call_count == 0
-        assert mock_engine_get_instance.return_value.profile_by_spark.call_count == 0
+        assert mock_engine_get_instance.return_value._profile_by_spark.call_count == 0
 
     def test_compute_and_save_statistics_feature_view_obj_feature_group_commit_id(
         self, mocker
@@ -384,7 +384,7 @@ class TestStatisticsEngine:
         # Assert
         assert mock_statistics_engine_profile_statistics.call_count == 1
         assert mock_statistics_engine_save_statistics.call_count == 0
-        assert mock_engine_get_instance.return_value.profile_by_spark.call_count == 0
+        assert mock_engine_get_instance.return_value._profile_by_spark.call_count == 0
 
     def test_profile_statistics_with_config(self, mocker):
         # Arrange
@@ -423,7 +423,7 @@ class TestStatisticsEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.profile.call_count == 0
+        assert mock_engine_get_instance.return_value._profile.call_count == 0
         assert mock_warning.call_count == 1
         assert (
             mock_warning.call_args[0][0]
@@ -466,20 +466,20 @@ class TestStatisticsEngine:
         )
 
         # Assert
-        assert mock_engine_get_instance.return_value.profile.call_count == 1
+        assert mock_engine_get_instance.return_value._profile.call_count == 1
         assert (
-            mock_engine_get_instance.return_value.profile.call_args[0][1] == sc.columns
+            mock_engine_get_instance.return_value._profile.call_args[0][1] == sc.columns
         )
         assert (
-            mock_engine_get_instance.return_value.profile.call_args[0][2]
+            mock_engine_get_instance.return_value._profile.call_args[0][2]
             == sc.correlations
         )
         assert (
-            mock_engine_get_instance.return_value.profile.call_args[0][3]
+            mock_engine_get_instance.return_value._profile.call_args[0][3]
             == sc.histograms
         )
         assert (
-            mock_engine_get_instance.return_value.profile.call_args[0][4]
+            mock_engine_get_instance.return_value._profile.call_args[0][4]
             == sc.exact_uniqueness
         )
 
@@ -508,7 +508,7 @@ class TestStatisticsEngine:
             )
 
         # Assert
-        assert mock_engine_get_instance.return_value.profile.call_count == 0
+        assert mock_engine_get_instance.return_value._profile.call_count == 0
         assert mock_statistics_engine_profile_unique_values.call_count == 0
         assert (
             str(e_info.value)
@@ -542,7 +542,7 @@ class TestStatisticsEngine:
             )
 
         # Assert
-        assert mock_engine_get_instance.return_value.profile.call_count == 0
+        assert mock_engine_get_instance.return_value._profile.call_count == 0
         assert mock_statistics_engine_profile_unique_values.call_count == 0
         assert (
             str(e_info.value)
@@ -832,7 +832,7 @@ class TestStatisticsEngine:
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
-        mock_engine_get_instance.return_value.get_unique_values.return_value = [
+        mock_engine_get_instance.return_value._get_unique_values.return_value = [
             "value_1",
             "value_2",
             "value_3",
@@ -861,7 +861,7 @@ class TestStatisticsEngine:
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
-        mock_engine_get_instance.return_value.get_unique_values.return_value = [
+        mock_engine_get_instance.return_value._get_unique_values.return_value = [
             "value_1",
             "value_2",
             "value_3",

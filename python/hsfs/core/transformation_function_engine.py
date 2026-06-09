@@ -139,7 +139,7 @@ class TransformationFunctionEngine:
             exceptions.TransformationFunctionException: If the arguments required to execute the transformation functions are not present in the passed data or request parameters.
         """
         for tf in transformation_functions:
-            if engine.get_instance().check_supported_dataframe(data):
+            if engine.get_instance()._check_supported_dataframe(data):
                 missing_features = set(tf.hopsworks_udf.transformation_features) - set(
                     data.columns
                 )
@@ -248,7 +248,7 @@ class TransformationFunctionEngine:
         if isinstance(data, dict):
             transformed_data = data.copy()
         else:
-            transformed_data = engine.get_instance().shallow_copy_dataframe(data)
+            transformed_data = engine.get_instance()._shallow_copy_dataframe(data)
 
         if request_parameters:
             for key in request_parameters:
@@ -274,7 +274,7 @@ class TransformationFunctionEngine:
                 k: v for k, v in transformed_data.items() if k not in dropped_features
             }
         else:
-            transformed_data = engine.get_instance().drop_columns(
+            transformed_data = engine.get_instance()._drop_columns(
                 transformed_data, dropped_features
             )
 
@@ -299,8 +299,8 @@ class TransformationFunctionEngine:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
         execution_engine = engine.get_instance()
-        if execution_engine.check_supported_dataframe(data):
-            return execution_engine.apply_udf_on_dataframe(
+        if execution_engine._check_supported_dataframe(data):
+            return execution_engine._apply_udf_on_dataframe(
                 udf=udf, dataframe=data, online=online
             )
         if isinstance(data, dict):

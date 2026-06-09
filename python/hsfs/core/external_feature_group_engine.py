@@ -53,7 +53,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             else:
                 # If the user didn't specify the schema, parse it from the query
                 external_dataset = (
-                    engine.get_instance().register_external_temporary_table(
+                    engine.get_instance()._register_external_temporary_table(
                         feature_group, "read_ondmd"
                     )
                 )
@@ -66,7 +66,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                     )
 
                 feature_group._features = (
-                    engine.get_instance().parse_schema_feature_group(external_dataset)
+                    engine.get_instance()._parse_schema_feature_group(external_dataset)
                 )
 
         # set primary, foreign and partition key columns
@@ -96,7 +96,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 " online storage. To create an offline only external feature group, use the `save` method."
             )
 
-        schema = engine.get_instance().parse_schema_feature_group(feature_dataframe)
+        schema = engine.get_instance()._parse_schema_feature_group(feature_dataframe)
         util.validate_embedding_feature_type(feature_group.embedding_index, schema)
 
         if not feature_group._id:
@@ -128,7 +128,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             )
 
         return (
-            engine.get_instance().save_dataframe(
+            engine.get_instance()._save_dataframe(
                 feature_group=feature_group,
                 dataframe=feature_dataframe,
                 operation=None,

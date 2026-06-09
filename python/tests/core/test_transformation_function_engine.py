@@ -515,7 +515,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = True
+        mocker_engine._check_supported_dataframe.return_value = True
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -528,7 +528,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Assert
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 1
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 1
 
     def test_execute_udf_on_unsupported_type(self, mocker):
         # Arrange
@@ -538,7 +538,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
+        mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -554,7 +554,7 @@ class TestTransformationFunctionEngine:
             str(e_info.value)
             == "Dataframe type <class 'int'> not supported in the engine."
         )
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 0
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 0
 
     def test_execute_udf_on_dict(self, mocker):
         # Arrange
@@ -565,7 +565,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
+        mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -585,7 +585,7 @@ class TestTransformationFunctionEngine:
         tf_engine.execute_udf(udf=add_one, data=data, online=False)
 
         # Assert
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 0
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 0
         assert (
             transformation_function_engine.TransformationFunctionEngine.apply_udf_on_dict.call_count
             == 1
@@ -653,7 +653,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = True
+        mocker_engine._check_supported_dataframe.return_value = True
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -680,7 +680,7 @@ class TestTransformationFunctionEngine:
             online=False,
         )
 
-        assert mocker_engine.apply_udf_on_dataframe.call_count == 2
+        assert mocker_engine._apply_udf_on_dataframe.call_count == 2
 
     def test_apply_transformation_functions_dict(self, mocker):
         # Arrange
@@ -695,7 +695,7 @@ class TestTransformationFunctionEngine:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker_engine.check_supported_dataframe.return_value = False
+        mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -745,7 +745,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
+        mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -788,7 +788,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
+        mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -833,7 +833,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = True
+        mocker_engine._check_supported_dataframe.return_value = True
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -867,9 +867,9 @@ class TestTransformationFunctionEngine:
             online=False,
         )
 
-        assert mocker_engine.drop_columns.call_count == 1
-        assert mocker_engine.drop_columns.call_args[0][0] is mocker_return_df
-        assert mocker_engine.drop_columns.call_args[0][1] == {"col1", "col2"}
+        assert mocker_engine._drop_columns.call_count == 1
+        assert mocker_engine._drop_columns.call_args[0][0] is mocker_return_df
+        assert mocker_engine._drop_columns.call_args[0][1] == {"col1", "col2"}
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
     def test_apply_transformation_functions_dropped_features_dict_batch(
@@ -886,7 +886,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
+        mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -931,7 +931,7 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker_engine = mocker.Mock()
-        mocker_engine.check_supported_dataframe.return_value = False
+        mocker_engine._check_supported_dataframe.return_value = False
         mocker.patch("hsfs.engine.get_instance", return_value=mocker_engine)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 

@@ -30,7 +30,7 @@ class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     + ". Alternatively use Spark kernel."
                 )
 
-            feature_group._features = engine.get_instance().parse_schema_feature_group(
+            feature_group._features = engine.get_instance()._parse_schema_feature_group(
                 feature_group.dataframe
             )
 

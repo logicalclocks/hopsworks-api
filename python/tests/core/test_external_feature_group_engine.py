@@ -45,7 +45,7 @@ class TestExternalFeatureGroupEngine:
             id=10,
         )
 
-        mock_engine_get_instance.return_value.parse_schema_feature_group.return_value = [
+        mock_engine_get_instance.return_value._parse_schema_feature_group.return_value = [
             f
         ]
 
@@ -182,7 +182,7 @@ class TestExternalFeatureGroupEngine:
             storage_connector=mocker.patch("hsfs.storage_connector.JdbcConnector"),
         )
 
-        mock_engine_get_instance.return_value.parse_schema_feature_group.return_value = [
+        mock_engine_get_instance.return_value._parse_schema_feature_group.return_value = [
             f
         ]
 
