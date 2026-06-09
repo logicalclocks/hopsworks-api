@@ -29,20 +29,12 @@ class TestDeploymentTracingConfig:
     def test_round_trip(self):
         config = DeploymentTracingConfig(
             enabled=True,
-            provider="mlflow",
-            experiment_id="exp-1",
-            status="running",
-            sampling_percentage=25,
             otel_tracing_storage=DeploymentTracingConfig.STORAGE_BOTH,
         )
 
         restored = DeploymentTracingConfig.from_response_json(config.to_dict())
 
         assert restored.enabled is True
-        assert restored.provider == "mlflow"
-        assert restored.experiment_id == "exp-1"
-        assert restored.status == "running"
-        assert restored.sampling_percentage == 25
         assert restored.otel_tracing_storage == DeploymentTracingConfig.STORAGE_BOTH
 
     def test_rejects_invalid_storage(self):

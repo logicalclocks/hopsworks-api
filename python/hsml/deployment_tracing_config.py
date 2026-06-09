@@ -28,10 +28,6 @@ class DeploymentTracingConfig:
 
     Parameters:
         enabled: Whether tracing is enabled.
-        provider: Tracing provider name.
-        experiment_id: Experiment identifier attached to the traces.
-        status: Deployment tracing status.
-        sampling_percentage: Sampling percentage for trace collection.
         otel_tracing_storage: Where traces are stored. Allowed values are
             ``online``, ``offline`` and ``both``. Defaults to ``online``.
     """
@@ -44,18 +40,10 @@ class DeploymentTracingConfig:
     def __init__(
         self,
         enabled: bool | None = None,
-        provider: str | None = None,
-        experiment_id: str | None = None,
-        status: str | None = None,
-        sampling_percentage: int | None = None,
         otel_tracing_storage: str | None = STORAGE_ONLINE,
         **kwargs,
     ):
         self._enabled = enabled
-        self._provider = provider
-        self._experiment_id = experiment_id
-        self._status = status
-        self._sampling_percentage = sampling_percentage
         self._otel_tracing_storage = self._validate_otel_tracing_storage(
             otel_tracing_storage
         )
@@ -98,12 +86,6 @@ class DeploymentTracingConfig:
 
         kwargs = {}
         kwargs["enabled"] = util.extract_field_from_json(config, "enabled")
-        kwargs["provider"] = util.extract_field_from_json(config, "provider")
-        kwargs["experiment_id"] = util.extract_field_from_json(config, "experiment_id")
-        kwargs["status"] = util.extract_field_from_json(config, "status")
-        kwargs["sampling_percentage"] = util.extract_field_from_json(
-            config, "sampling_percentage"
-        )
         kwargs["otel_tracing_storage"] = util.extract_field_from_json(
             config, "otel_tracing_storage"
         )
@@ -121,14 +103,6 @@ class DeploymentTracingConfig:
         json = {"otelTracingStorage": self._otel_tracing_storage}
         if self._enabled is not None:
             json["enabled"] = self._enabled
-        if self._provider is not None:
-            json["provider"] = self._provider
-        if self._experiment_id is not None:
-            json["experimentId"] = self._experiment_id
-        if self._status is not None:
-            json["status"] = self._status
-        if self._sampling_percentage is not None:
-            json["samplingPercentage"] = self._sampling_percentage
         return json
 
     @public
@@ -140,46 +114,6 @@ class DeploymentTracingConfig:
     @enabled.setter
     def enabled(self, enabled: bool | None):
         self._enabled = enabled
-
-    @public
-    @property
-    def provider(self):
-        """Tracing provider name."""
-        return self._provider
-
-    @provider.setter
-    def provider(self, provider: str | None):
-        self._provider = provider
-
-    @public
-    @property
-    def experiment_id(self):
-        """Experiment identifier attached to the traces."""
-        return self._experiment_id
-
-    @experiment_id.setter
-    def experiment_id(self, experiment_id: str | None):
-        self._experiment_id = experiment_id
-
-    @public
-    @property
-    def status(self):
-        """Deployment tracing status."""
-        return self._status
-
-    @status.setter
-    def status(self, status: str | None):
-        self._status = status
-
-    @public
-    @property
-    def sampling_percentage(self):
-        """Sampling percentage for trace collection."""
-        return self._sampling_percentage
-
-    @sampling_percentage.setter
-    def sampling_percentage(self, sampling_percentage: int | None):
-        self._sampling_percentage = sampling_percentage
 
     @public
     @property

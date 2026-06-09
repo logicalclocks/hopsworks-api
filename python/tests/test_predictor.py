@@ -1191,10 +1191,6 @@ class TestPredictor:
 
         tracing = deployment_tracing_config.DeploymentTracingConfig(
             enabled=True,
-            provider="mlflow",
-            experiment_id="exp-1",
-            status="running",
-            sampling_percentage=25,
             otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
         )
 
@@ -1214,10 +1210,6 @@ class TestPredictor:
         assert serialized["tracing"]["enabled"] is True
         assert restored.tracing is not None
         assert restored.tracing.enabled is True
-        assert restored.tracing.provider == "mlflow"
-        assert restored.tracing.experiment_id == "exp-1"
-        assert restored.tracing.status == "running"
-        assert restored.tracing.sampling_percentage == 25
         assert restored.tracing.otel_tracing_storage == "offline"
 
     # vLLM variant round-trip
