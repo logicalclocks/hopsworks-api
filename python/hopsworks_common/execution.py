@@ -42,7 +42,6 @@ class Execution:
         user=None,
         files_to_remove=None,
         duration=None,
-        flink_master_url=None,
         monitoring=None,
         type=None,
         href=None,
@@ -176,9 +175,7 @@ class Execution:
     def success(self) -> bool | None:
         """Boolean to indicate if execution ran successfully or failed."""
         is_yarn_job = (
-            self.job_type.lower() == "spark"
-            or self.job_type.lower() == "pyspark"
-            or self.job_type.lower() == "flink"
+            self.job_type.lower() == "spark" or self.job_type.lower() == "pyspark"
         )
 
         if not is_yarn_job:

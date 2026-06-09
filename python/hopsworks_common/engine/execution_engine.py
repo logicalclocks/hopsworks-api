@@ -170,9 +170,7 @@ class ExecutionEngine:
         MAX_LAG = 3.0
 
         is_yarn_job = job.job_type is not None and (
-            job.job_type.lower() == "spark"
-            or job.job_type.lower() == "pyspark"
-            or job.job_type.lower() == "flink"
+            job.job_type.lower() == "spark" or job.job_type.lower() == "pyspark"
         )
 
         updated_execution = self._execution_api._get(job, execution.id)

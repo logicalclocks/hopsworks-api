@@ -513,7 +513,6 @@ def _validate_job_conf(config, project_name):
     # User is required to set the appPath programmatically after getting the configuration
     if (
         config["type"] != "dockerJobConfiguration"
-        and config["type"] != "flinkJobConfiguration"
         and config["type"] != "ingestionJobConfiguration"
         and "appPath" not in config
     ):

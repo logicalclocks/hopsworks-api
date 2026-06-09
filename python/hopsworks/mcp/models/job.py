@@ -38,7 +38,6 @@ class Execution(BaseModel):
     user: str | None = None
     files_to_remove: list[str] | None = None
     duration: float | None = None
-    flink_master_url: str | None = None
     monitoring: dict | None = None
     type: str | None = None
 
@@ -95,7 +94,6 @@ def to_base_model_job(job: BaseJob) -> Job:
                 user=exec.get("user", None),
                 files_to_remove=exec.get("files_to_remove", None),
                 duration=exec.get("duration", None),
-                flink_master_url=exec.get("flink_master_url", None),
                 monitoring=exec.get("monitoring", None),
                 type=exec.get("type", None),
             )
