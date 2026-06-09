@@ -73,8 +73,8 @@ class TestGreatExpectationEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -94,7 +94,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = None
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg, dataframe=None, save_report=None, validation_options={}
         )
 
@@ -106,8 +106,8 @@ class TestGreatExpectationEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -133,7 +133,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = suite
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg,
             dataframe=None,
             save_report=None,
@@ -152,8 +152,8 @@ class TestGreatExpectationEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -179,7 +179,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = suite
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg,
             dataframe=None,
             validation_options=validation_options,
@@ -197,8 +197,8 @@ class TestGreatExpectationEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
         mock_fg_get_expectation_suite = mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_expectation_suite"
         )
@@ -224,7 +224,7 @@ class TestGreatExpectationEngine:
         mock_fg_get_expectation_suite.return_value = suite
 
         # Act
-        ge_engine.validate(
+        ge_engine._validate(
             feature_group=fg,
             dataframe=None,
             save_report=True,
@@ -246,8 +246,8 @@ class TestGreatExpectationEngine:
             feature_store_id=feature_store_id
         )
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = _make_ge_expectation_suite(name="suite_name", expectations=[], meta={})
 
@@ -267,7 +267,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_suite = ge_engine.fetch_or_convert_expectation_suite(
+        converted_suite = ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg, expectation_suite=suite
         )
 
@@ -287,8 +287,8 @@ class TestGreatExpectationEngine:
             feature_store_id=feature_store_id
         )
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = es.ExpectationSuite(
             expectation_suite_name="suite_name", expectations=[], meta={}
@@ -310,7 +310,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_suite = ge_engine.fetch_or_convert_expectation_suite(
+        converted_suite = ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg, expectation_suite=suite
         )
 
@@ -330,8 +330,8 @@ class TestGreatExpectationEngine:
             feature_store_id=feature_store_id
         )
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = None
 
@@ -351,7 +351,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        ge_engine.fetch_or_convert_expectation_suite(
+        ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg, expectation_suite=suite
         )
 
@@ -369,8 +369,8 @@ class TestGreatExpectationEngine:
             feature_store_id=feature_store_id
         )
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
 
         suite = None
 
@@ -390,7 +390,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        result = ge_engine.fetch_or_convert_expectation_suite(
+        result = ge_engine._fetch_or_convert_expectation_suite(
             feature_group=fg,
             expectation_suite=suite,
             validation_options={"fetch_expectation_suite": False},
@@ -416,7 +416,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={}
         )
 
@@ -438,7 +438,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={}
         )
 
@@ -460,7 +460,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={"run_validation": False}
         )
 
@@ -482,7 +482,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        run_validation = ge_engine.should_run_validation(
+        run_validation = ge_engine._should_run_validation(
             expectation_suite=suite, validation_options={"run_validation": True}
         )
 
@@ -504,8 +504,8 @@ class TestGreatExpectationEngine:
             feature_store_id=feature_store_id
         )
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -522,7 +522,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_report = ge_engine.save_or_convert_report(
+        converted_report = ge_engine._save_or_convert_report(
             save_report=save_report,
             ge_type=ge_type,
             feature_group=fg,
@@ -549,8 +549,8 @@ class TestGreatExpectationEngine:
             feature_store_id=feature_store_id
         )
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -567,7 +567,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        ge_engine.save_or_convert_report(
+        ge_engine._save_or_convert_report(
             save_report=save_report,
             ge_type=ge_type,
             feature_group=fg,
@@ -594,8 +594,8 @@ class TestGreatExpectationEngine:
             feature_store_id=feature_store_id
         )
 
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -612,7 +612,7 @@ class TestGreatExpectationEngine:
         )
 
         # Act
-        converted_report = ge_engine.save_or_convert_report(
+        converted_report = ge_engine._save_or_convert_report(
             save_report=save_report,
             ge_type=ge_type,
             feature_group=fg,
@@ -633,8 +633,8 @@ class TestGreatExpectationEngine:
     def test_raise_module_not_found_error(self, mocker):
         # Arrange
         ge_engine = great_expectation_engine.GreatExpectationEngine(feature_store_id=11)
-        mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
@@ -649,11 +649,11 @@ class TestGreatExpectationEngine:
             meta={},
             run_validation=True,
         )
-        mocker.patch("hsfs.util.get_feature_group_url", return_value="https://url")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="https://url")
 
         # Act
         with pytest.raises(ModuleNotFoundError):
-            ge_engine.validate(
+            ge_engine._validate(
                 feature_group=fg,
                 dataframe=df,
                 expectation_suite=suite,
@@ -666,7 +666,7 @@ class TestGreatExpectationEngine:
 class TestGreatExpectationEngineEndToEnd:
     """End-to-end tests that exercise the real great_expectations call.
 
-    The existing TestGreatExpectationEngine mocks engine.get_instance() so it
+    The existing TestGreatExpectationEngine mocks engine._get_instance() so it
     never reaches the GE library. These tests intentionally do call into GE so
     that an upgrade-time regression in the GE-boundary surfaces here.
     """
@@ -693,7 +693,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df, expectation_suite=suite
         )
 
@@ -724,7 +724,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df, expectation_suite=suite
         )
 
@@ -748,7 +748,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df, expectation_suite=suite
         )
 
@@ -778,7 +778,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act: COMPLETE format must surface the per-row indices that SUMMARY omits.
-        report = python_engine.Engine().validate_with_great_expectations(
+        report = python_engine.Engine()._validate_with_great_expectations(
             dataframe=df,
             expectation_suite=suite,
             ge_validate_kwargs={"result_format": "COMPLETE"},
@@ -815,12 +815,12 @@ class TestGreatExpectationEngineEndToEnd:
         engine = python_engine.Engine()
 
         # Act
-        passing = engine.validate_with_great_expectations(
+        passing = engine._validate_with_great_expectations(
             dataframe=df,
             expectation_suite=suite,
             ge_validate_kwargs={"expectation_parameters": {"lo": 5}},
         )
-        failing = engine.validate_with_great_expectations(
+        failing = engine._validate_with_great_expectations(
             dataframe=df,
             expectation_suite=suite,
             ge_validate_kwargs={"expectation_parameters": {"lo": 100}},
@@ -854,7 +854,7 @@ class TestGreatExpectationEngineEndToEnd:
 
         # Act
         with pytest.warns(util_warning_for_polars()):
-            report = python_engine.Engine().validate_with_great_expectations(
+            report = python_engine.Engine()._validate_with_great_expectations(
                 dataframe=df, expectation_suite=suite
             )
 
@@ -870,9 +870,9 @@ class TestGreatExpectationEngineEndToEnd:
 
         # Arrange
         feature_store_id = 99
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         # Use a real Python engine so the orchestrator reaches the real GE call.
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine.Engine())
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine.Engine())
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
@@ -898,7 +898,7 @@ class TestGreatExpectationEngineEndToEnd:
         )
 
         # Act
-        result = ge_engine.validate(
+        result = ge_engine._validate(
             feature_group=fg,
             dataframe=df,
             expectation_suite=suite,

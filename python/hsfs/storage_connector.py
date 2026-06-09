@@ -208,7 +208,7 @@ class StorageConnector(ABC):
         Returns:
             The saved storage connector with its assigned id.
         """
-        return self._storage_connector_api.create(self)
+        return self._storage_connector_api._create(self)
 
     @public
     def update(self) -> StorageConnector:
@@ -229,7 +229,7 @@ class StorageConnector(ABC):
         Returns:
             The updated storage connector.
         """
-        return self._storage_connector_api.update(self)
+        return self._storage_connector_api._update(self)
 
     @public
     @property
@@ -264,6 +264,7 @@ class StorageConnector(ABC):
             A dictionary containing the configuration options for Spark.
         """
 
+    @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
@@ -312,17 +313,18 @@ class StorageConnector(ABC):
         Returns:
             The read dataframe.
         """
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
-    def refetch(self) -> None:
+    def _refetch(self) -> None:
         """Refetch storage connector."""
-        self._storage_connector_api.refetch(self)
+        self._storage_connector_api._refetch(self)
 
     def _get_path(self, sub_path: str) -> None:
         return None
 
+    @public
     def connector_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to an external connector library.
 
@@ -348,7 +350,7 @@ class StorageConnector(ABC):
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        links = self._storage_connector_api.get_feature_groups_provenance(self)
+        links = self._storage_connector_api._get_feature_groups_provenance(self)
         if not links.is_empty():
             return links
         return None
@@ -391,7 +393,7 @@ class StorageConnector(ABC):
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        links = self._storage_connector_api.get_training_datasets_provenance(self)
+        links = self._storage_connector_api._get_training_datasets_provenance(self)
         if not links.is_empty():
             return links
         return None
@@ -439,7 +441,7 @@ class StorageConnector(ABC):
         """
         if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching databases.")
-        return self._data_source_api.get_databases(self)
+        return self._data_source_api._get_databases(self)
 
     @public
     def get_tables(self, database: str | None = None) -> list[ds.DataSource]:
@@ -511,13 +513,13 @@ class StorageConnector(ABC):
                     "Please provide a database name."
                 )
         if self.type == StorageConnector.CRM:
-            data: DataSourceData = self._data_source_api.get_crm_resources(self)
+            data: DataSourceData = self._data_source_api._get_crm_resources(self)
             return [
                 ds.DataSource(table=resource, storage_connector=self)
                 for resource in (data.supported_resources or [])
             ]
 
-        return self._data_source_api.get_tables(self, database)
+        return self._data_source_api._get_tables(self, database)
 
     @public
     def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
@@ -549,7 +551,7 @@ class StorageConnector(ABC):
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
-        return self._data_source_api.get_data(data_source)
+        return self._data_source_api._get_data(data_source)
 
     @public
     def get_metadata(self, data_source: ds.DataSource) -> dict:
@@ -575,7 +577,7 @@ class StorageConnector(ABC):
         """
         if self.type in [StorageConnector.REST, StorageConnector.CRM]:
             raise ValueError("This connector type does not support fetching metadata.")
-        return self._data_source_api.get_metadata(data_source)
+        return self._data_source_api._get_metadata(data_source)
 
     @public
     def infer_metadata(
@@ -612,18 +614,18 @@ class StorageConnector(ABC):
         """
         if preview_data is None:
             preview_data = self.get_data(data_source)
-        return self._data_source_api.infer_metadata(self, preview_data)
+        return self._data_source_api._infer_metadata(self, preview_data)
 
     def _get_no_sql_data(
         self, data_source: ds.DataSource, use_cached=True
     ) -> DataSourceData:
-        data: DataSourceData = self._data_source_api.get_no_sql_data(
+        data: DataSourceData = self._data_source_api._get_no_sql_data(
             self, data_source, use_cached
         )
 
         while data.schema_fetch_in_progress:
             time.sleep(3)
-            data = self._data_source_api.get_no_sql_data(self, data_source)
+            data = self._data_source_api._get_no_sql_data(self, data_source)
             _logger.info("Schema fetch in progress...")
 
         if data.schema_fetch_failed:
@@ -712,7 +714,7 @@ class HopsFSConnector(StorageConnector):
             path = ""
         if not path.startswith("hopsfs://"):
             path = self._get_path(path)
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
@@ -861,13 +863,13 @@ class S3Connector(StorageConnector):
         Parameters:
             path: Path to prepare for reading from cloud storage.
         """
-        self.refetch()
-        return engine.get_instance().setup_storage_connector(self, path)
+        self._refetch()
+        return engine._get_instance()._setup_storage_connector(self, path)
 
     @public
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external S3 connector library."""
-        self.refetch()
+        self._refetch()
         options = {
             "access_key": self.access_key,
             "secret_key": self.secret_key,
@@ -929,7 +931,7 @@ class S3Connector(StorageConnector):
         """
         if path is None:
             path = ""
-        self.refetch()
+        self._refetch()
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -941,7 +943,7 @@ class S3Connector(StorageConnector):
                 f"Prepending default bucket specified on connector, final path: {path}"
             )
 
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, data_format, options, path, dataframe_type
         )
 
@@ -1179,7 +1181,7 @@ class RedshiftConnector(StorageConnector):
             `DataFrame`.
         """
         # refetch to update temporary credentials
-        self._storage_connector_api.refetch(self)
+        self._storage_connector_api._refetch(self)
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -1190,14 +1192,14 @@ class RedshiftConnector(StorageConnector):
             # if table also specified we override to use query
             options.pop("dbtable", None)
 
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
     @public
-    def refetch(self) -> None:
+    def _refetch(self) -> None:
         """Refetch storage connector in order to retrieve updated temporary credentials."""
-        self._storage_connector_api.refetch(self)
+        self._storage_connector_api._refetch(self)
 
 
 @public
@@ -1318,7 +1320,7 @@ class AdlsConnector(StorageConnector):
         Parameters:
             path: Path to prepare for reading from cloud storage.
         """
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine._get_instance()._setup_storage_connector(self, path)
 
     def _get_path(self, sub_path: str) -> str:
         return os.path.join(self.path, sub_path)
@@ -1364,7 +1366,7 @@ class AdlsConnector(StorageConnector):
             path = self._get_path(path)
             print(f"Using default container specified on connector, final path: {path}")
 
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
@@ -1649,9 +1651,10 @@ class SnowflakeConnector(StorageConnector):
             `DataFrame`.
         """
         # validate engine supports connector type
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "Snowflake connector not yet supported for engine: " + engine.get_type()
+                "Snowflake connector not yet supported for engine: "
+                + engine._get_type()
             )
 
         options = (
@@ -1664,13 +1667,13 @@ class SnowflakeConnector(StorageConnector):
             # if table also specified we override to use query
             options.pop("dbtable", None)
 
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
         )
 
     @public
     def prepare_spark(self, path=None):
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine._get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -1877,11 +1880,11 @@ class SapHanaConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "SAP HANA connector not yet supported for engine: " + engine.get_type()
+                "SAP HANA connector not yet supported for engine: " + engine._get_type()
             )
-        self.refetch()
+        self._refetch()
         merged = (
             {**self.spark_options(), **options}
             if options is not None
@@ -1890,14 +1893,14 @@ class SapHanaConnector(StorageConnector):
         if query:
             merged["query"] = query
             merged.pop("dbtable", None)
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, self.JDBC_FORMAT, merged, None, dataframe_type
         )
 
     @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare the Spark session with the SAP HANA driver classpath when needed."""
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine._get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -2131,23 +2134,23 @@ class MongoDBConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "MongoDB connector not yet supported for engine: " + engine.get_type()
+                "MongoDB connector not yet supported for engine: " + engine._get_type()
             )
         merged = (
             {**self.spark_options(), **options}
             if options is not None
             else self.spark_options()
         )
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, self.MONGODB_FORMAT, merged, None, dataframe_type
         )
 
     @public
     def prepare_spark(self, path: str | None = None) -> str | None:
         """Ensure the Spark session is wired with the ``mongo-spark-connector`` classpath."""
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine._get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -2239,7 +2242,7 @@ class JdbcConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-        self.refetch()
+        self._refetch()
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -2248,7 +2251,7 @@ class JdbcConnector(StorageConnector):
         if query:
             options["query"] = query
 
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
@@ -2357,12 +2360,12 @@ class KafkaConnector(StorageConnector):
                 self.ca_chain_path,
                 self.client_cert_path,
                 self.client_key_path,
-            ) = client.get_instance()._write_pem(
+            ) = client._get_instance()._write_pem(
                 kafka_options["ssl.keystore.location"],
                 kafka_options["ssl.keystore.password"],
                 kafka_options["ssl.truststore.location"],
                 kafka_options["ssl.truststore.password"],
-                f"kafka_sc_{client.get_instance()._project_id}_{self._id}",
+                f"kafka_sc_{client._get_instance()._project_id}_{self._id}",
             )
             self._pem_files_created = True
 
@@ -2400,17 +2403,17 @@ class KafkaConnector(StorageConnector):
         # this option is not set and so the `not self._external_kafka` would return true
         # overwriting the user specified certificates
         if self._external_kafka is False:
-            ssl_truststore_location = client.get_instance()._get_jks_trust_store_path()
-            ssl_truststore_password = client.get_instance()._cert_key
-            ssl_keystore_location = client.get_instance()._get_jks_key_store_path()
-            ssl_keystore_password = client.get_instance()._cert_key
-            ssl_key_password = client.get_instance()._cert_key
+            ssl_truststore_location = client._get_instance()._get_jks_trust_store_path()
+            ssl_truststore_password = client._get_instance()._cert_key
+            ssl_keystore_location = client._get_instance()._get_jks_key_store_path()
+            ssl_keystore_password = client._get_instance()._cert_key
+            ssl_key_password = client._get_instance()._cert_key
         else:
-            ssl_truststore_location = engine.get_instance().add_file(
+            ssl_truststore_location = engine._get_instance()._add_file(
                 self._ssl_truststore_location, distribute=distribute
             )
             ssl_truststore_password = self._ssl_truststore_password
-            ssl_keystore_location = engine.get_instance().add_file(
+            ssl_keystore_location = engine._get_instance()._add_file(
                 self._ssl_keystore_location, distribute=distribute
             )
             ssl_keystore_password = self._ssl_keystore_password
@@ -2459,6 +2462,7 @@ class KafkaConnector(StorageConnector):
         )
         return payload
 
+    @public
     def confluent_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to confluent_kafka, based on the provided apache spark configuration.
 
@@ -2566,7 +2570,7 @@ class KafkaConnector(StorageConnector):
         from packaging import version
 
         kafka_client_supports_pem = version.parse(
-            engine.get_instance().get_spark_version()
+            engine._get_instance()._get_spark_version()
         ) >= version.parse("3.2.0")
 
         pem_files_assigned = False
@@ -2679,7 +2683,7 @@ class KafkaConnector(StorageConnector):
         else:
             options["subscribe"] = topic
 
-        return engine.get_instance().read_stream(
+        return engine._get_instance()._read_stream(
             self,
             message_format.lower(),
             schema,
@@ -2840,9 +2844,9 @@ class GcsConnector(StorageConnector):
         if path is None:
             path = ""
         # validate engine supports connector type
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "GCS connector not yet supported for engine: " + engine.get_type()
+                "GCS connector not yet supported for engine: " + engine._get_type()
             )
 
         # validate path begins with gs://
@@ -2852,7 +2856,7 @@ class GcsConnector(StorageConnector):
                 f"Prepending default bucket specified on connector, final path: {path}"
             )
 
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, data_format, options or {}, path, dataframe_type
         )
 
@@ -2870,7 +2874,7 @@ class GcsConnector(StorageConnector):
         Parameters:
             path: Path to prepare for reading from Google cloud storage.
         """
-        return engine.get_instance().setup_storage_connector(self, path)
+        return engine._get_instance()._setup_storage_connector(self, path)
 
 
 @public
@@ -2998,7 +3002,7 @@ class BigQueryConnector(StorageConnector):
         properties = self._arguments
         properties[self.BIGQ_PARENT_PROJECT] = self._parent_project
 
-        local_key_path = engine.get_instance().add_file(self._key_path)
+        local_key_path = engine._get_instance()._add_file(self._key_path)
         with open(local_key_path, "rb") as credentials_file:
             properties[self.BIGQ_CREDENTIALS] = str(
                 base64.b64encode(credentials_file.read()), "utf-8"
@@ -3071,9 +3075,9 @@ class BigQueryConnector(StorageConnector):
             A Spark dataframe.
         """
         # validate engine supports connector type
-        if not engine.get_instance().is_connector_type_supported(self.type):
+        if not engine._get_instance()._is_connector_type_supported(self.type):
             raise NotImplementedError(
-                "BigQuery connector not yet supported for engine: " + engine.get_type()
+                "BigQuery connector not yet supported for engine: " + engine._get_type()
             )
         # merge user spark options on top of default spark options
         options = (
@@ -3102,7 +3106,7 @@ class BigQueryConnector(StorageConnector):
                 "or Query Project,Dataset and Table should be set"
             )
 
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
 
@@ -3250,9 +3254,11 @@ class SqlConnector(StorageConnector):
         """
         if not self._wallet_path:
             return None
-        local_path = engine.get_instance().add_file(self._wallet_path, distribute=False)
+        local_path = engine._get_instance()._add_file(
+            self._wallet_path, distribute=False
+        )
         if local_path.endswith(".zip") and os.path.isfile(local_path):
-            return util.extract_zip(local_path)
+            return util._extract_zip(local_path)
         return local_path
 
     def to_dict(self) -> dict[str, Any]:
@@ -3394,7 +3400,7 @@ class SqlConnector(StorageConnector):
                         options["javax.net.ssl.trustStorePassword"] = (
                             self._wallet_password
                         )
-                    return engine.get_instance().read_jdbc_on_driver(
+                    return engine._get_instance()._read_jdbc_on_driver(
                         options, dataframe_type
                     )
                 # No JKS — fall back to Oracle wallet (requires oraclepki.jar
@@ -3405,10 +3411,10 @@ class SqlConnector(StorageConnector):
                 )
                 if self._wallet_password:
                     options["oracle.net.wallet_password"] = self._wallet_password
-                return engine.get_instance().read_jdbc_on_driver(
+                return engine._get_instance()._read_jdbc_on_driver(
                     options, dataframe_type
                 )
-        return engine.get_instance().read(
+        return engine._get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
 
@@ -3549,16 +3555,18 @@ class OpenSearchConnector(StorageConnector):
             return None
 
         # Download the truststore from HDFS / remote storage to a local path first
-        local_trust_store_path = engine.get_instance().add_file(self._trust_store_path)
+        local_trust_store_path = engine._get_instance()._add_file(
+            self._trust_store_path
+        )
 
         # Reuse the same truststore for both keystore and truststore inputs since
         # we only need a CA chain for server verification.
-        ca_chain_path, _, _ = client.get_instance()._write_pem(
+        ca_chain_path, _, _ = client._get_instance()._write_pem(
             local_trust_store_path,
             self._trust_store_password,
             local_trust_store_path,
             self._trust_store_password,
-            f"opensearch_sc_{client.get_instance()._project_id}_{self._id}",
+            f"opensearch_sc_{client._get_instance()._project_id}_{self._id}",
         )
 
         setattr(self, ca_attr, ca_chain_path)
@@ -4052,7 +4060,7 @@ def _resolve_uc_spark_options(
     from hsfs.core import storage_connector_api  # avoid circular import
 
     api = storage_connector_api.StorageConnectorApi()
-    bearer_resp = api.get_uc_bearer(connector._featurestore_id, connector._name)
+    bearer_resp = api._get_uc_bearer(connector._featurestore_id, connector._name)
     bearer = bearer_resp.get("access_token") or bearer_resp.get("accessToken")
     expires_in = int(
         bearer_resp.get("expires_in_seconds")

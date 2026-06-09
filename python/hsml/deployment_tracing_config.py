@@ -85,8 +85,8 @@ class DeploymentTracingConfig:
         )
 
         kwargs = {}
-        kwargs["enabled"] = util.extract_field_from_json(config, "enabled")
-        kwargs["otel_tracing_storage"] = util.extract_field_from_json(
+        kwargs["enabled"] = util._extract_field_from_json(config, "enabled")
+        kwargs["otel_tracing_storage"] = util._extract_field_from_json(
             config, "otel_tracing_storage"
         )
         return kwargs

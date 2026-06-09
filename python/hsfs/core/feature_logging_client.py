@@ -27,7 +27,7 @@ _logger = logging.getLogger(__name__)
 _client = None
 
 
-def init_client(
+def _init_client(
     config: dict[str, Any] | None = None,
 ):
     global _client
@@ -37,7 +37,7 @@ def init_client(
         _logger.warning("Feature Logging Client is already initialized.")
 
 
-def get_instance() -> FeatureLoggingClientSingleton:
+def _get_instance() -> FeatureLoggingClientSingleton:
     global _client
     if _client is None:
         _logger.warning(
@@ -93,7 +93,7 @@ class FeatureLoggingClientSingleton:
             "pool_size": self._DEFAULT_POOL_SIZE,
         }
 
-    async def post(
+    async def _post(
         self, json_data: str, endpoint: str = "", headers=None
     ) -> httpx.Response:
         url = f"{self._client.base_url}/{endpoint.lstrip('/')}"
@@ -102,7 +102,7 @@ class FeatureLoggingClientSingleton:
         response.raise_for_status()
         return response
 
-    async def close(self):
+    async def _close(self):
         global _client
         _logger.debug("Closing HTTPX client.")
         await self._client.aclose()

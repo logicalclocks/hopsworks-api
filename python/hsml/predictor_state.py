@@ -50,7 +50,7 @@ class PredictorState:
     @public
     def describe(self):
         """Print a JSON description of the deployment state."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -59,21 +59,23 @@ class PredictorState:
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
-        ai = util.extract_field_from_json(json_decamelized, "available_instances")
-        ati = util.extract_field_from_json(
+        ai = util._extract_field_from_json(json_decamelized, "available_instances")
+        ati = util._extract_field_from_json(
             json_decamelized, "available_transformer_instances"
         )
-        hip = util.extract_field_from_json(json_decamelized, "hopsworks_inference_path")
-        msip = util.extract_field_from_json(
+        hip = util._extract_field_from_json(
+            json_decamelized, "hopsworks_inference_path"
+        )
+        msip = util._extract_field_from_json(
             json_decamelized, "model_server_inference_path"
         )
-        ipt = util.extract_field_from_json(json_decamelized, "internal_port")
-        r = util.extract_field_from_json(json_decamelized, "revision")
-        d = util.extract_field_from_json(json_decamelized, "deployed")
-        c = util.extract_field_from_json(
+        ipt = util._extract_field_from_json(json_decamelized, "internal_port")
+        r = util._extract_field_from_json(json_decamelized, "revision")
+        d = util._extract_field_from_json(json_decamelized, "deployed")
+        c = util._extract_field_from_json(
             json_decamelized, "condition", as_instance_of=PredictorStateCondition
         )
-        s = util.extract_field_from_json(json_decamelized, "status")
+        s = util._extract_field_from_json(json_decamelized, "status")
 
         return ai, ati, hip, msip, ipt, r, d, c, s
 

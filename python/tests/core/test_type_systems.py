@@ -41,7 +41,7 @@ class TestTypeSystems:
     )
     def test_infer_type_pyarrow_list(self):
         # Act
-        result = type_systems.convert_pandas_object_type_to_offline_type(
+        result = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_type=pa.list_(pa.int8())
         )
 
@@ -50,7 +50,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_large_list(self):
         # Act
-        result = type_systems.convert_pandas_object_type_to_offline_type(
+        result = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_type=pa.large_list(pa.int8())
         )
 
@@ -59,7 +59,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_struct(self):
         # Act
-        result = type_systems.convert_pandas_object_type_to_offline_type(
+        result = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_type=pa.struct([pa.field("f1", pa.int32())])
         )
 
@@ -68,7 +68,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_date32(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.date32()
         )
 
@@ -77,7 +77,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_date64(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.date64()
         )
 
@@ -86,7 +86,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_binary(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.binary()
         )
 
@@ -95,7 +95,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_large_binary(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.large_binary()
         )
 
@@ -104,7 +104,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_string(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.string()
         )
 
@@ -113,7 +113,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_large_string(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.large_string()
         )
 
@@ -122,7 +122,7 @@ class TestTypeSystems:
 
     def test_infer_type_pyarrow_utf8(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.utf8()
         )
 
@@ -132,7 +132,7 @@ class TestTypeSystems:
     def test_infer_type_pyarrow_other(self):
         # Act
         with pytest.raises(ValueError) as e_info:
-            type_systems.convert_simple_pandas_dtype_to_offline_type(
+            type_systems._convert_simple_pandas_dtype_to_offline_type(
                 arrow_type=pa.time32("s")
             )
 
@@ -142,19 +142,19 @@ class TestTypeSystems:
     def test_infer_type_pyarrow_decimal128(self):
         # Decimal types are parameterised and not in the static mapping table.
         # Render as Hive `decimal(p,s)` from the Arrow type's precision/scale.
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.decimal128(7, 2)
         )
         assert result == "decimal(7,2)"
 
     def test_infer_type_pyarrow_decimal128_zero_scale(self):
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.decimal128(10, 0)
         )
         assert result == "decimal(10,0)"
 
     def test_infer_type_pyarrow_decimal256(self):
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.decimal256(38, 6)
         )
         assert result == "decimal(38,6)"
@@ -169,7 +169,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -186,7 +186,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -203,7 +203,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -220,7 +220,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -293,7 +293,7 @@ class TestTypeSystems:
         self, offline_type, expected_type
     ):
         # Act
-        result = type_systems.convert_offline_type_to_pyarrow_type(offline_type)
+        result = type_systems._convert_offline_type_to_pyarrow_type(offline_type)
 
         # Assert
         assert result == expected_type
@@ -302,7 +302,7 @@ class TestTypeSystems:
     def test_convert_offline_type_to_pyarrow_type_invalid(self):
         # Act & Assert
         with pytest.raises(FeatureStoreException) as exc:
-            type_systems.convert_offline_type_to_pyarrow_type("unsupported_type")
+            type_systems._convert_offline_type_to_pyarrow_type("unsupported_type")
 
         assert "unsupported_type" in str(exc.value)
 
@@ -310,7 +310,7 @@ class TestTypeSystems:
     def test_convert_offline_type_to_pyarrow_type_invalid_struct(self):
         # Struct missing colon should raise error
         with pytest.raises(FeatureStoreException) as exc:
-            type_systems.convert_offline_type_to_pyarrow_type("struct<field1 int>")
+            type_systems._convert_offline_type_to_pyarrow_type("struct<field1 int>")
 
         assert "Missing colon" in str(exc.value)
 
@@ -332,7 +332,7 @@ class TestTypeSystems:
         type_systems_module = importlib.import_module("hsfs.core.type_systems")
 
         with pytest.raises(FeatureStoreException) as exc:
-            type_systems_module.convert_offline_type_to_pyarrow_type("int")
+            type_systems_module._convert_offline_type_to_pyarrow_type("int")
         assert "PyArrow is not installed" in str(exc.value)
 
     def test_infer_type_pyarrow_struct_with_struct_fields(self):
@@ -345,7 +345,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -367,7 +367,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -387,7 +387,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -407,7 +407,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -424,7 +424,7 @@ class TestTypeSystems:
         arrow_schema = pa.Schema.from_pandas(pdf)
 
         # Act
-        arrow_type = type_systems.convert_pandas_object_type_to_offline_type(
+        arrow_type = type_systems._convert_pandas_object_type_to_offline_type(
             arrow_schema.field("mapping").type
         )
 
@@ -436,7 +436,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_uint8(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.uint8()
         )
 
@@ -445,7 +445,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_uint16(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.uint16()
         )
 
@@ -454,7 +454,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_int8(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.int8()
         )
 
@@ -463,7 +463,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_int16(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.int16()
         )
 
@@ -472,7 +472,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_int32(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.int32()
         )
 
@@ -481,7 +481,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_uint32(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.uint32()
         )
 
@@ -490,7 +490,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_int64(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.int64()
         )
 
@@ -499,7 +499,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_float16(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.float16()
         )
 
@@ -508,7 +508,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_float32(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.float32()
         )
 
@@ -517,7 +517,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_float64(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.float64()
         )
 
@@ -526,7 +526,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64ns(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="ns")
         )
 
@@ -535,7 +535,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64nstz(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="ns", tz="UTC")
         )
 
@@ -544,7 +544,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64us(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="us")
         )
 
@@ -553,7 +553,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64ustz(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="us", tz="UTC")
         )
 
@@ -562,7 +562,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64ms(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="ms")
         )
 
@@ -571,7 +571,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64mstz(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="ms", tz="UTC")
         )
 
@@ -580,7 +580,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64s(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="s")
         )
 
@@ -589,7 +589,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_datetime64stz(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.timestamp(unit="s", tz="UTC")
         )
 
@@ -598,7 +598,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_bool(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.bool_()
         )
 
@@ -607,7 +607,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_category_unordered(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.dictionary(
                 value_type=pa.string(), index_type=pa.int8(), ordered=False
             )
@@ -618,7 +618,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_large_string_category_unordered(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.dictionary(
                 value_type=pa.large_string(), index_type=pa.int64(), ordered=False
             )
@@ -629,7 +629,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_large_string_category_ordered(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.dictionary(
                 value_type=pa.large_string(), index_type=pa.int64(), ordered=True
             )
@@ -640,7 +640,7 @@ class TestTypeSystems:
 
     def test_convert_simple_pandas_type_category_ordered(self):
         # Act
-        result = type_systems.convert_simple_pandas_dtype_to_offline_type(
+        result = type_systems._convert_simple_pandas_dtype_to_offline_type(
             arrow_type=pa.dictionary(
                 value_type=pa.string(), index_type=pa.int8(), ordered=True
             )
@@ -652,36 +652,38 @@ class TestTypeSystems:
     def test_convert_simple_pandas_type_other(self):
         # Act
         with pytest.raises(ValueError) as e_info:
-            type_systems.convert_simple_pandas_dtype_to_offline_type(arrow_type="other")
+            type_systems._convert_simple_pandas_dtype_to_offline_type(
+                arrow_type="other"
+            )
 
         # Assert
         assert str(e_info.value) == "dtype 'other' not supported"
 
     def test_infer_spark_type_string_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(str)
+        result = type_systems._infer_spark_type(str)
 
         # Assert
         assert result == "STRING"
 
     def test_infer_spark_type_string_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("str")
+        result = type_systems._infer_spark_type("str")
 
         # Assert
         assert result == "STRING"
 
     def test_infer_spark_type_string_type_3(self):
         # Act
-        result = type_systems.infer_spark_type("string")
+        result = type_systems._infer_spark_type("string")
 
         # Assert
         assert result == "STRING"
 
     def test_infer_spark_type_byte_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(bytes)
-        result1 = type_systems.infer_spark_type("BinaryType()")
+        result = type_systems._infer_spark_type(bytes)
+        result1 = type_systems._infer_spark_type("BinaryType()")
 
         # Assert
         assert result == "BINARY"
@@ -689,22 +691,22 @@ class TestTypeSystems:
 
     def test_infer_spark_type_int8_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(np.int8)
+        result = type_systems._infer_spark_type(np.int8)
 
         # Assert
         assert result == "BYTE"
 
     def test_infer_spark_type_int8_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("int8")
+        result = type_systems._infer_spark_type("int8")
 
         # Assert
         assert result == "BYTE"
 
     def test_infer_spark_type_int8_type_3(self):
         # Act
-        result = type_systems.infer_spark_type("byte")
-        result1 = type_systems.infer_spark_type("ByteType()")
+        result = type_systems._infer_spark_type("byte")
+        result1 = type_systems._infer_spark_type("ByteType()")
 
         # Assert
         assert result == "BYTE"
@@ -712,22 +714,22 @@ class TestTypeSystems:
 
     def test_infer_spark_type_int16_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(np.int16)
+        result = type_systems._infer_spark_type(np.int16)
 
         # Assert
         assert result == "SHORT"
 
     def test_infer_spark_type_int16_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("int16")
+        result = type_systems._infer_spark_type("int16")
 
         # Assert
         assert result == "SHORT"
 
     def test_infer_spark_type_int16_type_3(self):
         # Act
-        result = type_systems.infer_spark_type("short")
-        result1 = type_systems.infer_spark_type("ShortType()")
+        result = type_systems._infer_spark_type("short")
+        result1 = type_systems._infer_spark_type("ShortType()")
 
         # Assert
         assert result == "SHORT"
@@ -735,22 +737,22 @@ class TestTypeSystems:
 
     def test_infer_spark_type_int_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(int)
+        result = type_systems._infer_spark_type(int)
 
         # Assert
         assert result == "INT"
 
     def test_infer_spark_type_int_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("int")
+        result = type_systems._infer_spark_type("int")
 
         # Assert
         assert result == "INT"
 
     def test_infer_spark_type_int_type_3(self):
         # Act
-        result = type_systems.infer_spark_type(np.int32)
-        result1 = type_systems.infer_spark_type("IntegerType()")
+        result = type_systems._infer_spark_type(np.int32)
+        result1 = type_systems._infer_spark_type("IntegerType()")
 
         # Assert
         assert result == "INT"
@@ -758,29 +760,29 @@ class TestTypeSystems:
 
     def test_infer_spark_type_int64_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(np.int64)
+        result = type_systems._infer_spark_type(np.int64)
 
         # Assert
         assert result == "LONG"
 
     def test_infer_spark_type_int64_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("int64")
+        result = type_systems._infer_spark_type("int64")
 
         # Assert
         assert result == "LONG"
 
     def test_infer_spark_type_int64_type_3(self):
         # Act
-        result = type_systems.infer_spark_type("long")
+        result = type_systems._infer_spark_type("long")
 
         # Assert
         assert result == "LONG"
 
     def test_infer_spark_type_int64_type_4(self):
         # Act
-        result = type_systems.infer_spark_type("bigint")
-        result1 = type_systems.infer_spark_type("LongType()")
+        result = type_systems._infer_spark_type("bigint")
+        result1 = type_systems._infer_spark_type("LongType()")
 
         # Assert
         assert result == "LONG"
@@ -788,15 +790,15 @@ class TestTypeSystems:
 
     def test_infer_spark_type_float_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(float)
+        result = type_systems._infer_spark_type(float)
 
         # Assert
         assert result == "FLOAT"
 
     def test_infer_spark_type_float_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("float")
-        result1 = type_systems.infer_spark_type("FloatType()")
+        result = type_systems._infer_spark_type("float")
+        result1 = type_systems._infer_spark_type("FloatType()")
 
         # Assert
         assert result == "FLOAT"
@@ -804,22 +806,22 @@ class TestTypeSystems:
 
     def test_infer_spark_type_double_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(np.float64)
+        result = type_systems._infer_spark_type(np.float64)
 
         # Assert
         assert result == "DOUBLE"
 
     def test_infer_spark_type_double_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("float64")
+        result = type_systems._infer_spark_type("float64")
 
         # Assert
         assert result == "DOUBLE"
 
     def test_infer_spark_type_double_type_3(self):
         # Act
-        result = type_systems.infer_spark_type("double")
-        result1 = type_systems.infer_spark_type("DoubleType()")
+        result = type_systems._infer_spark_type("double")
+        result1 = type_systems._infer_spark_type("DoubleType()")
 
         # Assert
         assert result == "DOUBLE"
@@ -827,15 +829,15 @@ class TestTypeSystems:
 
     def test_infer_spark_type_timestamp_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(datetime.datetime)
+        result = type_systems._infer_spark_type(datetime.datetime)
 
         # Assert
         assert result == "TIMESTAMP"
 
     def test_infer_spark_type_timestamp_type_2(self):
         # Act
-        result = type_systems.infer_spark_type(np.datetime64)
-        result1 = type_systems.infer_spark_type("TimestampType()")
+        result = type_systems._infer_spark_type(np.datetime64)
+        result1 = type_systems._infer_spark_type("TimestampType()")
 
         # Assert
         assert result == "TIMESTAMP"
@@ -843,8 +845,8 @@ class TestTypeSystems:
 
     def test_infer_spark_type_date_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(datetime.date)
-        result1 = type_systems.infer_spark_type("DateType()")
+        result = type_systems._infer_spark_type(datetime.date)
+        result1 = type_systems._infer_spark_type("DateType()")
 
         # Assert
         assert result == "DATE"
@@ -852,22 +854,22 @@ class TestTypeSystems:
 
     def test_infer_spark_type_bool_type_1(self):
         # Act
-        result = type_systems.infer_spark_type(bool)
+        result = type_systems._infer_spark_type(bool)
 
         # Assert
         assert result == "BOOLEAN"
 
     def test_infer_spark_type_bool_type_2(self):
         # Act
-        result = type_systems.infer_spark_type("boolean")
+        result = type_systems._infer_spark_type("boolean")
 
         # Assert
         assert result == "BOOLEAN"
 
     def test_infer_spark_type_bool_type_3(self):
         # Act
-        result = type_systems.infer_spark_type("bool")
-        result1 = type_systems.infer_spark_type("BooleanType()")
+        result = type_systems._infer_spark_type("bool")
+        result1 = type_systems._infer_spark_type("BooleanType()")
 
         # Assert
         assert result == "BOOLEAN"
@@ -876,7 +878,7 @@ class TestTypeSystems:
     def test_infer_spark_type_wrong_type(self):
         # Act
         with pytest.raises(TypeError) as e_info:
-            type_systems.infer_spark_type("wrong")
+            type_systems._infer_spark_type("wrong")
 
         # Assert
         assert str(e_info.value) == "Not supported type wrong."
@@ -895,7 +897,7 @@ class TestCastPolarsColumnToOfflineType:
         )
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "timestamp")
+        result = type_systems._cast_polars_column_to_offline_type(series, "timestamp")
 
         # Assert
         assert result.dtype == pl.Datetime(time_zone=None)
@@ -910,7 +912,7 @@ class TestCastPolarsColumnToOfflineType:
         )
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "date")
+        result = type_systems._cast_polars_column_to_offline_type(series, "date")
 
         # Assert
         assert result.dtype == pl.Date
@@ -921,7 +923,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("a", ["[1, 2, 3]", "[4, 5]"], dtype=pl.String)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "array<int>")
+        result = type_systems._cast_polars_column_to_offline_type(series, "array<int>")
 
         # Assert
         assert result.to_list() == [[1, 2, 3], [4, 5]]
@@ -931,7 +933,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("a", [[1, 2, 3], [4, 5]], dtype=pl.List(pl.Int64))
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "array<int>")
+        result = type_systems._cast_polars_column_to_offline_type(series, "array<int>")
 
         # Assert
         assert result.to_list() == [[1, 2, 3], [4, 5]]
@@ -941,7 +943,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("s", ["{'k': 1}", "{'k': 2}"], dtype=pl.String)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(
+        result = type_systems._cast_polars_column_to_offline_type(
             series, "struct<k:int>"
         )
 
@@ -953,7 +955,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("b", ["True", "False"], dtype=pl.String)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "boolean")
+        result = type_systems._cast_polars_column_to_offline_type(series, "boolean")
 
         # Assert
         assert result.to_list() == [True, False]
@@ -963,7 +965,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("b", [True, False, None], dtype=pl.Boolean)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "boolean")
+        result = type_systems._cast_polars_column_to_offline_type(series, "boolean")
 
         # Assert
         assert result.to_list() == [True, False, None]
@@ -973,7 +975,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("v", [1, 2, 3], dtype=pl.Int64)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "string")
+        result = type_systems._cast_polars_column_to_offline_type(series, "string")
 
         # Assert
         assert result.to_list() == ["1", "2", "3"]
@@ -983,7 +985,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("d", ["1.50", "2.75"], dtype=pl.String)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(
+        result = type_systems._cast_polars_column_to_offline_type(
             series, "decimal(10,2)"
         )
 
@@ -995,7 +997,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("v", [1, 2, 3], dtype=pl.Int64)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(series, "int")
+        result = type_systems._cast_polars_column_to_offline_type(series, "int")
 
         # Assert
         assert result.dtype == pl.Int32
@@ -1005,7 +1007,7 @@ class TestCastPolarsColumnToOfflineType:
         series = pl.Series("v", [1, 2, 3], dtype=pl.Int64)
 
         # Act
-        result = type_systems.cast_polars_column_to_offline_type(
+        result = type_systems._cast_polars_column_to_offline_type(
             series, "not_a_real_type"
         )
 

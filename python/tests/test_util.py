@@ -57,7 +57,7 @@ class TestUtil:
         json = backend_fixtures["model"]["get_base"]["response"]["items"][0]
 
         # Act
-        model = util.set_model_class(json)
+        model = util._set_model_class(json)
 
         # Assert
         assert isinstance(model, BaseModel)
@@ -68,7 +68,7 @@ class TestUtil:
         json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
 
         # Act
-        model = util.set_model_class(json)
+        model = util._set_model_class(json)
 
         # Assert
         assert isinstance(model, PythonModel)
@@ -79,7 +79,7 @@ class TestUtil:
         json = backend_fixtures["model"]["get_sklearn"]["response"]["items"][0]
 
         # Act
-        model = util.set_model_class(json)
+        model = util._set_model_class(json)
 
         # Assert
         assert isinstance(model, SklearnModel)
@@ -90,7 +90,7 @@ class TestUtil:
         json = backend_fixtures["model"]["get_tensorflow"]["response"]["items"][0]
 
         # Act
-        model = util.set_model_class(json)
+        model = util._set_model_class(json)
 
         # Assert
         assert isinstance(model, TensorflowModel)
@@ -101,7 +101,7 @@ class TestUtil:
         json = backend_fixtures["model"]["get_torch"]["response"]["items"][0]
 
         # Act
-        model = util.set_model_class(json)
+        model = util._set_model_class(json)
 
         # Assert
         assert isinstance(model, TorchModel)
@@ -112,7 +112,7 @@ class TestUtil:
         json = backend_fixtures["model"]["get_llm"]["response"]["items"][0]
 
         # Act
-        model = util.set_model_class(json)
+        model = util._set_model_class(json)
 
         # Assert
         assert isinstance(model, LLMModel)
@@ -125,7 +125,7 @@ class TestUtil:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            util.set_model_class(json)
+            util._set_model_class(json)
 
         # Assert
         assert "is not a supported framework" in str(e_info.value)
@@ -145,7 +145,7 @@ class TestUtil:
         )
 
         # Act
-        util.input_example_to_json(input_example_numpy)
+        util._input_example_to_json(input_example_numpy)
 
         # Assert
         mock_handle_tensor_input.assert_called_once()
@@ -165,7 +165,7 @@ class TestUtil:
         )
 
         # Act
-        util.input_example_to_json(input_example_dict)
+        util._input_example_to_json(input_example_dict)
 
         # Assert
         mock_handle_tensor_input.assert_not_called()
@@ -187,7 +187,7 @@ class TestUtil:
         )
 
         # Act
-        util.input_example_to_json(input_example_dataframe_pandas_dataframe)
+        util._input_example_to_json(input_example_dataframe_pandas_dataframe)
 
         # Assert
         mock_handle_tensor_input.assert_not_called()
@@ -207,7 +207,7 @@ class TestUtil:
         )
 
         # Act
-        util.input_example_to_json(lambda unsupported_type: None)
+        util._input_example_to_json(lambda unsupported_type: None)
 
         # Assert
         mock_handle_tensor_input.assert_not_called()
@@ -298,7 +298,7 @@ class TestUtil:
         )
 
         # Act
-        path = util.compress(archive_out_path, archive_name, path_to_archive)
+        path = util._compress(archive_out_path, archive_name, path_to_archive)
 
         # Assert
         assert path == "resulting_path"
@@ -321,7 +321,7 @@ class TestUtil:
         )
 
         # Act
-        path = util.compress(archive_out_path, archive_name, path_to_archive)
+        path = util._compress(archive_out_path, archive_name, path_to_archive)
 
         # Assert
         assert path == "resulting_path"
@@ -339,7 +339,7 @@ class TestUtil:
         )
 
         # Act
-        path = util.decompress(archive_file_path, extract_dir)
+        path = util._decompress(archive_file_path, extract_dir)
 
         # Assert
         assert path == "resulting_path"
@@ -351,7 +351,7 @@ class TestUtil:
 
     def test_validate_metrics(self, model_metrics):
         # Act
-        util.validate_metrics(model_metrics)
+        util._validate_metrics(model_metrics)
 
         # Assert
         # noop
@@ -359,7 +359,7 @@ class TestUtil:
     def test_validate_metrics_unsupported_type(self, model_metrics_wrong_type):
         # Act
         with pytest.raises(TypeError) as e_info:
-            util.validate_metrics(model_metrics_wrong_type)
+            util._validate_metrics(model_metrics_wrong_type)
 
         # Assert
         assert "expected a dict" in str(e_info.value)
@@ -369,7 +369,7 @@ class TestUtil:
     ):
         # Act
         with pytest.raises(TypeError) as e_info:
-            util.validate_metrics(model_metrics_wrong_metric_type)
+            util._validate_metrics(model_metrics_wrong_metric_type)
 
         # Assert
         assert "expected a string" in str(e_info.value)
@@ -379,7 +379,7 @@ class TestUtil:
     ):
         # Act
         with pytest.raises(ValueError) as e_info:
-            util.validate_metrics(model_metrics_wrong_metric_value)
+            util._validate_metrics(model_metrics_wrong_metric_value)
 
         # Assert
         assert "is not a number" in str(e_info.value)
@@ -401,7 +401,7 @@ class TestUtil:
         pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
-        predictor = util.get_predictor_for_model(model_base)
+        predictor = util._get_predictor_for_model(model_base)
 
         # Assert
         assert isinstance(predictor, BasePredictor)
@@ -426,7 +426,7 @@ class TestUtil:
         pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
-        predictor = util.get_predictor_for_model(model_python)
+        predictor = util._get_predictor_for_model(model_python)
 
         # Assert
         assert isinstance(predictor, PyPredictor)
@@ -449,7 +449,7 @@ class TestUtil:
         pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
-        predictor = util.get_predictor_for_model(model_sklearn)
+        predictor = util._get_predictor_for_model(model_sklearn)
 
         # Assert
         assert isinstance(predictor, SkLearnPredictor)
@@ -472,7 +472,7 @@ class TestUtil:
         pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
-        predictor = util.get_predictor_for_model(model_tensorflow)
+        predictor = util._get_predictor_for_model(model_tensorflow)
 
         # Assert
         assert isinstance(predictor, TFPredictor)
@@ -495,7 +495,7 @@ class TestUtil:
         pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
-        predictor = util.get_predictor_for_model(model_torch)
+        predictor = util._get_predictor_for_model(model_torch)
 
         # Assert
         assert isinstance(predictor, TorchPredictor)
@@ -518,7 +518,7 @@ class TestUtil:
         )
 
         # Act
-        predictor = util.get_predictor_for_model(model_llm)
+        predictor = util._get_predictor_for_model(model_llm)
 
         # Assert
         assert isinstance(predictor, LLMPredictor)
@@ -543,7 +543,7 @@ class TestUtil:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            util.get_predictor_for_model(NonBaseModel())
+            util._get_predictor_for_model(NonBaseModel())
 
         assert f"an instance of {BaseModel} class is expected" in str(e_info.value)
         pred_base.assert_not_called()
@@ -570,14 +570,16 @@ class TestUtil:
         mock_url_parsed.geturl = mocker.MagicMock(return_value=geturl_return)
         mock_client = mocker.MagicMock()
         mock_client._base_url = base_url + "url"
-        mock_client.replace_public_host = mocker.MagicMock(return_value=mock_url_parsed)
-        mocker.patch("hopsworks_common.client.get_instance", return_value=mock_client)
+        mock_client._replace_public_host = mocker.MagicMock(
+            return_value=mock_url_parsed
+        )
+        mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
 
         # Act
-        url = util.get_hostname_replaced_url(sub_path)
+        url = util._get_hostname_replaced_url(sub_path)
 
         # Assert
-        mock_client.replace_public_host.assert_called_once_with(urlparse_href_arg)
+        mock_client._replace_public_host.assert_called_once_with(urlparse_href_arg)
         mock_url_parsed.geturl.assert_called_once()
         assert url == geturl_return
 
@@ -591,7 +593,7 @@ class TestUtil:
             TEST_3 = "3"
 
         # Act
-        members = list(util.get_members(TEST))
+        members = list(util._get_members(TEST))
 
         # Assert
         assert members == [1, "two", "3"]
@@ -605,7 +607,7 @@ class TestUtil:
             NONE = None
 
         # Act
-        members = list(util.get_members(TEST, prefix="TEST"))
+        members = list(util._get_members(TEST, prefix="TEST"))
 
         # Assert
         assert members == [1, "two"]
@@ -615,10 +617,10 @@ class TestUtil:
     def test_extract_field_from_json(self, mocker):
         # Arrange
         json = {"a": "1", "b": "2"}
-        get_obj_from_json = mocker.patch("hopsworks_common.util.get_obj_from_json")
+        get_obj_from_json = mocker.patch("hopsworks_common.util._get_obj_from_json")
 
         # Act
-        b = util.extract_field_from_json(json, "b")
+        b = util._extract_field_from_json(json, "b")
 
         # Assert
         assert b == "2"
@@ -627,10 +629,10 @@ class TestUtil:
     def test_extract_field_from_json_fields(self, mocker):
         # Arrange
         json = {"a": "1", "b": "2"}
-        get_obj_from_json = mocker.patch("hopsworks_common.util.get_obj_from_json")
+        get_obj_from_json = mocker.patch("hopsworks_common.util._get_obj_from_json")
 
         # Act
-        b = util.extract_field_from_json(json, ["B", "b"])  # alternative fields
+        b = util._extract_field_from_json(json, ["B", "b"])  # alternative fields
 
         # Assert
         assert b == "2"
@@ -640,11 +642,11 @@ class TestUtil:
         # Arrange
         json = {"a": "1", "b": "2"}
         get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value="2"
+            "hopsworks_common.util._get_obj_from_json", return_value="2"
         )
 
         # Act
-        b = util.extract_field_from_json(json, "b", as_instance_of=str)
+        b = util._extract_field_from_json(json, "b", as_instance_of=str)
 
         # Assert
         assert b == "2"
@@ -654,11 +656,11 @@ class TestUtil:
         # Arrange
         json = {"a": "1", "b": ["2", "2", "2"]}
         get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value="2"
+            "hopsworks_common.util._get_obj_from_json", return_value="2"
         )
 
         # Act
-        b = util.extract_field_from_json(json, "b", as_instance_of=str)
+        b = util._extract_field_from_json(json, "b", as_instance_of=str)
 
         # Assert
         assert b == ["2", "2", "2"]
@@ -673,7 +675,7 @@ class TestUtil:
                 self.a = "1"
 
         # Act
-        obj = util.get_obj_from_json(Test(), Test)
+        obj = util._get_obj_from_json(Test(), Test)
 
         # Assert
         assert isinstance(obj, Test)
@@ -690,7 +692,7 @@ class TestUtil:
                 return cls(**json)
 
         # Act
-        obj = util.get_obj_from_json({"a": "1"}, Test)
+        obj = util._get_obj_from_json({"a": "1"}, Test)
 
         # Assert
         assert isinstance(obj, Test)
@@ -707,7 +709,7 @@ class TestUtil:
                 return cls(**json)
 
         # Act
-        obj = util.get_obj_from_json({}, Test)
+        obj = util._get_obj_from_json({}, Test)
 
         # Assert
         assert isinstance(obj, Test)
@@ -720,127 +722,127 @@ class TestUtil:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            util.get_obj_from_json("UNSUPPORTED", Test)
+            util._get_obj_from_json("UNSUPPORTED", Test)
 
         # Assert
         assert "cannot be converted to class" in str(e_info.value)
 
     def test_get_hudi_datestr_from_timestamp(self):
-        dt = hopsworks_common.util.get_hudi_datestr_from_timestamp(1640995200000)
+        dt = hopsworks_common.util._get_hudi_datestr_from_timestamp(1640995200000)
         assert dt == "20220101000000000"
 
     def test_convert_event_time_to_timestamp_timestamp(self):
-        dt = hopsworks_common.util.convert_event_time_to_timestamp(1640995200)
+        dt = hopsworks_common.util._convert_event_time_to_timestamp(1640995200)
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_datetime(self):
-        dt = hopsworks_common.util.convert_event_time_to_timestamp(
+        dt = hopsworks_common.util._convert_event_time_to_timestamp(
             datetime(2022, 1, 1, 0, 0, 0)
         )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_datetime_tz(self):
-        dt = hopsworks_common.util.convert_event_time_to_timestamp(
+        dt = hopsworks_common.util._convert_event_time_to_timestamp(
             pytz.timezone("US/Pacific").localize(datetime(2021, 12, 31, 16, 0, 0))
         )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_date(self):
-        dt = hopsworks_common.util.convert_event_time_to_timestamp(date(2022, 1, 1))
+        dt = hopsworks_common.util._convert_event_time_to_timestamp(date(2022, 1, 1))
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_string(self):
-        dt = hopsworks_common.util.convert_event_time_to_timestamp(
+        dt = hopsworks_common.util._convert_event_time_to_timestamp(
             "2022-01-01 00:00:00"
         )
         assert dt == 1640995200000
 
     def test_convert_iso_event_time_to_timestamp_string(self):
-        dt = hopsworks_common.util.convert_event_time_to_timestamp(
+        dt = hopsworks_common.util._convert_event_time_to_timestamp(
             "2022-01-01T00:00:00.000000Z"
         )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd(self):
-        timestamp = hopsworks_common.util.get_timestamp_from_date_string("2022-01-01")
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string("2022-01-01")
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh(self):
-        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
             "2022-01-01 00"
         )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm(self):
-        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
             "2022-01-01 00:00"
         )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss(self):
-        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
             "2022-01-01 00:00:00"
         )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_f(self):
-        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
             "2022-01-01 00:00:00.000"
         )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error(self):
         with pytest.raises(ValueError):
-            hopsworks_common.util.get_timestamp_from_date_string("2022-13-01 00:00:00")
+            hopsworks_common.util._get_timestamp_from_date_string("2022-13-01 00:00:00")
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error2(self):
         with pytest.raises(ValueError):
-            hopsworks_common.util.get_timestamp_from_date_string("202-13-01 00:00:00")
+            hopsworks_common.util._get_timestamp_from_date_string("202-13-01 00:00:00")
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error3(self):
         with pytest.raises(ValueError):
-            hopsworks_common.util.get_timestamp_from_date_string("00:00:00 2022-01-01")
+            hopsworks_common.util._get_timestamp_from_date_string("00:00:00 2022-01-01")
 
     def test_convert_hudi_commit_time_to_timestamp(self):
-        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
             "20221118095233099"
         )
         assert timestamp == 1668765153099
 
     def test_get_dataset_type_HIVEDB(self):
-        db_type = hopsworks_common.util.get_dataset_type(
+        db_type = hopsworks_common.util._get_dataset_type(
             "/apps/hive/warehouse/temp_featurestore.db/storage_connector_resources/kafka__tstore.jks"
         )
         assert db_type == "HIVEDB"
 
     def test_get_dataset_type_HIVEDB_with_dfs(self):
-        db_type = hopsworks_common.util.get_dataset_type(
+        db_type = hopsworks_common.util._get_dataset_type(
             "hdfs:///apps/hive/warehouse/temp_featurestore.db/storage_connector_resources/kafka__tstore.jks"
         )
         assert db_type == "HIVEDB"
 
     def test_get_dataset_type_DATASET(self):
-        db_type = hopsworks_common.util.get_dataset_type(
+        db_type = hopsworks_common.util._get_dataset_type(
             "/Projects/temp/Resources/kafka__tstore.jks"
         )
         assert db_type == "DATASET"
 
     def test_get_dataset_type_DATASET_with_dfs(self):
-        db_type = hopsworks_common.util.get_dataset_type(
+        db_type = hopsworks_common.util._get_dataset_type(
             "hdfs:///Projects/temp/Resources/kafka__tstore.jks"
         )
         assert db_type == "DATASET"
 
     def test_get_job_url(self, mocker):
         # Arrange
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
-        hopsworks_common.util.get_job_url(href="1/2/3/4/5/6/7/8")
+        hopsworks_common.util._get_job_url(href="1/2/3/4/5/6/7/8")
 
         # Assert
         assert (
-            mock_client_get_instance.return_value.replace_public_host.call_args[0][
+            mock_client_get_instance.return_value._replace_public_host.call_args[0][
                 0
             ].path
             == "p/5/jobs/named/7/executions"
@@ -850,14 +852,14 @@ class TestUtil:
         # Arrange
         feature_store_id = 99
         feature_group_id = 10
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks_common.util.get_hostname_replaced_url"
+            "hopsworks_common.util._get_hostname_replaced_url"
         )
         mock_client_get_instance.return_value._project_id = 50
 
         # Act
-        hopsworks_common.util.get_feature_group_url(
+        hopsworks_common.util._get_feature_group_url(
             feature_group_id=feature_group_id, feature_store_id=feature_store_id
         )
 
@@ -884,7 +886,7 @@ class TestUtil:
             Feature(name="feature4", type="array<double>"),
         ]
         # Call the method and expect no exceptions
-        hopsworks_common.util.validate_embedding_feature_type(embedding_index, schema)
+        hopsworks_common.util._validate_embedding_feature_type(embedding_index, schema)
 
     def test_invalid_embedding_type(self):
         embedding_index = EmbeddingIndex(
@@ -900,7 +902,7 @@ class TestUtil:
         ]
         # Call the method and expect a FeatureStoreException
         with pytest.raises(FeatureStoreException):
-            hopsworks_common.util.validate_embedding_feature_type(
+            hopsworks_common.util._validate_embedding_feature_type(
                 embedding_index, schema
             )
 
@@ -911,7 +913,7 @@ class TestUtil:
             Feature(name="feature2", type="array<bigint>"),
         ]
         # Call the method with an empty feature_group (no embedding index)
-        hopsworks_common.util.validate_embedding_feature_type(None, schema)
+        hopsworks_common.util._validate_embedding_feature_type(None, schema)
         # No exception should be raised
 
     def test_empty_schema(self):
@@ -924,7 +926,7 @@ class TestUtil:
         # Define an empty schema
         schema = []
         # Call the method with an empty schema
-        hopsworks_common.util.validate_embedding_feature_type(embedding_index, schema)
+        hopsworks_common.util._validate_embedding_feature_type(embedding_index, schema)
         # No exception should be raised
 
     def test_extract_zip(self, tmp_path):
@@ -935,7 +937,7 @@ class TestUtil:
             zf.writestr("cwallet.sso", "fake")
             zf.writestr("tnsnames.ora", "fake")
 
-        result = util.extract_zip(str(archive))
+        result = util._extract_zip(str(archive))
 
         expected_dir = str(tmp_path / "wallet")
         assert result == expected_dir
@@ -949,8 +951,8 @@ class TestUtil:
         with zipfile.ZipFile(str(archive), "w") as zf:
             zf.writestr("cwallet.sso", "fake")
 
-        result1 = util.extract_zip(str(archive))
-        result2 = util.extract_zip(str(archive))
+        result1 = util._extract_zip(str(archive))
+        result2 = util._extract_zip(str(archive))
         assert result1 == result2
 
     @pytest.mark.skipif(
@@ -968,4 +970,4 @@ class TestUtil:
                 RuntimeError,
                 match="Event loop is not running. Please invoke this co-routine from a running loop or provide an event loop.",
             ):
-                asyncio.run(util_sql.create_async_engine(online_connector, True, 1))
+                asyncio.run(util_sql._create_async_engine(online_connector, True, 1))

@@ -222,7 +222,7 @@ class TestSinkJobConfiguration:
     def test_set_extra_params(self):
         config = sink_job_configuration.SinkJobConfiguration(name="old_name")
 
-        config.set_extra_params(
+        config._set_extra_params(
             featuregroup_id=1,
             featurestore_id=2,
             storage_connector_id=3,

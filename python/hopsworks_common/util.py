@@ -76,7 +76,7 @@ class NumpyEncoder(json.JSONEncoder):
     In this case, you'll need to convert your numpy types into its closest python equivalence.
     """
 
-    def convert(self, obj):
+    def _convert(self, obj):
         import base64
 
         import numpy as np
@@ -86,7 +86,7 @@ class NumpyEncoder(json.JSONEncoder):
 
         if isinstance(obj, np.ndarray):
             if obj.dtype == np.object_:
-                return [self.convert(x)[0] for x in obj.tolist()]
+                return [self._convert(x)[0] for x in obj.tolist()]
             if obj.dtype == np.bytes_:
                 return np.vectorize(encode_binary)(obj), True
             return obj.tolist(), True
@@ -102,7 +102,7 @@ class NumpyEncoder(json.JSONEncoder):
         return obj, False
 
     def default(self, obj):  # pylint: disable=E0202
-        res, converted = self.convert(obj)
+        res, converted = self._convert(obj)
         if converted:
             return res
         return super().default(obj)
@@ -116,8 +116,8 @@ VALID_EMBEDDING_TYPE = {
 }
 
 
-@also_available_as("hopsworks.util.validate_embedding_feature_type")
-def validate_embedding_feature_type(embedding_index, schema):
+@also_available_as("hopsworks.util._validate_embedding_feature_type")
+def _validate_embedding_feature_type(embedding_index, schema):
     if not embedding_index or not schema:
         return
     feature_type_map = {feat.name: feat.type for feat in schema}
@@ -130,16 +130,16 @@ def validate_embedding_feature_type(embedding_index, schema):
             )
 
 
-@also_available_as("hopsworks.util.autofix_feature_name")
-def autofix_feature_name(name: str, warn: bool = False) -> str:
+@also_available_as("hopsworks.util._autofix_feature_name")
+def _autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
-    if warn and contains_uppercase(name):
+    if warn and _contains_uppercase(name):
         warnings.warn(
             f"The feature name `{name}` contains upper case letters. "
             "Feature names are sanitized to lower case in the feature store.",
             stacklevel=1,
         )
-    if warn and contains_whitespace(name):
+    if warn and _contains_whitespace(name):
         warnings.warn(
             f"The feature name `{name}` contains spaces. "
             "Feature names are sanitized to use underscore '_' in the feature store.",
@@ -148,45 +148,45 @@ def autofix_feature_name(name: str, warn: bool = False) -> str:
     return name.lower().replace(" ", "_")
 
 
-def contains_uppercase(name: str) -> bool:
+def _contains_uppercase(name: str) -> bool:
     return any(re.finditer("[A-Z]", name))
 
 
-def contains_whitespace(name: str) -> bool:
+def _contains_whitespace(name: str) -> bool:
     return " " in name
 
 
-@also_available_as("hopsworks.util.feature_group_name")
-def feature_group_name(
+@also_available_as("hopsworks.util._feature_group_name")
+def _feature_group_name(
     feature_group,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
 ) -> str:
     return feature_group.name + "_" + str(feature_group.version)
 
 
-@also_available_as("hopsworks.util.append_feature_store_suffix")
-def append_feature_store_suffix(name: str) -> str:
+@also_available_as("hopsworks.util._append_feature_store_suffix")
+def _append_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
         return name
     return name + FEATURE_STORE_NAME_SUFFIX
 
 
-@also_available_as("hopsworks.util.strip_feature_store_suffix")
-def strip_feature_store_suffix(name: str) -> str:
+@also_available_as("hopsworks.util._strip_feature_store_suffix")
+def _strip_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
         return name[: -1 * len(FEATURE_STORE_NAME_SUFFIX)]
     return name
 
 
-@also_available_as("hopsworks.util.get_dataset_type")
-def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
+@also_available_as("hopsworks.util._get_dataset_type")
+def _get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     if re.match(r"^(?:hdfs://|)/apps/hive/warehouse/*", path):
         return "HIVEDB"
     return "DATASET"
 
 
-def extract_zip(zip_path: str) -> str:
+def _extract_zip(zip_path: str) -> str:
     """Extract a zip file into a sibling directory and return the directory path.
 
     The zip is extracted to a directory with the ``.zip`` suffix removed.
@@ -209,8 +209,8 @@ def extract_zip(zip_path: str) -> str:
     return extract_dir
 
 
-@also_available_as("hopsworks.util.check_timestamp_format_from_date_string")
-def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
+@also_available_as("hopsworks.util._check_timestamp_format_from_date_string")
+def _check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     date_format_patterns = {
         r"^([0-9]{4})([0-9]{2})([0-9]{2})$": "%Y%m%d",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})$": "%Y%m%d%H",
@@ -247,9 +247,9 @@ def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     return normalized_date, date_format
 
 
-@also_available_as("hopsworks.util.get_timestamp_from_date_string")
-def get_timestamp_from_date_string(input_date: str) -> int:
-    norm_input_date, date_format = check_timestamp_format_from_date_string(input_date)
+@also_available_as("hopsworks.util._get_timestamp_from_date_string")
+def _get_timestamp_from_date_string(input_date: str) -> int:
+    norm_input_date, date_format = _check_timestamp_format_from_date_string(input_date)
     try:
         if date_format != "ISO":
             date_time = datetime.strptime(norm_input_date, date_format)
@@ -267,15 +267,15 @@ def get_timestamp_from_date_string(input_date: str) -> int:
     return int(float(date_time.timestamp()) * 1000)
 
 
-@also_available_as("hopsworks.util.get_hudi_datestr_from_timestamp")
-def get_hudi_datestr_from_timestamp(timestamp: int) -> str:
+@also_available_as("hopsworks.util._get_hudi_datestr_from_timestamp")
+def _get_hudi_datestr_from_timestamp(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime(
         "%Y%m%d%H%M%S%f"
     )[:-3]
 
 
-@also_available_as("hopsworks.util.get_delta_datestr_from_timestamp")
-def get_delta_datestr_from_timestamp(timestamp: int) -> str:
+@also_available_as("hopsworks.util._get_delta_datestr_from_timestamp")
+def _get_delta_datestr_from_timestamp(timestamp: int) -> str:
     # It does not work to add the Z in the strftime function
     return (
         datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime(
@@ -285,8 +285,8 @@ def get_delta_datestr_from_timestamp(timestamp: int) -> str:
     )
 
 
-@also_available_as("hopsworks.util.convert_event_time_to_timestamp")
-def convert_event_time_to_timestamp(
+@also_available_as("hopsworks.util._convert_event_time_to_timestamp")
+def _convert_event_time_to_timestamp(
     event_time: str
     | pd._libs.tslibs.timestamps.Timestamp
     | datetime
@@ -297,7 +297,7 @@ def convert_event_time_to_timestamp(
     if not event_time:
         return None
     if isinstance(event_time, str):
-        return get_timestamp_from_date_string(event_time)
+        return _get_timestamp_from_date_string(event_time)
     if hasattr(event_time, "to_pydatetime"):
         # only pandas Timestamp has to_pydatetime method out of the accepted event_time types
         # convert to unix epoch time in milliseconds.
@@ -329,8 +329,8 @@ def convert_event_time_to_timestamp(
     )
 
 
-@also_available_as("hopsworks.util.get_hostname_replaced_url")
-def get_hostname_replaced_url(sub_path: str) -> str:
+@also_available_as("hopsworks.util._get_hostname_replaced_url")
+def _get_hostname_replaced_url(sub_path: str) -> str:
     """Construct and return an url with public hopsworks hostname and sub path.
 
     Parameters:
@@ -339,13 +339,13 @@ def get_hostname_replaced_url(sub_path: str) -> str:
     Returns:
         href url.
     """
-    href = urljoin(client.get_instance()._base_url, sub_path)
-    url_parsed = client.get_instance().replace_public_host(urlparse(href))
+    href = urljoin(client._get_instance()._base_url, sub_path)
+    url_parsed = client._get_instance()._replace_public_host(urlparse(href))
     return url_parsed.geturl()
 
 
-@also_available_as("hopsworks.util.verify_attribute_key_names")
-def verify_attribute_key_names(
+@also_available_as("hopsworks.util._verify_attribute_key_names")
+def _verify_attribute_key_names(
     feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
 ) -> None:
@@ -383,8 +383,8 @@ def verify_attribute_key_names(
             )
 
 
-@also_available_as("hopsworks.util.get_job_url")
-def get_job_url(href: str) -> str:
+@also_available_as("hopsworks.util._get_job_url")
+def _get_job_url(href: str) -> str:
     """Use the endpoint returned by the API to construct the UI url for jobs.
 
     Parameters:
@@ -398,7 +398,7 @@ def get_job_url(href: str) -> str:
     project_id = url_splits[4]
     job_name = url_splits[6]
     ui_url = url._replace(path=f"p/{project_id}/jobs/named/{job_name}/executions")
-    ui_url = client.get_instance().replace_public_host(ui_url)
+    ui_url = client._get_instance()._replace_public_host(ui_url)
     return ui_url.geturl()
 
 
@@ -411,8 +411,8 @@ def _loading_animation(message: str, stop_event: threading.Event) -> None:
         time.sleep(0.5)
 
 
-@also_available_as("hopsworks.util.run_with_loading_animation")
-def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) -> Any:
+@also_available_as("hopsworks.util._run_with_loading_animation")
+def _run_with_loading_animation(message: str, func: Callable, *args, **kwargs) -> Any:
     stop_event = threading.Event()
     t = threading.Thread(
         target=_loading_animation,
@@ -440,21 +440,21 @@ def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) ->
             print(f"\rFinished: {message} ({(end - start):.2f}s) ", end="\n")
 
 
-@also_available_as("hopsworks.util.get_feature_group_url")
-def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
+@also_available_as("hopsworks.util._get_feature_group_url")
+def _get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     sub_path = (
         "/p/"
-        + str(client.get_instance()._project_id)
+        + str(client._get_instance()._project_id)
         + "/fs/"
         + str(feature_store_id)
         + "/fg/"
         + str(feature_group_id)
     )
-    return get_hostname_replaced_url(sub_path)
+    return _get_hostname_replaced_url(sub_path)
 
 
-@also_available_as("hopsworks.util.is_runtime_notebook")
-def is_runtime_notebook():
+@also_available_as("hopsworks.util._is_runtime_notebook")
+def _is_runtime_notebook():
     return "ipykernel" in sys.modules
 
 
@@ -493,33 +493,32 @@ class FeatureGroupWarning(Warning):
     pass
 
 
-@also_available_as("hopsworks.util.convert_to_abs")
-def convert_to_abs(path, current_proj_name):
+@also_available_as("hopsworks.util._convert_to_abs")
+def _convert_to_abs(path, current_proj_name):
     abs_project_prefix = f"/Projects/{current_proj_name}"
     if not path.startswith(abs_project_prefix):
         return abs_project_prefix + "/" + path
     return path
 
 
-def convert_to_project_rel_path(path, current_proj_name):
+def _convert_to_project_rel_path(path, current_proj_name):
     abs_project_prefix = f"/Projects/{current_proj_name}"
     if path.startswith(abs_project_prefix):
         return path.replace(abs_project_prefix, "")
     return path
 
 
-@also_available_as("hopsworks.util.validate_job_conf")
-def validate_job_conf(config, project_name):
+@also_available_as("hopsworks.util._validate_job_conf")
+def _validate_job_conf(config, project_name):
     # User is required to set the appPath programmatically after getting the configuration
     if (
         config["type"] != "dockerJobConfiguration"
-        and config["type"] != "flinkJobConfiguration"
         and config["type"] != "ingestionJobConfiguration"
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
     if "appPath" in config and not config["appPath"].startswith("hdfs://"):
-        config["appPath"] = "hdfs://" + convert_to_abs(config["appPath"], project_name)
+        config["appPath"] = "hdfs://" + _convert_to_abs(config["appPath"], project_name)
 
     # If PYSPARK application set the mainClass, if SPARK validate there is a mainClass set
     if config["type"] == "sparkJobConfiguration":
@@ -531,8 +530,8 @@ def validate_job_conf(config, project_name):
     return config
 
 
-@also_available_as("hopsworks.util.convert_git_status_to_files")
-def convert_git_status_to_files(files):
+@also_available_as("hopsworks.util._convert_git_status_to_files")
+def _convert_git_status_to_files(files):
     # Convert GitFileStatus to list of file paths
     if isinstance(files[0], GitFileStatus):
         tmp_files = []
@@ -543,8 +542,8 @@ def convert_git_status_to_files(files):
     return files
 
 
-@also_available_as("hopsworks.util.is_interactive")
-def is_interactive():
+@also_available_as("hopsworks.util._is_interactive")
+def _is_interactive():
     import __main__ as main
 
     return not hasattr(main, "__file__")
@@ -555,8 +554,8 @@ def is_interactive():
 # - schema and types
 
 
-@also_available_as("hsml.util.set_model_class")
-def set_model_class(model):
+@also_available_as("hsml.util._set_model_class")
+def _set_model_class(model):
     from hsml.llm.model import Model as LLMModel
     from hsml.model import Model as BaseModel
     from hsml.python.model import Model as PyModel
@@ -588,8 +587,8 @@ def set_model_class(model):
     raise ValueError(f"framework {str(framework)} is not a supported framework")
 
 
-@also_available_as("hsml.util.input_example_to_json")
-def input_example_to_json(input_example):
+@also_available_as("hsml.util._input_example_to_json")
+def _input_example_to_json(input_example):
     import numpy as np
 
     if isinstance(input_example, np.ndarray):
@@ -633,8 +632,8 @@ def _handle_dict_input(input_ex):
 # - artifacts
 
 
-@also_available_as("hsml.util.compress")
-def compress(archive_out_path, archive_name, path_to_archive):
+@also_available_as("hsml.util._compress")
+def _compress(archive_out_path, archive_name, path_to_archive):
     if os.path.isdir(path_to_archive):
         return shutil.make_archive(
             os.path.join(archive_out_path, archive_name), "gztar", path_to_archive
@@ -647,16 +646,16 @@ def compress(archive_out_path, archive_name, path_to_archive):
     )
 
 
-@also_available_as("hsml.util.decompress")
-def decompress(archive_file_path, extract_dir=None):
+@also_available_as("hsml.util._decompress")
+def _decompress(archive_file_path, extract_dir=None):
     return shutil.unpack_archive(archive_file_path, extract_dir=extract_dir)
 
 
 # - export models
 
 
-@also_available_as("hsml.util.validate_metrics")
-def validate_metrics(metrics):
+@also_available_as("hsml.util._validate_metrics")
+def _validate_metrics(metrics):
     if metrics is not None:
         if not isinstance(metrics, dict):
             raise TypeError(
@@ -678,7 +677,7 @@ def validate_metrics(metrics):
                 ) from err
 
 
-def validate_model_name(name: str):
+def _validate_model_name(name: str):
     """Validate model name contains only alphanumeric characters and underscores.
 
     Parameters:
@@ -697,8 +696,8 @@ def validate_model_name(name: str):
 # Model serving
 
 
-@also_available_as("hsml.util.get_predictor_for_model")
-def get_predictor_for_model(model, **kwargs):
+@also_available_as("hsml.util._get_predictor_for_model")
+def _get_predictor_for_model(model, **kwargs):
     from hsml.llm.model import Model as LLMModel
     from hsml.llm.predictor import Predictor as vLLMPredictor
     from hsml.model import Model as BaseModel
@@ -738,7 +737,7 @@ def get_predictor_for_model(model, **kwargs):
     )
 
 
-def get_predictor_for_server(name: str, script_file: str, **kwargs):
+def _get_predictor_for_server(name: str, script_file: str, **kwargs):
     from hsml.python.endpoint import Endpoint as PyEndpoint
 
     return PyEndpoint(name=name, script_file=script_file, **kwargs)
@@ -747,18 +746,18 @@ def get_predictor_for_server(name: str, script_file: str, **kwargs):
 # General
 
 
-@also_available_as("hsml.util.pretty_print")
-def pretty_print(obj):
+@also_available_as("hsml.util._pretty_print")
+def _pretty_print(obj):
     if isinstance(obj, list):
         for logs in obj:
-            pretty_print(logs)
+            _pretty_print(logs)
     else:
         json_decamelized = humps.decamelize(obj.to_dict())
         print(json.dumps(json_decamelized, indent=4, sort_keys=True))
 
 
-@also_available_as("hsml.util.get_members")
-def get_members(cls, prefix=None):
+@also_available_as("hsml.util._get_members")
+def _get_members(cls, prefix=None):
     for m in inspect.getmembers(cls, lambda m: not (inspect.isroutine(m))):
         n = m[0]  # name
         if (prefix is not None and n.startswith(prefix)) or (
@@ -770,10 +769,10 @@ def get_members(cls, prefix=None):
 # - json
 
 
-def extract_field_from_json(obj, fields, default=None, as_instance_of=None):
+def _extract_field_from_json(obj, fields, default=None, as_instance_of=None):
     if isinstance(fields, list):
         for field in fields:
-            value = extract_field_from_json(obj, field, default, as_instance_of)
+            value = _extract_field_from_json(obj, field, default, as_instance_of)
             if value is not None:
                 break
     else:
@@ -782,17 +781,17 @@ def extract_field_from_json(obj, fields, default=None, as_instance_of=None):
             if isinstance(value, list):
                 # if the field is a list, get all obj
                 value = [
-                    get_obj_from_json(obj=subvalue, cls=as_instance_of)
+                    _get_obj_from_json(obj=subvalue, cls=as_instance_of)
                     for subvalue in value
                 ]
             else:
                 # otherwise, get single obj
-                value = get_obj_from_json(obj=value, cls=as_instance_of)
+                value = _get_obj_from_json(obj=value, cls=as_instance_of)
     return value
 
 
-@also_available_as("hsml.util.get_obj_from_json")
-def get_obj_from_json(obj, cls):
+@also_available_as("hsml.util._get_obj_from_json")
+def _get_obj_from_json(obj, cls):
     if obj is not None:
         if isinstance(obj, cls):
             return obj
@@ -806,8 +805,8 @@ def get_obj_from_json(obj, cls):
     return obj
 
 
-@also_available_as("hsml.util.feature_view_to_json")
-def feature_view_to_json(obj):
+@also_available_as("hsml.util._feature_view_to_json")
+def _feature_view_to_json(obj):
     if obj is None:
         return None
     import importlib.util
@@ -824,7 +823,7 @@ def feature_view_to_json(obj):
     return None
 
 
-def generate_fully_qualified_feature_name(
+def _generate_fully_qualified_feature_name(
     feature_group: feature_group.FeatureGroup, feature_name: str
 ) -> str:
     """Generate the fully qualified feature name for a feature.
@@ -924,7 +923,7 @@ class AsyncTaskThread(threading.Thread):
         self._connection_pool = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
 
-    async def execute_task(self):
+    async def _execute_task(self):
         """Execute the async tasks for the queue."""
         asyncio.set_event_loop(self._event_loop)
 
@@ -956,7 +955,7 @@ class AsyncTaskThread(threading.Thread):
                 task.result = e
                 task.event.set()
 
-    def stop(self):
+    def _stop(self):
         """Stop the thread and close the event loop."""
         self.stop_event.set()
         self._event_loop.stop()
@@ -970,7 +969,7 @@ class AsyncTaskThread(threading.Thread):
             self._connection_pool = self._event_loop.run_until_complete(
                 self._connection_pool_initializer(*self._connection_pool_params)
             )
-        self._event_loop.create_task(self.execute_task())
+        self._event_loop.create_task(self._execute_task())
         try:
             self._event_loop.run_forever()
         except Exception as e:
@@ -983,7 +982,7 @@ class AsyncTaskThread(threading.Thread):
         finally:
             self._event_loop.close()
 
-    def submit(self, task: AsyncTask) -> Any:
+    def _submit(self, task: AsyncTask) -> Any:
         """Submit a async task to the thread and block until the execution of the function is completed.
 
         Parameters:

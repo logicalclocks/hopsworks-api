@@ -50,31 +50,37 @@ class Alert:
             return []
         return cls(**json_decamelized)
 
+    @public
     @property
     def id(self) -> int | None:
         """Return the id of the alert."""
         return self._id
 
+    @public
     @property
     def status(self) -> str | None:
         """Return the status of the alert."""
         return self._status
 
+    @public
     @property
     def alert_type(self) -> str | None:
         """Return the type of the alert."""
         return self._alert_type
 
+    @public
     @property
     def severity(self) -> str | None:
         """Return the severity of the alert."""
         return self._severity
 
+    @public
     @property
     def receiver(self) -> str | None:
         """Return the receiver of the alert."""
         return self._receiver
 
+    @public
     @property
     def created(self) -> str | None:
         """Return the creation time of the alert."""
@@ -134,16 +140,19 @@ class ProjectAlert(Alert):
         self._threshold = threshold
         self._service = service
 
+    @public
     @property
     def project_name(self) -> str | None:
         """Return the name of the project."""
         return self._project_name
 
+    @public
     @property
     def service(self) -> str | None:
         """Return the name of the service."""
         return self._service
 
+    @public
     @property
     def threshold(self) -> str | None:
         """Return the threshold of the alert."""
@@ -194,11 +203,13 @@ class JobAlert(Alert):
         self._job_name = job_name
         self._threshold = threshold
 
+    @public
     @property
     def job_name(self) -> str | None:
         """Return the name of the job."""
         return self._job_name
 
+    @public
     @property
     def threshold(self) -> str | None:
         """Return the threshold of the alert."""
@@ -250,16 +261,19 @@ class FeatureGroupAlert(Alert):
         self._feature_group_id = feature_group_id
         self._feature_group_name = feature_group_name
 
+    @public
     @property
     def feature_store_name(self) -> str | None:
         """Return the name of the feature store."""
         return self._feature_store_name
 
+    @public
     @property
     def feature_group_id(self) -> str | None:
         """Return the id of the feature group."""
         return self._feature_group_id
 
+    @public
     @property
     def feature_group_name(self) -> str | None:
         """Return the name of the feature group."""
@@ -314,21 +328,25 @@ class FeatureViewAlert(Alert):
         self._feature_view_name = feature_view_name
         self._feature_view_version = feature_view_version
 
+    @public
     @property
     def feature_store_name(self) -> str | None:
         """Return the name of the feature store."""
         return self._feature_store_name
 
+    @public
     @property
     def feature_view_id(self) -> str | None:
         """Return the id of the feature view."""
         return self._feature_view_id
 
+    @public
     @property
     def feature_view_name(self) -> str | None:
         """Return the name of the feature view."""
         return self._feature_view_name
 
+    @public
     @property
     def feature_view_version(self) -> str | None:
         """Return the version of the feature view."""

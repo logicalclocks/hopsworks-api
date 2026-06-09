@@ -16,7 +16,7 @@ uv run --project python docsig python/hopsworks python/hsfs python/hsml python/h
 - One sentence per line in docstrings, comments, MDs, etc.; no types or defaults in docstrings (they go in signatures)
 - Every public class and method needs a docstring that explains intent, not restates the name
 - HTTP calls belong in `core/<entity>_api.py`, not in domain objects
-- New public entities require `@public` from `hopsworks_apigen`; deprecated ones require `@deprecated("replacement.path")`
+- Every function/method is either public (`@public`, documented) or private (leading underscore `_`); a public-named symbol without `@public`/`@deprecated` is a defect (CI-enforced by `python/scripts/check_pep8_public.py`). Deprecated public symbols use `@deprecated("replacement.path")`. Decide visibility deliberately per symbol, and get explicit confirmation before promoting to `@public` or privatizing anything that might be user-facing — when unsure, ask, don't guess. See @docs/conventions/public-api.md for the decision rule and carve-outs
 - Annotation-only imports must live inside `if TYPE_CHECKING:` blocks
 - Code using optional packages (`polars`, `confluent_kafka`, `great_expectations`, `pyarrow`) must be gated by a decorator from `hopsworks_common.decorators` (e.g. `@uses_polars`)
 - `hopsworks_common` must not runtime-import `hopsworks`, `hsfs`, or `hsml`; `hsfs` and `hsml` must not runtime-import each other or `hopsworks`

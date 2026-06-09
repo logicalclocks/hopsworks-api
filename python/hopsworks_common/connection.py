@@ -36,7 +36,7 @@ from hopsworks_common.core import (
     variable_api,
 )
 from hopsworks_common.core.opensearch import OpenSearchClientSingleton
-from hopsworks_common.decorators import connected, not_connected
+from hopsworks_common.decorators import _connected, _not_connected
 from requests.exceptions import ConnectionError
 from typing_extensions import Self
 
@@ -93,7 +93,7 @@ class Connection:
             api_key_file='hopsworks.key',  # The file containing the API key generated above
             hostname_verification=True)    # Disable for self-signed certificates
         )
-        project = conn.get_project("my_project")
+        project = hopsworks.login(project="my_project")
         ```
 
     Clients in external clusters need to connect to the Hopsworks using an API key.
@@ -156,11 +156,11 @@ class Connection:
         self._connected = False
         self._backend_version = None
 
-        self.connect()
+        self._connect()
 
-    @usage.method_logger
-    @connected
-    def get_feature_store(
+    @usage._method_logger
+    @_connected
+    def _get_feature_store(
         self,
         name: str | None = None,
     ) -> feature_store.FeatureStore:
@@ -176,12 +176,12 @@ class Connection:
             A feature store handle object to perform operations on.
         """
         if not name:
-            name = client.get_instance()._project_name
-        return self._feature_store_api.get(util.append_feature_store_suffix(name))
+            name = client._get_instance()._project_name
+        return self._feature_store_api._get(util._append_feature_store_suffix(name))
 
-    @usage.method_logger
-    @connected
-    def get_model_registry(self, project: str | None = None) -> ModelRegistry:
+    @usage._method_logger
+    @_connected
+    def _get_model_registry(self, project: str | None = None) -> ModelRegistry:
         """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
 
         Shared model registries can be retrieved by passing the `project` argument.
@@ -192,11 +192,11 @@ class Connection:
         Returns:
             A model registry handle object to perform operations on.
         """
-        return self._model_registry_api.get(project)
+        return self._model_registry_api._get(project)
 
-    @usage.method_logger
-    @connected
-    def get_model_serving(self) -> ModelServing:
+    @usage._method_logger
+    @_connected
+    def _get_model_serving(self) -> ModelServing:
         """Get a reference to model serving to perform operations on. Model serving operates on top of a model registry, defaulting to the project's default model registry.
 
         Example:
@@ -211,11 +211,11 @@ class Connection:
         Returns:
             A model serving handle object to perform operations on.
         """
-        return self._model_serving_api.get()
+        return self._model_serving_api._get()
 
-    @usage.method_logger
-    @connected
-    def get_secrets_api(self) -> secret_api.SecretsApi:
+    @usage._method_logger
+    @_connected
+    def _get_secrets_api(self) -> secret_api.SecretsApi:
         """Get the secrets api.
 
         Returns:
@@ -223,9 +223,9 @@ class Connection:
         """
         return self._secret_api
 
-    @usage.method_logger
-    @connected
-    def create_project(
+    @usage._method_logger
+    @_connected
+    def _create_project(
         self,
         name: str,
         description: str | None = None,
@@ -240,7 +240,7 @@ class Connection:
 
             connection = hopsworks.connection()
 
-            connection.create_project("my_hopsworks_project", description="An example Hopsworks project")
+            hopsworks.create_project("my_hopsworks_project", description="An example Hopsworks project")
             ```
 
         Parameters:
@@ -257,9 +257,9 @@ class Connection:
             name, description, feature_store_topic, namespace
         )
 
-    @usage.method_logger
-    @connected
-    def get_project(self, name: str | None = None) -> Project:
+    @usage._method_logger
+    @_connected
+    def _get_project(self, name: str | None = None) -> Project:
         """Get an existing project.
 
         Parameters:
@@ -268,7 +268,7 @@ class Connection:
         Returns:
             A project handle object to perform operations on.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if not name and not _client._project_name:
             raise ValueError(
                 "No project name provided. Please provide a project name or"
@@ -277,13 +277,13 @@ class Connection:
         if not _client._project_name:
             self._provide_project(name)
         elif not name:
-            name = client.get_instance()._project_name
+            name = client._get_instance()._project_name
 
         return self._project_api._get_project(name)
 
-    @usage.method_logger
-    @connected
-    def get_projects(self) -> list[Project]:
+    @usage._method_logger
+    @_connected
+    def _get_projects(self) -> list[Project]:
         """Get all projects.
 
         Returns:
@@ -291,9 +291,9 @@ class Connection:
         """
         return self._project_api._get_projects()
 
-    @usage.method_logger
-    @connected
-    def project_exists(self, name: str) -> bool:
+    @usage._method_logger
+    @_connected
+    def _project_exists(self, name: str) -> bool:
         """Check if a project exists.
 
         Parameters:
@@ -304,7 +304,7 @@ class Connection:
         """
         return self._project_api._exists(name)
 
-    @connected
+    @_connected
     def _check_compatibility(self):
         """Check the compatibility between the client and backend.
 
@@ -315,7 +315,7 @@ class Connection:
         regexMatcher = re.compile(versionPattern)
 
         client_version = version.__version__
-        self.backend_version = self._variable_api.get_version("hopsworks")
+        self.backend_version = self._variable_api._get_version("hopsworks")
 
         major_minor_client = regexMatcher.search(client_version).group(0)
         major_minor_backend = regexMatcher.search(self._backend_version).group(0)
@@ -328,8 +328,8 @@ class Connection:
             )
             sys.stderr.flush()
 
-    @not_connected
-    def connect(self) -> None:
+    @_not_connected
+    def _connect(self) -> None:
         """Instantiate the connection.
 
         Creating a `Connection` object implicitly calls this method for you to instantiate the connection.
@@ -345,9 +345,9 @@ class Connection:
             conn.connect()
             ```
         """
-        client.stop()
+        client._stop()
         self._connected = True
-        finalizer = weakref.finalize(self, self.close)
+        finalizer = weakref.finalize(self, self._close)
         try:
             external = client.base.Client.REST_ENDPOINT not in os.environ
             saas = self._host == constants.HOSTS.SAAS_HOST
@@ -378,7 +378,7 @@ class Connection:
 
             # init client
             if external:
-                client.init(
+                client._init(
                     "external",
                     self._host,
                     self._port,
@@ -391,12 +391,12 @@ class Connection:
                     self._api_key_value,
                 )
             else:
-                client.init(
+                client._init(
                     "hopsworks",
                     hostname_verification=self._hostname_verification,
                 )
 
-            client.set_connection(self)
+            client._set_connection(self)
             from hsfs.core import feature_store_api
             from hsml.core import model_registry_api, model_serving_api
 
@@ -410,7 +410,7 @@ class Connection:
             self._services_api = services_api.ServicesApi()
             self._secret_api = secret_api.SecretsApi()
             self._variable_api = variable_api.VariableApi()
-            usage.init_usage(self._host, self._variable_api.get_version("hopsworks"))
+            usage._init_usage(self._host, self._variable_api._get_version("hopsworks"))
 
             self._provide_project()
         except (TypeError, ConnectionError):
@@ -420,14 +420,14 @@ class Connection:
 
         self._check_compatibility()
 
-    @connected
+    @_connected
     def _provide_project(self, name=None):
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         if name:
             self._project = name
             if _client._is_external():
-                _client.provide_project(name)
+                _client._provide_project(name)
 
         if _client._project_name:
             self._project = _client._project_name
@@ -437,13 +437,13 @@ class Connection:
 
         from hsfs import engine
 
-        engine.get_instance()
-        if self._variable_api.get_data_science_profile_enabled():
+        engine._get_instance()
+        if self._variable_api._get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client
             try:
                 # istio client, default resources,...
-                self._model_serving_api.load_default_configuration()
+                self._model_serving_api._load_default_configuration()
             except RestAPIError as e:
                 if e.response.error_code == 403 and e.error_code == 320004:
                     print(
@@ -453,7 +453,7 @@ class Connection:
                 else:
                     raise e
 
-    def close(self) -> None:
+    def _close(self) -> None:
         """Close a connection gracefully.
 
         This will clean up any materialized certificates on the local file system of external environments such as AWS SageMaker.
@@ -473,15 +473,15 @@ class Connection:
         from hsfs import engine
 
         if OpenSearchClientSingleton._instance:
-            OpenSearchClientSingleton.close_all()
-        client.stop()
-        engine.stop()
+            OpenSearchClientSingleton._close_all()
+        client._stop()
+        engine._stop()
         self._feature_store_api = None
         self._connected = False
         _logger.info("Connection closed.")
 
     @classmethod
-    def connection(
+    def _connection(
         cls,
         host: str | None = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
@@ -518,7 +518,7 @@ class Connection:
                 api_key_file='hopsworks.key',  # The file containing the API key generated above
                 hostname_verification=True)    # Disable for self-signed certificates
             )
-            project = conn.get_project("my_project")
+            project = hopsworks.login(project="my_project")
             ```
 
         Clients in external clusters need to connect to the Hopsworks using an API key.
@@ -573,7 +573,7 @@ class Connection:
         return self._host
 
     @host.setter
-    @not_connected
+    @_not_connected
     def host(self, host: str | None) -> None:
         self._host = host
 
@@ -582,7 +582,7 @@ class Connection:
         return self._port
 
     @port.setter
-    @not_connected
+    @_not_connected
     def port(self, port: int) -> None:
         self._port = port
 
@@ -591,7 +591,7 @@ class Connection:
         return self._project
 
     @project.setter
-    @not_connected
+    @_not_connected
     def project(self, project: str | None) -> None:
         self._project = project
 
@@ -600,7 +600,7 @@ class Connection:
         return self._hostname_verification
 
     @hostname_verification.setter
-    @not_connected
+    @_not_connected
     def hostname_verification(self, hostname_verification):
         self._hostname_verification = hostname_verification
 
@@ -609,7 +609,7 @@ class Connection:
         return self._trust_store_path
 
     @trust_store_path.setter
-    @not_connected
+    @_not_connected
     def trust_store_path(self, trust_store_path: str | None) -> None:
         self._trust_store_path = trust_store_path
 
@@ -618,7 +618,7 @@ class Connection:
         return self._cert_folder
 
     @cert_folder.setter
-    @not_connected
+    @_not_connected
     def cert_folder(self, cert_folder: str) -> None:
         self._cert_folder = cert_folder
 
@@ -648,18 +648,18 @@ class Connection:
         return self._backend_version
 
     @api_key_file.setter
-    @not_connected
+    @_not_connected
     def api_key_file(self, api_key_file: str | None) -> None:
         self._api_key_file = api_key_file
 
     @api_key_value.setter
-    @not_connected
+    @_not_connected
     def api_key_value(self, api_key_value: str | None) -> str | None:
         self._api_key_value = api_key_value
 
     def __enter__(self) -> Self:
-        self.connect()
+        self._connect()
         return self
 
     def __exit__(self, type, value, traceback):
-        self.close()
+        self._close()

@@ -28,7 +28,7 @@ class EnvironmentApi:
         self._environment_engine = environment_engine.EnvironmentEngine()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_environment(
         self,
         name: str,
@@ -60,7 +60,7 @@ class EnvironmentApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",
@@ -81,11 +81,12 @@ class EnvironmentApi:
         )
 
         if await_creation:
-            self._environment_engine.await_environment_command(name)
+            self._environment_engine._await_environment_command(name)
 
         return env
 
-    @usage.method_logger
+    @public
+    @usage._method_logger
     def get_environments(self) -> list[environment.Environment]:
         """Get all available environments in the project.
 
@@ -105,7 +106,7 @@ class EnvironmentApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["project", _client._project_id, "python", "environments"]
         query_params = {"expand": ["libraries", "commands"]}
@@ -117,8 +118,8 @@ class EnvironmentApi:
         )
 
     @public
-    @usage.method_logger
-    @decorators.catch_not_found(
+    @usage._method_logger
+    @decorators._catch_not_found(
         "hopsworks_common.environment.Environment", fallback_return=None
     )
     def get_environment(self, name: str) -> environment.Environment | None:
@@ -143,7 +144,7 @@ class EnvironmentApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["project", _client._project_id, "python", "environments", name]
         query_params = {"expand": ["libraries", "commands"]}
@@ -160,7 +161,7 @@ class EnvironmentApi:
         Parameters:
             name: Name of environment to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",

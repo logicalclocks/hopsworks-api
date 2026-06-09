@@ -205,7 +205,7 @@ class TestPredictor:
             "hsml.predictor.Predictor._validate_serving_tool",
             return_value=p_json["serving_tool"],
         )
-        mock_resources = util.get_obj_from_json(
+        mock_resources = util._get_obj_from_json(
             copy.deepcopy(p_json["predictor_resources"]), resources.PredictorResources
         )
         mock_validate_resources = mocker.patch(
@@ -304,7 +304,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_DEFAULT)
@@ -317,7 +317,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -331,7 +331,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_KSERVE)
@@ -344,7 +344,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -641,7 +641,7 @@ class TestPredictor:
             pass
 
         mock_get_predictor_for_model = mocker.patch(
-            "hopsworks_common.util.get_predictor_for_model",
+            "hopsworks_common.util._get_predictor_for_model",
             return_value=True,
             spec=spec,
         )
@@ -749,7 +749,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -772,7 +772,7 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
 
@@ -799,7 +799,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -824,7 +824,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -849,7 +849,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -870,7 +870,7 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
 
@@ -897,7 +897,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -923,14 +923,14 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
         mock_hopsworks_client = mocker.MagicMock()
         mock_hopsworks_client._base_url = "https://hopsworks.example.com"
         mock_hopsworks_client._project_id = 123
         mocker.patch(
-            "hopsworks_common.client.get_instance",
+            "hopsworks_common.client._get_instance",
             return_value=mock_hopsworks_client,
         )
 
@@ -958,7 +958,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -983,7 +983,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -1343,7 +1343,7 @@ class TestPredictor:
             )
 
         mocker.patch(
-            "hopsworks_common.util.get_predictor_for_model",
+            "hopsworks_common.util._get_predictor_for_model",
             side_effect=fake_get_predictor_for_model,
         )
 
@@ -1396,18 +1396,18 @@ class TestPredictor:
         is_kserve_installed=True,
     ):
         mocker.patch(
-            "hopsworks_common.client.get_serving_num_instances_limits",
+            "hopsworks_common.client._get_serving_num_instances_limits",
             return_value=num_instances,
         )
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required",
+            "hopsworks_common.client._is_scale_to_zero_required",
             return_value=force_scale_to_zero,
         )
         mocker.patch(
-            "hopsworks_common.client.is_saas_connection",
+            "hopsworks_common.client._is_saas_connection",
             return_value=is_saas_connection,
         )
         mocker.patch(
-            "hopsworks_common.client.is_kserve_installed",
+            "hopsworks_common.client._is_kserve_installed",
             return_value=is_kserve_installed,
         )

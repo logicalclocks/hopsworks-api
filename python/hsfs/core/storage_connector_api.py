@@ -27,12 +27,12 @@ if TYPE_CHECKING:
 
 
 class StorageConnectorApi:
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.storage_connector.StorageConnector", fallback_return=None
     )
     def _get(self, feature_store_id: int, name: str) -> dict[str, Any]:
         """Returning response dict instead of initialized object."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -45,7 +45,7 @@ class StorageConnectorApi:
 
         return _client._send_request("GET", path_params, query_params=query_params)
 
-    def create(
+    def _create(
         self,
         storage_connector_instance: storage_connector.StorageConnector,
     ) -> storage_connector.StorageConnector:
@@ -57,7 +57,7 @@ class StorageConnectorApi:
         Returns:
             The created storage connector with its assigned id.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -75,7 +75,7 @@ class StorageConnectorApi:
             )
         )
 
-    def update(
+    def _update(
         self,
         storage_connector_instance: storage_connector.StorageConnector,
     ) -> storage_connector.StorageConnector:
@@ -87,7 +87,7 @@ class StorageConnectorApi:
         Returns:
             The updated storage connector.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -106,7 +106,7 @@ class StorageConnectorApi:
             )
         )
 
-    def get(
+    def _get(
         self, feature_store_id: int, name: str
     ) -> storage_connector.StorageConnector:
         """Get storage connector with name.
@@ -125,7 +125,7 @@ class StorageConnectorApi:
             )
         return None
 
-    def refetch(
+    def _refetch(
         self, storage_connector_instance: storage_connector.StorageConnector
     ) -> storage_connector.StorageConnector:
         """Refetch the storage connector from Hopsworks, updating temporary credentials.
@@ -143,7 +143,7 @@ class StorageConnectorApi:
             )
         )
 
-    def get_uc_bearer(
+    def _get_uc_bearer(
         self,
         feature_store_id: int,
         name: str,
@@ -163,7 +163,7 @@ class StorageConnectorApi:
         Returns:
             Dict with keys ``access_token`` and ``expires_in_seconds``.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -175,10 +175,10 @@ class StorageConnectorApi:
         ]
         return _client._send_request("GET", path_params)
 
-    def get_online_connector(
+    def _get_online_connector(
         self, feature_store_id: int
     ) -> storage_connector.OnlineStorageConnector:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -192,10 +192,10 @@ class StorageConnectorApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_kafka_connector(
+    def _get_kafka_connector(
         self, feature_store_id: int, external: bool = False
     ) -> storage_connector.KafkaConnector:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -211,7 +211,7 @@ class StorageConnectorApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def get_feature_groups_provenance(self, storage_connector_instance) -> Links:
+    def _get_feature_groups_provenance(self, storage_connector_instance) -> Links:
         """Get the generated feature groups using this storage connector, based on explicit provenance.
 
         These feature groups can be accessible or inaccessible. Explicit
@@ -225,7 +225,7 @@ class StorageConnectorApi:
         Returns:
             The feature groups generated using this storage connector.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -251,7 +251,7 @@ class StorageConnectorApi:
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
 
-    def get_training_datasets_provenance(self, storage_connector_instance) -> Links:
+    def _get_training_datasets_provenance(self, storage_connector_instance) -> Links:
         """Get the generated training datasets using this storage connector, based on explicit provenance.
 
         These training datasets can be accessible or inaccessible.
@@ -264,7 +264,7 @@ class StorageConnectorApi:
         Returns:
             The training datasets generated using this storage connector.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

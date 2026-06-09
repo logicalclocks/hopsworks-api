@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
-    def save(self, feature_group):
+    def _save(self, feature_group):
         if not feature_group.data_source:
             raise FeatureStoreException(
                 "A data source needs to be provided when creating an external feature group."
@@ -42,7 +42,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 (feature_group.data_source.database and feature_group.data_source.table)
                 or feature_group.data_source.path is not None
                 or feature_group.data_source.query
-            ) and arrow_flight_client.supports([feature_group]):
+            ) and arrow_flight_client._supports([feature_group]):
                 # If the user provided a data source, we can use it to infer the schema
                 feature_group._features = [
                     feature.Feature.from_response_json(feat)
@@ -53,7 +53,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             else:
                 # If the user didn't specify the schema, parse it from the query
                 external_dataset = (
-                    engine.get_instance().register_external_temporary_table(
+                    engine._get_instance()._register_external_temporary_table(
                         feature_group, "read_ondmd"
                     )
                 )
@@ -61,29 +61,29 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 if external_dataset is None:
                     raise FeatureStoreException(
                         "Features (schema) need to be set for creation of external feature groups with engine "
-                        + engine.get_type()
+                        + engine._get_type()
                         + ". Alternatively use Spark kernel."
                     )
 
                 feature_group._features = (
-                    engine.get_instance().parse_schema_feature_group(external_dataset)
+                    engine._get_instance()._parse_schema_feature_group(external_dataset)
                 )
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
-        util.verify_attribute_key_names(feature_group, True)
+        util._verify_attribute_key_names(feature_group, True)
         for feat in feature_group.columns:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
             if feat.name in feature_group.foreign_key:
                 feat.foreign = True
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, feature_group._features
         )
 
-        self._feature_group_api.save(feature_group)
+        self._feature_group_api._save(feature_group)
 
-    def insert(
+    def _insert(
         self,
         feature_group,
         feature_dataframe,
@@ -96,19 +96,19 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 " online storage. To create an offline only external feature group, use the `save` method."
             )
 
-        schema = engine.get_instance().parse_schema_feature_group(feature_dataframe)
-        util.validate_embedding_feature_type(feature_group.embedding_index, schema)
+        schema = engine._get_instance()._parse_schema_feature_group(feature_dataframe)
+        util._validate_embedding_feature_type(feature_group.embedding_index, schema)
 
         if not feature_group._id:
             # only save metadata if feature group does not exist
             feature_group.columns = schema
-            self.save(feature_group)
+            self._save(feature_group)
         else:
             # else, just verify that feature group schema matches user-provided dataframe
             self._verify_schema_compatibility(feature_group.columns, schema)
 
         # ge validation on python and non stream feature groups on spark
-        ge_report = feature_group._great_expectation_engine.validate(
+        ge_report = feature_group._great_expectation_engine._validate(
             feature_group=feature_group,
             dataframe=feature_dataframe,
             validation_options=validation_options or {},
@@ -117,7 +117,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         )
 
         if ge_report is not None and ge_report.ingestion_result == "REJECTED":
-            feature_group_url = util.get_feature_group_url(
+            feature_group_url = util._get_feature_group_url(
                 feature_store_id=feature_group.feature_store_id,
                 feature_group_id=feature_group.id,
             )
@@ -128,7 +128,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             )
 
         return (
-            engine.get_instance().save_dataframe(
+            engine._get_instance()._save_dataframe(
                 feature_group=feature_group,
                 dataframe=feature_dataframe,
                 operation=None,
@@ -146,11 +146,11 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
         copy_feature_group.columns = features
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_features(
+    def _update_features(
         self, feature_group: FeatureGroup, updated_features: list[Feature]
     ):
         """Updates features safely.
@@ -162,10 +162,12 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 This will replace the existing list of features.
         """
         self._update_features_metadata(
-            feature_group, self.new_feature_list(feature_group, updated_features)
+            feature_group, self._new_feature_list(feature_group, updated_features)
         )
 
-    def append_features(self, feature_group: FeatureGroup, new_features: list[Feature]):
+    def _append_features(
+        self, feature_group: FeatureGroup, new_features: list[Feature]
+    ):
         """Appends features to a feature group.
 
         Parameters:
@@ -177,7 +179,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group.columns + new_features,  # todo allows for duplicates
         )
 
-    def update_description(self, feature_group: FeatureGroup, description: str):
+    def _update_description(self, feature_group: FeatureGroup, description: str):
         """Updates the description of a feature group.
 
         Parameters:
@@ -187,11 +189,11 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
         copy_feature_group.description = description
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_deprecated(self, feature_group: FeatureGroup, deprecate: bool):
+    def _update_deprecated(self, feature_group: FeatureGroup, deprecate: bool):
         """Updates the deprecation status of a feature group.
 
         Parameters:
@@ -200,6 +202,6 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         """
         fg_dict = feature_group.to_dict()
         copy_feature_group = fg.ExternalFeatureGroup.from_response_json(fg_dict)
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "deprecate", deprecate
         )

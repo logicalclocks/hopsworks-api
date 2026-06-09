@@ -72,7 +72,7 @@ class ProjectApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to get the project teams.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
         ]
@@ -105,7 +105,7 @@ class ProjectApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to get the project.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             "getProjectInfo",
@@ -136,7 +136,7 @@ class ProjectApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to create the project.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = ["project"]
         query_params = {"projectName": name}
@@ -163,8 +163,8 @@ class ProjectApi:
         print("Project created successfully, explore it at " + project.get_url())
         return project
 
-    def get_client(self):
-        _client = client.get_instance()
+    def _get_client(self):
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -172,7 +172,7 @@ class ProjectApi:
         ]
         return _client._send_request("GET", path_params, stream=True)
 
-    def get_user_info(self):
+    def _get_user_info(self):
         projects = self._get_project_teams()
         if projects:
             return projects[0]["user"]

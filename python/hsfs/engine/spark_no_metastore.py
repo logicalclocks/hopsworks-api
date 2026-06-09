@@ -21,7 +21,7 @@ import contextlib
 with contextlib.suppress(ImportError):
     from pyspark.sql import SparkSession
 
-from hopsworks_common.spark_connect_utils import is_spark_connect_env
+from hopsworks_common.spark_connect_utils import _is_spark_connect_env
 from hsfs.engine import spark
 
 
@@ -33,7 +33,7 @@ class Engine(spark.Engine):
         since there is no metastore to provide them.
         """
         builder = SparkSession.builder
-        if is_spark_connect_env():
+        if _is_spark_connect_env():
             builder = builder.config(
                 "spark.sql.extensions",
                 "io.delta.sql.DeltaSparkSessionExtension",

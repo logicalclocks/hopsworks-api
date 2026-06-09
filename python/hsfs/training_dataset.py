@@ -120,8 +120,8 @@ class TrainingDatasetBase:
 
         # set up depending on user initialized or coming from backend response
         if created is None:
-            self._start_time = util.convert_event_time_to_timestamp(event_start_time)
-            self._end_time = util.convert_event_time_to_timestamp(event_end_time)
+            self._start_time = util._convert_event_time_to_timestamp(event_start_time)
+            self._end_time = util._convert_event_time_to_timestamp(event_end_time)
             # no type -> user init
             self._features = features
             self.splits = splits
@@ -168,7 +168,7 @@ class TrainingDatasetBase:
                 statistics_config
             )
             self._label = [
-                util.autofix_feature_name(feat.name)
+                util._autofix_feature_name(feat.name)
                 for feat in self._features
                 if feat.label
             ]
@@ -184,12 +184,12 @@ class TrainingDatasetBase:
         test_start=None,
         test_end=None,
     ):
-        train_start = util.convert_event_time_to_timestamp(train_start)
-        train_end = util.convert_event_time_to_timestamp(train_end)
-        validation_start = util.convert_event_time_to_timestamp(validation_start)
-        validation_end = util.convert_event_time_to_timestamp(validation_end)
-        test_start = util.convert_event_time_to_timestamp(test_start)
-        test_end = util.convert_event_time_to_timestamp(test_end)
+        train_start = util._convert_event_time_to_timestamp(train_start)
+        train_end = util._convert_event_time_to_timestamp(train_end)
+        validation_start = util._convert_event_time_to_timestamp(validation_start)
+        validation_end = util._convert_event_time_to_timestamp(validation_end)
+        test_start = util._convert_event_time_to_timestamp(test_start)
+        test_end = util._convert_event_time_to_timestamp(test_end)
 
         time_splits = []
         self._append_time_split(
@@ -689,13 +689,13 @@ class TrainingDataset(TrainingDatasetBase):
         user_version = self._version
         user_stats_config = self._statistics_config
         # td_job is used only if the python engine is used
-        training_dataset, td_job = self._training_dataset_engine.save(
+        training_dataset, td_job = self._training_dataset_engine._save(
             self, features, write_options or {}
         )
         self.data_source = training_dataset.data_source
         # currently we do not save the training dataset statistics config for training datasets
         self.statistics_config = user_stats_config
-        if self.statistics_config.enabled and engine.get_type().startswith("spark"):
+        if self.statistics_config.enabled and engine._get_type().startswith("spark"):
             self.compute_statistics()
         if user_version is None:
             warnings.warn(
@@ -745,7 +745,7 @@ class TrainingDataset(TrainingDatasetBase):
             hopsworks.client.exceptions.RestAPIError: Unable to create training dataset metadata.
         """
         # td_job is used only if the python engine is used
-        td_job = self._training_dataset_engine.insert(
+        td_job = self._training_dataset_engine._insert(
             self, features, write_options or {}, overwrite
         )
 
@@ -775,14 +775,14 @@ class TrainingDataset(TrainingDatasetBase):
                 "The training dataset has splits, please specify the split you want to read"
             )
 
-        return self._training_dataset_engine.read(self, split, read_options or {})
+        return self._training_dataset_engine._read(self, split, read_options or {})
 
     @public
     def compute_statistics(self):
         """Compute the statistics for the training dataset and save them to the feature store."""
-        if self.statistics_config.enabled and engine.get_type().startswith("spark"):
+        if self.statistics_config.enabled and engine._get_type().startswith("spark"):
             try:
-                registered_stats = self._statistics_engine.get(
+                registered_stats = self._statistics_engine._get(
                     self,
                     before_transformation=False,
                 )
@@ -797,8 +797,8 @@ class TrainingDataset(TrainingDatasetBase):
             if registered_stats is not None:
                 return registered_stats
             if self.splits:
-                return self._statistics_engine.compute_and_save_split_statistics(self)
-            return self._statistics_engine.compute_and_save_statistics(
+                return self._statistics_engine._compute_and_save_split_statistics(self)
+            return self._statistics_engine._compute_and_save_statistics(
                 self, self.read()
             )
         return None
@@ -830,7 +830,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
         """
-        self._training_dataset_engine.add_tag(self, name, value)
+        self._training_dataset_engine._add_tag(self, name, value)
 
     @public
     def delete_tag(self, name: str):
@@ -842,7 +842,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
         """
-        self._training_dataset_engine.delete_tag(self, name)
+        self._training_dataset_engine._delete_tag(self, name)
 
     @public
     def get_tag(self, name: str) -> Any:
@@ -857,7 +857,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
         """
-        return self._training_dataset_engine.get_tag(self, name)
+        return self._training_dataset_engine._get_tag(self, name)
 
     @public
     def get_tags(self) -> dict[str, tag.Tag]:
@@ -869,7 +869,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
         """
-        return self._training_dataset_engine.get_tags(self)
+        return self._training_dataset_engine._get_tags(self)
 
     @public
     def update_statistics_config(self) -> TrainingDataset:
@@ -884,7 +884,7 @@ class TrainingDataset(TrainingDatasetBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend encounters an issue
         """
-        self._training_dataset_engine.update_statistics_config(self)
+        self._training_dataset_engine._update_statistics_config(self)
         return self
 
     @public
@@ -909,7 +909,7 @@ class TrainingDataset(TrainingDatasetBase):
             util.JobWarning,
             stacklevel=1,
         )
-        self._training_dataset_api.delete(self)
+        self._training_dataset_api._delete(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -962,7 +962,7 @@ class TrainingDataset(TrainingDatasetBase):
     # Rewrite the td location if it is TD root directory
     @classmethod
     def _rewrite_location(cls, td_json):
-        _client = client.get_instance()
+        _client = client._get_instance()
         if "location" in td_json and td_json["location"].endswith(
             f"/Projects/{_client._project_name}/{_client._project_name}_Training_Datasets"
         ):
@@ -996,7 +996,7 @@ class TrainingDataset(TrainingDatasetBase):
             td_dict["lookback"] = self._lookback.to_dict()
         if self._data_source:
             td_dict["dataSource"] = self._data_source.to_dict()
-        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             td_dict["tags"] = tags_dict
         return td_dict
@@ -1035,13 +1035,13 @@ class TrainingDataset(TrainingDatasetBase):
     @property
     def statistics(self) -> Statistics:
         """Get computed statistics for the training dataset."""
-        return self._statistics_engine.get(self, before_transformation=False)
+        return self._statistics_engine._get(self, before_transformation=False)
 
     @public
     @property
     def query(self):
         """Query to generate this training dataset from online feature store."""
-        return self._training_dataset_engine.query(self, True, True, False)
+        return self._training_dataset_engine._query(self, True, True, False)
 
     @public
     def get_query(self, online: bool = True, with_label: bool = False) -> str | None:
@@ -1054,8 +1054,8 @@ class TrainingDataset(TrainingDatasetBase):
         Returns:
             Query string for the chosen storage used to generate this training dataset.
         """
-        return self._training_dataset_engine.query(
-            self, online, with_label, engine.get_type() == "python"
+        return self._training_dataset_engine._query(
+            self, online, with_label, engine._get_type() == "python"
         )
 
     @public
@@ -1071,7 +1071,7 @@ class TrainingDataset(TrainingDatasetBase):
                 If set to False, the online feature store storage connector is used which relies on the private IP.
                 Defaults to True if connection to Hopsworks is established from external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
         """
-        self._vector_server.init_serving(self, batch, external)
+        self._vector_server._init_serving(self, batch, external)
 
     @public
     def get_serving_vector(
@@ -1091,7 +1091,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)
-        return self._vector_server.get_feature_vector(entry)
+        return self._vector_server._get_feature_vector(entry)
 
     @public
     def get_serving_vectors(
@@ -1111,7 +1111,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         if self._vector_server.prepared_statements is None:
             self.init_prepared_statement(None, external)
-        return self._vector_server.get_feature_vectors(entry)
+        return self._vector_server._get_feature_vectors(entry)
 
     @public
     @property
@@ -1124,7 +1124,7 @@ class TrainingDataset(TrainingDatasetBase):
 
     @label.setter
     def label(self, label: str) -> None:
-        self._label = [util.autofix_feature_name(lb) for lb in label]
+        self._label = [util._autofix_feature_name(lb) for lb in label]
 
     @public
     @property
@@ -1143,8 +1143,8 @@ class TrainingDataset(TrainingDatasetBase):
     def serving_keys(self) -> set[str]:
         """Set of primary key names that is used as keys in input dict object for `get_serving_vector` method."""
         if self._serving_keys is None or len(self._serving_keys) == 0:
-            self._serving_keys = util.build_serving_keys_from_prepared_statements(
-                self._training_dataset_api.get_serving_prepared_statement(
+            self._serving_keys = util._build_serving_keys_from_prepared_statements(
+                self._training_dataset_api._get_serving_prepared_statement(
                     entity=self, batch=False
                 ),
                 feature_store_id=self._feature_store_id,

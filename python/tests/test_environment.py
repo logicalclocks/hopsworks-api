@@ -22,11 +22,11 @@ class TestEnvironment:
         # Arrange
         env = environment.Environment(name="myenv")
         mock_await_env = mocker.patch.object(
-            env._environment_engine, "await_environment_command"
+            env._environment_engine, "_await_environment_command"
         )
         mock_uninstall = mocker.patch.object(env._library_api, "_uninstall")
         mock_await_lib = mocker.patch.object(
-            env._environment_engine, "await_library_command"
+            env._environment_engine, "_await_library_command"
         )
 
         # Act
@@ -40,10 +40,10 @@ class TestEnvironment:
     def test_uninstall_no_await(self, mocker):
         # Arrange
         env = environment.Environment(name="myenv")
-        mocker.patch.object(env._environment_engine, "await_environment_command")
+        mocker.patch.object(env._environment_engine, "_await_environment_command")
         mocker.patch.object(env._library_api, "_uninstall")
         mock_await_lib = mocker.patch.object(
-            env._environment_engine, "await_library_command"
+            env._environment_engine, "_await_library_command"
         )
 
         # Act

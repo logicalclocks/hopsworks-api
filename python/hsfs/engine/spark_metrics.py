@@ -101,7 +101,7 @@ class SparkStageMetrics:
             _logger.debug("Could not reach Spark UI REST API; metrics disabled.")
             self._available = False
 
-    def snapshot(self) -> None:
+    def _snapshot(self) -> None:
         """Capture the current number of completed stages."""
         if not self._available:
             return
@@ -111,7 +111,7 @@ class SparkStageMetrics:
         except Exception:
             _logger.debug("Failed to capture stage snapshot", exc_info=True)
 
-    def report(self, label: str = "") -> str | None:
+    def _report(self, label: str = "") -> str | None:
         """Fetch stages completed since the last snapshot and print a report.
 
         Parameters:
@@ -176,19 +176,19 @@ class SparkStageMetrics:
         return report_str
 
     @contextmanager
-    def measure(self, label: str = ""):
+    def _measure(self, label: str = ""):
         """Context manager that snapshots before and reports after.
 
         Parameters:
             label: Optional label to include in the report header.
         """
-        self.snapshot()
+        self._snapshot()
         wall_start = time.time()
         try:
             yield
         finally:
             wall_elapsed = time.time() - wall_start
-            report = self.report(label)
+            report = self._report(label)
             if report:
                 # Intentionally print to stdout so metrics are visible in console output
                 print(f"Wall time: {wall_elapsed:.1f}s")

@@ -125,7 +125,7 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
     training_helper_columns = user_write_options.get("training_helper_columns")
     primary_keys = user_write_options.get("primary_keys")
     event_time = user_write_options.get("event_time")
-    fv_engine.compute_training_dataset(
+    fv_engine._compute_training_dataset(
         feature_view_obj=fv,
         user_write_options=user_write_options,
         primary_keys=primary_keys,
@@ -239,15 +239,15 @@ def run_feature_monitoring(job_conf: dict[str, str]) -> None:
     )
 
     try:
-        monitoring_config_engine.run_feature_monitoring(
+        monitoring_config_engine._run_feature_monitoring(
             entity=entity,
             config_name=job_conf["config_name"],
         )
     except Exception as e:
-        config = monitoring_config_engine.get_feature_monitoring_configs(
+        config = monitoring_config_engine._get_feature_monitoring_configs(
             name=job_conf["config_name"]
         )
-        monitoring_config_engine._result_engine.save_feature_monitoring_result_with_exception(
+        monitoring_config_engine._result_engine._save_feature_monitoring_result_with_exception(
             config_id=config.id,
             job_name=config.job_name,
             feature_name=config.feature_name,
@@ -278,7 +278,7 @@ def offline_fg_materialization(
 
     entity = fs.get_feature_group(name=job_conf["name"], version=job_conf["version"])
 
-    read_options = kafka_engine.get_kafka_config(
+    read_options = kafka_engine._get_kafka_config(
         entity.feature_store_id, {}, engine="spark"
     )
 
@@ -296,7 +296,7 @@ def offline_fg_materialization(
         starting_offset_string = None
 
     # get the current low watermark offsets for all partitions
-    low_offsets_string = kafka_engine.kafka_get_offsets(
+    low_offsets_string = kafka_engine._kafka_get_offsets(
         topic_name=entity._online_topic_name,
         feature_store_id=entity.feature_store_id,
         offline_write_options={},
@@ -313,7 +313,7 @@ def offline_fg_materialization(
     print(f"startingOffsets: {starting_offset_string}")
 
     # get ending offsets
-    ending_offset_string = kafka_engine.kafka_get_offsets(
+    ending_offset_string = kafka_engine._kafka_get_offsets(
         topic_name=entity._online_topic_name,
         feature_store_id=entity.feature_store_id,
         offline_write_options={},
@@ -357,7 +357,7 @@ def offline_fg_materialization(
     filtered_df = filtered_df.limit(limit)
 
     # deserialize dataframe so that it can be properly saved
-    deserialized_df = engine.get_instance()._deserialize_from_avro(entity, filtered_df)
+    deserialized_df = engine._get_instance()._deserialize_from_avro(entity, filtered_df)
 
     # de-duplicate records
     # timestamp cannot be relied on to order the records in case of duplicates, if they are produced together they would have the same timestamp.
@@ -419,7 +419,7 @@ def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> Non
     entity = fs.get_feature_group(name=job_conf["name"], version=job_conf["version"])
 
     entity.stream = False
-    engine.get_instance().update_table_schema(entity)
+    engine._get_instance()._update_table_schema(entity)
 
 
 def _build_offsets(initial_check_point_string: str):

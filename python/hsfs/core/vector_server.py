@@ -39,7 +39,7 @@ from hopsworks_common.core.constants import (
     numpy_not_installed_message,
     polars_not_installed_message,
 )
-from hopsworks_common.core.type_systems import create_extended_type
+from hopsworks_common.core.type_systems import _create_extended_type
 from hsfs.client import exceptions, online_store_rest_client
 from hsfs.core import (
     online_store_rest_client_engine,
@@ -174,7 +174,7 @@ class VectorServer:
         self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
         self._fetch_inference_helpers_for_transformations: bool = False
 
-    def init_serving(
+    def _init_serving(
         self,
         entity: feature_view.FeatureView,
         training_dataset_version: int,
@@ -230,18 +230,18 @@ class VectorServer:
             external = client._is_external()
         # `init_prepared_statement` should be the last because other initialisations
         # has to be done successfully before it is able to fetch feature vectors.
-        self.init_transformation(entity)
-        self.set_return_feature_value_handlers(features=entity.features)
+        self._init_transformation(entity)
+        self._set_return_feature_value_handlers(features=entity.features)
 
         if self._init_rest_client and self.__all_feature_groups_online:
-            self.setup_rest_client_and_engine(
+            self._setup_rest_client_and_engine(
                 entity=entity,
                 config_rest_client=config_rest_client,
                 reset_rest_client=reset_rest_client,
             )
 
         if self._init_sql_client and self.__all_feature_groups_online:
-            self.setup_sql_client(
+            self._setup_sql_client(
                 entity=entity,
                 external=external,
                 inference_helper_columns=inference_helper_columns,
@@ -249,21 +249,21 @@ class VectorServer:
             )
         self._serving_initialized = True
 
-    def init_batch_scoring(
+    def _init_batch_scoring(
         self,
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         training_dataset_version: int,
     ):
         self._training_dataset_version = training_dataset_version
-        self.init_transformation(entity)
+        self._init_transformation(entity)
         self._serving_initialized = True
 
-    def init_transformation(
+    def _init_transformation(
         self,
         entity: feature_view.FeatureView,
     ):
         # attach transformation functions
-        model_dependent_transformations = tf_engine_mod.TransformationFunctionEngine.get_ready_to_use_transformation_fns(
+        model_dependent_transformations = tf_engine_mod.TransformationFunctionEngine._get_ready_to_use_transformation_fns(
             entity,
             self._training_dataset_version,
         )
@@ -320,7 +320,7 @@ class VectorServer:
                     return True
         return False
 
-    def setup_sql_client(
+    def _setup_sql_client(
         self,
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         external: bool,
@@ -335,15 +335,15 @@ class VectorServer:
             serving_keys=self.serving_keys,
             external=external,
         )
-        self.sql_client.init_prepared_statements(
+        self.sql_client._init_prepared_statements(
             entity,
             inference_helper_columns,
             with_logging_meta_data=self._feature_view_logging_enabled,
             feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
         )
-        self.sql_client.init_async_mysql_connection(options=options)
+        self.sql_client._init_async_mysql_connection(options=options)
 
-    def setup_rest_client_and_engine(
+    def _setup_rest_client_and_engine(
         self,
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         config_rest_client: dict[str, Any] | None = None,
@@ -361,12 +361,12 @@ class VectorServer:
             )
         )
         # This logic needs to move to the above engine init
-        online_store_rest_client.init_or_reset_online_store_rest_client(
+        online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
             reset_client=reset_rest_client,
         )
 
-    def check_missing_request_parameters(
+    def _check_missing_request_parameters(
         self, features: dict[str, Any], request_parameters: dict[str, Any]
     ):
         """Check if any request parameters required for computing on-demand features are missing.
@@ -432,7 +432,7 @@ class VectorServer:
             )
             raise exceptions.FeatureStoreException(error)
 
-    def get_feature_vector(
+    def _get_feature_vector(
         self,
         entry: dict[str, Any],
         return_type: Literal["list", "numpy", "pandas", "polars"],
@@ -466,7 +466,7 @@ class VectorServer:
         Returns:
             The assembled feature vector in the requested format.
         """
-        online_client_choice = self.which_client_and_ensure_initialised(
+        online_client_choice = self._which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
 
@@ -487,7 +487,7 @@ class VectorServer:
             for key, value in entry.items():
                 request_parameters.setdefault(key, value)
 
-        rondb_entry = self.validate_entry(
+        rondb_entry = self._validate_entry(
             entry=entry,
             allow_missing=allow_missing,
             passed_features=passed_features,
@@ -500,7 +500,7 @@ class VectorServer:
         elif online_client_choice == self.DEFAULT_REST_CLIENT:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online REST client")
-            serving_vector = self.rest_client_engine.get_single_feature_vector(
+            serving_vector = self.rest_client_engine._get_single_feature_vector(
                 rondb_entry,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
@@ -508,7 +508,7 @@ class VectorServer:
         else:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online SQL client")
-            serving_vector = self.sql_client.get_single_feature_vector(
+            serving_vector = self.sql_client._get_single_feature_vector(
                 rondb_entry,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
@@ -518,7 +518,7 @@ class VectorServer:
             transform=transform, on_demand_features=on_demand_features
         )
 
-        vector = self.assemble_feature_vector(
+        vector = self._assemble_feature_vector(
             result_dict=serving_vector,
             passed_values=passed_features or {},
             vector_db_result=vector_db_features or {},
@@ -547,7 +547,7 @@ class VectorServer:
                 ]
             )
 
-        return self.handle_feature_vector_return_type(
+        return self._handle_feature_vector_return_type(
             vector,
             batch=False,
             inference_helper=False,
@@ -557,7 +557,7 @@ class VectorServer:
             logging_meta_data=logging_meta_data,
         )
 
-    def get_feature_vectors(
+    def _get_feature_vectors(
         self,
         entries: list[dict[str, Any]],
         return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
@@ -640,7 +640,7 @@ class VectorServer:
                 for key, value in entries[0].items():
                     request_parameters.setdefault(key, value)
 
-        online_client_choice = self.which_client_and_ensure_initialised(
+        online_client_choice = self._which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
         rondb_entries = []
@@ -662,7 +662,7 @@ class VectorServer:
             passed_features,
             vector_db_features,
         ):
-            rondb_entry = self.validate_entry(
+            rondb_entry = self._validate_entry(
                 entry=entry,
                 allow_missing=allow_missing,
                 passed_features=passed,
@@ -676,7 +676,7 @@ class VectorServer:
         if online_client_choice == self.DEFAULT_REST_CLIENT and len(rondb_entries) > 0:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vector Online REST client")
-            batch_results = self.rest_client_engine.get_batch_feature_vectors(
+            batch_results = self.rest_client_engine._get_batch_feature_vectors(
                 entries=rondb_entries,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
@@ -685,7 +685,7 @@ class VectorServer:
             # get result row
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vectors through SQL client")
-            batch_results, _ = self.sql_client.get_batch_feature_vectors(
+            batch_results, _ = self.sql_client._get_batch_feature_vectors(
                 rondb_entries,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
@@ -741,7 +741,7 @@ class VectorServer:
             else:
                 result_dict = batch_results.pop(0)
 
-            vector = self.assemble_feature_vector(
+            vector = self._assemble_feature_vector(
                 result_dict=result_dict,
                 passed_values=passed_values,
                 vector_db_result=vector_db_result,
@@ -772,7 +772,7 @@ class VectorServer:
             if vector is not None:
                 vectors.append(vector)
 
-        return self.handle_feature_vector_return_type(
+        return self._handle_feature_vector_return_type(
             vectors,
             batch=True,
             inference_helper=False,
@@ -782,7 +782,7 @@ class VectorServer:
             logging_meta_data=logging_meta_data,
         )
 
-    def assemble_feature_vector(
+    def _assemble_feature_vector(
         self,
         result_dict: dict[str, Any],
         passed_values: dict[str, Any] | None,
@@ -854,13 +854,13 @@ class VectorServer:
                 f"2. Required entries [{', '.join(self.required_serving_keys)}] are not provided."
             )
         if len(self.return_feature_value_handlers) > 0:
-            self.apply_return_value_handlers(result_dict, client=client)
+            self._apply_return_value_handlers(result_dict, client=client)
         feature_dict, encoded_feature_dict = result_dict, result_dict
         if (
             len(self.model_dependent_transformation_functions) > 0
             or len(self.on_demand_transformation_functions) > 0
         ):
-            feature_dict, encoded_feature_dict = self.apply_transformation(
+            feature_dict, encoded_feature_dict = self._apply_transformation(
                 result_dict.copy(),
                 request_parameters or {},
                 transformation_context,
@@ -960,7 +960,7 @@ class VectorServer:
             ):
                 return_type = "list"
                 feature_vectors = [
-                    self.get_untransformed_features_map(
+                    self._get_untransformed_features_map(
                         feature_vector, on_demand_features=on_demand_features
                     )
                     for feature_vector in feature_vectors
@@ -969,7 +969,7 @@ class VectorServer:
             else:
                 return_type = "list"
                 feature_vectors = [
-                    self.get_untransformed_features_map(
+                    self._get_untransformed_features_map(
                         feature_vectors, on_demand_features=on_demand_features
                     )
                 ]
@@ -980,7 +980,7 @@ class VectorServer:
             )
         return feature_vectors, return_type
 
-    def transform(
+    def _transform(
         self,
         feature_vectors: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
         transformation_context: dict[str, Any] = None,
@@ -1014,7 +1014,7 @@ class VectorServer:
 
         transformed_feature_vectors = []
         for feature_vector in feature_vectors:
-            transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
@@ -1034,7 +1034,7 @@ class VectorServer:
         else:
             batch = True
 
-        return self.handle_feature_vector_return_type(
+        return self._handle_feature_vector_return_type(
             transformed_feature_vectors,
             batch=batch,
             inference_helper=False,
@@ -1042,7 +1042,7 @@ class VectorServer:
             transform=True,
         )
 
-    def compute_on_demand_features(
+    def _compute_on_demand_features(
         self,
         feature_vectors: list[Any]
         | list[list[Any]]
@@ -1090,14 +1090,14 @@ class VectorServer:
             if isinstance(request_parameters, dict)
             else request_parameters
         )
-        self.check_missing_request_parameters(
+        self._check_missing_request_parameters(
             features=feature_vectors[0], request_parameters=request_parameters[0]
         )
         on_demand_feature_vectors = []
         for feature_vector, request_parameter in zip(
             feature_vectors, request_parameters, strict=False
         ):
-            on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
@@ -1118,7 +1118,7 @@ class VectorServer:
         else:
             batch = True
 
-        return self.handle_feature_vector_return_type(
+        return self._handle_feature_vector_return_type(
             on_demand_feature_vectors,
             batch=batch,
             inference_helper=False,
@@ -1127,7 +1127,7 @@ class VectorServer:
             on_demand_feature=True,
         )
 
-    def get_untransformed_features_map(
+    def _get_untransformed_features_map(
         self, features: list[Any], on_demand_features: bool = False
     ) -> dict[str, Any]:
         """Function that accepts a feature vectors as a list and returns the untransformed features as a dict that maps feature names to their values.
@@ -1147,7 +1147,7 @@ class VectorServer:
             zip(self._untransformed_feature_vector_col_name, features, strict=False)
         )
 
-    def handle_feature_vector_return_type(
+    def _handle_feature_vector_return_type(
         self,
         feature_vectorz: list[Any]
         | list[list[Any]]
@@ -1219,12 +1219,12 @@ class VectorServer:
                 f"""Unknown return type. Supported return types are {"'list', 'numpy'" if not inference_helper else "'dict'"}, 'polars' and 'pandas''"""
             )
         if logging_meta_data:
-            extended_type = create_extended_type(type(feature_vector))
+            extended_type = _create_extended_type(type(feature_vector))
             feature_vector = extended_type(feature_vector)
             feature_vector.hopsworks_logging_metadata = logging_meta_data
         return feature_vector
 
-    def get_inference_helper(
+    def _get_inference_helper(
         self,
         entry: dict[str, Any],
         return_type: Literal["dict", "pandas", "polars"],
@@ -1242,7 +1242,7 @@ class VectorServer:
         Returns:
             The inference helper values in the requested format.
         """
-        default_client = self.which_client_and_ensure_initialised(
+        default_client = self._which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
         )
         if _logger.isEnabledFor(logging.DEBUG):
@@ -1251,8 +1251,8 @@ class VectorServer:
             )
             _logger.debug(f"entry: {entry} as return type: {return_type}")
         if default_client == self.DEFAULT_REST_CLIENT:
-            return self.handle_feature_vector_return_type(
-                self.rest_client_engine.get_single_feature_vector(
+            return self._handle_feature_vector_return_type(
+                self.rest_client_engine._get_single_feature_vector(
                     entry,
                     return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
                     inference_helpers_only=True,
@@ -1263,8 +1263,8 @@ class VectorServer:
                 transform=False,
                 on_demand_feature=False,
             )
-        return self.handle_feature_vector_return_type(
-            self.sql_client.get_inference_helper_vector(entry),
+        return self._handle_feature_vector_return_type(
+            self.sql_client._get_inference_helper_vector(entry),
             batch=False,
             inference_helper=True,
             return_type=return_type,
@@ -1272,7 +1272,7 @@ class VectorServer:
             on_demand_feature=False,
         )
 
-    def get_inference_helpers(
+    def _get_inference_helpers(
         self,
         entries: list[dict[str, Any]],
         return_type: Literal["dict", "pandas", "polars"],
@@ -1290,7 +1290,7 @@ class VectorServer:
         Returns:
             The inference helper values in the requested format.
         """
-        default_client = self.which_client_and_ensure_initialised(
+        default_client = self._which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
         )
         if _logger.isEnabledFor(logging.DEBUG):
@@ -1300,14 +1300,14 @@ class VectorServer:
             _logger.debug(f"entries: {entries} as return type: {return_type}")
 
         if default_client == self.DEFAULT_REST_CLIENT:
-            batch_results = self.rest_client_engine.get_batch_feature_vectors(
+            batch_results = self.rest_client_engine._get_batch_feature_vectors(
                 entries,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
                 inference_helpers_only=True,
             )
         else:
             batch_results, serving_keys = (
-                self.sql_client.get_batch_inference_helper_vectors(entries)
+                self.sql_client._get_batch_inference_helper_vectors(entries)
             )
             # Batch retrieval of inference helper returns primary keys as well to enable merging of vectors retrieved from different feature groups
             # Filtering out the primary keys from the results
@@ -1316,7 +1316,7 @@ class VectorServer:
                 for result in batch_results
             ]
 
-        return self.handle_feature_vector_return_type(
+        return self._handle_feature_vector_return_type(
             batch_results,
             batch=True,
             inference_helper=True,
@@ -1325,7 +1325,7 @@ class VectorServer:
             on_demand_feature=False,
         )
 
-    def which_client_and_ensure_initialised(
+    def _which_client_and_ensure_initialised(
         self, force_rest_client: bool, force_sql_client: bool
     ) -> str:
         """Check if the requested client is initialised as well as deciding which client to use based on default.
@@ -1387,10 +1387,10 @@ class VectorServer:
             self.default_client = self.DEFAULT_SQL_CLIENT
             self._init_sql_client = True
 
-    def parse_transformed_result(self, transformed_results, transformation_function):
+    def _parse_transformed_result(self, transformed_results, transformation_function):
         rows = {}
         if (
-            transformation_function.hopsworks_udf.execution_mode.get_current_execution_mode(
+            transformation_function.hopsworks_udf.execution_mode._get_current_execution_mode(
                 online=True
             )
             == UDFExecutionMode.PANDAS
@@ -1445,7 +1445,7 @@ class VectorServer:
                 "Model-dependent transformation functions are not applied when `transform=False`. Returning feature vector without model-dependent transformations."
             )
 
-    def apply_transformation(
+    def _apply_transformation(
         self,
         row_dict: dict | pd.DataFrame,
         request_parameter: dict[str, Any],
@@ -1469,12 +1469,12 @@ class VectorServer:
 
         if transform or on_demand_features or logging_meta_data:
             # Check for any missing request parameters
-            self.check_missing_request_parameters(
+            self._check_missing_request_parameters(
                 features=row_dict, request_parameters=request_parameter
             )
 
             # Apply on-demand transformations
-            feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            feature_dict = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_dict,
                 online=True,
                 transformation_context=transformation_context,
@@ -1492,7 +1492,7 @@ class VectorServer:
 
         if transform or logging_meta_data:
             # Apply model dependent transformations
-            encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine.apply_transformation_functions(
+            encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                 data=feature_dict,
                 online=True,
                 transformation_context=transformation_context,
@@ -1509,7 +1509,7 @@ class VectorServer:
 
         return feature_dict, encoded_feature_dict
 
-    def apply_return_value_handlers(
+    def _apply_return_value_handlers(
         self, row_dict: dict[str, Any], client: Literal["rest", "sql"]
     ):
         if client == self.DEFAULT_REST_CLIENT:
@@ -1526,7 +1526,7 @@ class VectorServer:
             row_dict[fname] = self.return_feature_value_handlers[fname](row_dict[fname])
         return row_dict
 
-    def build_complex_feature_decoders(self) -> dict[str, Callable]:
+    def _build_complex_feature_decoders(self) -> dict[str, Callable]:
         """Build decoders for complex features.
 
         Decodes feature values for features marked as complex (e.g., structs, arrays, maps) that are stored in the online store as Avro-encoded payloads (bytes or base64 strings).
@@ -1602,7 +1602,7 @@ class VectorServer:
             for (f_name, schema) in complex_feature_schemas.items()
         }
 
-    def set_return_feature_value_handlers(
+    def _set_return_feature_value_handlers(
         self, features: list[tdf_mod.TrainingDatasetFeature]
     ):
         """Build a dictionary of functions to convert/deserialize/transform the feature values returned from RonDB Server.
@@ -1626,7 +1626,7 @@ class VectorServer:
                 f" version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
             )
         self._return_feature_value_handlers.update(
-            self.build_complex_feature_decoders()
+            self._build_complex_feature_decoders()
         )
         for feature in features:
             if feature.type == "timestamp":
@@ -1662,7 +1662,7 @@ class VectorServer:
             f"Timestamp value {timestamp_value} was expected to be of type int, str or datetime."
         )
 
-    def validate_entry(
+    def _validate_entry(
         self,
         entry: dict[str, Any],
         allow_missing: bool,
@@ -1729,7 +1729,7 @@ class VectorServer:
                 )
 
         if allow_missing is False:
-            self.identify_missing_features_pre_fetch(
+            self._identify_missing_features_pre_fetch(
                 entry=entry,
                 passed_features=passed_features,
                 vector_db_features=vector_db_features,
@@ -1739,7 +1739,7 @@ class VectorServer:
             key: value for key, value in entry.items() if key in self.rondb_serving_keys
         }
 
-    def identify_missing_features_pre_fetch(
+    def _identify_missing_features_pre_fetch(
         self,
         entry: dict[str, Any],
         passed_features: dict[str, Any],
@@ -1817,7 +1817,7 @@ class VectorServer:
                 "Use `allow_missing=True` to allow missing features in the fetched feature vector."
             )
 
-    def build_per_serving_key_features(
+    def _build_per_serving_key_features(
         self,
         serving_keys: list[sk_mod.ServingKey],
         features: list[tdf_mod.TrainingDatasetFeature],
@@ -1924,7 +1924,7 @@ class VectorServer:
             or self._per_serving_key_features is None
             or len(self._per_serving_key_features) == 0
         ):
-            self._per_serving_key_features = self.build_per_serving_key_features(
+            self._per_serving_key_features = self._build_per_serving_key_features(
                 self.serving_keys, self._features
             )
         return self._per_serving_key_features

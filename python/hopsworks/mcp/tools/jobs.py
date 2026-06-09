@@ -82,8 +82,8 @@ class JobTools:
             await ctx.info(f"Retrieving jobs for project '{project_name}'...")
 
         # Get the specified project and its jobs
-        conn = client.get_connection()
-        project = conn.get_project(project_name)
+        conn = client._get_connection()
+        project = conn._get_project(project_name)
         jobs = project.get_job_api().get_jobs()
 
         return Jobs(

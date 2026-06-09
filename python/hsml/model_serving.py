@@ -70,7 +70,7 @@ class ModelServing:
         self._serving_api = serving_api.ServingApi()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment_by_id(self, id: int) -> Deployment | None:
         """Get a deployment by id from Model Serving.
 
@@ -93,10 +93,10 @@ class ModelServing:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
         """
-        return self._serving_api.get_by_id(id)
+        return self._serving_api._get_by_id(id)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment(self, name: str = None) -> Deployment | None:
         """Get a deployment by name from Model Serving.
 
@@ -122,10 +122,10 @@ class ModelServing:
         """
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
-        return self._serving_api.get(name)
+        return self._serving_api._get(name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployments(
         self, model: Model = None, status: str = None
     ) -> list[Deployment]:
@@ -164,10 +164,10 @@ class ModelServing:
         if status is not None:
             self._validate_deployment_status(status)
 
-        return self._serving_api.get_all(model_name, status)
+        return self._serving_api._get_all(model_name, status)
 
     def _validate_deployment_status(self, status):
-        statuses = list(util.get_members(PREDICTOR_STATE, prefix="STATUS"))
+        statuses = list(util._get_members(PREDICTOR_STATE, prefix="STATUS"))
         status = status.upper()
         if status not in statuses:
             raise ValueError(
@@ -184,10 +184,10 @@ class ModelServing:
         Returns:
             Inference endpoints for model inference
         """
-        return self._serving_api.get_inference_endpoints()
+        return self._serving_api._get_inference_endpoints()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_predictor(
         self,
         model: Model,
@@ -280,7 +280,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_transformer(
         self,
         script_file: str | None = None,
@@ -357,7 +357,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_endpoint(
         self,
         name: str,
@@ -421,7 +421,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def deploy_agent(
         self,
         entry: str,
@@ -522,7 +522,7 @@ class ModelServing:
         else:
             script_file = _build_and_install_package(ds_api, env, entry_abs, agent_dir)
         # The serving backend expects the script path under /Projects/<proj>/...
-        script_file = util.convert_to_abs(script_file, self._project_name)
+        script_file = util._convert_to_abs(script_file, self._project_name)
 
         if requirements is not None:
             requirements_abs = os.path.abspath(requirements)
@@ -561,7 +561,7 @@ class ModelServing:
         return predictor.deploy()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_deployment(
         self,
         predictor: Predictor,
