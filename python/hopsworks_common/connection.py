@@ -93,7 +93,7 @@ class Connection:
             api_key_file='hopsworks.key',  # The file containing the API key generated above
             hostname_verification=True)    # Disable for self-signed certificates
         )
-        project = conn.get_project("my_project")
+        project = hopsworks.login(project="my_project")
         ```
 
     Clients in external clusters need to connect to the Hopsworks using an API key.
@@ -240,7 +240,7 @@ class Connection:
 
             connection = hopsworks.connection()
 
-            connection.create_project("my_hopsworks_project", description="An example Hopsworks project")
+            hopsworks.create_project("my_hopsworks_project", description="An example Hopsworks project")
             ```
 
         Parameters:
@@ -518,7 +518,7 @@ class Connection:
                 api_key_file='hopsworks.key',  # The file containing the API key generated above
                 hostname_verification=True)    # Disable for self-signed certificates
             )
-            project = conn.get_project("my_project")
+            project = hopsworks.login(project="my_project")
             ```
 
         Clients in external clusters need to connect to the Hopsworks using an API key.

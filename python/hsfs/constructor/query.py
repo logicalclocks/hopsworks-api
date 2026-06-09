@@ -513,14 +513,14 @@ class Query:
 
         Example: Reading features at a specific point in time
             ```python
-            fs = connection.get_feature_store();
+            fs = project.get_feature_store()
             query = fs.get_feature_group("example_feature_group", 1).select_all()
             query.as_of("2020-10-20 07:34:11").read().show()
             ```
 
         Example: Reading commits incrementally between specified points in time
             ```python
-            fs = connection.get_feature_store();
+            fs = project.get_feature_store()
             query = fs.get_feature_group("example_feature_group", 1).select_all()
             query.as_of("2020-10-20 07:34:11", exclude_until="2020-10-19 07:34:11").read().show()
             ```
@@ -531,7 +531,7 @@ class Query:
 
         Example: Reading only the changes from a single commit
             ```python
-            fs = connection.get_feature_store();
+            fs = project.get_feature_store()
             query = fs.get_feature_group("example_feature_group", 1).select_all()
             query.as_of("2020-10-20 07:31:38", exclude_until="2020-10-20 07:31:37").read().show()
             ```
@@ -541,7 +541,7 @@ class Query:
 
         Example: Reading the latest state of features, excluding commits before a specified point in time
             ```python
-            fs = connection.get_feature_store();
+            fs = project.get_feature_store()
             query = fs.get_feature_group("example_feature_group", 1).select_all()
             query.as_of(None, exclude_until="2020-10-20 07:31:38").read().show()
             ```

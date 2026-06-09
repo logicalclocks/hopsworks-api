@@ -107,6 +107,17 @@ class FeatureLogging:
 
     @public
     def get_feature_group(self, transformed: bool | None = None):
+        """Get the feature group backing this feature logging.
+
+        Transformed and untransformed features are logged in the same feature
+        group, so the same feature group is returned regardless of `transformed`.
+
+        Parameters:
+            transformed: Deprecated and ignored; kept for backwards compatibility.
+
+        Returns:
+            The feature group used to store logged features.
+        """
         if transformed is not None:
             warnings.warn(
                 "Providing ´transformed´ while fetching logging feature group is deprecated"
