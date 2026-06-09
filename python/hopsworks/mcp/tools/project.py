@@ -61,7 +61,7 @@ class ProjectTools:
         self, conn, name: str = None, description: str = None
     ) -> dict:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, conn.create_project, name, description)
+        return await loop.run_in_executor(None, conn._create_project, name, description)
 
     async def use_project(self, name: str, ctx: Context | None = None) -> Project:
         """Use a specific project.
@@ -152,7 +152,7 @@ class ProjectTools:
             await ctx.info("Listing all projects...")
 
         conn = client.get_connection()
-        projects = conn.get_projects()
+        projects = conn._get_projects()
 
         return Projects(
             projects=[
@@ -204,7 +204,7 @@ class ProjectTools:
             await ctx.info(f"Retrieving project details for {name}...")
 
         conn = client.get_connection()
-        project = conn.get_project(name)
+        project = conn._get_project(name)
         return Project(
             name=project.name,
             id=project.id,

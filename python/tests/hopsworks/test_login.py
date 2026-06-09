@@ -277,7 +277,7 @@ class TestLoginUnit:
     def _mock_conn_factory(self, mocker, mock_project):
         """Patch Connection.connection to return a mock connection instance."""
         mock_conn_instance = mocker.MagicMock()
-        mock_conn_instance.get_project.return_value = mock_project
+        mock_conn_instance._get_project.return_value = mock_project
         mock_conn_factory = mocker.patch.object(
             hopsworks.Connection, "connection", return_value=mock_conn_instance
         )
@@ -367,7 +367,7 @@ class TestLoginUnit:
         mock_project = mocker.MagicMock()
         mock_project.get_url.return_value = "https://eu-west.cloud.hopsworks.ai/p/1"
         mock_conn_instance = mocker.MagicMock()
-        mock_conn_instance.get_project.return_value = mock_project
+        mock_conn_instance._get_project.return_value = mock_project
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = {}
         mock_response.status_code = 401
@@ -464,7 +464,7 @@ class TestLoginUnit:
         mock_project = mocker.MagicMock()
         mock_project.get_url.return_value = "http://localhost:8181/p/1"
         mock_conn_instance = mocker.MagicMock()
-        mock_conn_instance.get_project.return_value = mock_project
+        mock_conn_instance._get_project.return_value = mock_project
         mock_conn_factory = mocker.patch.object(
             hopsworks.Connection, "connection", return_value=mock_conn_instance
         )
@@ -477,6 +477,6 @@ class TestLoginUnit:
 
         # Assert
         mock_conn_factory.assert_called_once()
-        mock_conn_instance.get_project.assert_called_once()
+        mock_conn_instance._get_project.assert_called_once()
         mock_prompt_project.assert_not_called()
         assert result is mock_project

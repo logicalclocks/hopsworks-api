@@ -156,11 +156,11 @@ class Connection:
         self._connected = False
         self._backend_version = None
 
-        self.connect()
+        self._connect()
 
     @usage._method_logger
     @_connected
-    def get_feature_store(
+    def _get_feature_store(
         self,
         name: str | None = None,
     ) -> feature_store.FeatureStore:
@@ -181,7 +181,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def get_model_registry(self, project: str | None = None) -> ModelRegistry:
+    def _get_model_registry(self, project: str | None = None) -> ModelRegistry:
         """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
 
         Shared model registries can be retrieved by passing the `project` argument.
@@ -196,7 +196,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def get_model_serving(self) -> ModelServing:
+    def _get_model_serving(self) -> ModelServing:
         """Get a reference to model serving to perform operations on. Model serving operates on top of a model registry, defaulting to the project's default model registry.
 
         Example:
@@ -215,7 +215,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def get_secrets_api(self) -> secret_api.SecretsApi:
+    def _get_secrets_api(self) -> secret_api.SecretsApi:
         """Get the secrets api.
 
         Returns:
@@ -225,7 +225,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def create_project(
+    def _create_project(
         self,
         name: str,
         description: str | None = None,
@@ -259,7 +259,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def get_project(self, name: str | None = None) -> Project:
+    def _get_project(self, name: str | None = None) -> Project:
         """Get an existing project.
 
         Parameters:
@@ -283,7 +283,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def get_projects(self) -> list[Project]:
+    def _get_projects(self) -> list[Project]:
         """Get all projects.
 
         Returns:
@@ -293,7 +293,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def project_exists(self, name: str) -> bool:
+    def _project_exists(self, name: str) -> bool:
         """Check if a project exists.
 
         Parameters:
@@ -329,7 +329,7 @@ class Connection:
             sys.stderr.flush()
 
     @_not_connected
-    def connect(self) -> None:
+    def _connect(self) -> None:
         """Instantiate the connection.
 
         Creating a `Connection` object implicitly calls this method for you to instantiate the connection.
@@ -347,7 +347,7 @@ class Connection:
         """
         client.stop()
         self._connected = True
-        finalizer = weakref.finalize(self, self.close)
+        finalizer = weakref.finalize(self, self._close)
         try:
             external = client.base.Client.REST_ENDPOINT not in os.environ
             saas = self._host == constants.HOSTS.SAAS_HOST
@@ -453,7 +453,7 @@ class Connection:
                 else:
                     raise e
 
-    def close(self) -> None:
+    def _close(self) -> None:
         """Close a connection gracefully.
 
         This will clean up any materialized certificates on the local file system of external environments such as AWS SageMaker.
@@ -658,8 +658,8 @@ class Connection:
         self._api_key_value = api_key_value
 
     def __enter__(self) -> Self:
-        self.connect()
+        self._connect()
         return self
 
     def __exit__(self, type, value, traceback):
-        self.close()
+        self._close()

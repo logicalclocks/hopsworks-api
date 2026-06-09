@@ -45,7 +45,7 @@ class TestConnection:
             pass
 
         mock_connection = MockConnection()
-        mock_connection.connect = mocker.MagicMock()
+        mock_connection._connect = mocker.MagicMock()
         mock_connection.init = Connection.__init__
 
         # Act
@@ -60,7 +60,7 @@ class TestConnection:
         assert mock_connection._api_key_file is None
         assert mock_connection._api_key_value is None
         assert not mock_connection._connected
-        mock_connection.connect.assert_called_once()
+        mock_connection._connect.assert_called_once()
 
     def test_constructor(self, mocker):
         # Arrange
@@ -68,7 +68,7 @@ class TestConnection:
             pass
 
         mock_connection = MockConnection()
-        mock_connection.connect = mocker.MagicMock()
+        mock_connection._connect = mocker.MagicMock()
         mock_connection.init = Connection.__init__
 
         # Act
@@ -92,19 +92,19 @@ class TestConnection:
         assert mock_connection._api_key_file == "ak_file"
         assert mock_connection._api_key_value == "ak_value"
         assert not mock_connection._connected
-        mock_connection.connect.assert_called_once()
+        mock_connection._connect.assert_called_once()
 
     # handlers
 
     def test_get_model_registry(self, mocker):
         # Arrange
         mock_connection = mocker.MagicMock()
-        mock_connection.get_model_registry = Connection.get_model_registry
+        mock_connection._get_model_registry = Connection._get_model_registry
         mock_connection._model_registry_api = mocker.MagicMock()
         mock_connection._model_registry_api.get = mocker.MagicMock(return_value="mr")
 
         # Act
-        mr = mock_connection.get_model_registry(mock_connection)
+        mr = mock_connection._get_model_registry(mock_connection)
 
         # Assert
         assert mr == "mr"
@@ -113,12 +113,12 @@ class TestConnection:
     def test_get_model_serving(self, mocker):
         # Arrange
         mock_connection = mocker.MagicMock()
-        mock_connection.get_model_serving = Connection.get_model_serving
+        mock_connection._get_model_serving = Connection._get_model_serving
         mock_connection._model_serving_api = mocker.MagicMock()
         mock_connection._model_serving_api.get = mocker.MagicMock(return_value="ms")
 
         # Act
-        ms = mock_connection.get_model_serving(mock_connection)
+        ms = mock_connection._get_model_serving(mock_connection)
 
         # Assert
         assert ms == "ms"

@@ -83,7 +83,7 @@ class JobTools:
 
         # Get the specified project and its jobs
         conn = client.get_connection()
-        project = conn.get_project(project_name)
+        project = conn._get_project(project_name)
         jobs = project.get_job_api().get_jobs()
 
         return Jobs(

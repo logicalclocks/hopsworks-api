@@ -128,7 +128,7 @@ class DatasetTools:
             limit = int(limit)
 
         conn = client.get_connection()
-        project = conn.get_project(project_name)
+        project = conn._get_project(project_name)
         count, datasets = project.get_dataset_api()._list_dataset_path(
             "", dataset.Dataset, offset=offset, limit=limit
         )
@@ -230,7 +230,7 @@ class DatasetTools:
             limit = int(limit)
 
         conn = client.get_connection()
-        project = conn.get_project(project_name)
+        project = conn._get_project(project_name)
         count, files = project.get_dataset_api()._list_dataset_path(
             path, inode.Inode, offset=offset, limit=limit
         )
@@ -291,7 +291,7 @@ class DatasetTools:
             )
 
         conn = client.get_connection()
-        project = conn.get_project(project_name)
+        project = conn._get_project(project_name)
         project.get_dataset_api().mkdir(path=path)
 
         return f"Directory created at {path} in project {project_name}."

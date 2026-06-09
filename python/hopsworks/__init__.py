@@ -281,7 +281,7 @@ def login(
         _hw_connection = _hw_connection(
             hostname_verification=hostname_verification, engine=engine
         )
-        _connected_project = _hw_connection.get_project()
+        _connected_project = _hw_connection._get_project()
         _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())
         return _connected_project
@@ -505,7 +505,7 @@ def logout():
     global _env_vars_api
 
     if _is_connection_active():
-        _hw_connection.close()
+        _hw_connection._close()
 
     client.stop()
     _project_api = None
