@@ -322,7 +322,7 @@ class Engine:
     ) -> pd.DataFrame | pl.DataFrame:
         self._validate_dataframe_type(dataframe_type)
         if self._mysql_online_fs_engine is None:
-            self._mysql_online_fs_engine = util_sql.create_mysql_engine(
+            self._mysql_online_fs_engine = util_sql._create_mysql_engine(
                 connector,
                 (
                     client._is_external()

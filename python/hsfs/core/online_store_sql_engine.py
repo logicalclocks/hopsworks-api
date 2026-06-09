@@ -623,7 +623,7 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 f"Creating MySQL {'external' if self.external is True else ''}engine with options: {options}."
             )
-        self._prepared_statement_engine = util_sql.create_mysql_engine(
+        self._prepared_statement_engine = util_sql._create_mysql_engine(
             online_conn, self._external, options=options
         )
 

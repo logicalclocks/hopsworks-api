@@ -102,9 +102,13 @@ OPTIONAL_DEPS = {
 @dataclass
 class Report:
     imported: list[str] = field(default_factory=list)
-    failures: list[tuple[str, str, str]] = field(default_factory=list)  # module, exc type, msg
+    failures: list[tuple[str, str, str]] = field(
+        default_factory=list
+    )  # module, exc type, msg
     skips: list[tuple[str, str]] = field(default_factory=list)  # module, missing dep
-    all_failures: list[tuple[str, str]] = field(default_factory=list)  # module, missing name
+    all_failures: list[tuple[str, str]] = field(
+        default_factory=list
+    )  # module, missing name
 
 
 def _iter_modules(package_root: Path, package_name: str, include_protobuf: bool):
@@ -198,9 +202,7 @@ def check(include_protobuf: bool, verbose: bool) -> Report:
                     if verbose:
                         print(f"SKIP {dotted} (missing {_missing_module_name(exc)})")
                 else:
-                    report.failures.append(
-                        (dotted, type(exc).__name__, str(exc))
-                    )
+                    report.failures.append((dotted, type(exc).__name__, str(exc)))
                 continue
             except BaseException as exc:  # noqa: BLE001 - we want everything
                 verdict = _classify(dotted, exc)
@@ -234,7 +236,10 @@ def main() -> int:
         help="Also import generated *_pb2.py / *_pb2_grpc.py modules.",
     )
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Print every module as it is checked."
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print every module as it is checked.",
     )
     args = parser.parse_args()
 

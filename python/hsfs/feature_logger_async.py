@@ -128,7 +128,7 @@ class AsyncWorkerThread(threading.Thread):
             await worker_function(task)
             self._tasks_queue.task_done()
 
-    def close(self):
+    def _close(self):
         """Function to stop any more tasks from being submitted and start the graceful stop of the thread."""
         # Stop any more tasks from being submitted using the stop event.
         self._stop_event.set()
@@ -290,4 +290,4 @@ class AsyncFeatureLogger(FeatureLogger):
     def close(self):
         """Close the async feature logger."""
         # Close the async worker thread
-        self._async_worker_thread.close()
+        self._async_worker_thread._close()

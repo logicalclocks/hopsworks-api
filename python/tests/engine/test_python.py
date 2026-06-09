@@ -352,7 +352,7 @@ class TestPython:
     def test_jdbc(self, mocker):
         # Arrange
         mock_util_create_mysql_engine = mocker.patch(
-            "hsfs.core.util_sql.create_mysql_engine"
+            "hsfs.core.util_sql._create_mysql_engine"
         )
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external")
@@ -374,7 +374,7 @@ class TestPython:
 
     def test_jdbc_dataframe_type_none(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.util_sql.create_mysql_engine")
+        mocker.patch("hsfs.core.util_sql._create_mysql_engine")
         mocker.patch("hopsworks_common.client._get_instance")
         query = "SELECT * FROM TABLE"
 
@@ -395,7 +395,7 @@ class TestPython:
     def test_jdbc_read_options(self, mocker):
         # Arrange
         mock_util_create_mysql_engine = mocker.patch(
-            "hsfs.core.util_sql.create_mysql_engine"
+            "hsfs.core.util_sql._create_mysql_engine"
         )
         mocker.patch("hopsworks_common.client._get_instance")
         mock_python_engine_return_dataframe_type = mocker.patch(

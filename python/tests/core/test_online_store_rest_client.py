@@ -30,7 +30,7 @@ class TestOnlineStoreRestClient:
             return_value="eu-west.cloud.hopsworks.ai",
         )
         ping_rdrs_mock = mocker.patch(
-            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton._is_connected",
         )
 
         # Act
@@ -62,7 +62,7 @@ class TestOnlineStoreRestClient:
         )
         optional_config = {"api_key": "provided_api_key"}
         ping_rdrs_mock = mocker.patch(
-            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton._is_connected",
         )
 
         # Act

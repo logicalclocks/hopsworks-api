@@ -42,15 +42,15 @@ def init_or_reset_online_store_rest_client(
     | requests.adapters.BaseAdapter
     | None = None,
     optional_config: dict[str, Any] | None = None,
-    reset_client: bool = False,
+    _reset_client: bool = False,
 ):
     global _online_store_rest_client
     if not _online_store_rest_client:
         _online_store_rest_client = OnlineStoreRestClientSingleton(
             transport=transport, optional_config=optional_config
         )
-    elif reset_client:
-        _online_store_rest_client.reset_client(
+    elif _reset_client:
+        _online_store_rest_client._reset_client(
             transport=transport, optional_config=optional_config
         )
     else:
@@ -120,9 +120,9 @@ class OnlineStoreRestClientSingleton:
             optional_config=optional_config,
             use_current_config=False,
         )
-        self.is_connected()
+        self._is_connected()
 
-    def reset_client(
+    def _reset_client(
         self,
         transport: requests.adapters.HTTPAdapter
         | requests.adapters.BaseAdapter
@@ -309,7 +309,7 @@ class OnlineStoreRestClientSingleton:
             )
         return default_url
 
-    def send_request(
+    def _send_request(
         self,
         method: str,
         path_params: list[str],
@@ -383,7 +383,7 @@ class OnlineStoreRestClientSingleton:
                 f"Provide a configuration with the {self.API_KEY} key."
             )
 
-    def is_connected(self):
+    def _is_connected(self):
         """If Online Store Rest Client is initialised, ping RonDB Rest Server to ensure connection is active."""
         if self._session is None:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -395,7 +395,7 @@ class OnlineStoreRestClientSingleton:
             _logger.debug(
                 "Checking Online Store REST Client is connected. Pinging RonDB Rest Server."
             )
-        if not self.send_request("GET", ["ping"]):
+        if not self._send_request("GET", ["ping"]):
             warn("Ping failed, RonDB Rest Server is not reachable.", stacklevel=2)
             return False
         return True

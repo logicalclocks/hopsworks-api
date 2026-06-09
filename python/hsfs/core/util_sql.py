@@ -31,7 +31,7 @@ if HAS_AIOMYSQL:
     from aiomysql.sa import create_engine as async_create_engine
 
 
-def create_mysql_engine(
+def _create_mysql_engine(
     online_conn: Any, external: bool, options: dict[str, Any] | None = None
 ) -> Any:
     online_options = online_conn.spark_options()
