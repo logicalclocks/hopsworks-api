@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_2a9bf9ed36bdef43___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-09 22:43 +0000
+            created at 2026-06-10 11:07 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -112,8 +112,8 @@
     <p class="run"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">    <span class="op">@</span><span class="nam">decorators</span><span class="op">.</span><span class="nam">_catch_not_found</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">        <span class="str">"hsfs.storage_connector.StorageConnector"</span><span class="op">,</span> <span class="nam">fallback_return</span><span class="op">=</span><span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t">    <span class="key">def</span> <span class="nam">_get</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">feature_store_id</span><span class="op">:</span> <span class="nam">int</span><span class="op">,</span> <span class="nam">name</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span> <span class="op">-></span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">        <span class="str">"""Returning response dict instead of initialized object."""</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t">    <span class="key">def</span> <span class="nam">_get_response</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">feature_store_id</span><span class="op">:</span> <span class="nam">int</span><span class="op">,</span> <span class="nam">name</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span> <span class="op">-></span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span> <span class="op">|</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">        <span class="str">"""Returning response dict, or None if the connector is not found."""</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">        <span class="nam">_client</span> <span class="op">=</span> <span class="nam">client</span><span class="op">.</span><span class="nam">_get_instance</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t">        <span class="nam">path_params</span> <span class="op">=</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t">            <span class="str">"project"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -200,7 +200,7 @@
     <p class="pln"><span class="n"><a id="t118" href="#t118">118</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t119" href="#t119">119</a></span><span class="t"><span class="str">            the storage connector</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t120" href="#t120">120</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t121" href="#t121">121</a></span><span class="t">        <span class="nam">storage_connector_json</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_get</span><span class="op">(</span><span class="nam">feature_store_id</span><span class="op">,</span> <span class="nam">name</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t121" href="#t121">121</a></span><span class="t">        <span class="nam">storage_connector_json</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_get_response</span><span class="op">(</span><span class="nam">feature_store_id</span><span class="op">,</span> <span class="nam">name</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t122" href="#t122">122</a></span><span class="t">        <span class="key">if</span> <span class="nam">storage_connector_json</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t123" href="#t123">123</a></span><span class="t">            <span class="key">return</span> <span class="nam">storage_connector</span><span class="op">.</span><span class="nam">StorageConnector</span><span class="op">.</span><span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t124" href="#t124">124</a></span><span class="t">                <span class="nam">storage_connector_json</span>&nbsp;</span><span class="r"></span></p>
@@ -219,7 +219,7 @@
     <p class="pln"><span class="n"><a id="t137" href="#t137">137</a></span><span class="t"><span class="str">            The updated storage connector instance.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t138" href="#t138">138</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t139" href="#t139">139</a></span><span class="t">        <span class="key">return</span> <span class="nam">storage_connector_instance</span><span class="op">.</span><span class="nam">update_from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t140" href="#t140">140</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_get</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t140" href="#t140">140</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_get_response</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t141" href="#t141">141</a></span><span class="t">                <span class="nam">storage_connector_instance</span><span class="op">.</span><span class="nam">_featurestore_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t142" href="#t142">142</a></span><span class="t">                <span class="nam">storage_connector_instance</span><span class="op">.</span><span class="nam">name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t143" href="#t143">143</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -380,7 +380,7 @@
             <a class="nav" href="z_2a9bf9ed36bdef43___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-09 22:43 +0000
+            created at 2026-06-10 11:07 +0000
         </p>
     </div>
 </footer>

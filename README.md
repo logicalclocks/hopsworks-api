@@ -227,7 +227,7 @@
 | python/hopsworks\_common/user.py                                                 |       42 |        5 |     88% |54-55, 60, 65, 68 |
 | python/hopsworks\_common/util.py                                                 |      530 |      136 |     74% |67-68, 80-102, 105-108, 168-171, 280, 322, 327, 438, 458, 501, 505-508, 514-530, 536-542, 547-549, 569, 597, 623, 735, 741-743, 751-756, 801, 810-823, 860-865, 870, 874, 879, 883, 888, 916-924, 928-956, 960-962, 966-983, 995-1002, 1007, 1012, 1017 |
 | python/hopsworks\_common/version.py                                              |        1 |        0 |    100% |           |
-| python/hsfs/\_\_init\_\_.py                                                      |       21 |        2 |     90% |    59, 69 |
+| python/hsfs/\_\_init\_\_.py                                                      |       24 |        3 |     88% |52, 73, 83 |
 | python/hsfs/builtin\_transformations.py                                          |      242 |      179 |     26% |37-41, 49-55, 76-90, 98-101, 129-138, 156-157, 190-220, 241-281, 302-343, 366-394, 416-437, 460-494, 527-557, 579-581, 600-603, 629-633, 654-659, 689-691 |
 | python/hsfs/client/\_\_init\_\_.py                                               |        2 |        0 |    100% |           |
 | python/hsfs/client/auth/\_\_init\_\_.py                                          |        4 |        4 |      0% |       5-8 |
@@ -269,8 +269,8 @@
 | python/hsfs/core/external\_feature\_group\_engine.py                             |       57 |       18 |     68% |36, 79, 93-130, 203-205 |
 | python/hsfs/core/feature\_descriptive\_statistics.py                             |      180 |       24 |     87% |104, 107-108, 124-125, 137, 173, 179, 212, 215, 218, 248, 254, 260, 266, 272, 278, 284, 296, 302, 312, 326, 336, 342 |
 | python/hsfs/core/feature\_group\_api.py                                          |      146 |       92 |     37% |51-63, 77-89, 159-165, 173-175, 192-214, 230-250, 263-273, 292-306, 335-346, 370-381, 406-421, 439-451, 469-481, 504-521, 542-559, 583-600, 624-641 |
-| python/hsfs/core/feature\_group\_base\_engine.py                                 |       77 |       19 |     75% |76, 90, 107-110, 127-130, 147-150, 167-170, 214 |
-| python/hsfs/core/feature\_group\_engine.py                                       |      236 |       33 |     86% |124, 201-214, 247-248, 363, 375-382, 492-494, 507-509, 522-523, 563-564, 636, 646, 685, 702, 735-742, 793, 800 |
+| python/hsfs/core/feature\_group\_base\_engine.py                                 |       77 |       19 |     75% |78, 92, 109-112, 129-132, 149-152, 169-172, 216 |
+| python/hsfs/core/feature\_group\_engine.py                                       |      234 |       33 |     86% |124, 201-214, 247-248, 358, 370-377, 487-489, 502-504, 517-518, 558-559, 631, 641, 680, 697, 730-737, 788, 795 |
 | python/hsfs/core/feature\_logging.py                                             |       75 |       34 |     55% |29, 58-61, 65-81, 89-91, 96, 101, 106, 123-134, 139, 142, 150, 153 |
 | python/hsfs/core/feature\_logging\_client.py                                     |       52 |       52 |      0% |    16-109 |
 | python/hsfs/core/feature\_monitoring\_config.py                                  |      278 |       92 |     67% |55, 59, 63-65, 72-74, 77, 80, 160-215, 218, 221, 224, 318-329, 361-365, 398-402, 444-451, 470-485, 505, 531-536, 559-565, 586-591, 610, 631, 634-646, 681-686, 703, 709, 715, 721, 752, 754, 756, 770, 772, 794, 808, 822, 826, 840, 850, 858, 878, 883, 893, 915, 926 |
@@ -369,7 +369,7 @@
 | python/hsfs/util.py                                                              |       66 |       10 |     85% |75-76, 88, 214-228 |
 | python/hsfs/validation\_report.py                                                |      138 |       16 |     88% |72, 104, 148, 164, 174, 227, 244, 263, 281-287, 293, 296 |
 | python/hsfs/version.py                                                           |        2 |        0 |    100% |           |
-| python/hsml/\_\_init\_\_.py                                                      |       10 |        0 |    100% |           |
+| python/hsml/\_\_init\_\_.py                                                      |       14 |        1 |     93% |        37 |
 | python/hsml/client/\_\_init\_\_.py                                               |        2 |        0 |    100% |           |
 | python/hsml/client/auth/\_\_init\_\_.py                                          |        5 |        5 |      0% |       5-9 |
 | python/hsml/client/base/\_\_init\_\_.py                                          |        2 |        2 |      0% |       5-6 |
@@ -428,7 +428,7 @@
 | python/hsml/python/predictor.py                                                  |        9 |        5 |     44% |     25-33 |
 | python/hsml/python/signature.py                                                  |       13 |        4 |     69% |     74-88 |
 | python/hsml/resources.py                                                         |      153 |       13 |     92% |51, 71, 84, 94, 104, 107, 149, 168, 203, 207, 237, 247, 250 |
-| python/hsml/scaling\_config.py                                                   |      212 |       28 |     87% |105, 109-110, 212-214, 218, 245, 255-264, 276, 286, 296, 306, 316, 326, 336, 339, 367, 381, 409, 419, 424 |
+| python/hsml/scaling\_config.py                                                   |      209 |       28 |     87% |104, 108-109, 211-213, 217, 244, 254-263, 275, 285, 295, 305, 315, 325, 335, 338, 365, 379, 406, 416, 421 |
 | python/hsml/schema.py                                                            |       30 |        3 |     90% |72, 79, 82 |
 | python/hsml/sklearn/\_\_init\_\_.py                                              |        0 |        0 |    100% |           |
 | python/hsml/sklearn/model.py                                                     |       13 |        6 |     54% |     70-75 |
@@ -452,7 +452,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **35617** | **12006** | **66%** |           |
+| **TOTAL**                                                                        | **35619** | **12008** | **66%** |           |
 
 
 ## Setup coverage badge
