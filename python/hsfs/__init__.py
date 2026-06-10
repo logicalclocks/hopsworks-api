@@ -22,7 +22,7 @@ import warnings
 # Setting polars skip cpu flag to suppress CPU false positive warning messages printed while importing hsfs
 os.environ["POLARS_SKIP_CPU_CHECK"] = "1"
 
-from hopsworks_apigen import public  # noqa: E402
+from hopsworks_apigen import deprecated, public  # noqa: E402
 from hsfs import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
     usage,
     util,
@@ -35,7 +35,20 @@ from hsfs.connection import (  # noqa: E402,  Module level import not at top of 
 
 __version__ = version.__version__
 
-connection = Connection._connection
+@deprecated("hopsworks.login", public_name="hsfs.connection")
+def connection(*args, **kwargs) -> Connection:
+    """Create a connection to a Hopsworks instance.
+
+    Deprecated, use [`hopsworks.login`][hopsworks.login] instead, which connects and returns a project handle directly.
+
+    Parameters:
+        *args: Positional arguments forwarded to the connection factory.
+        **kwargs: Keyword arguments forwarded to the connection factory.
+
+    Returns:
+        A new connection to the Hopsworks instance.
+    """
+    return Connection._connection(*args, **kwargs)
 
 
 def fs_formatwarning(message, category, filename, lineno, line=None):
