@@ -20,7 +20,7 @@ import os
 from urllib.parse import unquote, urlsplit
 
 from hsfs import feature_group_commit, util
-from hsfs.core import dataset_api, feature_group_api
+from hsfs.core import dataset_api, feature_group_api, partition_grains
 
 
 class HudiEngine:
@@ -40,6 +40,7 @@ class HudiEngine:
     HUDI_TABLE_OPERATION = "hoodie.datasource.write.operation"
     HUDI_WRITE_RECORD_KEY = "hoodie.datasource.write.recordkey.field"
     HUDI_PARTITION_FIELD = "hoodie.datasource.write.partitionpath.field"
+    HUDI_HIVE_STYLE_PARTITIONING = "hoodie.datasource.write.hive_style_partitioning"
     HUDI_WRITE_PRECOMBINE_FIELD = "hoodie.datasource.write.precombine.field"
 
     HUDI_HIVE_SYNC_ENABLE = "hoodie.datasource.hive_sync.enable"
@@ -134,6 +135,13 @@ class HudiEngine:
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
         location = self._feature_group.prepare_spark_location()
 
+        # partitioned_by grain columns are derived from event_time into the
+        # records before the write, so the key generator partitions on them
+        # like ordinary columns (and delete payloads resolve their partition
+        # path the same way).
+        dataset = partition_grains.materialize_grains_spark(
+            self._feature_group, dataset
+        )
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         self._migrate_table(self._spark_context, hudi_options, location)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
@@ -141,18 +149,6 @@ class HudiEngine:
         ).save(location)
 
         return self._get_last_commit_metadata(self._spark_context, location)
-
-    # Map partitioned_by grain → Java SimpleDateFormat token (must mirror the
-    # backend's `FsJobManagerController.buildHudiDateFormat`). Used to build the
-    # Hive-style output.dateformat string that Hudi's TimestampBasedKeyGenerator
-    # emits on disk (e.g. year=2026/month=05/).
-    _HUDI_GRAIN_TOKENS = {
-        "year": "yyyy",
-        "month": "MM",
-        "day": "dd",
-        "hour": "HH",
-        "week": "ww",
-    }
 
     def _setup_hudi_write_opts(self, operation, write_options):
         table_name = self._feature_group.get_fg_name()
@@ -163,26 +159,16 @@ class HudiEngine:
         if self._feature_group.event_time is not None:
             primary_key = primary_key + "," + self._feature_group.event_time
 
-        # When `partitioned_by` is set, the grain columns are NOT in the source
-        # dataframe — Hudi derives them from event_time via CustomKeyGenerator
-        # with a `<field>:TIMESTAMP` partition path. Mirror the same options
-        # the backend's DeltaStreamer path builds (see FsJobManagerController.
-        # injectHudiPartitionedByOptions) so the layout on disk matches
-        # year=YYYY/month=MM/... regardless of which writer produced it.
+        # When `partitioned_by` is set, the grain columns were materialized
+        # into the records by `_write_hudi_dataset`, so they partition like
+        # ordinary columns via SIMPLE key types. Hive-style paths
+        # (year=2026/month=04/...) keep the on-disk layout identical to the
+        # Delta path — and to what the backend's DeltaStreamer config (see
+        # FsJobManagerController.injectHudiPartitionedByOptions) produces.
         partitioned_by = getattr(self._feature_group, "partitioned_by", None)
         if partitioned_by:
-            event_time = self._feature_group.event_time
-            # Hive sync registers the grain columns (the path segments), not
-            # event_time, as the metastore partition columns — matching the
-            # Hive table the backend created.
             partition_key = ",".join(partitioned_by)
-            partition_path = f"{event_time}:TIMESTAMP"
-            # Literal text in a joda/SimpleDateFormat pattern must be
-            # single-quoted; unquoted "year="/"month=" would be read as
-            # (partly invalid) pattern letters.
-            date_format = "/".join(
-                f"'{g}='{self._HUDI_GRAIN_TOKENS[g]}" for g in partitioned_by
-            )
+            partition_path = ":SIMPLE,".join(partitioned_by) + ":SIMPLE"
         else:
             partition_key = (
                 ",".join(self._feature_group.partition_key)
@@ -194,7 +180,6 @@ class HudiEngine:
                 if len(self._feature_group.partition_key) >= 1
                 else ""
             )
-            date_format = None
         pre_combine_key = (
             self._feature_group.hudi_precombine_key
             if self._feature_group.hudi_precombine_key
@@ -240,18 +225,8 @@ class HudiEngine:
         }
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
 
-        if date_format is not None:
-            # Hudi TimestampBasedKeyGenerator config — interprets event_time as
-            # a unix epoch (SCALAR) and formats it into the partition path per
-            # `output.dateformat`. Without these, the keygen would fall back to
-            # its default ISO formatter and the partition layout would diverge
-            # from what readers expect.
-            hudi_options[
-                "hoodie.deltastreamer.keygen.timebased.timestamp.type"
-            ] = "SCALAR"
-            hudi_options[
-                "hoodie.deltastreamer.keygen.timebased.output.dateformat"
-            ] = date_format
+        if partitioned_by:
+            hudi_options[self.HUDI_HIVE_STYLE_PARTITIONING] = "true"
 
         if write_options:
             hudi_options.update(write_options)

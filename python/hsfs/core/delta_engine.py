@@ -27,7 +27,7 @@ from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api, variable_api
+from hsfs.core import feature_group_api, partition_grains, variable_api
 
 
 if TYPE_CHECKING:
@@ -311,50 +311,10 @@ class DeltaEngine:
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
-    def _materialize_partitioned_by_grains_spark(self, dataset):
-        """Materialize the partitioned_by grain columns into a Spark DataFrame.
-
-        Mirror of [`_materialize_partitioned_by_grains`][] for the Spark engine:
-        the grain columns are real partition columns, so their values are derived
-        from event_time before the write.
-        Columns already present (the empty-table create path) are left untouched.
-        """
-        grains = getattr(self._feature_group, "partitioned_by", None)
-        if not grains:
-            return dataset
-        event_time = self._feature_group.event_time
-        if event_time is None or event_time not in dataset.columns:
-            return dataset
-        from pyspark.sql import functions as F
-        from pyspark.sql.types import DateType, NumericType, TimestampType
-
-        et_type = dataset.schema[event_time].dataType
-        if isinstance(et_type, (TimestampType, DateType)):
-            ts = F.col(event_time)
-        elif isinstance(et_type, NumericType):
-            # seconds-vs-milliseconds rule: a value up to ten digits is seconds.
-            ts = (
-                F.when(F.abs(F.col(event_time)) <= 9999999999, F.col(event_time))
-                .otherwise(F.col(event_time) / 1000)
-                .cast("timestamp")
-            )
-        else:
-            ts = F.to_timestamp(F.col(event_time))
-        grain_fns = {
-            "year": F.year,
-            "month": F.month,
-            "week": F.weekofyear,
-            "day": F.dayofmonth,
-            "hour": F.hour,
-        }
-        for grain in grains:
-            if grain in dataset.columns:
-                continue
-            dataset = dataset.withColumn(grain, grain_fns[grain](ts).cast("int"))
-        return dataset
-
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
-        dataset = self._materialize_partitioned_by_grains_spark(dataset)
+        dataset = partition_grains.materialize_grains_spark(
+            self._feature_group, dataset
+        )
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}

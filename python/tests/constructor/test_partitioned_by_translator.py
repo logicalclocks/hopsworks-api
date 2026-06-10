@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 
-import datetime
 from unittest.mock import Mock
 
 from hsfs import feature
@@ -62,58 +61,67 @@ def _has_predicate(node, feature_name, condition, value=None):
 class TestNoOp:
     def test_returns_input_when_partitioned_by_missing(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
-        out = augment_filter(f, _fake_fg(partitioned_by=None), engine_type="python")
+        out = augment_filter(f, _fake_fg(partitioned_by=None))
         assert out is f
 
     def test_returns_input_when_event_time_missing(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
         fg = _fake_fg(partitioned_by=["year"], event_time=None)
-        out = augment_filter(f, fg, engine_type="python")
+        out = augment_filter(f, fg)
         assert out is f
-
-    def test_spark_delta_translates(self):
-        f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
-        fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
-        # Grain columns are real partition columns (no Delta GENERATED
-        # expressions), so an event_time range does not prune on its own.
-        # The translator adds grain predicates the engine prunes on — for
-        # Spark+Delta the same as the Trino/ArrowFlight path.
-        out = augment_filter(f, fg, engine_type="spark")
-        assert _has_predicate(out, "ts", Filter.GE)
-        assert _has_predicate(out, "year", Filter.GE, 2026)
 
     def test_non_hierarchical_falls_back(self):
         # ["month"] without year is non-hierarchical — the translator should
         # leave the filter unchanged rather than producing incorrect bounds.
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
         fg = _fake_fg(partitioned_by=["month"], time_travel_format="DELTA")
-        out = augment_filter(f, fg, engine_type="python")
+        out = augment_filter(f, fg)
+        assert out is f
+
+    def test_grain_filter_passes_through(self):
+        # A filter on a grain column already prunes natively (the grain
+        # columns are real partition columns on both formats); no event_time
+        # predicate is added.
+        f = Filter(feature.Feature("year"), Filter.EQ, 2026)
+        fg = _fake_fg(partitioned_by=["year"], time_travel_format="HUDI")
+        out = augment_filter(f, fg)
+        assert out is f
+
+    def test_or_short_circuits(self):
+        # OR'd filters can't be safely tightened without producing incorrect
+        # ranges; translator must return the input unchanged.
+        f = Logic._Or(
+            left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-01-01"),
+            right_f=Filter(feature.Feature("ts"), Filter.LT, "2025-01-01"),
+        )
+        fg = _fake_fg(partitioned_by=["year"], time_travel_format="DELTA")
+        out = augment_filter(f, fg)
         assert out is f
 
 
 # endregion
 
 
-# region — event_time → derived (Trino / python-engine path)
+# region — event_time → derived (all engines, both formats)
 
 
 class TestEventTimeToDerived:
-    def test_year_lower_bound(self):
+    def test_year_lower_bound_delta(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="DELTA")
-        out = augment_filter(f, fg, engine_type="python")
+        out = augment_filter(f, fg)
         # Original GE on ts still present
         assert _has_predicate(out, "ts", Filter.GE)
         # And a year >= 2026 added
         assert _has_predicate(out, "year", Filter.GE, 2026)
 
-    def test_year_range(self):
+    def test_year_range_hudi(self):
         f = Logic._And(
             left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-01-01"),
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2027-01-01"),
         )
         fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="HUDI")
-        out = augment_filter(f, fg, engine_type="python")
+        out = augment_filter(f, fg)
         # Both original predicates preserved
         assert _has_predicate(out, "ts", Filter.GE)
         assert _has_predicate(out, "ts", Filter.LT)
@@ -125,79 +133,21 @@ class TestEventTimeToDerived:
     def test_event_time_equality(self):
         f = Filter(feature.Feature("ts"), Filter.EQ, "2026-04-12T00:00:00")
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="HUDI")
-        out = augment_filter(f, fg, engine_type="python")
+        out = augment_filter(f, fg)
         assert _has_predicate(out, "year", Filter.GE, 2026)
         assert _has_predicate(out, "year", Filter.LE, 2026)
 
-    def test_or_short_circuits(self):
-        # OR'd filters can't be safely tightened without producing incorrect
-        # ranges; translator must return the input unchanged.
-        f = Logic._Or(
-            left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-01-01"),
-            right_f=Filter(feature.Feature("ts"), Filter.LT, "2025-01-01"),
+    def test_timezone_aware_and_naive_bounds_mix(self):
+        # Aware values are normalized to naive UTC, so mixing an aware string
+        # bound with a naive one must not raise on comparison.
+        f = Logic._And(
+            left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-01-01T00:00:00Z"),
+            right_f=Filter(feature.Feature("ts"), Filter.LT, "2027-01-01T00:00:00"),
         )
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="DELTA")
-        out = augment_filter(f, fg, engine_type="python")
-        assert out is f
-
-
-# endregion
-
-
-# region — derived → event_time (Spark+Hudi path)
-
-
-class TestDerivedToEventTime:
-    def test_year_only_equality(self):
-        f = Filter(feature.Feature("year"), Filter.EQ, 2026)
-        fg = _fake_fg(partitioned_by=["year"], time_travel_format="HUDI")
-        out = augment_filter(f, fg, engine_type="spark")
-        # Original year predicate kept
-        assert _has_predicate(out, "year", Filter.EQ, 2026)
-        # event_time range added: [2026-01-01, 2027-01-01)
-        assert _has_predicate(
-            out, "ts", Filter.GE, datetime.datetime(2026, 1, 1).isoformat()
-        )
-        assert _has_predicate(
-            out, "ts", Filter.LT, datetime.datetime(2027, 1, 1).isoformat()
-        )
-
-    def test_year_and_month_equality(self):
-        f = Logic._And(
-            left_f=Filter(feature.Feature("year"), Filter.EQ, 2026),
-            right_f=Filter(feature.Feature("month"), Filter.EQ, 4),
-        )
-        fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="HUDI")
-        out = augment_filter(f, fg, engine_type="spark")
-        # event_time range: [2026-04-01, 2026-05-01)
-        assert _has_predicate(
-            out, "ts", Filter.GE, datetime.datetime(2026, 4, 1).isoformat()
-        )
-        assert _has_predicate(
-            out, "ts", Filter.LT, datetime.datetime(2026, 5, 1).isoformat()
-        )
-
-    def test_year_month_december_rolls_over_year(self):
-        f = Logic._And(
-            left_f=Filter(feature.Feature("year"), Filter.EQ, 2026),
-            right_f=Filter(feature.Feature("month"), Filter.EQ, 12),
-        )
-        fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="HUDI")
-        out = augment_filter(f, fg, engine_type="spark")
-        # [2026-12-01, 2027-01-01) — month + 1 with year carry
-        assert _has_predicate(
-            out, "ts", Filter.LT, datetime.datetime(2027, 1, 1).isoformat()
-        )
-
-    def test_month_without_year_no_translation(self):
-        # Month alone is ambiguous across years; the translator should leave
-        # the filter as-is and let the row-level filter handle it.
-        f = Filter(feature.Feature("month"), Filter.EQ, 4)
-        fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="HUDI")
-        out = augment_filter(f, fg, engine_type="spark")
-        # No event_time predicate added
-        assert not _has_predicate(out, "ts", Filter.GE)
-        assert not _has_predicate(out, "ts", Filter.LT)
+        out = augment_filter(f, fg)
+        assert _has_predicate(out, "year", Filter.GE, 2026)
+        assert _has_predicate(out, "year", Filter.LE, 2026)
 
 
 # endregion

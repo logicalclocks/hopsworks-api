@@ -20,17 +20,12 @@ users keep writing `fg.filter(fg.event_time >= last_week)` (or
 `fg.filter(fg.year == 2026)`) like they would on any feature group, and
 partition pruning just works.
 
-The grain columns are ordinary materialized partition columns (no Delta
-GENERATED expressions), so no engine auto-derives partition predicates from
-event_time filters — every (engine, format) combination needs explicit
-predicate translation:
-
-| Engine | Format | Translation direction                        |
-|--------|--------|----------------------------------------------|
-| Spark  | Delta  | event_time → derived                         |
-| Spark  | Hudi   | derived → event_time                         |
-| Trino  | Delta  | event_time → derived                         |
-| Trino  | Hudi   | event_time → derived                         |
+The grain columns are ordinary materialized partition columns on both Delta
+and Hudi (no Delta GENERATED expressions, no Hudi timestamp key generator),
+so a filter on a grain column prunes natively on every engine, while an
+event_time range prunes on none of them. The translation is therefore the
+same for every (engine, format) combination: event_time range filters get
+equivalent grain-column predicates added.
 
 The translator runs on `Query.read()` just before SQL generation. It adds
 equivalent predicates to the filter but never removes the original — the
@@ -66,23 +61,21 @@ _HIERARCHICAL_GRAINS = ("year", "month", "day", "hour")
 def augment_filter(
     f: Filter | Logic | None,
     fg: fg_mod.FeatureGroup,
-    engine_type: str,
 ) -> Filter | Logic | None:
-    """Return `f` augmented with engine-appropriate partition predicates.
+    """Return `f` augmented with partition predicates for grain-column pruning.
 
     Returns the input unchanged when:
       - `fg.partitioned_by` is None or empty, or
       - `fg.event_time` is None (no time anchor for the translation), or
-      - the combination of `engine_type` and `fg.time_travel_format` has
-        no translation rule (e.g. python engine + Hudi grain filters), or
       - the partitioned_by spec is not a strict left-prefix of
         `("year","month","day","hour")` — non-hierarchical specs are
-        documented as not partition-pruning-aware on the asymmetric paths.
+        documented as not pruning on event_time ranges.
 
-    Otherwise, returns the input AND'd with an additional predicate that
-    the storage engine can use for partition pruning. The original
-    predicate is kept so the row-level filter still produces correct
-    results if pruning is off.
+    Otherwise, returns the input AND'd with additional grain-column
+    predicates equivalent to the event_time range in `f`, which every
+    engine prunes on (the grain columns are real partition columns on
+    both Delta and Hudi). The original predicate is kept so the
+    row-level filter still produces correct results if pruning is off.
     """
     if f is None:
         return None
@@ -94,26 +87,12 @@ def augment_filter(
     if not _is_hierarchical_prefix(grains):
         _logger.debug(
             "partitioned_by spec %s is not a hierarchical year/month/day/hour "
-            "prefix; skipping cross-engine predicate translation. The filter "
-            "will run at row level on this engine.",
+            "prefix; skipping predicate translation. The filter will run at "
+            "row level on this engine.",
             grains,
         )
         return f
-
-    fmt = (getattr(fg, "time_travel_format", None) or "").upper()
-    engine = (engine_type or "").lower()
-
-    if fmt == "DELTA":
-        # Grain columns are real materialized partition columns (no Delta
-        # GENERATED expressions), so an event_time range does not prune on its
-        # own — translate it to predicates on the grain columns, which Delta
-        # prunes natively, for both Spark and Trino/ArrowFlight reads.
-        return _augment_event_time_to_derived(f, fg, grains)
-    if engine == "spark" and fmt == "HUDI":
-        return _augment_derived_to_event_time(f, fg, grains)
-    if engine == "python":  # python engine → Trino reads
-        return _augment_event_time_to_derived(f, fg, grains)
-    return f
+    return _augment_event_time_to_derived(f, fg, grains)
 
 
 def _is_hierarchical_prefix(grains: list[str]) -> bool:
@@ -218,21 +197,27 @@ def _event_time_range(
 
 
 def _coerce_datetime(value) -> datetime.datetime | None:
-    """Best-effort conversion of a filter value to a datetime.
+    """Best-effort conversion of a filter value to a naive-UTC datetime.
 
     The Filter stores `value` as either a string or a datetime depending on
     how it was constructed; both are reachable from the public API.
+    Timezone-aware values are normalized to naive UTC so bounds from mixed
+    sources stay mutually comparable (naive and aware datetimes raise
+    TypeError on comparison).
     """
+    dt = None
     if isinstance(value, datetime.datetime):
-        return value
-    if isinstance(value, datetime.date):
-        return datetime.datetime(value.year, value.month, value.day)
-    if isinstance(value, str):
+        dt = value
+    elif isinstance(value, datetime.date):
+        dt = datetime.datetime(value.year, value.month, value.day)
+    elif isinstance(value, str):
         try:
-            return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            dt = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
-    return None
+    if dt is not None and dt.tzinfo is not None:
+        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 def _grain_predicates_for_range(
@@ -269,94 +254,6 @@ def _grain_predicates_for_range(
         boundary = end_excl - datetime.timedelta(microseconds=1)
         preds.append(Filter(feat, Filter.LE, extractor(boundary)))
     return preds
-
-
-# --- derived → event_time (Spark+Hudi path) -----------------------------
-
-
-def _augment_derived_to_event_time(
-    f: Filter | Logic, fg: fg_mod.FeatureGroup, grains: list[str]
-) -> Filter | Logic:
-    """Add an event_time range equivalent to grain predicates."""
-    if _has_or(f):
-        return f
-    grain_values = _collect_grain_equalities(_collect_filters(f), grains)
-    if not grain_values:
-        return f
-    # Only the most specific contiguous hierarchical prefix is translated.
-    # If year=2026 alone is set, range is [2026-01-01, 2027-01-01).
-    # If year=2026 AND month=4, range is [2026-04-01, 2026-05-01).
-    prefix_len = 0
-    for g in grains:
-        if g in grain_values:
-            prefix_len += 1
-        else:
-            break
-    if prefix_len == 0:
-        return f
-    start, end_excl = _hierarchical_range(grain_values, grains[:prefix_len])
-    if start is None:
-        return f
-    et_feat = fg.get_feature(fg.event_time)
-    return _and_all(
-        [
-            f,
-            Filter(et_feat, Filter.GE, start.isoformat()),
-            Filter(et_feat, Filter.LT, end_excl.isoformat()),
-        ]
-    )
-
-
-def _collect_grain_equalities(
-    filters: list[Filter], grains: list[str]
-) -> dict[str, int]:
-    """Collect simple equality predicates on grain columns.
-
-    Inequalities (e.g. `year >= 2026`) and IN-lists are intentionally
-    skipped — they're harder to convert into a clean event_time range
-    and the user can typically rewrite as an event_time predicate
-    directly when they care about pruning.
-    """
-    out: dict[str, int] = {}
-    for filt in filters:
-        if filt.feature.name not in grains:
-            continue
-        if filt.condition != Filter.EQ:
-            continue
-        try:
-            out[filt.feature.name] = int(filt.value)
-        except (TypeError, ValueError):
-            continue
-    return out
-
-
-def _hierarchical_range(
-    values: dict[str, int], grain_prefix: list[str]
-) -> tuple[datetime.datetime | None, datetime.datetime | None]:
-    """Build [start, end_excl) for a hierarchical-prefix equality combo."""
-    year = values.get("year")
-    if year is None:
-        return None, None
-    month = values.get("month", 1)
-    day = values.get("day", 1)
-    hour = values.get("hour", 0)
-    start = datetime.datetime(year, month, day, hour, 0, 0)
-    end_excl = _add_one_unit(start, grain_prefix[-1])
-    return start, end_excl
-
-
-def _add_one_unit(ts: datetime.datetime, finest_grain: str) -> datetime.datetime:
-    if finest_grain == "year":
-        return ts.replace(year=ts.year + 1)
-    if finest_grain == "month":
-        if ts.month == 12:
-            return ts.replace(year=ts.year + 1, month=1)
-        return ts.replace(month=ts.month + 1)
-    if finest_grain == "day":
-        return ts + datetime.timedelta(days=1)
-    if finest_grain == "hour":
-        return ts + datetime.timedelta(hours=1)
-    return ts
 
 
 # --- Grain extractors and AND assembly ----------------------------------
