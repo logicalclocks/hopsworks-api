@@ -46,21 +46,21 @@ def _make_registry():
 
 def test_hf_download_completed_returns_model(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {"jobId": "job-1"}
-    mr._huggingface_api.get_status.side_effect = [
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-1"}
+    mr._huggingface_api._get_status.side_effect = [
         {"status": "RUNNING", "completedFiles": 0, "totalFiles": 3},
         {"status": "COMPLETED", "completedFiles": 3, "totalFiles": 3},
     ]
     mock_model = MagicMock()
     mock_model.version = 1
-    mr._model_api.get_models.return_value = [mock_model]
+    mr._model_api._get_models.return_value = [mock_model]
     monkeypatch.setattr("time.sleep", lambda _: None)
 
     result = mr.hf_download("Qwen/Qwen2.5-0.5B", poll_interval=0)
 
     assert result is mock_model
-    mr._huggingface_api.start_import.assert_called_once()
-    args = mr._huggingface_api.start_import.call_args
+    mr._huggingface_api._start_import.assert_called_once()
+    args = mr._huggingface_api._start_import.call_args
     # registry id should be the first positional argument
     assert args.args[0] == 119
     assert args.kwargs.get("hf_token") is None
@@ -71,9 +71,9 @@ def test_hf_download_completed_returns_model(monkeypatch):
 
 def test_hf_download_passes_selection_args_through(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {"jobId": "job-2"}
-    mr._huggingface_api.get_status.return_value = {"status": "COMPLETED"}
-    mr._model_api.get_models.return_value = [MagicMock(version=1)]
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-2"}
+    mr._huggingface_api._get_status.return_value = {"status": "COMPLETED"}
+    mr._model_api._get_models.return_value = [MagicMock(version=1)]
     monkeypatch.setattr("time.sleep", lambda _: None)
 
     mr.hf_download(
@@ -84,7 +84,7 @@ def test_hf_download_passes_selection_args_through(monkeypatch):
         selected_filenames=None,
         poll_interval=0,
     )
-    kwargs = mr._huggingface_api.start_import.call_args.kwargs
+    kwargs = mr._huggingface_api._start_import.call_args.kwargs
     assert kwargs["hf_token"] == "hf_secret"
     assert kwargs["selected_formats"] == ["gguf"]
     assert kwargs["selected_variants"] == ["UD-Q4_K_XL"]
@@ -97,16 +97,16 @@ def test_hf_download_resolves_sanitised_model_name(monkeypatch):
     the Python client mirrors that when looking up the registered model.
     """
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {"jobId": "job-3"}
-    mr._huggingface_api.get_status.return_value = {"status": "COMPLETED"}
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-3"}
+    mr._huggingface_api._get_status.return_value = {"status": "COMPLETED"}
     mock_model = MagicMock(version=2)
-    mr._model_api.get_models.return_value = [MagicMock(version=1), mock_model]
+    mr._model_api._get_models.return_value = [MagicMock(version=1), mock_model]
     monkeypatch.setattr("time.sleep", lambda _: None)
 
     result = mr.hf_download("Qwen/Qwen2.5-0.5B", poll_interval=0)
 
     # Sanitiser: "Qwen2.5-0.5B" → "Qwen2_5_0_5B"
-    mr._model_api.get_models.assert_called_with(
+    mr._model_api._get_models.assert_called_with(
         "Qwen2_5_0_5B",
         119,
         shared_registry_project_name=None,
@@ -117,9 +117,9 @@ def test_hf_download_resolves_sanitised_model_name(monkeypatch):
 
 def test_hf_download_strips_full_url_for_lookup(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {"jobId": "job-4"}
-    mr._huggingface_api.get_status.return_value = {"status": "COMPLETED"}
-    mr._model_api.get_models.return_value = [MagicMock(version=1)]
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-4"}
+    mr._huggingface_api._get_status.return_value = {"status": "COMPLETED"}
+    mr._model_api._get_models.return_value = [MagicMock(version=1)]
     monkeypatch.setattr("time.sleep", lambda _: None)
 
     mr.hf_download(
@@ -127,7 +127,7 @@ def test_hf_download_strips_full_url_for_lookup(monkeypatch):
         poll_interval=0,
     )
     # Looked up under the sanitised LAST path segment, not the URL.
-    name_arg = mr._model_api.get_models.call_args.args[0]
+    name_arg = mr._model_api._get_models.call_args.args[0]
     assert name_arg == "Qwen2_5_0_5B"
 
 
@@ -150,8 +150,8 @@ def test_hf_download_strips_full_url_for_lookup(monkeypatch):
 )
 def test_hf_download_failed_maps_error_code(monkeypatch, error_field, expected_code):
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {"jobId": "job-x"}
-    mr._huggingface_api.get_status.return_value = {
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-x"}
+    mr._huggingface_api._get_status.return_value = {
         "status": "FAILED",
         "error": error_field,
     }
@@ -166,8 +166,8 @@ def test_hf_download_failed_maps_error_code(monkeypatch, error_field, expected_c
 
 def test_hf_download_cancelled_raises(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {"jobId": "job-c"}
-    mr._huggingface_api.get_status.return_value = {
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-c"}
+    mr._huggingface_api._get_status.return_value = {
         "status": "CANCELLED",
         "error": "auth_required",
     }
@@ -196,7 +196,7 @@ def _rest_error(status: int, body: dict) -> RestAPIError:
 
 def test_hf_download_start_returns_401_auth_required(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.side_effect = _rest_error(
+    mr._huggingface_api._start_import.side_effect = _rest_error(
         401, {"error": "auth_required"}
     )
 
@@ -207,7 +207,7 @@ def test_hf_download_start_returns_401_auth_required(monkeypatch):
 
 def test_hf_download_start_returns_404_not_found_or_auth(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.side_effect = _rest_error(
+    mr._huggingface_api._start_import.side_effect = _rest_error(
         404, {"error": "not_found_or_auth_required"}
     )
 
@@ -218,7 +218,7 @@ def test_hf_download_start_returns_404_not_found_or_auth(monkeypatch):
 
 def test_hf_download_start_returns_404_model_not_found(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.side_effect = _rest_error(
+    mr._huggingface_api._start_import.side_effect = _rest_error(
         404, {"error": "model_not_found"}
     )
 
@@ -235,7 +235,7 @@ def test_hf_download_unknown_rest_error_passes_through(monkeypatch):
     surface a misleading code that users couldn't trust.
     """
     mr = _make_registry()
-    mr._huggingface_api.start_import.side_effect = _rest_error(
+    mr._huggingface_api._start_import.side_effect = _rest_error(
         500, {"error": "internal_db_error"}
     )
 
@@ -245,7 +245,7 @@ def test_hf_download_unknown_rest_error_passes_through(monkeypatch):
 
 def test_hf_download_start_returns_no_jobid(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {}
+    mr._huggingface_api._start_import.return_value = {}
 
     with pytest.raises(HuggingFaceImportException) as exc:
         mr.hf_download("foo/bar", poll_interval=0)
@@ -254,8 +254,8 @@ def test_hf_download_start_returns_no_jobid(monkeypatch):
 
 def test_hf_download_timeout_attempts_cleanup(monkeypatch):
     mr = _make_registry()
-    mr._huggingface_api.start_import.return_value = {"jobId": "job-t"}
-    mr._huggingface_api.get_status.return_value = {"status": "RUNNING"}
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-t"}
+    mr._huggingface_api._get_status.return_value = {"status": "RUNNING"}
     monkeypatch.setattr("time.sleep", lambda _: None)
     monkeypatch.setattr("time.time", _ticking_clock(start=0.0, step=10.0))
 
@@ -263,7 +263,7 @@ def test_hf_download_timeout_attempts_cleanup(monkeypatch):
         mr.hf_download("foo/bar", timeout=5, poll_interval=0)
     assert exc.value.error_code == "fetch_failed"
     # Best-effort cleanup must have been invoked with cleanup=True.
-    mr._huggingface_api.cancel.assert_called_once_with(119, "job-t", cleanup=True)
+    mr._huggingface_api._cancel.assert_called_once_with(119, "job-t", cleanup=True)
 
 
 def _ticking_clock(start: float, step: float):

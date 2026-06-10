@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import lineage, output, session
 
 
 @click.group("deployment")
@@ -481,6 +481,39 @@ def deployment_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> 
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted deployment %s", name)
+
+
+@deployment_group.command("lineage")
+@click.argument("name")
+@click.pass_context
+def deployment_lineage(ctx: click.Context, name: str) -> None:
+    """Show lineage for a deployment.
+
+    A deployment serves a model, so its upstream lineage is that model plus
+    the model's own feature view and training dataset provenance.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+    """
+    deployment = _get_deployment(ctx, name)
+    model = lineage.fetch(deployment.get_model)
+    label = f"deployment {getattr(deployment, 'name', name)}"
+    sections: list[tuple[str, str, Any]] = [("upstream", "model", model)]
+    if model is not None:
+        sections += [
+            (
+                "upstream",
+                "feature_view",
+                lineage.fetch(model.get_feature_view_provenance),
+            ),
+            (
+                "upstream",
+                "training_dataset",
+                lineage.fetch(model.get_training_dataset_provenance),
+            ),
+        ]
+    lineage.render(label, sections)
 
 
 def _get_deployment(ctx: click.Context, name: str) -> Any:

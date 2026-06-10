@@ -22,7 +22,7 @@ from hsfs.constructor import filter as filter_mod
 
 
 class TestApplyDataIntervalDefaults:
-    """hsfs.util.apply_scheduler_time_defaults falls back to HOPS_* env vars."""
+    """hsfs.util._apply_scheduler_time_defaults falls back to HOPS_* env vars."""
 
     def test_explicit_values_win(self, capsys):
         # Even if the env vars are set, explicit args take precedence — no notice printed.
@@ -31,7 +31,7 @@ class TestApplyDataIntervalDefaults:
             "HOPS_END_TIME": "2026-02-01T00:00:00Z",
         }
         with patch.dict("os.environ", env, clear=False):
-            start, end = util.apply_scheduler_time_defaults("2024-06-01", "2024-07-01")
+            start, end = util._apply_scheduler_time_defaults("2024-06-01", "2024-07-01")
         assert start == "2024-06-01"
         assert end == "2024-07-01"
         assert capsys.readouterr().out == ""
@@ -48,7 +48,7 @@ class TestApplyDataIntervalDefaults:
             caplog.at_level(logging.INFO, logger="hsfs.util"),
             patch.dict("os.environ", env, clear=False),
         ):
-            start, end = util.apply_scheduler_time_defaults(None, None)
+            start, end = util._apply_scheduler_time_defaults(None, None)
         assert start == "2026-01-01T00:00:00Z"
         assert end == "2026-02-01T00:00:00Z"
         msg = caplog.text
@@ -66,7 +66,7 @@ class TestApplyDataIntervalDefaults:
             caplog.at_level(logging.INFO, logger="hsfs.util"),
             patch.dict("os.environ", env, clear=False),
         ):
-            start, end = util.apply_scheduler_time_defaults("2024-06-01", None)
+            start, end = util._apply_scheduler_time_defaults("2024-06-01", None)
         assert start == "2024-06-01"
         assert end == "2026-02-01T00:00:00Z"
         msg = caplog.text
@@ -80,7 +80,7 @@ class TestApplyDataIntervalDefaults:
         with patch.dict("os.environ", {}, clear=False):
             os.environ.pop("HOPS_START_TIME", None)
             os.environ.pop("HOPS_END_TIME", None)
-            start, end = util.apply_scheduler_time_defaults(None, None)
+            start, end = util._apply_scheduler_time_defaults(None, None)
         assert start is None
         assert end is None
         assert capsys.readouterr().out == ""
@@ -89,14 +89,14 @@ class TestApplyDataIntervalDefaults:
         # Empty env var must not override None, and must not print a notice.
         env = {"HOPS_START_TIME": "", "HOPS_END_TIME": ""}
         with patch.dict("os.environ", env, clear=False):
-            start, end = util.apply_scheduler_time_defaults(None, None)
+            start, end = util._apply_scheduler_time_defaults(None, None)
         assert start is None
         assert end is None
         assert capsys.readouterr().out == ""
 
 
 class TestBuildTimeFilter:
-    """hsfs.util.build_time_filter assembles the half-open `[start, end)` window.
+    """hsfs.util._build_time_filter assembles the half-open `[start, end)` window.
 
     The start-side boundary changed from `>` (exclusive) to `>=` (inclusive) so that
     back-to-back scheduled windows `[t0, t1)` then `[t1, t2)` tile the timeline: an
@@ -118,7 +118,7 @@ class TestBuildTimeFilter:
         # Inclusive lower bound: boundary events at exactly start_time are matched by
         # the filter. Previously this was `GT` (exclusive), which silently dropped any
         # event landing precisely on a scheduled-fire boundary.
-        f = util.build_time_filter(self._event_time(), 1000, None)
+        f = util._build_time_filter(self._event_time(), 1000, None)
         assert isinstance(f, filter_mod.Filter)
         assert f.condition == filter_mod.Filter.GE
         assert f.condition != filter_mod.Filter.GT
@@ -127,7 +127,7 @@ class TestBuildTimeFilter:
     def test_end_time_uses_less_than(self):
         # Exclusive upper bound: a boundary event at exactly end_time is NOT matched
         # — it belongs to the next window's [end_time, ...) slice.
-        f = util.build_time_filter(self._event_time(), None, 2000)
+        f = util._build_time_filter(self._event_time(), None, 2000)
         assert isinstance(f, filter_mod.Filter)
         assert f.condition == filter_mod.Filter.LT
         assert str(f.value) == "2000"
@@ -135,7 +135,7 @@ class TestBuildTimeFilter:
     def test_combined_half_open_interval(self):
         # Both sides present → AND of `>= start` and `< end`. Verifies the operator
         # composition as well as the two boundary semantics together.
-        logic = util.build_time_filter(self._event_time(), 1000, 2000)
+        logic = util._build_time_filter(self._event_time(), 1000, 2000)
         assert isinstance(logic, filter_mod.Logic)
         assert logic.type == filter_mod.Logic.AND
         left = logic.get_left_filter_or_logic()
@@ -147,7 +147,7 @@ class TestBuildTimeFilter:
 
     def test_no_bounds_returns_none(self):
         # Neither side provided: no filter. Caller reads all rows.
-        assert util.build_time_filter(self._event_time(), None, None) is None
+        assert util._build_time_filter(self._event_time(), None, None) is None
 
     def test_consecutive_windows_boundary_belongs_to_second(self):
         # The core tiling property: windows [t0, t1) and [t1, t2) share the boundary
@@ -156,8 +156,8 @@ class TestBuildTimeFilter:
         #   - is NOT matched by the first window  (condition < t1 is false at t1)
         #   - IS matched by the second window     (condition >= t1 is true at t1)
         # Assert this at the filter-condition level so we don't need a live backend.
-        w1 = util.build_time_filter(self._event_time(), 0, 1000)
-        w2 = util.build_time_filter(self._event_time(), 1000, 2000)
+        w1 = util._build_time_filter(self._event_time(), 0, 1000)
+        w2 = util._build_time_filter(self._event_time(), 1000, 2000)
 
         # Window 1 ends exclusive at 1000.
         w1_right = w1.get_right_filter_or_logic()

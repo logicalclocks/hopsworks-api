@@ -65,7 +65,7 @@ class Feature:
         **kwargs,
     ) -> None:
         self._original_name = name
-        self._name = util.autofix_feature_name(name, warn=True)
+        self._name = util._autofix_feature_name(name, warn=True)
         self._column_name = column_name if column_name is not None else name
         self._type = type
         self._description = description
@@ -135,7 +135,7 @@ class Feature:
             str: The fully qualified feature name.
         """
         if self.use_fully_qualified_name:
-            return util.generate_fully_qualified_feature_name(
+            return util._generate_fully_qualified_feature_name(
                 feature_group=feature_group, feature_name=self._name
             )
         if prefix:
@@ -331,7 +331,7 @@ class Feature:
     def _get_filter_value(self, value: Any) -> Any:
         if self.type == "timestamp":
             return datetime.fromtimestamp(
-                util.convert_event_time_to_timestamp(value) / 1000, tz=timezone.utc
+                util._convert_event_time_to_timestamp(value) / 1000, tz=timezone.utc
             ).strftime("%Y-%m-%d %H:%M:%S")
         return value
 

@@ -315,7 +315,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.sql(
+        python_engine._sql(
             sql_query=None,
             feature_store=None,
             online_conn=None,
@@ -337,7 +337,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.sql(
+        python_engine._sql(
             sql_query=None,
             feature_store=None,
             online_conn=mocker.Mock(),
@@ -352,9 +352,9 @@ class TestPython:
     def test_jdbc(self, mocker):
         # Arrange
         mock_util_create_mysql_engine = mocker.patch(
-            "hsfs.core.util_sql.create_mysql_engine"
+            "hsfs.core.util_sql._create_mysql_engine"
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external")
         mock_python_engine_return_dataframe_type = mocker.patch(
             "hsfs.engine.python.Engine._return_dataframe_type"
@@ -374,8 +374,8 @@ class TestPython:
 
     def test_jdbc_dataframe_type_none(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.util_sql.create_mysql_engine")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.core.util_sql._create_mysql_engine")
+        mocker.patch("hopsworks_common.client._get_instance")
         query = "SELECT * FROM TABLE"
 
         python_engine = python.Engine()
@@ -395,9 +395,9 @@ class TestPython:
     def test_jdbc_read_options(self, mocker):
         # Arrange
         mock_util_create_mysql_engine = mocker.patch(
-            "hsfs.core.util_sql.create_mysql_engine"
+            "hsfs.core.util_sql._create_mysql_engine"
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_python_engine_return_dataframe_type = mocker.patch(
             "hsfs.engine.python.Engine._return_dataframe_type"
         )
@@ -425,7 +425,7 @@ class TestPython:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.read(
+            python_engine._read(
                 storage_connector=None,
                 data_format=None,
                 read_options=None,
@@ -444,7 +444,7 @@ class TestPython:
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.read(
+            python_engine._read(
                 storage_connector=None,
                 data_format="",
                 read_options=None,
@@ -473,7 +473,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.read(
+        python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -504,7 +504,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.read(
+        python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -535,7 +535,7 @@ class TestPython:
         )
 
         # Act
-        dataframe = python_engine.read(
+        dataframe = python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -568,7 +568,7 @@ class TestPython:
         )
 
         # Act
-        dataframe = python_engine.read(
+        dataframe = python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -596,7 +596,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.read(
+        python_engine._read(
             storage_connector=connector,
             data_format="csv",
             read_options=None,
@@ -623,7 +623,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.read(
+            python_engine._read(
                 storage_connector=connector,
                 data_format="csv",
                 read_options=None,
@@ -932,7 +932,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.read_options(data_format=None, provided_options=None)
+        result = python_engine._read_options(data_format=None, provided_options=None)
 
         # Assert
         assert result == {}
@@ -943,7 +943,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.read_stream(
+            python_engine._read_stream(
                 storage_connector=None,
                 message_format=None,
                 schema=None,
@@ -959,12 +959,14 @@ class TestPython:
 
     def test_show(self, mocker):
         # Arrange
-        mock_python_engine_sql = mocker.patch("hsfs.engine.python.Engine.sql")
+        mock_python_engine_sql = mocker.patch("hsfs.engine.python.Engine._sql")
 
         python_engine = python.Engine()
 
         # Act
-        python_engine.show(sql_query=None, feature_store=None, n=None, online_conn=None)
+        python_engine._show(
+            sql_query=None, feature_store=None, n=None, online_conn=None
+        )
 
         # Assert
         assert mock_python_engine_sql.call_count == 1
@@ -1004,7 +1006,7 @@ class TestPython:
             TrainingDatasetFeature("struc", type="struct<label:string,index:int>"),
             TrainingDatasetFeature("decimal", type="decimal"),
         ]
-        cast_df = python_engine.cast_columns(df, schema)
+        cast_df = python_engine._cast_columns(df, schema)
         arrow_schema = pa.Schema.from_pandas(cast_df)
         expected = {
             "string": object,
@@ -1035,7 +1037,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.register_external_temporary_table(
+        result = python_engine._register_external_temporary_table(
             external_fg=None, alias=None
         )
 
@@ -1047,7 +1049,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.register_hudi_temporary_table(
+        result = python_engine._register_hudi_temporary_table(
             hudi_fg_alias=None,
             feature_store_id=None,
             feature_store_name=None,
@@ -1077,7 +1079,7 @@ class TestPython:
         )
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.register_hudi_temporary_table(
+            python_engine._register_hudi_temporary_table(
                 hudi_fg_alias=q,
                 feature_store_id=None,
                 feature_store_name=None,
@@ -1111,7 +1113,7 @@ class TestPython:
         )
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine.register_hudi_temporary_table(
+            python_engine._register_hudi_temporary_table(
                 hudi_fg_alias=q,
                 feature_store_id=None,
                 feature_store_name=None,
@@ -1143,7 +1145,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1181,7 +1183,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1223,7 +1225,7 @@ class TestPython:
         df = pl.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1257,7 +1259,7 @@ class TestPython:
         df = pl.DataFrame({"col1": [1, 2, 3, 4], "col2": ["a", "b", "c", "d"]})
 
         result = json.loads(
-            python_engine.profile(
+            python_engine._profile(
                 df=df,
                 relevant_columns=["col1", "col2"],
                 correlations=None,
@@ -1298,7 +1300,7 @@ class TestPython:
 
         # Act — relevant_columns contains only the complex column; must not raise
         # KeyError: 'statistic' from the Polars zip-conversion path
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col_list"],
             correlations=None,
@@ -1343,7 +1345,7 @@ class TestPython:
         # Act - the cast branch turns timestamp/date columns into strings; if it
         # didn't run, describe() would surface raw timestamp objects and the min
         # values below would not match these string literals.
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1380,7 +1382,7 @@ class TestPython:
         df = pl.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1417,7 +1419,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col1"],
             correlations=None,
@@ -1450,7 +1452,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col1", "col3"],
             correlations=None,
@@ -1497,7 +1499,7 @@ class TestPython:
         df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
 
         # Act
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=None,
             correlations=None,
@@ -1548,7 +1550,7 @@ class TestPython:
         df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
 
         # Act — relevant_columns contains only the complex column; must not hang
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=[col_name],
             correlations=None,
@@ -1597,7 +1599,7 @@ class TestPython:
         df = pd.DataFrame({"col_int": [1, 2], col_name: col_values})
 
         # Act — relevant_columns contains both a non-complex and a complex column
-        result = python_engine.profile(
+        result = python_engine._profile(
             df=df,
             relevant_columns=["col_int", col_name],
             correlations=None,
@@ -1754,7 +1756,9 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.validate(dataframe=None, expectations=None, log_activity=True)
+            python_engine._validate(
+                dataframe=None, expectations=None, log_activity=True
+            )
 
         # Assert
         assert (
@@ -1773,7 +1777,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.validate_with_great_expectations(
+        python_engine._validate_with_great_expectations(
             dataframe=None, expectation_suite=None, ge_validate_kwargs={}
         )
 
@@ -1790,7 +1794,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        python_engine.validate_with_great_expectations(
+        python_engine._validate_with_great_expectations(
             dataframe=None, expectation_suite=None, ge_validate_kwargs={}
         )
 
@@ -1813,7 +1817,7 @@ class TestPython:
 
         # Act
         with pytest.raises(ModuleNotFoundError):
-            python_engine.validate_with_great_expectations(
+            python_engine._validate_with_great_expectations(
                 dataframe=None, expectation_suite=suite, ge_validate_kwargs={}
             )
 
@@ -1822,7 +1826,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.set_job_group(group_id=None, description=None)
+        result = python_engine._set_job_group(group_id=None, description=None)
 
         # Assert
         assert result is None
@@ -1837,7 +1841,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.convert_to_default_dataframe(dataframe=df)
+        result = python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         assert str(result) == "   col1  col2\n0     1     3\n1     2     4"
@@ -1856,7 +1860,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.convert_to_default_dataframe(dataframe=df)
+        result = python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         assert result.columns.values.tolist() == ["col_1", "co_2_co"]
@@ -1908,7 +1912,7 @@ class TestPython:
         )
 
         # Act
-        result = python_engine.convert_to_default_dataframe(dataframe=df)
+        result = python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         polars_assert_frame_equal(result, expected_converted_df)
@@ -1946,8 +1950,8 @@ class TestPython:
         )
 
         # Act
-        pandas_result = python_engine.convert_to_default_dataframe(dataframe=pandas_df)
-        polars_result = python_engine.convert_to_default_dataframe(dataframe=polars_df)
+        pandas_result = python_engine._convert_to_default_dataframe(dataframe=pandas_df)
+        polars_result = python_engine._convert_to_default_dataframe(dataframe=polars_df)
 
         # Assert - both branches produce the same UTC-naive instant
         assert pandas_result["ts"].iloc[0] == datetime(2024, 1, 1, 17, 0)
@@ -1960,7 +1964,7 @@ class TestPython:
         df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act
-        copy = python_engine.shallow_copy_dataframe(df)
+        copy = python_engine._shallow_copy_dataframe(df)
 
         # Assert - separate object but shares underlying arrays
         assert copy is not df
@@ -1975,7 +1979,7 @@ class TestPython:
         original_columns = list(df.columns)
 
         # Act
-        copy = python_engine.shallow_copy_dataframe(df)
+        copy = python_engine._shallow_copy_dataframe(df)
         copy["c"] = [5, 6]
         copy["a"] = [99, 99]
 
@@ -1991,7 +1995,7 @@ class TestPython:
         original_columns = list(df.columns)
 
         # Act
-        python_engine.convert_to_default_dataframe(dataframe=df)
+        python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert - original column names must be unchanged
         assert list(df.columns) == original_columns
@@ -2005,7 +2009,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.convert_to_default_dataframe(dataframe=df)
+        python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert - original column must still be tz-aware
         assert df["ts"].dt.tz is not None
@@ -2019,14 +2023,14 @@ class TestPython:
         original_values = df.to_numpy().copy()
 
         # Act
-        python_engine.convert_to_default_dataframe(dataframe=df)
+        python_engine._convert_to_default_dataframe(dataframe=df)
 
         # Assert
         assert (df.to_numpy() == original_values).all()
 
     def test_parse_schema_feature_group_pandas(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.type_systems.convert_pandas_dtype_to_offline_type")
+        mocker.patch("hsfs.core.type_systems._convert_pandas_dtype_to_offline_type")
 
         python_engine = python.Engine()
 
@@ -2034,7 +2038,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result = python_engine.parse_schema_feature_group(
+        result = python_engine._parse_schema_feature_group(
             dataframe=df, time_travel_format=None
         )
 
@@ -2049,7 +2053,7 @@ class TestPython:
     )
     def test_parse_schema_feature_group_polars(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.type_systems.convert_pandas_dtype_to_offline_type")
+        mocker.patch("hsfs.core.type_systems._convert_pandas_dtype_to_offline_type")
 
         python_engine = python.Engine()
 
@@ -2069,7 +2073,7 @@ class TestPython:
         )
 
         # Act
-        result = python_engine.parse_schema_feature_group(
+        result = python_engine._parse_schema_feature_group(
             dataframe=df, time_travel_format=None
         )
 
@@ -2085,7 +2089,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.parse_schema_training_dataset(dataframe=None)
+            python_engine._parse_schema_training_dataset(dataframe=None)
 
         # Assert
         assert (
@@ -2099,9 +2103,9 @@ class TestPython:
             "hsfs.engine.python.Engine._write_dataframe_kafka"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
 
         python_engine = python.Engine()
 
@@ -2117,7 +2121,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.save_dataframe(
+        python_engine._save_dataframe(
             feature_group=fg,
             dataframe=None,
             operation=None,
@@ -2138,7 +2142,7 @@ class TestPython:
             "hsfs.engine.python.Engine._run_materialization_job"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
 
         python_engine = python.Engine()
@@ -2154,7 +2158,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.save_dataframe(
+        python_engine._save_dataframe(
             feature_group=fg,
             dataframe=None,
             operation=None,
@@ -2175,10 +2179,10 @@ class TestPython:
             "hsfs.engine.python.Engine._write_dataframe_kafka"
         )
         mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
         )
         mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         python_engine = python.Engine()
 
@@ -2196,7 +2200,7 @@ class TestPython:
         test_dataframe = pd.DataFrame({"col1": [1, 2, 3], "col2": [4, 5, 6]})
 
         # Act
-        python_engine.save_dataframe(
+        python_engine._save_dataframe(
             feature_group=fg,
             dataframe=test_dataframe,
             operation="insert",
@@ -2222,7 +2226,7 @@ class TestPython:
         )
 
         # Verify save_delta_fg was called with correct parameters
-        mock_delta_engine.return_value.save_delta_fg.assert_called_once_with(
+        mock_delta_engine.return_value._save_delta_fg.assert_called_once_with(
             test_dataframe, write_options={}, validation_id=None, operation="insert"
         )
 
@@ -2266,7 +2270,7 @@ class TestPython:
 
     def test_legacy_save_dataframe(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_get_url = mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
             "hopsworks_common.core.execution_api.ExecutionApi",
@@ -2280,12 +2284,12 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        mock_fg_api.return_value.ingestion.return_value.job = job.Job(
+        mock_fg_api.return_value._ingestion.return_value.job = job.Job(
             1, "test_job", None, None, None, None
         )
 
         # Act
-        python_engine.legacy_save_dataframe(
+        python_engine._legacy_save_dataframe(
             feature_group=mocker.Mock(),
             dataframe=None,
             operation=None,
@@ -2297,14 +2301,14 @@ class TestPython:
         )
 
         # Assert
-        assert mock_fg_api.return_value.ingestion.call_count == 1
+        assert mock_fg_api.return_value._ingestion.call_count == 1
         assert mock_dataset_api.return_value.upload_feature_group.call_count == 1
         assert mock_execution_api.return_value._start.call_count == 1
         assert mock_get_url.call_count == 1
 
     def test_get_training_data(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_python_engine_prepare_transform_split_df = mocker.patch(
             "hsfs.engine.python.Engine._prepare_transform_split_df"
         )
@@ -2326,7 +2330,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.get_training_data(
+        python_engine._get_training_data(
             training_dataset_obj=td,
             feature_view_obj=mock_feature_view,
             query_obj=mocker.Mock(),
@@ -2339,7 +2343,7 @@ class TestPython:
 
     def test_get_training_data_splits(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_python_engine_prepare_transform_split_df = mocker.patch(
             "hsfs.engine.python.Engine._prepare_transform_split_df"
         )
@@ -2360,7 +2364,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.get_training_data(
+        python_engine._get_training_data(
             training_dataset_obj=td,
             feature_view_obj=None,
             query_obj=mocker.Mock(),
@@ -2379,7 +2383,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels=None
         )
 
@@ -2395,7 +2399,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels=None
         )
 
@@ -2411,7 +2415,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="pandas", labels=None
         )
 
@@ -2430,7 +2434,7 @@ class TestPython:
         d = {"Col1": [1, 2], "col2": [3, 4]}
 
         df = pl.DataFrame(data=d)
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="polars", labels=None
         )
 
@@ -2445,7 +2449,7 @@ class TestPython:
         d = {"Col1": [1, 2], "col2": [3, 4]}
 
         df = pd.DataFrame(data=d)
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="python", labels=None
         )
 
@@ -2460,7 +2464,7 @@ class TestPython:
         d = {"Col1": [1, 2], "col2": [3, 4]}
 
         df = pd.DataFrame(data=d)
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="numpy", labels=None
         )
 
@@ -2476,7 +2480,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels="col1"
         )
 
@@ -2492,7 +2496,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="default", labels="col1"
         )
 
@@ -2508,7 +2512,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="pandas", labels="col1"
         )
 
@@ -2528,7 +2532,7 @@ class TestPython:
         df = pl.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="polars", labels="col1"
         )
 
@@ -2544,7 +2548,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="python", labels="col1"
         )
 
@@ -2560,7 +2564,7 @@ class TestPython:
         df = pd.DataFrame(data=d)
 
         # Act
-        result_df, result_df_split = python_engine.split_labels(
+        result_df, result_df_split = python_engine._split_labels(
             df=df, dataframe_type="numpy", labels="col1"
         )
 
@@ -2570,8 +2574,8 @@ class TestPython:
 
     def test_prepare_transform_split_df_random_split(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_random_split = mocker.patch(
             "hsfs.engine.python.Engine._random_split"
@@ -2620,8 +2624,8 @@ class TestPython:
 
     def test_prepare_transform_split_df_time_split_td_features(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
@@ -2689,8 +2693,8 @@ class TestPython:
 
     def test_prepare_transform_split_df_time_split_query_features(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
@@ -2760,8 +2764,8 @@ class TestPython:
         self, mocker
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
@@ -2835,7 +2839,7 @@ class TestPython:
 
     def test_random_split(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -2864,7 +2868,7 @@ class TestPython:
         # In python sum([0.6, 0.3, 0.1]) != 1.0 due to floating point precision.
         # This test checks if different split ratios can be handled.
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -2892,7 +2896,7 @@ class TestPython:
     def test_random_split_size_precision_2(self, mocker):
         # This test checks if the method can handle split ratio with high precision.
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -2919,7 +2923,7 @@ class TestPython:
 
     def test_random_split_bad_percentage(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -2953,7 +2957,7 @@ class TestPython:
     def test_random_split_polars(self, mocker):
         # Arrange - exercises the polars `with_columns(pl.Series(...))` and
         # `filter(pl.col(...) == i).drop(...)` branch of _random_split.
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -2981,7 +2985,7 @@ class TestPython:
 
     def test_time_series_split(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -3018,7 +3022,7 @@ class TestPython:
 
     def test_time_series_split_drop_event_time(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -3057,7 +3061,7 @@ class TestPython:
 
     def test_time_series_split_event_time(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         python_engine = python.Engine()
 
@@ -3094,7 +3098,7 @@ class TestPython:
 
     def test_convert_to_unix_timestamp_pandas(self):
         # Act
-        result = util.convert_event_time_to_timestamp(
+        result = util._convert_event_time_to_timestamp(
             event_time=pd.Timestamp("2017-01-01")
         )
 
@@ -3104,13 +3108,13 @@ class TestPython:
     def test_convert_to_unix_timestamp_str(self, mocker):
         # Arrange
         mock_util_get_timestamp_from_date_string = mocker.patch(
-            "hopsworks_common.util.get_timestamp_from_date_string"
+            "hopsworks_common.util._get_timestamp_from_date_string"
         )
 
         mock_util_get_timestamp_from_date_string.return_value = 1483225200000
 
         # Act
-        result = util.convert_event_time_to_timestamp(
+        result = util._convert_event_time_to_timestamp(
             event_time="2017-01-01 00-00-00-000"
         )
 
@@ -3119,28 +3123,28 @@ class TestPython:
 
     def test_convert_to_unix_timestamp_int(self):
         # Act
-        result = util.convert_event_time_to_timestamp(event_time=1483225200)
+        result = util._convert_event_time_to_timestamp(event_time=1483225200)
 
         # Assert
         assert result == 1483225200000
 
     def test_convert_to_unix_timestamp_datetime(self):
         # Act
-        result = util.convert_event_time_to_timestamp(event_time=datetime(2022, 9, 18))
+        result = util._convert_event_time_to_timestamp(event_time=datetime(2022, 9, 18))
 
         # Assert
         assert result == 1663459200000
 
     def test_convert_to_unix_timestamp_date(self):
         # Act
-        result = util.convert_event_time_to_timestamp(event_time=date(2022, 9, 18))
+        result = util._convert_event_time_to_timestamp(event_time=date(2022, 9, 18))
 
         # Assert
         assert result == 1663459200000
 
     def test_convert_to_unix_timestamp_pandas_datetime(self):
         # Act
-        result = util.convert_event_time_to_timestamp(
+        result = util._convert_event_time_to_timestamp(
             event_time=pd.Timestamp("2022-09-18")
         )
 
@@ -3149,20 +3153,20 @@ class TestPython:
 
     def test_write_training_dataset(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mock_python_engine_wait_for_job = mocker.patch(
-            "hopsworks_common.engine.execution_engine.ExecutionEngine.wait_until_finished"
+            "hopsworks_common.engine.execution_engine.ExecutionEngine._wait_until_finished"
         )
 
         python_engine = python.Engine()
 
         # Act
         with pytest.raises(Exception) as e_info:
-            python_engine.write_training_dataset(
+            python_engine._write_training_dataset(
                 training_dataset=None,
                 dataset=None,
                 user_write_options={},
@@ -3176,22 +3180,22 @@ class TestPython:
             str(e_info.value)
             == "Currently only query based training datasets are supported by the Python engine"
         )
-        assert mock_fv_api.return_value.compute_training_dataset.call_count == 0
-        assert mock_td_api.return_value.compute.call_count == 0
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 0
+        assert mock_td_api.return_value._compute.call_count == 0
         assert mock_python_engine_wait_for_job.call_count == 0
 
     def test_write_training_dataset_query_td(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_job = mocker.patch("hsfs.core.job.Job")
 
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
 
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
-        mock_td_api.return_value.compute.return_value = mock_job
-        mocker.patch("hsfs.util.get_job_url")
+        mock_td_api.return_value._compute.return_value = mock_job
+        mocker.patch("hsfs.util._get_job_url")
 
         python_engine = python.Engine()
 
@@ -3211,7 +3215,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.write_training_dataset(
+        python_engine._write_training_dataset(
             training_dataset=td,
             dataset=q,
             user_write_options={},
@@ -3221,21 +3225,21 @@ class TestPython:
         )
 
         # Assert
-        assert mock_fv_api.return_value.compute_training_dataset.call_count == 0
-        assert mock_td_api.return_value.compute.call_count == 1
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 0
+        assert mock_td_api.return_value._compute.call_count == 1
         assert mock_job._wait_for_job.call_count == 1
 
     def test_write_training_dataset_query_fv(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_job = mocker.patch("hsfs.core.job.Job")
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_fv_api.return_value.compute_training_dataset.return_value = mock_job
+        mock_fv_api.return_value._compute_training_dataset.return_value = mock_job
 
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
 
         python_engine = python.Engine()
 
@@ -3263,7 +3267,7 @@ class TestPython:
         )
 
         # Act
-        python_engine.write_training_dataset(
+        python_engine._write_training_dataset(
             training_dataset=td,
             dataset=q,
             user_write_options={},
@@ -3273,8 +3277,8 @@ class TestPython:
         )
 
         # Assert
-        assert mock_fv_api.return_value.compute_training_dataset.call_count == 1
-        assert mock_td_api.return_value.compute.call_count == 0
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 1
+        assert mock_td_api.return_value._compute.call_count == 0
         assert mock_job._wait_for_job.call_count == 1
 
     def test_return_dataframe_type_default(self):
@@ -3397,7 +3401,7 @@ class TestPython:
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.is_spark_dataframe(dataframe=None)
+        result = python_engine._is_spark_dataframe(dataframe=None)
 
         # Assert
         assert result is False
@@ -3408,7 +3412,7 @@ class TestPython:
 
         # Act
         with pytest.raises(NotImplementedError) as e_info:
-            python_engine.save_stream_dataframe(
+            python_engine._save_stream_dataframe(
                 feature_group=None,
                 dataframe=None,
                 query_name=None,
@@ -3430,16 +3434,16 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        mock_fg_api.return_value.update_table_schema.return_value.job = job.Job(
+        mock_fg_api.return_value._update_table_schema.return_value.job = job.Job(
             1, "test_job", None, None, None, None
         )
 
         # Act
-        result = python_engine.update_table_schema(feature_group=None)
+        result = python_engine._update_table_schema(feature_group=None)
 
         # Assert
         assert result is None
-        assert mock_fg_api.return_value.update_table_schema.call_count == 1
+        assert mock_fg_api.return_value._update_table_schema.call_count == 1
 
     def test_get_app_options(self, mocker):
         # Arrange
@@ -3473,10 +3477,10 @@ class TestPython:
         # Act
         if distribute_arg is None:
             # Call without distribute argument
-            result = python_engine.add_file(file=file)
+            result = python_engine._add_file(file=file)
         else:
             # Call with distribute argument
-            result = python_engine.add_file(file=file, distribute=distribute_arg)
+            result = python_engine._add_file(file=file, distribute=distribute_arg)
 
         # Assert
         assert result == file
@@ -3488,7 +3492,7 @@ class TestPython:
         df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
 
         # Act
-        result = python_engine.get_unique_values(
+        result = python_engine._get_unique_values(
             feature_dataframe=df, feature_name="col1"
         )
 
@@ -3500,16 +3504,16 @@ class TestPython:
 
     def test_materialization_kafka(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
-            "hsfs.core.kafka_engine.kafka_produce"
+            "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
-            "hsfs.core.kafka_engine.kafka_get_offsets",
+            "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value=" tests_offsets",
         )
         mocker.patch(
@@ -3517,10 +3521,10 @@ class TestPython:
             return_value=["", ""],
         )
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
@@ -3565,16 +3569,16 @@ class TestPython:
 
     def test_materialization_kafka_first_job_execution(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
-            "hsfs.core.kafka_engine.kafka_produce"
+            "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
-            "hsfs.core.kafka_engine.kafka_get_offsets",
+            "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value="tests_offsets",
         )
         mocker.patch(
@@ -3582,10 +3586,10 @@ class TestPython:
             return_value=[],
         )
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
@@ -3630,23 +3634,23 @@ class TestPython:
 
     def test_materialization_kafka_skip_offsets(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
-            "hsfs.core.kafka_engine.kafka_produce"
+            "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
-            "hsfs.core.kafka_engine.kafka_get_offsets",
+            "hsfs.core.kafka_engine._kafka_get_offsets",
             return_value="tests_offsets",
         )
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
@@ -3694,23 +3698,23 @@ class TestPython:
 
     def test_materialization_kafka_topic_doesnt_exist(self, mocker):
         # Arrange
-        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
-            "hsfs.core.kafka_engine.kafka_produce"
+            "hsfs.core.kafka_engine._kafka_produce"
         )
-        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch("hsfs.util._get_job_url")
         mocker.patch(
-            "hsfs.core.kafka_engine.kafka_get_offsets",
+            "hsfs.core.kafka_engine._kafka_get_offsets",
             side_effect=["", "tests_offsets"],
         )
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch(
-            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
             return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
@@ -3776,8 +3780,8 @@ class TestPython:
 
     def test_extract_logging_metadata_all_columns_and_drop_none(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -3861,7 +3865,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -3872,7 +3876,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -3970,8 +3974,8 @@ class TestPython:
 
     def test_extract_logging_metadata_all_columns_and_drop_all(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -4055,7 +4059,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4066,7 +4070,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4142,8 +4146,8 @@ class TestPython:
         self, mocker
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -4192,7 +4196,7 @@ class TestPython:
         ]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
-        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
         untransformed_df = pd.DataFrame(
             {
                 "test_fs_test1_1_primary_key": [1, 2, 3],
@@ -4229,7 +4233,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4240,7 +4244,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4337,8 +4341,8 @@ class TestPython:
         self, mocker
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
@@ -4387,7 +4391,7 @@ class TestPython:
         ]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
-        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
         untransformed_df = pd.DataFrame(
             {
                 "test_fs_test1_1_primary_key": [1, 2, 3],
@@ -4424,7 +4428,7 @@ class TestPython:
         request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
 
         # Act
-        untransformed_result = python_engine.extract_logging_metadata(
+        untransformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4435,7 +4439,7 @@ class TestPython:
             request_parameters=request_parameters,
         )
 
-        transformed_result = python_engine.extract_logging_metadata(
+        transformed_result = python_engine._extract_logging_metadata(
             untransformed_features=untransformed_df,
             transformed_features=transformed_df,
             feature_view=fv,
@@ -4524,8 +4528,8 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4542,7 +4546,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
             # Assert expected columns and values
             expected_log_data, expected_columns, _, _ = (
@@ -4564,8 +4568,8 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4588,7 +4592,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -4610,8 +4614,8 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4634,7 +4638,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -4656,8 +4660,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4693,7 +4697,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -4711,8 +4715,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4735,7 +4739,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -4760,8 +4764,8 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4781,7 +4785,7 @@ class TestPython:
                 logging_feature_group_features=logging_feature_group_features,
                 column_names=column_names,
             )
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -4793,8 +4797,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4818,7 +4822,7 @@ class TestPython:
                 column_names=column_names,
             )
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
             logging_feature_names = [feature.name for feature in logging_features]
 
@@ -4854,8 +4858,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4878,7 +4882,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -4902,8 +4906,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4924,7 +4928,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -4949,8 +4953,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -4974,7 +4978,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5003,8 +5007,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5026,7 +5030,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -5053,8 +5057,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5090,7 +5094,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -5107,8 +5111,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5130,7 +5134,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -5153,8 +5157,8 @@ class TestPython:
     def test_get_feature_logging_df_only_transformed_features_missing_and_additional_columns_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5188,7 +5192,7 @@ class TestPython:
                 column_names=column_names,
             )
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5207,8 +5211,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5240,7 +5244,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -5256,8 +5260,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5275,7 +5279,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -5287,8 +5291,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5320,7 +5324,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5336,8 +5340,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5356,7 +5360,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -5380,8 +5384,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5399,7 +5403,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -5426,8 +5430,8 @@ class TestPython:
         logging_features,
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5481,7 +5485,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -5498,8 +5502,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5537,7 +5541,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -5563,8 +5567,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5606,7 +5610,7 @@ class TestPython:
             )
 
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -5618,8 +5622,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5651,7 +5655,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -5667,8 +5671,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5696,7 +5700,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -5711,8 +5715,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5741,7 +5745,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -5756,8 +5760,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5799,7 +5803,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert
@@ -5816,8 +5820,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5846,7 +5850,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -5871,8 +5875,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5895,7 +5899,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -5907,8 +5911,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5939,7 +5943,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -5955,8 +5959,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -5984,7 +5988,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -5999,8 +6003,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6028,7 +6032,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6043,8 +6047,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6080,7 +6084,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -6097,8 +6101,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6131,7 +6135,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -6147,8 +6151,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6169,7 +6173,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -6181,8 +6185,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6214,7 +6218,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert log message for missing columns
@@ -6230,8 +6234,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6260,7 +6264,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -6275,8 +6279,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6305,7 +6309,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert log message for missing columns
@@ -6320,8 +6324,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6356,7 +6360,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -6372,8 +6376,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6406,7 +6410,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6421,8 +6425,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6444,7 +6448,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -6455,8 +6459,8 @@ class TestPython:
     def test_get_feature_logging_df_only_event_time_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6487,7 +6491,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
             # Assert expected columns and values
             assert all(logging_dataframe.columns == expected_columns)
@@ -6500,8 +6504,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6528,7 +6532,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert all(logging_dataframe.columns == expected_columns)
@@ -6541,8 +6545,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6569,7 +6573,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert all(logging_dataframe.columns == expected_columns)
@@ -6582,8 +6586,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6614,7 +6618,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
             # Assert
             assert all(logging_dataframe.columns == expected_columns)
@@ -6627,8 +6631,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6656,7 +6660,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         assert all(logging_dataframe.columns == expected_columns)
@@ -6669,8 +6673,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6698,7 +6702,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         assert all(logging_dataframe.columns == expected_columns)
@@ -6711,8 +6715,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6747,7 +6751,7 @@ class TestPython:
 
             # Act
             logging_dataframe, _, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert expected columns and values
@@ -6763,8 +6767,8 @@ class TestPython:
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6794,7 +6798,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -6808,8 +6812,8 @@ class TestPython:
     def test_get_feature_logging_df_only_extra_logging_columns_list(
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6836,7 +6840,7 @@ class TestPython:
             column_names=column_names,
         )
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6851,8 +6855,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6890,7 +6894,7 @@ class TestPython:
 
             # Act
             logging_dataframe, additional_logging_features, missing_logging_features = (
-                python_engine.get_feature_logging_df(**args)
+                python_engine._get_feature_logging_df(**args)
             )
 
             # Assert
@@ -6907,8 +6911,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6943,7 +6947,7 @@ class TestPython:
 
         # Act
         logging_dataframe, additional_logging_features, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -6959,8 +6963,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -6981,7 +6985,7 @@ class TestPython:
                 column_names=column_names,
             )
             # Act
-            _ = python_engine.get_feature_logging_df(**args)
+            _ = python_engine._get_feature_logging_df(**args)
 
         # Assert
         assert (
@@ -6993,8 +6997,8 @@ class TestPython:
         self, mocker, caplog, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7012,7 +7016,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert
@@ -7040,8 +7044,8 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7131,7 +7135,7 @@ class TestPython:
 
         # Act
         logging_dataframe, _, missing_logging_features = (
-            python_engine.get_feature_logging_df(**args)
+            python_engine._get_feature_logging_df(**args)
         )
 
         # Assert expected columns and values
@@ -7164,8 +7168,8 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7261,7 +7265,7 @@ class TestPython:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         expected_log_data, expected_columns, _, _ = (
             TestPython.create_expected_logging_dataframe(
@@ -7292,8 +7296,8 @@ class TestPython:
     def test_get_feature_logging_df_logging_data_override_dict(
         self, mocker, logging_features, logging_test_dataframe
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
 
         logging_features, meta_data_logging_columns, column_names = logging_features
@@ -7403,7 +7407,7 @@ class TestPython:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -7435,12 +7439,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7454,13 +7458,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -7468,12 +7472,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7498,7 +7502,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -7519,12 +7523,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7545,7 +7549,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -7556,12 +7560,12 @@ class TestPython:
     def test_get_feature_logging_list_logging_data_dict(
         self, mocker, logging_features, logging_test_dataframe
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7577,7 +7581,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,
@@ -7596,12 +7600,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7619,13 +7623,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -7633,12 +7637,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7657,7 +7661,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             untransformed_features=untransformed_features_df,
@@ -7676,12 +7680,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7699,7 +7703,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -7711,12 +7715,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7737,7 +7741,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             untransformed_features=untransformed_features_df,
@@ -7756,12 +7760,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7779,25 +7783,25 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
     def test_get_feature_logging_list_transformed_features_list(
         self, mocker, logging_features, logging_test_dataframe
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7816,7 +7820,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             transformed_features=transformed_features_df,
@@ -7836,12 +7840,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7861,7 +7865,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -7873,12 +7877,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7898,7 +7902,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -7918,12 +7922,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7941,13 +7945,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -7955,12 +7959,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -7980,7 +7984,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             predictions=predictions_df,
@@ -8000,12 +8004,12 @@ class TestPython:
         self, mocker, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8030,7 +8034,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8042,12 +8046,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8069,7 +8073,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8087,12 +8091,12 @@ class TestPython:
     def test_get_feature_logging_list_serving_keys_dataframe(
         self, mocker, logging_features, logging_test_dataframe
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8109,13 +8113,13 @@ class TestPython:
             column_names=column_names,
         )
 
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8123,12 +8127,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8149,7 +8153,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8168,12 +8172,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8197,7 +8201,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8209,12 +8213,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8235,7 +8239,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8254,12 +8258,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8276,13 +8280,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8290,12 +8294,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8314,7 +8318,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8333,12 +8337,12 @@ class TestPython:
         self, mocker, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8362,7 +8366,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8374,12 +8378,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8397,7 +8401,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             helper_columns=inference_helpers_df,
@@ -8417,12 +8421,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8437,13 +8441,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8451,12 +8455,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8477,7 +8481,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8496,12 +8500,12 @@ class TestPython:
         self, mocker, logging_features
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8524,7 +8528,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8536,12 +8540,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8563,7 +8567,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8582,12 +8586,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8604,13 +8608,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8618,12 +8622,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8643,7 +8647,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8662,12 +8666,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8685,7 +8689,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8705,12 +8709,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8725,13 +8729,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8739,12 +8743,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8762,7 +8766,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8782,12 +8786,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8806,7 +8810,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8825,12 +8829,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8847,13 +8851,13 @@ class TestPython:
         )
 
         # Act
-        _ = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
-        assert python_engine.get_feature_logging_df.call_count == 1
+        assert python_engine._get_feature_logging_df.call_count == 1
         for key in log_data_args:
             assert (
-                python_engine.get_feature_logging_df.call_args[1][key]
+                python_engine._get_feature_logging_df.call_args[1][key]
                 is log_data_args[key]
             )
 
@@ -8861,12 +8865,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8888,7 +8892,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8909,12 +8913,12 @@ class TestPython:
         logging_features,
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8937,7 +8941,7 @@ class TestPython:
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             # Act
-            _ = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine._get_feature_logging_list(**log_data_args)
 
         # Assert
         assert (
@@ -8949,12 +8953,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -8976,7 +8980,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             extra_logging_features=extra_logging_features_df,
@@ -8995,12 +8999,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -9112,7 +9116,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,
@@ -9141,12 +9145,12 @@ class TestPython:
         self, mocker, logging_features, logging_test_dataframe
     ):
         # Prepare
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch.object(
             python_engine,
-            "get_feature_logging_df",
+            "_get_feature_logging_df",
             return_value=(pd.DataFrame(), None, None),
         )
 
@@ -9262,7 +9266,7 @@ class TestPython:
         )
 
         # Act
-        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine._get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,
@@ -9289,7 +9293,7 @@ class TestPython:
     class TestFilterOnlineDataframe:
         @pytest.fixture(autouse=True)
         def patch_engine_type(self, mocker):
-            mocker.patch("hsfs.engine.get_type", return_value="python")
+            mocker.patch("hsfs.engine._get_type", return_value="python")
             mocker.patch(
                 "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
             )

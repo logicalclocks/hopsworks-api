@@ -161,7 +161,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_model_engine_save = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.save"
+            "hsml.engine.model_engine.ModelEngine._save"
         )
         upload_configuration = {"config": "value"}
 
@@ -269,7 +269,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_model_engine_delete = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.delete"
+            "hsml.engine.model_engine.ModelEngine._delete"
         )
 
         # Act
@@ -285,7 +285,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_model_engine_download = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.download"
+            "hsml.engine.model_engine.ModelEngine._download"
         )
 
         # Act
@@ -303,7 +303,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_model_engine_get_tag = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.get_tag"
+            "hsml.engine.model_engine.ModelEngine._get_tag"
         )
 
         # Act
@@ -319,7 +319,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_model_engine_get_tags = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.get_tags"
+            "hsml.engine.model_engine.ModelEngine._get_tags"
         )
 
         # Act
@@ -333,7 +333,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_model_engine_set_tag = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.set_tag"
+            "hsml.engine.model_engine.ModelEngine._set_tag"
         )
 
         # Act
@@ -349,7 +349,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_model_engine_delete_tag = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.delete_tag"
+            "hsml.engine.model_engine.ModelEngine._delete_tag"
         )
 
         # Act
@@ -371,10 +371,10 @@ class TestModel:
             _project_id = 1
 
         mock_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance", return_value=ClientMock()
+            "hopsworks_common.client._get_instance", return_value=ClientMock()
         )
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks_common.util.get_hostname_replaced_url", return_value="full_path"
+            "hopsworks_common.util._get_hostname_replaced_url", return_value="full_path"
         )
         path_arg = "/p/1/models/" + m_json["name"] + "/" + str(m_json["version"])
 
@@ -407,7 +407,7 @@ class TestModel:
             assert m.framework == model_framework
 
         mock_read_json = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.read_json",
+            "hsml.engine.model_engine.ModelEngine._read_json",
             return_value="input_example_content",
         )
         assert m.input_example == "input_example_content"
@@ -416,7 +416,7 @@ class TestModel:
         )
 
         mock_read_json = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.read_json",
+            "hsml.engine.model_engine.ModelEngine._read_json",
             return_value="model_schema_content",
         )
         assert m.model_schema == "model_schema_content"
@@ -425,7 +425,7 @@ class TestModel:
         )
 
         mock_read_file = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.read_file",
+            "hsml.engine.model_engine.ModelEngine._read_file",
             return_value="program_file_content",
         )
         assert m.program == "program_file_content"
@@ -434,7 +434,7 @@ class TestModel:
         )
 
         mock_read_file = mocker.patch(
-            "hsml.engine.model_engine.ModelEngine.read_file",
+            "hsml.engine.model_engine.ModelEngine._read_file",
             return_value="env_file_content",
         )
         assert m.environment == "env_file_content"
@@ -696,8 +696,8 @@ class TestModelEngineExportFastSlowPath:
         # Regression guard: must be project-relative — NOT "/<projectName>/<rest>".
         engine._dataset_api.get.assert_called_once_with(expected_dataset_get_arg)
         # Fast path: HopsFS-internal copy, no chunked HTTP upload.
-        engine._engine.copy.assert_called_once()
-        engine._engine.upload.assert_not_called()
+        engine._engine._copy.assert_called_once()
+        engine._engine._upload.assert_not_called()
 
     def test_slow_path_uses_engine_upload_for_non_mount_path(self, mocker):
         mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
@@ -716,9 +716,9 @@ class TestModelEngineExportFastSlowPath:
 
         # Slow path: chunked HTTP upload, no HopsFS-internal copy/move and no
         # dataset_api lookup.
-        engine._engine.upload.assert_called_once()
-        engine._engine.copy.assert_not_called()
-        engine._engine.move.assert_not_called()
+        engine._engine._upload.assert_called_once()
+        engine._engine._copy.assert_not_called()
+        engine._engine._move.assert_not_called()
         engine._dataset_api.get.assert_not_called()
 
 
@@ -742,7 +742,7 @@ class TestModelNameValidation:
     )
     def test_valid_model_names(self, valid_name):
         # Should not raise any exception
-        util.validate_model_name(valid_name)
+        util._validate_model_name(valid_name)
 
     @pytest.mark.parametrize(
         "invalid_name,description",
@@ -759,6 +759,6 @@ class TestModelNameValidation:
     )
     def test_invalid_model_names(self, invalid_name, description):
         with pytest.raises(ModelRegistryException) as exc_info:
-            util.validate_model_name(invalid_name)
+            util._validate_model_name(invalid_name)
         assert f"Invalid model name '{invalid_name}'" in str(exc_info.value)
         assert "[a-zA-Z0-9_]+" in str(exc_info.value)

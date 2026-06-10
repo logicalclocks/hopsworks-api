@@ -79,7 +79,7 @@ class KafkaSchema:
         return self._schema
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the schema.
 

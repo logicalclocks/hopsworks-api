@@ -156,9 +156,7 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
 @click.option(
     "--type",
     "job_type",
-    type=click.Choice(
-        ["PYTHON", "PYSPARK", "SPARK", "DOCKER", "FLINK"], case_sensitive=False
-    ),
+    type=click.Choice(["PYTHON", "PYSPARK", "SPARK", "DOCKER"], case_sensitive=False),
     required=True,
     help="Job type.",
 )
@@ -179,7 +177,7 @@ def job_create(
     Args:
         ctx: Click context.
         name: Job name.
-        job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``/``FLINK``.
+        job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``.
         app_path: HopsFS path to the script or JAR.
         app_args: Optional argument string passed to the job.
     """
@@ -205,9 +203,7 @@ def job_create(
 @click.option(
     "--type",
     "job_type",
-    type=click.Choice(
-        ["PYTHON", "PYSPARK", "SPARK", "DOCKER", "FLINK"], case_sensitive=False
-    ),
+    type=click.Choice(["PYTHON", "PYSPARK", "SPARK", "DOCKER"], case_sensitive=False),
     default="PYTHON",
     show_default=True,
     help="Job type.",
@@ -258,7 +254,7 @@ def job_deploy(
         ctx: Click context.
         name: Job name (created or updated).
         script: Local file to upload, or an existing HopsFS path.
-        job_type: One of PYTHON/PYSPARK/SPARK/DOCKER/FLINK.
+        job_type: One of PYTHON/PYSPARK/SPARK/DOCKER.
         environment: Python environment name; the type default if omitted.
         app_args: Argument string passed to the job.
         cron: Schedule; Quartz or a shorthand. No schedule if omitted.

@@ -47,7 +47,7 @@ class FeatureMonitoringResultApi:
         self._feature_view_name = feature_view_name
         self._feature_view_version = feature_view_version
 
-    def create(
+    def _create(
         self,
         fm_result: FeatureMonitoringResult,
     ) -> FeatureMonitoringResult:
@@ -59,8 +59,8 @@ class FeatureMonitoringResultApi:
         Returns:
             the created feature monitoring result
         """
-        _client = client.get_instance()
-        path_params = self.build_path_params(
+        _client = client._get_instance()
+        path_params = self._build_path_params(
             project_id=_client._project_id,
         )
 
@@ -70,7 +70,7 @@ class FeatureMonitoringResultApi:
             _client._send_request("POST", path_params, headers=headers, data=payload)
         )
 
-    def delete(
+    def _delete(
         self,
         result_id: int,
     ) -> None:
@@ -79,19 +79,19 @@ class FeatureMonitoringResultApi:
         Parameters:
             result_id: ID of the feature monitoring result to delete.
         """
-        _client = client.get_instance()
-        path_params = self.build_path_params(
+        _client = client._get_instance()
+        path_params = self._build_path_params(
             project_id=_client._project_id,
         )
         path_params.append(result_id)
 
         _client._send_request("DELETE", path_params)
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.core.feature_monitoring_result.FeatureMonitoringResult",
         fallback_return=[],
     )
-    def get_by_config_id(
+    def _get_by_config_id(
         self,
         config_id: int,
         query_params: dict[str, str | list[str]] | None = None,
@@ -105,8 +105,8 @@ class FeatureMonitoringResultApi:
         Returns:
             fetched feature monitoring results attached to the Feature Group
         """
-        _client = client.get_instance()
-        path_params = self.build_path_params(
+        _client = client._get_instance()
+        path_params = self._build_path_params(
             project_id=_client._project_id,
         )
         path_params.append("byconfig")
@@ -117,7 +117,7 @@ class FeatureMonitoringResultApi:
             _client._send_request("GET", path_params, query_params, headers=headers)
         )
 
-    def get_by_id(
+    def _get_by_id(
         self,
         result_id: int,
     ) -> list[FeatureMonitoringResult]:
@@ -129,8 +129,8 @@ class FeatureMonitoringResultApi:
         Returns:
             fetched feature monitoring result attached to the Feature Group
         """
-        _client = client.get_instance()
-        path_params = self.build_path_params(
+        _client = client._get_instance()
+        path_params = self._build_path_params(
             project_id=_client._project_id,
         )
         path_params.append(result_id)
@@ -139,7 +139,7 @@ class FeatureMonitoringResultApi:
             _client._send_request("GET", path_params)
         )
 
-    def build_path_params(
+    def _build_path_params(
         self,
         project_id: int,
     ) -> list[str]:

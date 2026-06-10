@@ -234,7 +234,7 @@ class TestInferenceEndpoint:
         mocker_random_choice = mocker.patch("random.choice", return_value=None)
 
         # Act
-        _ = ie.get_any_host()
+        _ = ie._get_any_host()
 
         # Assert
         mocker_random_choice.assert_called_once_with(ie.hosts)
@@ -245,7 +245,7 @@ class TestInferenceEndpoint:
         mocker_random_choice = mocker.patch("random.choice", return_value=None)
 
         # Act
-        host = ie.get_any_host()
+        host = ie._get_any_host()
 
         # Assert
         assert host is None
@@ -265,7 +265,7 @@ class TestInferenceEndpoint:
         ie = inference_endpoint.InferenceEndpoint(type=None, hosts=None, ports=ports)
 
         # Act
-        port = ie.get_port(ports[0].name)
+        port = ie._get_port(ports[0].name)
 
         # Assert
         assert port == ports[0]
@@ -282,7 +282,7 @@ class TestInferenceEndpoint:
         ie = inference_endpoint.InferenceEndpoint(type=None, hosts=None, ports=ports)
 
         # Act
-        port = ie.get_port("not_found")
+        port = ie._get_port("not_found")
 
         # Assert
         assert port is None
@@ -292,7 +292,7 @@ class TestInferenceEndpoint:
         ie = inference_endpoint.InferenceEndpoint(type=None, hosts=None, ports=None)
 
         # Act
-        port = ie.get_port("not_found")
+        port = ie._get_port("not_found")
 
         # Assert
         assert port is None

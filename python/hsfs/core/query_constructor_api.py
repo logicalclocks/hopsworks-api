@@ -20,8 +20,8 @@ from hsfs.constructor import fs_query
 
 
 class QueryConstructorApi:
-    def construct_query(self, query, hqs=False):
-        _client = client.get_instance()
+    def _construct_query(self, query, hqs=False):
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "featurestores", "query"]
 
         query_params = {

@@ -34,17 +34,17 @@ class TestFeatureGroupApi:
         client_mock = Mock()
         client_mock.configure_mock(**{"_send_request.side_effect": side_effects})
         mocker.patch(
-            "hopsworks_common.client.get_instance",
+            "hopsworks_common.client._get_instance",
             return_value=client_mock,
         )
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
 
         print(client_mock.side_effect)
 
         # Act
-        stream_fg = fg_api.get(feature_store_id, "stream_fg", version=1)
-        external_fg = fg_api.get(feature_store_id, "external_fg", version=1)
-        spine_fg = fg_api.get(feature_store_id, "spine_fg", version=1)
+        stream_fg = fg_api._get(feature_store_id, "stream_fg", version=1)
+        external_fg = fg_api._get(feature_store_id, "external_fg", version=1)
+        spine_fg = fg_api._get(feature_store_id, "spine_fg", version=1)
 
         # Assert
         assert isinstance(stream_fg, fg_mod.FeatureGroup)

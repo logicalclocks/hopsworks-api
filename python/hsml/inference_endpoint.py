@@ -46,8 +46,8 @@ class InferenceEndpointPort:
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
-        kwargs["name"] = util.extract_field_from_json(json_decamelized, "name")
-        kwargs["number"] = util.extract_field_from_json(json_decamelized, "number")
+        kwargs["name"] = util._extract_field_from_json(json_decamelized, "name")
+        kwargs["number"] = util._extract_field_from_json(json_decamelized, "number")
         return kwargs
 
     def to_dict(self):
@@ -86,11 +86,11 @@ class InferenceEndpoint:
         self._hosts = hosts
         self._ports = ports
 
-    def get_any_host(self):
+    def _get_any_host(self):
         """Get any host available."""
         return random.choice(self._hosts) if self._hosts is not None else None
 
-    def get_port(self, name):
+    def _get_port(self, name):
         """Get port by name.
 
         Parameters:
@@ -122,9 +122,9 @@ class InferenceEndpoint:
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
-        kwargs["type"] = util.extract_field_from_json(json_decamelized, "type")
-        kwargs["hosts"] = util.extract_field_from_json(json_decamelized, "hosts")
-        kwargs["ports"] = util.extract_field_from_json(
+        kwargs["type"] = util._extract_field_from_json(json_decamelized, "type")
+        kwargs["hosts"] = util._extract_field_from_json(json_decamelized, "hosts")
+        kwargs["ports"] = util._extract_field_from_json(
             obj=json_decamelized, fields="ports", as_instance_of=InferenceEndpointPort
         )
         return kwargs
@@ -155,7 +155,7 @@ class InferenceEndpoint:
         return f"InferenceEndpoint(type: {self._type!r})"
 
 
-def get_endpoint_by_type(endpoints, type) -> InferenceEndpoint:
+def _get_endpoint_by_type(endpoints, type) -> InferenceEndpoint:
     for endpoint in endpoints:
         if endpoint.type == type:
             return endpoint

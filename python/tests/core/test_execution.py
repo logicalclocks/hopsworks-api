@@ -46,7 +46,7 @@ class TestExecution:
         assert len(ex_list) == 0
 
     def test_app_url_when_running_with_monitoring(self, mocker):
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._base_url = "https://myhost:443"
 
         ex = Execution(
@@ -58,7 +58,7 @@ class TestExecution:
         assert ex.app_url == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/"
 
     def test_app_url_none_when_not_running(self, mocker):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         ex = Execution(
             state="FINISHED",
@@ -69,14 +69,14 @@ class TestExecution:
         assert ex.app_url is None
 
     def test_app_url_none_when_no_monitoring(self, mocker):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         ex = Execution(state="RUNNING", monitoring=None, job=mock.Mock())
 
         assert ex.app_url is None
 
     def test_app_url_none_when_monitoring_has_no_app_url(self, mocker):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         ex = Execution(
             state="RUNNING", monitoring={"otherKey": "value"}, job=mock.Mock()
@@ -85,7 +85,7 @@ class TestExecution:
         assert ex.app_url is None
 
     def test_app_url_strips_trailing_slash_from_base_url(self, mocker):
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._base_url = "https://myhost:443/"
 
         ex = Execution(

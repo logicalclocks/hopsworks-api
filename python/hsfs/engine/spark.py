@@ -85,10 +85,10 @@ try:
 
     if pd.__version__ >= "2.0.0" and pyspark.__version__ < "3.2.3":
 
-        def iteritems(self):
+        def _iteritems(self):
             return self.items()
 
-        pd.DataFrame.iteritems = iteritems
+        pd.DataFrame.iteritems = _iteritems
 except ImportError:
     pass
 
@@ -97,11 +97,11 @@ import logging
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.spark_connect_utils import (
-    is_spark_connect_env,
-    is_spark_connect_session,
-    is_spark_dataframe,
+    _is_spark_connect_env,
+    _is_spark_connect_session,
+    _is_spark_dataframe,
 )
-from hopsworks_common.util import generate_fully_qualified_feature_name
+from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
     feature,
     feature_view,
@@ -120,7 +120,7 @@ from hsfs.core import (
 )
 from hsfs.core.constants import GE_MAJOR, HAS_AVRO, HAS_GREAT_EXPECTATIONS
 from hsfs.core.feature_logging import LoggingMetaData
-from hsfs.decorators import uses_great_expectations
+from hsfs.decorators import _uses_great_expectations
 from hsfs.storage_connector import StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
@@ -147,14 +147,14 @@ class Engine:
         Subclasses can override to customize the session builder
         (e.g. skip Hive support or add Delta extensions).
         """
-        if is_spark_connect_env():
+        if _is_spark_connect_env():
             return SparkSession.builder.getOrCreate()
         return SparkSession.builder.enableHiveSupport().getOrCreate()
 
     def __init__(self):
         self._spark_session = self._create_spark_session()
 
-        self._is_connect = is_spark_connect_session(self._spark_session)
+        self._is_connect = _is_spark_connect_session(self._spark_session)
 
         if self._is_connect:
             self._spark_context = None
@@ -214,7 +214,7 @@ class Engine:
         else:
             self._spark_context._jsc.hadoopConfiguration().unset(key)
 
-    def sql(
+    def _sql(
         self,
         sql_query,
         feature_store,
@@ -224,18 +224,18 @@ class Engine:
         schema=None,
     ):
         if self._metrics:
-            self._metrics.snapshot()
+            self._metrics._snapshot()
         if not connector:
             result_df = self._sql_offline(sql_query, feature_store)
         else:
             result_df = connector.read(sql_query, None, read_options, None)
 
-        self.set_job_group("", "")
+        self._set_job_group("", "")
         if self._metrics:
-            self._metrics.report("sql")
+            self._metrics._report("sql")
         return self._return_dataframe_type(result_df, dataframe_type)
 
-    def is_flyingduck_query_supported(self, query, read_options=None):
+    def _is_flyingduck_query_supported(self, query, read_options=None):
         return False  # we do not support flyingduck on pyspark clients
 
     def _sql_offline(self, sql_query, feature_store):
@@ -250,12 +250,12 @@ class Engine:
             self._spark_session.sql(f"USE {feature_store}")
         return self._spark_session.sql(sql_query)
 
-    def show(self, sql_query, feature_store, n, online_conn, read_options=None):
-        return self.sql(
+    def _show(self, sql_query, feature_store, n, online_conn, read_options=None):
+        return self._sql(
             sql_query, feature_store, online_conn, "default", read_options
         ).show(n)
 
-    def read_vector_db(
+    def _read_vector_db(
         self,
         feature_group: fg_mod.FeatureGroup,
         n: int = None,
@@ -272,12 +272,12 @@ class Engine:
         df = pd.DataFrame(results, columns=feature_names, index=None)
         return self._return_dataframe_type(df, dataframe_type)
 
-    def set_job_group(self, group_id, description):
+    def _set_job_group(self, group_id, description):
         if self._is_connect:
             return
         self._spark_session.sparkContext.setJobGroup(group_id, description)
 
-    def register_external_temporary_table(self, external_fg, alias):
+    def _register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
             external_dataset = external_fg.data_source.storage_connector.read(
                 external_fg.data_source.query,
@@ -287,13 +287,32 @@ class Engine:
                     external_fg.data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
+            if (
+                external_fg.data_source.storage_connector.type
+                == StorageConnector.MONGODB
+            ):
+                # The query constructor response omits features from the
+                # on-demand FG payload. Fetch the full FG to get column_name
+                # mappings so we can rename source fields to feature names.
+                # Needed for MongoDB since the field names cannot be set using
+                # the query constructor's select statement (unlike with file-based
+                # sources where we can use "SELECT col AS feature_name").
+                full_fg = external_fg._feature_group_engine._feature_group_api._get(
+                    external_fg.feature_store_id, external_fg.name, external_fg.version
+                )
+                columns = full_fg.columns if full_fg else []
+                for feat in columns:
+                    if feat.column_name != feat.name:
+                        external_dataset = external_dataset.withColumnRenamed(
+                            feat.column_name, feat.name
+                        )
         else:
             external_dataset = external_fg.dataframe
 
         external_dataset.createOrReplaceTempView(alias)
         return external_dataset
 
-    def register_hudi_temporary_table(
+    def _register_hudi_temporary_table(
         self, hudi_fg_alias, feature_store_id, feature_store_name, read_options
     ):
         if self._is_connect:
@@ -310,12 +329,12 @@ class Engine:
             self._spark_session,
         )
 
-        hudi_engine_instance.register_temporary_table(
+        hudi_engine_instance._register_temporary_table(
             hudi_fg_alias,
             read_options,
         )
 
-    def register_delta_temporary_table(
+    def _register_delta_temporary_table(
         self,
         delta_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
         feature_store_id: int,
@@ -331,7 +350,7 @@ class Engine:
             spark_context=self._spark_context,
         )
 
-        delta_engine_instance.register_temporary_table(
+        delta_engine_instance._register_temporary_table(
             delta_fg_alias=delta_fg_alias,
             read_options=read_options,
             is_cdc_query=is_cdc_query,
@@ -342,7 +361,7 @@ class Engine:
             return dataframe
 
         # Converting to pandas dataframe if return type is not spark
-        if is_spark_dataframe(dataframe):
+        if _is_spark_dataframe(dataframe):
             dataframe = dataframe.toPandas()
 
         if dataframe_type.lower() == "pandas":
@@ -356,13 +375,13 @@ class Engine:
             f"Dataframe type `{dataframe_type}` not supported on this platform."
         )
 
-    def convert_to_default_dataframe(self, dataframe, column_names=None):
+    def _convert_to_default_dataframe(self, dataframe, column_names=None):
         """Normalize ``dataframe`` to a Spark DataFrame ready for ingestion.
 
         Accepts ``list``, ``numpy.ndarray``, ``pandas.DataFrame``, ``RDD``,
         and Spark DataFrames. Both classic ``pyspark.sql.DataFrame`` and
         Spark Connect ``pyspark.sql.connect.dataframe.DataFrame`` are
-        supported via ``is_spark_dataframe``; the all-nullable schema
+        supported via ``_is_spark_dataframe``; the all-nullable schema
         rebuild uses ``DataFrame.to(schema)`` which works in both modes.
 
         ``RDD`` inputs are rejected when running under Spark Connect — the
@@ -377,11 +396,11 @@ class Engine:
             all-nullable schema, or ``None`` for the spine sentinel.
         """
         if isinstance(dataframe, list):
-            dataframe = self.convert_list_to_spark_dataframe(dataframe, column_names)
+            dataframe = self._convert_list_to_spark_dataframe(dataframe, column_names)
         elif HAS_NUMPY and isinstance(dataframe, np.ndarray):
-            dataframe = self.convert_numpy_to_spark_dataframe(dataframe, column_names)
+            dataframe = self._convert_numpy_to_spark_dataframe(dataframe, column_names)
         elif HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
-            dataframe = self.convert_pandas_to_spark_dataframe(dataframe)
+            dataframe = self._convert_pandas_to_spark_dataframe(dataframe)
         elif isinstance(dataframe, RDD):
             if self._is_connect:
                 raise FeatureStoreException(
@@ -390,12 +409,12 @@ class Engine:
                 )
             dataframe = dataframe.toDF()
 
-        if is_spark_dataframe(dataframe):
+        if _is_spark_dataframe(dataframe):
             upper_case_features = [
-                c for c in dataframe.columns if util.contains_uppercase(c)
+                c for c in dataframe.columns if util._contains_uppercase(c)
             ]
             space_features = [
-                c for c in dataframe.columns if util.contains_whitespace(c)
+                c for c in dataframe.columns if util._contains_whitespace(c)
             ]
             if len(upper_case_features) > 0:
                 warnings.warn(
@@ -413,7 +432,7 @@ class Engine:
                 )
 
             lowercase_dataframe = dataframe.select(
-                [col(x).alias(util.autofix_feature_name(x)) for x in dataframe.columns]
+                [col(x).alias(util._autofix_feature_name(x)) for x in dataframe.columns]
             )
             # for streaming dataframes this will be handled in DeltaStreamerTransformer.java class
             if not lowercase_dataframe.isStreaming:
@@ -448,16 +467,16 @@ class Engine:
         )
 
     @staticmethod
-    def utc_disguised_as_local(dt):
+    def _utc_disguised_as_local(dt):
         local_tz = tzlocal.get_localzone()
         utc = timezone.utc
         if not dt.tzinfo:
             dt = dt.replace(tzinfo=utc)
         return dt.astimezone(utc).replace(tzinfo=local_tz)
 
-    def convert_list_to_spark_dataframe(self, dataframe, column_names=None):
+    def _convert_list_to_spark_dataframe(self, dataframe, column_names=None):
         if HAS_NUMPY:
-            return self.convert_numpy_to_spark_dataframe(
+            return self._convert_numpy_to_spark_dataframe(
                 np.array(dataframe), column_names=column_names
             )
         try:
@@ -486,10 +505,10 @@ class Engine:
             for n_col in range(num_cols):
                 c = "col_" + str(n_col) if not column_names else column_names[n_col]
                 dataframe_dict[c] = [dataframe[i][n_col] for i in range(len(dataframe))]
-            return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
+            return self._convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
         for i in range(len(dataframe)):
             dataframe[i] = [
-                self.utc_disguised_as_local(d) if isinstance(d, datetime) else d
+                self._utc_disguised_as_local(d) if isinstance(d, datetime) else d
                 for d in dataframe[i]
             ]
         return self._spark_session.createDataFrame(
@@ -500,7 +519,7 @@ class Engine:
             ],
         )
 
-    def convert_numpy_to_spark_dataframe(self, dataframe, column_names=None):
+    def _convert_numpy_to_spark_dataframe(self, dataframe, column_names=None):
         is_list_of_dict = (
             all(isinstance(row, dict) for row in dataframe)
             if len(dataframe) > 0
@@ -528,14 +547,17 @@ class Engine:
                     dataframe_dict[c] = dataframe[:, n_col]
             else:
                 dataframe_dict = dataframe.tolist()
-            return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
+            return self._convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
         # convert timestamps to current timezone
         for n_col in range(num_cols):
             if dataframe[:, n_col].dtype == np.dtype("datetime64[ns]"):
                 # set the timezone to the client's timezone because that is
                 # what spark expects.
                 dataframe[:, n_col] = np.array(
-                    [self.utc_disguised_as_local(d.item()) for d in dataframe[:, n_col]]
+                    [
+                        self._utc_disguised_as_local(d.item())
+                        for d in dataframe[:, n_col]
+                    ]
                 )
         return self._spark_session.createDataFrame(
             dataframe.tolist(),
@@ -545,7 +567,7 @@ class Engine:
             ],
         )
 
-    def convert_pandas_to_spark_dataframe(self, dataframe):
+    def _convert_pandas_to_spark_dataframe(self, dataframe):
         # convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         # make shallow copy so the original df does not get changed
@@ -564,7 +586,7 @@ class Engine:
                 )
         return self._spark_session.createDataFrame(dataframe_copy)
 
-    def save_dataframe(
+    def _save_dataframe(
         self,
         feature_group,
         dataframe,
@@ -576,7 +598,7 @@ class Engine:
         validation_id=None,
     ):
         if self._metrics:
-            self._metrics.snapshot()
+            self._metrics._snapshot()
         try:
             # ExternalFeatureGroups have no offline storage, so offline writes are skipped.
             # FeatureGroups with stream=True use the same batch insert logic as non-stream
@@ -599,9 +621,9 @@ class Engine:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
         finally:
             if self._metrics:
-                self._metrics.report("save_dataframe")
+                self._metrics._report("save_dataframe")
 
-    def save_stream_dataframe(
+    def _save_stream_dataframe(
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         dataframe,
@@ -612,7 +634,7 @@ class Engine:
         checkpoint_dir: str | None,
         write_options: dict[str, Any] | None,
     ):
-        write_options = kafka_engine.get_kafka_config(
+        write_options = kafka_engine._get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
@@ -632,7 +654,7 @@ class Engine:
             .option(
                 "checkpointLocation",
                 "/Projects/"
-                + client.get_instance()._project_name
+                + client._get_instance()._project_name
                 + "/Resources/"
                 + query_name
                 + "-checkpoint"
@@ -681,7 +703,7 @@ class Engine:
                 self._spark_context,
             )
 
-            hudi_engine_instance.save_hudi_fg(
+            hudi_engine_instance._save_hudi_fg(
                 dataframe, self.APPEND, operation, write_options, validation_id
             )
         elif feature_group.time_travel_format == "DELTA":
@@ -692,7 +714,7 @@ class Engine:
                 self._spark_session,
                 None if self._is_connect else self._spark_context,
             )
-            delta_engine_instance.save_delta_fg(
+            delta_engine_instance._save_delta_fg(
                 dataframe, write_options, validation_id, operation=operation
             )
         else:
@@ -741,7 +763,7 @@ class Engine:
         return dataframe
 
     def _save_online_dataframe(self, feature_group, dataframe, write_options):
-        write_options = kafka_engine.get_kafka_config(
+        write_options = kafka_engine._get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
@@ -787,7 +809,7 @@ class Engine:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
-                for key, value in kafka_engine.get_headers(
+                for key, value in kafka_engine._get_headers(
                     feature_group, num_entries, options
                 ).items()
             ]
@@ -934,7 +956,7 @@ class Engine:
 
         return decoded_dataframe
 
-    def get_training_data(
+    def _get_training_data(
         self,
         training_dataset: training_dataset.TrainingDataset,
         feature_view_obj: feature_view.FeatureView,
@@ -961,7 +983,7 @@ class Engine:
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
         """
-        return self.write_training_dataset(
+        return self._write_training_dataset(
             training_dataset,
             query_obj,
             read_options,
@@ -973,7 +995,7 @@ class Engine:
             transformation_context=transformation_context,
         )
 
-    def split_labels(self, df, labels, dataframe_type):
+    def _split_labels(self, df, labels, dataframe_type):
         if labels:
             if isinstance(df, pd.DataFrame):
                 labels_df = df[labels]
@@ -987,10 +1009,10 @@ class Engine:
             )
         return self._return_dataframe_type(df, dataframe_type), None
 
-    def drop_columns(self, df, drop_cols):
+    def _drop_columns(self, df, drop_cols):
         return df.drop(*drop_cols)
 
-    def write_training_dataset(
+    def _write_training_dataset(
         self,
         training_dataset: training_dataset.TrainingDataset,
         query_obj: query.Query,
@@ -1020,7 +1042,7 @@ class Engine:
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
         """
-        write_options = self.write_options(
+        write_options = self._write_options(
             training_dataset.data_format, user_write_options
         )
         if read_options is None:
@@ -1028,18 +1050,18 @@ class Engine:
 
         if len(training_dataset.splits) == 0:
             if isinstance(query_obj, query.Query):
-                dataset = self.convert_to_default_dataframe(
+                dataset = self._convert_to_default_dataframe(
                     query_obj.read(read_options=read_options)
                 )
             else:
                 raise ValueError("Dataset should be a query.")
 
             # if training_dataset_version is None:
-            transformation_function_engine.TransformationFunctionEngine.compute_and_set_feature_statistics(
+            transformation_function_engine.TransformationFunctionEngine._compute_and_set_feature_statistics(
                 training_dataset, feature_view_obj, dataset
             )
             # else:
-            #    transformation_function_engine.TransformationFunctionEngine.get_and_set_feature_statistics(
+            #    transformation_function_engine.TransformationFunctionEngine._get_and_set_feature_statistics(
             #        training_dataset, feature_view_obj, training_dataset_version
             #    )
 
@@ -1067,11 +1089,11 @@ class Engine:
             split_dataset[key] = split_dataset[key].cache()
 
         if training_dataset_version is None:
-            transformation_function_engine.TransformationFunctionEngine.compute_and_set_feature_statistics(
+            transformation_function_engine.TransformationFunctionEngine._compute_and_set_feature_statistics(
                 training_dataset, feature_view_obj, split_dataset
             )
         else:
-            transformation_function_engine.TransformationFunctionEngine.get_and_set_feature_statistics(
+            transformation_function_engine.TransformationFunctionEngine._get_and_set_feature_statistics(
                 training_dataset, feature_view_obj, training_dataset_version
             )
 
@@ -1288,7 +1310,7 @@ class Engine:
         transformation_context: dict[str, Any] = None,
     ):
         # apply transformation functions (they are applied separately to each split)
-        feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
+        feature_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
             transformation_functions=transformation_functions,
             data=feature_dataframe,
             online=False,
@@ -1300,7 +1322,7 @@ class Engine:
         if data_format.lower() == "tsv":
             data_format = "csv"
 
-        path = self.setup_storage_connector(storage_connector, path)
+        path = self._setup_storage_connector(storage_connector, path)
 
         feature_dataframe.write.format(data_format).options(**write_options).mode(
             save_mode
@@ -1309,7 +1331,7 @@ class Engine:
         feature_dataframe.unpersist()
         return None
 
-    def read(
+    def _read(
         self, storage_connector, data_format, read_options, location, dataframe_type
     ):
         if not data_format:
@@ -1321,6 +1343,10 @@ class Engine:
                 # by their own, they don't need /**
                 # for bigquery, argument location can be a SQL query
                 path = location
+            elif os.path.splitext(location.rstrip("/"))[-1]:
+                # Path already points to a specific file (has an extension) —
+                # appending /** would make it a non-existent directory glob.
+                path = location
             else:
                 path = location + "/**"
 
@@ -1330,7 +1356,7 @@ class Engine:
         else:
             path = None
 
-        path = self.setup_storage_connector(storage_connector, path)
+        path = self._setup_storage_connector(storage_connector, path)
 
         return self._return_dataframe_type(
             self._spark_session.read.format(data_format)
@@ -1339,7 +1365,57 @@ class Engine:
             dataframe_type=dataframe_type,
         )
 
-    def read_stream(
+    def _read_jdbc_on_driver(self, options, dataframe_type):
+        # Wallet files exist on the driver only — read via JVM DriverManager
+        # directly on the driver process, collect into pandas, then wrap in a
+        # Spark DataFrame.  Spark always dispatches jdbc tasks to executors
+        # (even with numPartitions=1), so spark.read.jdbc cannot be used here.
+        import pandas as pd
+
+        jvm = self._jvm
+        props = jvm.java.util.Properties()
+        for k, v in options.items():
+            if k not in ("url", "query", "dbtable"):
+                props.setProperty(k, str(v))
+
+        url = options["url"]
+        sql = options.get("query") or f"SELECT * FROM {options['dbtable']}"
+
+        from pyspark.sql.types import StringType, StructField, StructType
+
+        conn = jvm.java.sql.DriverManager.getConnection(url, props)
+        try:
+            stmt = conn.createStatement()
+            rs = stmt.executeQuery(sql)
+            meta = rs.getMetaData()
+            col_count = meta.getColumnCount()
+            columns = [meta.getColumnLabel(i + 1) for i in range(col_count)]
+            rows = []
+            while rs.next():
+                row = []
+                for i in range(col_count):
+                    val = rs.getObject(i + 1)
+                    row.append(None if val is None else str(val))
+                rows.append(row)
+            rs.close()
+            stmt.close()
+        finally:
+            conn.close()
+
+        # All values are strings — use an explicit all-string schema so
+        # nullable/all-null columns don't cause inference to fail.
+        # Type coercion happens when Spark executes SQL against the temp view.
+        schema = StructType(
+            [StructField(col, StringType(), nullable=True) for col in columns]
+        )
+
+        pdf = pd.DataFrame(rows, columns=columns)
+        return self._return_dataframe_type(
+            self._spark_session.createDataFrame(pdf, schema=schema),
+            dataframe_type=dataframe_type,
+        )
+
+    def _read_stream(
         self,
         storage_connector,
         message_format,
@@ -1398,7 +1474,7 @@ class Engine:
             return stream.load()
         return stream.load().select("key", "value")
 
-    def add_file(self, file, distribute=True):
+    def _add_file(self, file, distribute=True):
         if not file:
             return file
 
@@ -1421,7 +1497,9 @@ class Engine:
         if client._is_external() or not distribute or self._is_connect:
             tmp_file = f"/tmp/{file_name}"
             _logger.info("Reading key file from storage connector.")
-            response = self._dataset_api.read_content(file, util.get_dataset_type(file))
+            response = self._dataset_api.read_content(
+                file, util._get_dataset_type(file)
+            )
 
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
@@ -1440,7 +1518,7 @@ class Engine:
         # Remove the 'file://' prefix for local file paths
         return file[7:]
 
-    def profile(
+    def _profile(
         self,
         dataframe,
         relevant_columns,
@@ -1472,7 +1550,7 @@ class Engine:
             else:
                 pdf = dataframe.toPandas()
             python_engine = PythonEngine.__new__(PythonEngine)
-            return python_engine.profile(
+            return python_engine._profile(
                 pdf, relevant_columns, correlations, histograms, exact_uniqueness
             )
         return self._jvm.com.logicalclocks.hsfs.spark.engine.SparkEngine.getInstance().profile(
@@ -1483,8 +1561,8 @@ class Engine:
             exact_uniqueness,
         )
 
-    @uses_great_expectations
-    def validate_with_great_expectations(
+    @_uses_great_expectations
+    def _validate_with_great_expectations(
         self,
         dataframe: DataFrame,  # noqa: F821
         expectation_suite: great_expectations.core.ExpectationSuite,  # noqa: F821
@@ -1553,7 +1631,7 @@ class Engine:
         )
         return validator.validate(**ge_validate_kwargs)
 
-    def write_options(self, data_format, provided_options):
+    def _write_options(self, data_format, provided_options):
         if data_format.lower() == "tfrecords" or data_format.lower() == "tfrecord":
             options = {"recordType": "Example"}
             options.update(provided_options)
@@ -1568,7 +1646,7 @@ class Engine:
             options.update(provided_options)
         return options
 
-    def read_options(self, data_format, provided_options):
+    def _read_options(self, data_format, provided_options):
         if provided_options is None:
             provided_options = {}
         if data_format.lower() == "tfrecords":
@@ -1588,7 +1666,7 @@ class Engine:
             options.update(provided_options)
         return options
 
-    def parse_schema_feature_group(
+    def _parse_schema_feature_group(
         self,
         dataframe,
         time_travel_format=None,
@@ -1598,7 +1676,7 @@ class Engine:
 
         using_hudi = time_travel_format == "HUDI"
         for feat in dataframe.schema:
-            name = util.autofix_feature_name(feat.name)
+            name = util._autofix_feature_name(feat.name)
             try:
                 converted_type = Engine._convert_spark_type_to_offline_type(
                     feat.dataType, using_hudi
@@ -1612,15 +1690,15 @@ class Engine:
             )
         return features
 
-    def parse_schema_training_dataset(self, dataframe):
+    def _parse_schema_training_dataset(self, dataframe):
         return [
             training_dataset_feature.TrainingDatasetFeature(
-                util.autofix_feature_name(feat.name), feat.dataType.simpleString()
+                util._autofix_feature_name(feat.name), feat.dataType.simpleString()
             )
             for feat in dataframe.schema
         ]
 
-    def setup_storage_connector(self, storage_connector, path=None):
+    def _setup_storage_connector(self, storage_connector, path=None):
         if storage_connector.type == StorageConnector.S3:
             return self._setup_s3_hadoop_conf(storage_connector, path)
         if storage_connector.type == StorageConnector.ADLS:
@@ -1745,7 +1823,7 @@ class Engine:
 
         return path
 
-    def is_spark_dataframe(self, dataframe):
+    def _is_spark_dataframe(self, dataframe):
         """Return True for any Spark DataFrame, classic or Spark Connect.
 
         Delegates to the shared predicate in
@@ -1759,9 +1837,9 @@ class Engine:
             True for both ``pyspark.sql.DataFrame`` and
             ``pyspark.sql.connect.dataframe.DataFrame``; False otherwise.
         """
-        return is_spark_dataframe(dataframe)
+        return _is_spark_dataframe(dataframe)
 
-    def update_table_schema(self, feature_group):
+    def _update_table_schema(self, feature_group):
         if feature_group.time_travel_format == "DELTA":
             self._add_cols_to_delta_table(feature_group)
         else:
@@ -1778,7 +1856,7 @@ class Engine:
                     _feature.name, lit(None).cast(_feature.type)
                 )
 
-        self.save_dataframe(
+        self._save_dataframe(
             feature_group,
             dataframe.limit(0),
             "upsert",
@@ -1809,7 +1887,7 @@ class Engine:
             location
         )
 
-    def shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
+    def _shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
         return dataframe.copy(deep=False)
 
     def _apply_transformation_function(
@@ -1863,7 +1941,7 @@ class Engine:
             ):
                 dropped_features.update(hopsworks_udf.output_column_names)
 
-            pandas_udf = hopsworks_udf.get_udf()
+            pandas_udf = hopsworks_udf._get_udf()
             output_col_name = hopsworks_udf.output_column_names[0]
 
             transformations.append(pandas_udf)
@@ -1893,7 +1971,7 @@ class Engine:
             ],
         ).select(*untransformed_columns, *explode_name)
 
-    def extract_logging_metadata(
+    def _extract_logging_metadata(
         self,
         untransformed_features: DataFrame,
         transformed_features: DataFrame,
@@ -1921,13 +1999,13 @@ class Engine:
             request_parameters: DataFrame containing request parameter values, if any.
         """
         # Extract primary keys and event time from fully qualified names
-        fully_qualified_root_fg_event_time = generate_fully_qualified_feature_name(
+        fully_qualified_root_fg_event_time = _generate_fully_qualified_feature_name(
             feature_view.query._left_feature_group,
             feature_view.query._left_feature_group.event_time,
         )
 
         fully_qualified_serving_key_mapper = {
-            generate_fully_qualified_feature_name(
+            _generate_fully_qualified_feature_name(
                 key._feature_group, key.feature_name
             ): key.feature_name
             for key in feature_view.serving_keys
@@ -1978,10 +2056,10 @@ class Engine:
             dropped_columns.extend(feature_view._fully_qualified_primary_keys)
 
         if dropped_columns:
-            untransformed_features = self.drop_columns(
+            untransformed_features = self._drop_columns(
                 untransformed_features, drop_cols=dropped_columns
             )
-            transformed_features = self.drop_columns(
+            transformed_features = self._drop_columns(
                 transformed_features, drop_cols=dropped_columns
             )
 
@@ -2022,7 +2100,7 @@ class Engine:
 
         # The JSON key file of the service account used for GCS
         # access when google.cloud.auth.service.account.enable is true.
-        local_path = self.add_file(storage_connector.key_path)
+        local_path = self._add_file(storage_connector.key_path)
         with open(local_path) as f_in:
             jsondata = json.load(f_in)
         self._set_hadoop_conf(PROPERTY_ACCT_EMAIL, jsondata["client_email"])
@@ -2046,11 +2124,11 @@ class Engine:
 
         return path
 
-    def create_empty_df(self, streaming_df):
+    def _create_empty_df(self, streaming_df):
         return self._spark_session.createDataFrame([], streaming_df.schema)
 
     @staticmethod
-    def get_unique_values(feature_dataframe, feature_name):
+    def _get_unique_values(feature_dataframe, feature_name):
         unique_values = feature_dataframe.select(feature_name).distinct().collect()
         return [field[feature_name] for field in unique_values]
 
@@ -2117,7 +2195,7 @@ class Engine:
         )
 
     @staticmethod
-    def cast_columns(df, schema, online=False):
+    def _cast_columns(df, schema, online=False):
         pyspark_schema = {
             _feat.name: Engine._convert_offline_type_to_spark_type(_feat.type)
             for _feat in schema
@@ -2127,7 +2205,7 @@ class Engine:
         return df
 
     @staticmethod
-    def is_connector_type_supported(type):
+    def _is_connector_type_supported(type):
         return True
 
     @staticmethod
@@ -2152,7 +2230,7 @@ class Engine:
             f"Expecting {len(cols)} features/labels but {provided_len} provided."
         )
 
-    def get_feature_logging_df(
+    def _get_feature_logging_df(
         self,
         logging_data: pd.DataFrame
         | pyspark.sql.DataFrame
@@ -2255,7 +2333,7 @@ class Engine:
         if logging_data is not None:
             try:
                 logging_df = (
-                    self.convert_to_default_dataframe(logging_data, logging_features)
+                    self._convert_to_default_dataframe(logging_data, logging_features)
                     if logging_data is not None
                     else None
                 )
@@ -2286,7 +2364,7 @@ class Engine:
                 continue
             try:
                 df = (
-                    self.convert_to_default_dataframe(data, feature_names)
+                    self._convert_to_default_dataframe(data, feature_names)
                     if data is not None or feature_names
                     else None
                 )
@@ -2471,14 +2549,14 @@ class Engine:
         )
 
     @staticmethod
-    def read_feature_log(query, time_col):
+    def _read_feature_log(query, time_col):
         df = query.read()
         return df.drop("log_id", time_col)
 
-    def get_spark_version(self):
+    def _get_spark_version(self):
         return self._spark_session.version
 
-    def check_supported_dataframe(self, dataframe: Any) -> bool | None:
+    def _check_supported_dataframe(self, dataframe: Any) -> bool | None:
         """Check if a dataframe is supported by the engine.
 
         Both Pandas and Spark dataframes are supported in the Spark Engine.
@@ -2489,7 +2567,7 @@ class Engine:
         Returns:
             `True` if the dataframe is supported, `False` otherwise.
         """
-        if is_spark_dataframe(dataframe) or isinstance(dataframe, pd.DataFrame):
+        if _is_spark_dataframe(dataframe) or isinstance(dataframe, pd.DataFrame):
             return True
         return None
 

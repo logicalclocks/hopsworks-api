@@ -47,8 +47,8 @@ def _make_tf(udf_fn, stats: FeatureDescriptiveStatistics):
 
 def _apply(tf, df, context: dict | None = None):
     engine = python_engine.Engine()
-    hopsworks_engine.set_instance(engine=engine, engine_type="python")
-    return TransformationFunctionEngine.apply_transformation_functions(
+    hopsworks_engine._set_instance(engine=engine, engine_type="python")
+    return TransformationFunctionEngine._apply_transformation_functions(
         transformation_functions=[tf],
         data=df,
         transformation_context=context,

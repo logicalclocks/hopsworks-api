@@ -54,6 +54,45 @@ def first_line(value: str | None, empty: str = "-") -> str:
     return text.splitlines()[0]
 
 
+def read_tags(obj: Any) -> dict[str, Any]:
+    """Read and flatten an entity's tags, returning {} when unavailable.
+
+    Calls the entity's ``get_tags()`` and normalizes SDK ``Tag`` objects to
+    their values.
+    A missing accessor or a backend error yields an empty mapping so callers
+    can show tags inline without risking the whole command.
+
+    Args:
+        obj: A feature group, feature view, or model exposing ``get_tags``.
+
+    Returns:
+        A mapping of tag name to value, empty when none or on error.
+    """
+    getter = getattr(obj, "get_tags", None)
+    if getter is None:
+        return {}
+    try:
+        raw = getter()
+    except Exception:  # noqa: BLE001 - tags are best-effort metadata
+        return {}
+    return {name: getattr(t, "value", t) for name, t in (raw or {}).items()}
+
+
+def format_mapping(values: Any, empty: str = "-") -> str:
+    """Render a small mapping as ``key=value`` pairs for a one-line cell.
+
+    Args:
+        values: A mapping (or falsy value) to render.
+        empty: Fallback returned when the mapping is empty.
+
+    Returns:
+        A comma-separated ``key=value`` string, or ``empty``.
+    """
+    if not values:
+        return empty
+    return ", ".join(f"{k}={v}" for k, v in values.items())
+
+
 def set_json_mode(enabled: bool) -> None:
     """Toggle JSON mode for the current process.
 

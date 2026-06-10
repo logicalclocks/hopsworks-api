@@ -88,7 +88,7 @@ from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
-from hsfs.decorators import typechecked, uses_great_expectations
+from hsfs.decorators import _uses_great_expectations, typechecked
 from hsfs.embedding import EmbeddingIndex
 from hsfs.online_config import OnlineConfig
 from hsfs.statistics_config import StatisticsConfig
@@ -264,7 +264,7 @@ class FeatureGroupBase:
 
             if online_disk:
                 self._online_config.table_space = (
-                    self._variable_api.get_featurestore_online_tablespace()
+                    self._variable_api._get_featurestore_online_tablespace()
                 )
             else:
                 # An empty string is interpreted as don't set table space, while None uses the cluster default
@@ -336,7 +336,7 @@ class FeatureGroupBase:
             )
 
     @public
-    def delete(self) -> None:
+    def delete(self, force: bool = False, delete_feature_views: bool = False) -> None:
         """Drop the entire feature group along with its feature data.
 
         Example:
@@ -357,6 +357,11 @@ class FeatureGroupBase:
         Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the feature group **and** all the feature data in offline and online storage associated with it.
 
+        Parameters:
+            force: When True, delete the feature group even if feature views depend on it, leaving those feature views in place (degraded) rather than failing.
+                When False, deletion fails if the feature group is used by a feature view.
+            delete_feature_views: When True, also delete the feature views that depend on this feature group, along with their training data.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
@@ -365,7 +370,9 @@ class FeatureGroupBase:
             util.JobWarning,
             stacklevel=1,
         )
-        self._feature_group_engine.delete(self)
+        self._feature_group_engine._delete(
+            self, force=force, delete_feature_views=delete_feature_views
+        )
 
     @public
     def select_all(
@@ -715,7 +722,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.add_tag(self, name, value)
+        self._feature_group_engine._add_tag(self, name, value)
 
     @public
     def delete_tag(self, name: str) -> None:
@@ -738,7 +745,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.delete_tag(self, name)
+        self._feature_group_engine._delete_tag(self, name)
 
     @public
     def get_tag(self, name: str) -> tag.Tag | None:
@@ -764,7 +771,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_engine.get_tag(self, name)
+        return self._feature_group_engine._get_tag(self, name)
 
     @public
     def get_tags(self) -> dict[str, tag.Tag]:
@@ -776,7 +783,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_engine.get_tags(self)
+        return self._feature_group_engine._get_tags(self)
 
     @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
@@ -792,8 +799,9 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_engine.get_parent_feature_groups(self)
+        return self._feature_group_engine._get_parent_feature_groups(self)
 
+    @public
     def get_storage_connector_provenance(self) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
@@ -810,7 +818,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_engine.get_storage_connector_provenance(self)
+        return self._feature_group_engine._get_storage_connector_provenance(self)
 
     @public
     def get_data_source_provenance(self) -> explicit_provenance.Links | None:
@@ -827,8 +835,9 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        return self._feature_group_engine.get_storage_connector_provenance(self)
+        return self._feature_group_engine._get_storage_connector_provenance(self)
 
+    @public
     def get_storage_connector(self) -> sc.StorageConnector | None:
         """Get the storage connector using this feature group, based on explicit provenance.
 
@@ -899,7 +908,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_engine.get_generated_feature_views(self)
+        return self._feature_group_engine._get_generated_feature_views(self)
 
     @public
     def get_generated_feature_groups(self) -> explicit_provenance.Links | None:
@@ -915,7 +924,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_engine.get_generated_feature_groups(self)
+        return self._feature_group_engine._get_generated_feature_groups(self)
 
     @public
     def share(
@@ -959,7 +968,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id).share_feature_group(
+        share_api.ShareApi(self._feature_store_id)._share_feature_group(
             self._id, target_project, features=features
         )
 
@@ -981,7 +990,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._feature_store_id).list_feature_group_shares(
+        return share_api.ShareApi(self._feature_store_id)._list_feature_group_shares(
             self._id
         )
 
@@ -1002,7 +1011,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id).unshare_feature_group(
+        share_api.ShareApi(self._feature_store_id)._unshare_feature_group(
             self._id, target_project
         )
 
@@ -1069,7 +1078,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
-        self._feature_group_engine.update_statistics_config(self)
+        self._feature_group_engine._update_statistics_config(self)
         return self
 
     @public
@@ -1102,7 +1111,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.update_description(self, description)
+        self._feature_group_engine._update_description(self, description)
         return self
 
     @public
@@ -1157,7 +1166,7 @@ class FeatureGroupBase:
             util.FeatureGroupWarning,
             stacklevel=1,
         )
-        self._feature_group_engine.update_topic_name(self, topic_name)
+        self._feature_group_engine._update_topic_name(self, topic_name)
         return self
 
     @public
@@ -1192,7 +1201,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.update_notification_topic_name(
+        self._feature_group_engine._update_notification_topic_name(
             self, notification_topic_name
         )
         return self
@@ -1227,7 +1236,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.update_deprecated(self, deprecate)
+        self._feature_group_engine._update_deprecated(self, deprecate)
         return self
 
     @public
@@ -1267,7 +1276,7 @@ class FeatureGroupBase:
                 "The argument `features` has to be of type `Feature` or a list "
                 f"thereof, but is of type: `{type(features)}`"
             )
-        self._feature_group_engine.update_features(self, new_features)
+        self._feature_group_engine._update_features(self, new_features)
         return self
 
     @public
@@ -1306,7 +1315,7 @@ class FeatureGroupBase:
         """
         f_copy = copy.deepcopy(self[feature_name])
         f_copy.description = description
-        self._feature_group_engine.update_features(self, [f_copy])
+        self._feature_group_engine._update_features(self, [f_copy])
         return self
 
     @public
@@ -1367,7 +1376,7 @@ class FeatureGroupBase:
                 "The argument `features` has to be of type `Feature` or a list "
                 f"thereof, but is of type: `{type(features)}`"
             )
-        self._feature_group_engine.append_features(self, new_features)
+        self._feature_group_engine._append_features(self, new_features)
         return self
 
     @public
@@ -1404,7 +1413,7 @@ class FeatureGroupBase:
         """
         # Avoid throwing an error if Feature Group not initialised.
         if self._id:
-            self._expectation_suite = self._expectation_suite_engine.get()
+            self._expectation_suite = self._expectation_suite_engine._get()
 
         if self._expectation_suite is not None and ge_type is True:
             return self._expectation_suite.to_ge_type()
@@ -1487,7 +1496,7 @@ class FeatureGroupBase:
             self.delete_expectation_suite()
 
         if self._id:
-            self._expectation_suite = self._expectation_suite_engine.save(
+            self._expectation_suite = self._expectation_suite_engine._save(
                 tmp_expectation_suite
             )
             expectation_suite = self._expectation_suite.to_ge_type()
@@ -1514,7 +1523,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if self.get_expectation_suite() is not None:
-            self._expectation_suite_engine.delete(self._expectation_suite.id)
+            self._expectation_suite_engine._delete(self._expectation_suite.id)
         self._expectation_suite = None
 
     @public
@@ -1549,7 +1558,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._validation_report_engine.get_last(ge_type=ge_type)
+        return self._validation_report_engine._get_last(ge_type=ge_type)
 
     @public
     def get_all_validation_reports(
@@ -1583,7 +1592,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
         """
         if self._id:
-            return self._validation_report_engine.get_all(ge_type=ge_type)
+            return self._validation_report_engine._get_all(ge_type=ge_type)
         raise FeatureStoreException(
             "Only Feature Group registered with Hopsworks can fetch validation reports."
         )
@@ -1653,7 +1662,7 @@ class FeatureGroupBase:
                 if ingestion_result != "UNKNOWN":
                     report.ingestion_result = ingestion_result
 
-            return self._validation_report_engine.save(
+            return self._validation_report_engine._save(
                 validation_report=report, ge_type=ge_type
             )
         raise FeatureStoreException(
@@ -1709,7 +1718,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if self._id:
-            return self._validation_result_engine.get_validation_history(
+            return self._validation_result_engine._get_validation_history(
                 expectation_id=expectation_id,
                 start_validation_time=start_validation_time,
                 end_validation_time=end_validation_time,
@@ -1721,7 +1730,7 @@ class FeatureGroupBase:
         )
 
     @public
-    @uses_great_expectations
+    @_uses_great_expectations
     def validate(
         self,
         dataframe: pd.DataFrame | TypeVar("pyspark.sql.DataFrame") | None = None,
@@ -1783,9 +1792,9 @@ class FeatureGroupBase:
             if ingestion_result.upper() == "UNKNOWN":
                 ingestion_result = "FG_DATA"
 
-        return self._great_expectation_engine.validate(
+        return self._great_expectation_engine._validate(
             self,
-            dataframe=engine.get_instance().convert_to_default_dataframe(dataframe),
+            dataframe=engine._get_instance()._convert_to_default_dataframe(dataframe),
             expectation_suite=expectation_suite,
             save_report=save_report,
             validation_options=validation_options or {},
@@ -1864,7 +1873,7 @@ class FeatureGroupBase:
                 "Only Feature Group registered with Hopsworks can fetch feature monitoring configurations."
             )
 
-        return self._feature_monitoring_config_engine.get_feature_monitoring_configs(
+        return self._feature_monitoring_config_engine._get_feature_monitoring_configs(
             name=name,
             feature_name=feature_name,
             config_id=config_id,
@@ -1924,7 +1933,7 @@ class FeatureGroupBase:
                 "Only Feature Group registered with Hopsworks can fetch feature monitoring history."
             )
 
-        return self._feature_monitoring_result_engine.get_feature_monitoring_results(
+        return self._feature_monitoring_result_engine._get_feature_monitoring_results(
             config_name=config_name,
             config_id=config_id,
             start_time=start_time,
@@ -2158,7 +2167,7 @@ class FeatureGroupBase:
             latest_ingestion = fg.get_latest_online_ingestion()
             ```
         """
-        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
+        return online_ingestion_api.OnlineIngestionApi()._get_online_ingestion(
             self, query_params={"filter_by": "LATEST"}
         )
 
@@ -2183,7 +2192,7 @@ class FeatureGroupBase:
             ingestion = fg.get_online_ingestion(123)
             ```
         """
-        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
+        return online_ingestion_api.OnlineIngestionApi()._get_online_ingestion(
             self, query_params={"filter_by": f"ID:{id}"}
         )
 
@@ -2198,7 +2207,7 @@ class FeatureGroupBase:
     def feature_store(self) -> feature_store_mod.FeatureStore:
         """Feature store to which the feature group belongs."""
         if self._feature_store is None:
-            self._feature_store = feature_store_api.FeatureStoreApi().get(
+            self._feature_store = feature_store_api.FeatureStoreApi()._get(
                 self._feature_store_id
             )
         return self._feature_store
@@ -2213,6 +2222,7 @@ class FeatureGroupBase:
         """Feature group id."""
         return self._id
 
+    @public
     @property
     def name(self) -> str | None:
         """Name of the feature group."""
@@ -2252,7 +2262,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._check_statistics_support()  # raises an error if stats not supported
-        return self._statistics_engine.get(self)
+        return self._statistics_engine._get(self)
 
     @public
     @property
@@ -2263,7 +2273,7 @@ class FeatureGroupBase:
     @primary_key.setter
     def primary_key(self, new_primary_key: list[str]) -> None:
         self._primary_key = [
-            util.autofix_feature_name(pk, warn=True) for pk in new_primary_key
+            util._autofix_feature_name(pk, warn=True) for pk in new_primary_key
         ]
 
     @public
@@ -2301,7 +2311,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
-        return self._statistics_engine.get(
+        return self._statistics_engine._get(
             self, computation_time=computation_time, feature_names=feature_names
         )
 
@@ -2340,7 +2350,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
-        return self._statistics_engine.get_all(
+        return self._statistics_engine._get_all(
             self, computation_time=computation_time, feature_names=feature_names
         )
 
@@ -2370,7 +2380,7 @@ class FeatureGroupBase:
             # Don't read the dataframe here, to avoid triggering a read operation
             # for the Python engine. The Python engine is going to setup a Spark Job
             # to update the statistics.
-            self._statistics_engine.compute_and_save_statistics(self)
+            self._statistics_engine._compute_and_save_statistics(self)
         else:
             warnings.warn(
                 (
@@ -2498,7 +2508,7 @@ class FeatureGroupBase:
             self._event_time = None
             return
         if isinstance(feature_name, str):
-            self._event_time = util.autofix_feature_name(feature_name, warn=True)
+            self._event_time = util._autofix_feature_name(feature_name, warn=True)
             return
         if (
             isinstance(feature_name, list)
@@ -2511,7 +2521,7 @@ class FeatureGroupBase:
                 DeprecationWarning,
                 stacklevel=2,
             )
-            self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
+            self._event_time = util._autofix_feature_name(feature_name[0], warn=True)
             return
 
         raise ValueError(
@@ -2582,6 +2592,7 @@ class FeatureGroupBase:
     def online_enabled(self, online_enabled: bool) -> None:
         self._online_enabled = online_enabled
 
+    @public
     @property
     def storage_connector(self) -> sc.StorageConnector:
         """Get the storage connector.
@@ -2656,7 +2667,7 @@ class FeatureGroupBase:
         """Subject of the feature group."""
         if self._subject is None:
             # cache the schema
-            self._subject = self._feature_group_engine.get_subject(self)
+            self._subject = self._feature_group_engine._get_subject(self)
         return self._subject
 
     @public
@@ -2802,7 +2813,7 @@ class FeatureGroupBase:
         self._features = new_columns
 
     def _get_project_name(self) -> str:
-        return util.strip_feature_store_suffix(self.feature_store_name)
+        return util._strip_feature_store_suffix(self.feature_store_name)
 
     @public
     @property
@@ -2902,7 +2913,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.update_ttl(self, ttl, True)
+        self._feature_group_engine._update_ttl(self, ttl, True)
         return self
 
     @public
@@ -2931,7 +2942,7 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.update_ttl(self, None, False)
+        self._feature_group_engine._update_ttl(self, None, False)
         return self
 
 
@@ -3104,7 +3115,7 @@ class FeatureGroup(FeatureGroupBase):
             self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
-                util.autofix_feature_name(hudi_precombine_key, warn=True)
+                util._autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
                 and self._time_travel_format == "HUDI"
                 else None
@@ -3168,7 +3179,7 @@ class FeatureGroup(FeatureGroupBase):
             time_travel_format=time_travel_format,
         )
 
-        if engine.get_type() == "python" and not self._sink_enabled:
+        if engine._get_type() == "python" and not self._sink_enabled:
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
@@ -3282,7 +3293,7 @@ class FeatureGroup(FeatureGroupBase):
 
     @staticmethod
     def _has_deltalake():
-        if engine.get_type() == "python":
+        if engine._get_type() == "python":
             return HAS_DELTALAKE_PYTHON
         return HAS_DELTALAKE_SPARK
 
@@ -3435,7 +3446,7 @@ class FeatureGroup(FeatureGroupBase):
         # no event_time column there is nothing to filter on, so the env vars must stay a
         # no-op rather than be promoted into args that then trip the no-event_time guard.
         if wallclock_time is None and self.event_time is not None:
-            start_time, end_time = util.apply_scheduler_time_defaults(
+            start_time, end_time = util._apply_scheduler_time_defaults(
                 start_time, end_time
             )
 
@@ -3443,7 +3454,7 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 "Time travel format is not set for the feature group, cannot read as of specific point in time."
             )
-        if wallclock_time and engine.get_type() == "python":
+        if wallclock_time and engine._get_type() == "python":
             raise FeatureStoreException(
                 "Python environments does not support incremental queries. "
                 "Read feature group without timestamp to retrieve latest snapshot or switch to "
@@ -3467,7 +3478,7 @@ class FeatureGroup(FeatureGroupBase):
                     "start_time/end_time filter on the event_time column values."
                 )
 
-        engine.get_instance().set_job_group(
+        engine._get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -3479,7 +3490,7 @@ class FeatureGroup(FeatureGroupBase):
 
         if start_time is not None or end_time is not None:
             event_time_feature = self.get_feature(self.event_time)
-            time_filter = util.build_time_filter(
+            time_filter = util._build_time_filter(
                 event_time_feature, start_time, end_time
             )
             query = query.filter(time_filter)
@@ -3592,7 +3603,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         if self._vector_db_client is None and self._embedding_index:
             self._vector_db_client = VectorDbClient(self.select_all())
-        results = self._vector_db_client.find_neighbors(
+        results = self._vector_db_client._find_neighbors(
             embedding,
             feature=(self.__getattr__(col) if col else None),
             k=k,
@@ -3626,7 +3637,7 @@ class FeatureGroup(FeatureGroupBase):
         Returns:
             A list of rows, where each row is represented as a list of feature values.
         """
-        engine.get_instance().set_job_group(
+        engine._get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -3768,7 +3779,7 @@ class FeatureGroup(FeatureGroupBase):
                 self, self._features
             )
 
-            self._feature_group_engine.save_feature_group_metadata(
+            self._feature_group_engine._save_feature_group_metadata(
                 self, None, write_options or {}
             )
 
@@ -3780,7 +3791,9 @@ class FeatureGroup(FeatureGroupBase):
                 " Please provide a list of features or a Dataframe"
             )
 
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine._get_instance()._convert_to_default_dataframe(
+            features
+        )
 
         user_version = self._version
 
@@ -3790,22 +3803,24 @@ class FeatureGroup(FeatureGroupBase):
             write_options["wait_for_online_ingestion"] = wait
 
         # fg_job is used only if the python engine is used
-        fg_job, ge_report = self._feature_group_engine.save(
+        fg_job, ge_report = self._feature_group_engine._save(
             self, feature_dataframe, write_options, validation_options or {}
         )
 
         # Compute stats in client if there is no backfill job:
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
-        if self.statistics_config.enabled and engine.get_type().startswith("spark"):
-            self._statistics_engine.compute_and_save_statistics(self, feature_dataframe)
+        if self.statistics_config.enabled and engine._get_type().startswith("spark"):
+            self._statistics_engine._compute_and_save_statistics(
+                self, feature_dataframe
+            )
         elif (
             self.statistics_config.enabled
-            and engine.get_type() == "python"
+            and engine._get_type() == "python"
             and not self.stream
         ):
             commit_id = list(self.commit_details(limit=1))[0]
-            self._statistics_engine.compute_and_save_statistics(
+            self._statistics_engine._compute_and_save_statistics(
                 metadata_instance=self,
                 feature_dataframe=feature_dataframe,
                 feature_group_commit_id=commit_id,
@@ -3975,7 +3990,9 @@ class FeatureGroup(FeatureGroupBase):
                 stacklevel=1,
             )
 
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine._get_instance()._convert_to_default_dataframe(
+            features
+        )
 
         if validation_options is None:
             validation_options = {}
@@ -3998,7 +4015,7 @@ class FeatureGroup(FeatureGroupBase):
             write_options["delta.enableChangeDataFeed"] = "true"
 
         storage_normalized = storage.lower() if storage is not None else None
-        job, ge_report = self._feature_group_engine.insert(
+        job, ge_report = self._feature_group_engine._insert(
             self,
             feature_dataframe=feature_dataframe,
             overwrite=overwrite,
@@ -4014,19 +4031,19 @@ class FeatureGroup(FeatureGroupBase):
         # - spark engine: always compute in client
         # - python engine: only compute if FG is offline only (no backfill job)
         if (
-            engine.get_type().startswith("spark")
+            engine._get_type().startswith("spark")
             and not self.stream
             and storage_normalized != "online"
         ):
             self.compute_statistics()
         elif (
             self.statistics_config.enabled
-            and engine.get_type() == "python"
+            and engine._get_type() == "python"
             and not self.stream
             and storage_normalized != "online"
         ):
             commit_id = list(self.commit_details(limit=1))[0]
-            self._statistics_engine.compute_and_save_statistics(
+            self._statistics_engine._compute_and_save_statistics(
                 metadata_instance=self,
                 feature_dataframe=feature_dataframe,
                 feature_group_commit_id=commit_id,
@@ -4266,14 +4283,16 @@ class FeatureGroup(FeatureGroupBase):
             Spark Structured Streaming Query object.
         """
         if (
-            not engine.get_instance().is_spark_dataframe(features)
+            not engine._get_instance()._is_spark_dataframe(features)
             or not features.isStreaming
         ):
             raise TypeError(
                 "Features have to be a streaming type spark dataframe. Use `insert()` method instead."
             )
         # lower casing feature names
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine._get_instance()._convert_to_default_dataframe(
+            features
+        )
         warnings.warn(
             (
                 f"Stream ingestion for feature group `{self._name}`, with version"
@@ -4283,7 +4302,7 @@ class FeatureGroup(FeatureGroupBase):
             stacklevel=1,
         )
 
-        return self._feature_group_engine.insert_stream(
+        return self._feature_group_engine._insert_stream(
             self,
             feature_dataframe,
             query_name,
@@ -4330,7 +4349,7 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             hopsworks.client.exceptions.FeatureStoreException: If the feature group does not have `HUDI` time travel format.
         """
-        return self._feature_group_engine.commit_details(self, wallclock_time, limit)
+        return self._feature_group_engine._commit_details(self, wallclock_time, limit)
 
     @public
     def commit_delete_record(
@@ -4349,13 +4368,13 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        if self.time_travel_format == "HUDI" and not engine.get_type().startswith(
+        if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
             "spark"
         ):
             raise NotImplementedError(
                 "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
             )
-        self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
+        self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
 
     @public
     def delta_vacuum(
@@ -4385,7 +4404,7 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._feature_group_engine.delta_vacuum(self, retention_hours)
+        self._feature_group_engine._delta_vacuum(self, retention_hours)
 
     @public
     def as_of(
@@ -4522,7 +4541,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         if not self._is_time_travel_enabled():
             raise ValueError("Time travel is not enabled for this feature group")
-        return self._statistics_engine.get_by_time_window(
+        return self._statistics_engine._get_by_time_window(
             self,
             start_commit_time=from_commit_time,
             end_commit_time=to_commit_time,
@@ -4553,7 +4572,7 @@ class FeatureGroup(FeatureGroupBase):
             # Retrieve fg commit id related to this wall clock time and recompute statistics. It will throw
             # exception if its not time travel enabled feature group.
             fg_commit_id = list(
-                self._feature_group_engine.commit_details(
+                self._feature_group_engine._commit_details(
                     self, wallclock_time, 1
                 ).keys()
             )[0]
@@ -4569,7 +4588,7 @@ class FeatureGroup(FeatureGroupBase):
             # to update the statistics.
             return (
                 registered_stats
-                or self._statistics_engine.compute_and_save_statistics(
+                or self._statistics_engine._compute_and_save_statistics(
                     self,
                     feature_group_commit_id=fg_commit_id,
                 )
@@ -4729,7 +4748,7 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
-        tags_dict = tag.Tag.tags_to_dict(self._tags)
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             fg_meta_dict["tags"] = tags_dict
         return fg_meta_dict
@@ -4744,6 +4763,7 @@ class FeatureGroup(FeatureGroupBase):
             and self._time_travel_format.upper() != "NONE"
         )
 
+    @public
     def execute_odts(
         self,
         data: pd.DataFrame | pl.DataFrame | dict[str, Any],
@@ -4794,7 +4814,7 @@ class FeatureGroup(FeatureGroupBase):
                 - `dict[str, Any]` if input was a dictionary
         """
         if self.transformation_functions:
-            data = self._feature_group_engine.apply_on_demand_transformations(
+            data = self._feature_group_engine._apply_on_demand_transformations(
                 transformation_functions=self.transformation_functions,
                 data=data,
                 online=online,
@@ -4900,10 +4920,10 @@ class FeatureGroup(FeatureGroupBase):
         """Get the Job object reference for the materialization job for this Feature Group."""
         if self._materialization_job is not None:
             return self._materialization_job
-        feature_group_name = util.feature_group_name(self)
+        _feature_group_name = util._feature_group_name(self)
         job_suffix_list = ["materialization", "backfill"]
         for job_suffix in job_suffix_list:
-            job_name = f"{feature_group_name}_offline_fg_{job_suffix}"
+            job_name = f"{_feature_group_name}_offline_fg_{job_suffix}"
             for _ in range(3):  # retry starting job
                 try:
                     self._materialization_job = job_api.JobApi().get(job_name)
@@ -4923,8 +4943,8 @@ class FeatureGroup(FeatureGroupBase):
         """Get the latest computed statistics for the whole feature group."""
         if self._is_time_travel_enabled():
             # retrieve the latests statistics computed on the whole Feature Group, including all the commits.
-            now = util.convert_event_time_to_timestamp(datetime.now())
-            return self._statistics_engine.get_by_time_window(
+            now = util._convert_event_time_to_timestamp(datetime.now())
+            return self._statistics_engine._get_by_time_window(
                 self,
                 start_commit_time=None,
                 end_commit_time=now,
@@ -4950,12 +4970,12 @@ class FeatureGroup(FeatureGroupBase):
     @partition_key.setter
     def partition_key(self, new_partition_key: list[str]) -> None:
         self._partition_key = [
-            util.autofix_feature_name(pk, warn=True) for pk in new_partition_key
+            util._autofix_feature_name(pk, warn=True) for pk in new_partition_key
         ]
 
     @hudi_precombine_key.setter
     def hudi_precombine_key(self, hudi_precombine_key: str) -> None:
-        self._hudi_precombine_key = util.autofix_feature_name(
+        self._hudi_precombine_key = util._autofix_feature_name(
             hudi_precombine_key, warn=True
         )
 
@@ -5004,16 +5024,19 @@ class FeatureGroup(FeatureGroupBase):
             )
         self._offline_backfill_every_hr = new_offline_backfill_every_hr
 
+    @public
     @property
     def sink_enabled(self) -> bool:
         """Get whether sink is enabled for this feature group."""
         return self._sink_enabled
 
+    @public
     @property
     def sink_job(self) -> job.Job | None:
         """Return the sink job created for this feature group, if any."""
         return self._sink_job
 
+    @public
     @property
     def sink_job_conf(self) -> SinkJobConfiguration:
         """Sink job configuration object defining the settings for sink job of the feature group."""
@@ -5169,10 +5192,10 @@ class ExternalFeatureGroup(FeatureGroupBase):
         fg.save()
         ```
         """
-        self._feature_group_engine.save(self)
+        self._feature_group_engine._save(self)
 
         if self.statistics_config.enabled:
-            self._statistics_engine.compute_and_save_statistics(self)
+            self._statistics_engine._compute_and_save_statistics(self)
 
     @public
     def insert(
@@ -5262,7 +5285,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 If data validation fails and the expectation suite `validation_ingestion_policy` is set to `STRICT`.
                 Data is NOT ingested.
         """
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
+        feature_dataframe = engine._get_instance()._convert_to_default_dataframe(
+            features
+        )
 
         if validation_options is None:
             validation_options = {}
@@ -5273,7 +5298,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         if "wait_for_online_ingestion" not in write_options:
             write_options["wait_for_online_ingestion"] = wait
 
-        job, ge_report = self._feature_group_engine.insert(
+        job, ge_report = self._feature_group_engine._insert(
             self,
             feature_dataframe=feature_dataframe,
             write_options=write_options,
@@ -5319,7 +5344,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ):
             return None
 
-        spark = engine.get_instance()._spark_session
+        spark = engine._get_instance()._spark_session
         return connector.read(
             spark,
             catalog=ds.database,
@@ -5437,7 +5462,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         # stay a no-op rather than be promoted into args that then trip the no-event_time
         # guard below.
         if self.event_time is not None:
-            start_time, end_time = util.apply_scheduler_time_defaults(
+            start_time, end_time = util._apply_scheduler_time_defaults(
                 start_time, end_time
             )
 
@@ -5448,7 +5473,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         # and we read the underlying Delta files directly.
         if (
             dataframe_type in ("default", "spark")
-            and engine.get_type().startswith("spark")
+            and engine._get_type().startswith("spark")
             and not online
             and start_time is None
             and end_time is None
@@ -5458,9 +5483,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 return uc_df
 
         if (
-            engine.get_type() == "python"
+            engine._get_type() == "python"
             and not online
-            and not engine.get_instance().is_flyingduck_query_supported(
+            and not engine._get_instance()._is_flyingduck_query_supported(
                 self.select_all()
             )
         ):
@@ -5480,7 +5505,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 "to enable time-based filtering."
             )
 
-        engine.get_instance().set_job_group(
+        engine._get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -5489,7 +5514,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
         if start_time is not None or end_time is not None:
             event_time_feature = self.get_feature(self.event_time)
-            time_filter = util.build_time_filter(
+            time_filter = util._build_time_filter(
                 event_time_feature, start_time, end_time
             )
             query = query.filter(time_filter)
@@ -5523,7 +5548,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         Returns:
             A list of rows, where each row is represented as a list of feature values.
         """
-        engine.get_instance().set_job_group(
+        engine._get_instance()._set_job_group(
             "Fetching Feature group",
             f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
@@ -5585,7 +5610,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         """
         if self._vector_db_client is None and self._embedding_index:
             self._vector_db_client = VectorDbClient(self.select_all())
-        results = self._vector_db_client.find_neighbors(
+        results = self._vector_db_client._find_neighbors(
             embedding,
             feature=(self.__getattr__(col) if col else None),
             k=k,
@@ -5839,7 +5864,7 @@ class SpineGroup(FeatureGroupBase):
         fg._save()
         ```
         """
-        self._feature_group_engine.save(self)
+        self._feature_group_engine._save(self)
         return self
 
     @public
@@ -5879,7 +5904,7 @@ class SpineGroup(FeatureGroupBase):
                 None  # if metadata fetched from backend the dataframe is not set
             )
         else:
-            self._dataframe = engine.get_instance().convert_to_default_dataframe(
+            self._dataframe = engine._get_instance()._convert_to_default_dataframe(
                 dataframe
             )
 
@@ -5889,7 +5914,7 @@ class SpineGroup(FeatureGroupBase):
             and self._dataframe is not None
             and self._features is not None
         ):
-            dataframe_features = engine.get_instance().parse_schema_feature_group(
+            dataframe_features = engine._get_instance()._parse_schema_feature_group(
                 self._dataframe
             )
             self._feature_group_engine._verify_schema_compatibility(

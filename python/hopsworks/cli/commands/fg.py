@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, output, session
+from hopsworks.cli import joinspec, lineage, output, session
 
 
 @click.group("fg")
@@ -85,6 +85,7 @@ def fg_info(
         ["Primary key", ", ".join(getattr(fg, "primary_key", []) or []) or "-"],
         ["Event time", getattr(fg, "event_time", None) or "-"],
         ["Description", output.first_line(getattr(fg, "description", ""))],
+        ["Tags", output.format_mapping(output.read_tags(fg))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -188,6 +189,57 @@ def fg_features(
     output.print_table(["NAME", "TYPE", "PK", "PARTITION", "DESCRIPTION"], rows)
 
 
+@fg_group.command("lineage")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
+@click.pass_context
+def fg_lineage(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
+    """Show upstream and downstream lineage for a feature group.
+
+    Upstream covers parent feature groups, the storage connector, and the
+    data source.
+    Downstream covers generated feature views and feature groups.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Specific version; latest if omitted.
+        featurestore: Pin lookup to this feature store by name.
+    """
+    fg = _get_fg(ctx, name, version, featurestore)
+    label = f"feature group {getattr(fg, 'name', name)} v{getattr(fg, 'version', '?')}"
+    sections = [
+        (
+            "upstream",
+            "parent_feature_group",
+            lineage.fetch(fg.get_parent_feature_groups),
+        ),
+        (
+            "upstream",
+            "storage_connector",
+            lineage.fetch(fg.get_storage_connector_provenance),
+        ),
+        ("upstream", "data_source", lineage.fetch(fg.get_data_source_provenance)),
+        (
+            "downstream",
+            "feature_view",
+            lineage.fetch(fg.get_generated_feature_views),
+        ),
+        (
+            "downstream",
+            "feature_group",
+            lineage.fetch(fg.get_generated_feature_groups),
+        ),
+    ]
+    lineage.render(label, sections)
+
+
 def _get_fg(
     ctx: click.Context,
     name: str,
@@ -253,6 +305,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
         "primary_key": list(getattr(fg, "primary_key", []) or []),
         "event_time": getattr(fg, "event_time", None),
         "description": getattr(fg, "description", None),
+        "tags": output.read_tags(fg),
         "features": [
             {
                 "name": getattr(f, "name", None),
@@ -700,8 +753,26 @@ def fg_append_features(
     "--version", type=int, help="Feature group version; required when multiple exist."
 )
 @click.option("--yes", is_flag=True, help="Skip the interactive confirmation prompt.")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Delete even if used by feature views, leaving those feature views in place.",
+)
+@click.option(
+    "--delete-feature-views",
+    is_flag=True,
+    help="Also delete the feature views that depend on this feature group, along with "
+    "their training data.",
+)
 @click.pass_context
-def fg_delete(ctx: click.Context, name: str, version: int | None, yes: bool) -> None:
+def fg_delete(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    yes: bool,
+    force: bool,
+    delete_feature_views: bool,
+) -> None:
     """Delete a feature group and all its data.
 
     Args:
@@ -709,16 +780,27 @@ def fg_delete(ctx: click.Context, name: str, version: int | None, yes: bool) -> 
         name: Feature group name.
         version: Specific version to delete.
         yes: Skip confirmation when True.
+        force: Delete even if feature views depend on it, leaving them in place.
+        delete_feature_views: Also delete the dependent feature views and their training data.
     """
     fg = _get_fg(ctx, name, version)
     if not yes and not output.JSON_MODE:
+        if delete_feature_views:
+            extra = " Any feature views using it (and their training data) will also be deleted."
+        elif force:
+            extra = (
+                " It will be deleted even if feature views depend on it; "
+                "those feature views are left in place but will no longer work."
+            )
+        else:
+            extra = ""
         click.confirm(
             f"Delete feature group '{name}' v{getattr(fg, 'version', '?')}? "
-            "This wipes all offline and online data.",
+            f"This wipes all offline and online data.{extra}",
             abort=True,
         )
     try:
-        fg.delete()
+        fg.delete(force=force, delete_feature_views=delete_feature_views)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted feature group %s", name)

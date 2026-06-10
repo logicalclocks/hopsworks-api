@@ -106,24 +106,24 @@ class HudiEngine:
         self._feature_group_api = feature_group_api.FeatureGroupApi()
         self._dataset_api = dataset_api.DatasetApi()
 
-    def save_hudi_fg(
+    def _save_hudi_fg(
         self, dataset, save_mode, operation, write_options, validation_id=None
     ):
         fg_commit = self._write_hudi_dataset(
             dataset, save_mode, operation, write_options
         )
         fg_commit.validation_id = validation_id
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
-    def delete_record(self, delete_df, write_options):
+    def _delete_record(self, delete_df, write_options):
         write_options[self.PAYLOAD_CLASS_OPT_KEY] = self.PAYLOAD_CLASS_OPT_VAL
 
         fg_commit = self._write_hudi_dataset(
             delete_df, "append", self.HUDI_UPSERT, write_options
         )
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
-    def register_temporary_table(self, hudi_fg_alias, read_options):
+    def _register_temporary_table(self, hudi_fg_alias, read_options):
         location = self._feature_group.prepare_spark_location()
 
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
@@ -197,11 +197,11 @@ class HudiEngine:
 
         # only enable hive sync when using a Spark engine with a metastore and no storage connector,
         # as the storage connector means data is saved in an external storage
-        from hsfs.engine import get_type
+        from hsfs.engine import _get_type
 
         hive_sync = (
             self._feature_group.data_source.storage_connector is None
-            and get_type() == "spark"
+            and _get_type() == "spark"
         )
 
         hudi_options = {
@@ -279,7 +279,7 @@ class HudiEngine:
             and hudi_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time
-            _hudi_commit_end_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_end_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_end_timestamp
             )
 
@@ -292,7 +292,7 @@ class HudiEngine:
             and hudi_fg_alias.left_feature_group_start_timestamp is not None
         ):
             # incremental query with start time until now
-            _hudi_commit_start_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_start_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_start_timestamp
             )
 
@@ -302,10 +302,10 @@ class HudiEngine:
             }
         else:
             # incremental query with start and end time
-            _hudi_commit_start_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_start_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_start_timestamp
             )
-            _hudi_commit_end_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_end_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_end_timestamp
             )
 
@@ -343,13 +343,13 @@ class HudiEngine:
         return feature_group_commit.FeatureGroupCommit(
             commitid=None,
             commit_date_string=latest_commit.getCompletionTime(),
-            commit_time=util.get_timestamp_from_date_string(
+            commit_time=util._get_timestamp_from_date_string(
                 latest_commit.getCompletionTime()
             ),
             rows_inserted=commit_metadata.fetchTotalInsertRecordsWritten(),
             rows_updated=commit_metadata.fetchTotalUpdateRecordsWritten(),
             rows_deleted=commit_metadata.getTotalRecordsDeleted(),
-            last_active_commit_time=util.get_timestamp_from_date_string(
+            last_active_commit_time=util._get_timestamp_from_date_string(
                 oldest_commit.getCompletionTime()
             ),
             table_size=table_size,

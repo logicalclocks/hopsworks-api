@@ -25,9 +25,9 @@ from hsml.scaling_config import (
 
 class TestScalingConfig:
     def test_scale_metric_has_value(self):
-        assert ScaleMetric.has_value("CONCURRENCY")
-        assert ScaleMetric.has_value("RPS")
-        assert not ScaleMetric.has_value("BOGUS")
+        assert ScaleMetric._has_value("CONCURRENCY")
+        assert ScaleMetric._has_value("RPS")
+        assert not ScaleMetric._has_value("BOGUS")
 
     def test_predictor_scaling_config_accepts_scale_metric_string(self):
         sc = PredictorScalingConfig(min_instances=1, scale_metric="rps")
@@ -49,7 +49,7 @@ class TestScalingConfig:
         self, mocker
     ):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=True
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=True
         )
 
         sc = PredictorScalingConfig.get_default_scaling_configuration(
@@ -74,7 +74,7 @@ class TestScalingConfig:
 
     def test_get_default_scaling_configuration_transformer_type(self, mocker):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=False
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
         )
 
         sc = PredictorScalingConfig.get_default_scaling_configuration(
@@ -86,7 +86,7 @@ class TestScalingConfig:
 
     def test_get_default_scaling_configuration_non_kserve_min_zero_raises(self, mocker):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=False
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
         )
 
         with pytest.raises(ValueError) as exc_info:
@@ -98,7 +98,7 @@ class TestScalingConfig:
 
     def test_get_default_scaling_configuration_kserve_requires_zero(self, mocker):
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required", return_value=True
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=True
         )
 
         with pytest.raises(ValueError) as exc_info:

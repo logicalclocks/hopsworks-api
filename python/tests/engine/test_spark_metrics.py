@@ -88,7 +88,7 @@ class TestSparkStageMetrics:
         ]
 
         metrics = self._make_metrics(stages_data=[])
-        metrics.snapshot()
+        metrics._snapshot()
         assert metrics._stage_snapshot == 0
 
         # Simulate stages appearing after the operation
@@ -100,7 +100,7 @@ class TestSparkStageMetrics:
             resp.__exit__ = MagicMock(return_value=False)
             mock_urlopen.return_value = resp
 
-            report = metrics.report("test")
+            report = metrics._report("test")
 
         assert report is not None
         assert "Stage 0" in report
@@ -110,15 +110,15 @@ class TestSparkStageMetrics:
     def test_report_returns_none_when_unavailable(self):
         metrics = self._make_metrics()
         metrics._available = False
-        assert metrics.report() is None
+        assert metrics._report() is None
 
     def test_report_returns_none_when_no_new_stages(self):
         metrics = self._make_metrics(stages_data=[])
-        metrics.snapshot()
+        metrics._snapshot()
         with patch("hsfs.engine.spark_metrics.urllib.request.urlopen") as mock_urlopen:
             resp = MagicMock()
             resp.read.return_value = json.dumps([]).encode()
             resp.__enter__ = lambda s: s
             resp.__exit__ = MagicMock(return_value=False)
             mock_urlopen.return_value = resp
-            assert metrics.report() is None
+            assert metrics._report() is None

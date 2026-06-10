@@ -27,7 +27,7 @@ from hsfs import (
 class TestTrainingDataset:
     def test_from_response_json(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["training_dataset"]["get"]["response"]
 
         # Act
@@ -73,7 +73,7 @@ class TestTrainingDataset:
 
     def test_from_response_json_external(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["training_dataset"]["get_external"]["response"]
 
         # Act
@@ -119,7 +119,7 @@ class TestTrainingDataset:
 
     def test_from_response_json_basic_info(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["training_dataset"]["get_basic_info"]["response"]
 
         # Act
@@ -161,7 +161,7 @@ class TestTrainingDataset:
 
     def test_from_response_json_empty(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["training_dataset"]["get_empty"]["response"]
 
         # Act
@@ -174,7 +174,7 @@ class TestTrainingDataset:
         # Older training datasets persisted before lookback support have no `lookbacks`
         # field on the response. `from_response_json` must accept that and leave
         # `_lookback` as None.
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         json = backend_fixtures["training_dataset"]["get"]["response"]
         td = training_dataset.TrainingDataset.from_response_json(json)
         if isinstance(td, list):
@@ -189,7 +189,7 @@ class TestTrainingDataset:
 
         from hsfs.constructor.lookback import FeatureGroupLookback, Lookback
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         td = training_dataset.TrainingDataset(
             name="td_lb",
             version=1,
@@ -212,7 +212,7 @@ class TestTrainingDataset:
 
         from hsfs.constructor.lookback import FeatureGroupLookback, Lookback
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         lb = FeatureGroupLookback(
             key="partition_key", start=date(2026, 5, 10), end=date(2026, 5, 17)
         )
@@ -234,7 +234,7 @@ class TestTrainingDataset:
         # has no attribute 'to_dict'`.
         from hsfs.constructor.lookback import Lookback
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         wire = {
             "default_lookback": {
                 "lookback_key": "PARTITION_KEY",
