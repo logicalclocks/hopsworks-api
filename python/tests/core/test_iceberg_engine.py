@@ -526,3 +526,66 @@ class TestFeatureGroupEngineIceberg:
         # Assert
         assert result is None
         iceberg_engine_cls.assert_not_called()
+
+
+class TestIcebergMaterialization:
+    def test_python_engine_iceberg_fg_defaults_to_stream(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="ICEBERG",
+        )
+
+        # Assert
+        # Iceberg writes are Spark-only, so in the Python engine inserts must
+        # route through Kafka and the offline materialization job.
+        assert fg.stream is True
+
+    def test_save_dataframe_iceberg_stream_runs_materialization_job(self, mocker):
+        # Arrange
+        from hsfs.engine import python
+
+        mock_python_engine_run_materialization_job = mocker.patch(
+            "hsfs.engine.python.Engine._run_materialization_job"
+        )
+        mock_python_engine_legacy_save_dataframe = mocker.patch(
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
+        )
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+            time_travel_format="ICEBERG",
+        )
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=None,
+            operation=None,
+            online_enabled=None,
+            storage=None,
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_python_engine_run_materialization_job.call_count == 1
+        assert mock_python_engine_legacy_save_dataframe.call_count == 0
