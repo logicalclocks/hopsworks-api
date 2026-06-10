@@ -38,8 +38,10 @@ class FeatureGroupBaseEngine:
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._kafka_api = kafka_api.KafkaApi()
 
-    def _delete(self, feature_group):
-        self._feature_group_api._delete(feature_group)
+    def _delete(self, feature_group, force=False, delete_feature_views=False):
+        self._feature_group_api._delete(
+            feature_group, force=force, delete_feature_views=delete_feature_views
+        )
 
     def _add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
         """Attach a name/value tag to a feature group.

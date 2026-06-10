@@ -30,7 +30,7 @@ class StorageConnectorApi:
     @decorators._catch_not_found(
         "hsfs.storage_connector.StorageConnector", fallback_return=None
     )
-    def _get(self, feature_store_id: int, name: str) -> dict[str, Any]:
+    def _get_response(self, feature_store_id: int, name: str) -> dict[str, Any]:
         """Returning response dict instead of initialized object."""
         _client = client._get_instance()
         path_params = [
@@ -118,7 +118,7 @@ class StorageConnectorApi:
         Returns:
             the storage connector
         """
-        storage_connector_json = self._get(feature_store_id, name)
+        storage_connector_json = self._get_response(feature_store_id, name)
         if storage_connector_json:
             return storage_connector.StorageConnector.from_response_json(
                 storage_connector_json
@@ -137,7 +137,7 @@ class StorageConnectorApi:
             The updated storage connector instance.
         """
         return storage_connector_instance.update_from_response_json(
-            self._get(
+            self._get_response(
                 storage_connector_instance._featurestore_id,
                 storage_connector_instance.name,
             )
