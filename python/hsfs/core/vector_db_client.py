@@ -474,7 +474,7 @@ class VectorDbClient:
     ) -> list:
         if feature_group.embedding_index:
             vector_db_client = VectorDbClient(feature_group.select_all())
-            results = vector_db_client.read(
+            results = vector_db_client._read(
                 feature_group.id,
                 feature_group.columns,
                 pk=feature_group.embedding_index.col_prefix
