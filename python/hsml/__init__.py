@@ -37,6 +37,7 @@ def connection(*args: Any, **kwargs: Any) -> Connection:
     """
     return Connection._connection(*args, **kwargs)
 
+
 __version__ = version.__version__
 
 

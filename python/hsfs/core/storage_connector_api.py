@@ -30,9 +30,7 @@ class StorageConnectorApi:
     @decorators._catch_not_found(
         "hsfs.storage_connector.StorageConnector", fallback_return=None
     )
-    def _get_response(
-        self, feature_store_id: int, name: str
-    ) -> dict[str, Any] | None:
+    def _get_response(self, feature_store_id: int, name: str) -> dict[str, Any] | None:
         """Returning response dict, or None if the connector is not found."""
         _client = client._get_instance()
         path_params = [

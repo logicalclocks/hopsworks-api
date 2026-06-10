@@ -36,6 +36,7 @@ from hsfs.connection import (  # noqa: E402,  Module level import not at top of 
 
 __version__ = version.__version__
 
+
 @deprecated("hopsworks.login", public_name="hsfs.connection")
 def connection(*args: Any, **kwargs: Any) -> Connection:
     """Create a connection to a Hopsworks instance.
