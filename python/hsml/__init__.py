@@ -29,8 +29,7 @@ def connection(*args: Any, **kwargs: Any) -> Connection:
     Deprecated, use [`hopsworks.login`][hopsworks.login] instead, which connects and returns a project handle directly.
 
     Parameters:
-        *args: Positional arguments forwarded to the connection factory.
-        **kwargs: Keyword arguments forwarded to the connection factory.
+        args: Positional arguments forwarded to the connection factory.
 
     Returns:
         A new connection to the Hopsworks instance.
