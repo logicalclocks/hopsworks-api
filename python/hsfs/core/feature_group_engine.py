@@ -326,11 +326,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
-    def _delete(self, feature_group, force=False, delete_feature_views=False):
-        self._feature_group_api._delete(
-            feature_group, force=force, delete_feature_views=delete_feature_views
-        )
-
     def _commit_details(self, feature_group, wallclock_time, limit):
         if (
             feature_group._time_travel_format is None

@@ -42,14 +42,14 @@ def _init_or_reset_online_store_rest_client(
     | requests.adapters.BaseAdapter
     | None = None,
     optional_config: dict[str, Any] | None = None,
-    _reset_client: bool = False,
+    reset_client: bool = False,
 ):
     global _online_store_rest_client
     if not _online_store_rest_client:
         _online_store_rest_client = OnlineStoreRestClientSingleton(
             transport=transport, optional_config=optional_config
         )
-    elif _reset_client:
+    elif reset_client:
         _online_store_rest_client._reset_client(
             transport=transport, optional_config=optional_config
         )
