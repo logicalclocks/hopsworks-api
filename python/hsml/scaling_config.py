@@ -49,7 +49,6 @@ class ScaleMetric(Enum):
 class ComponentScalingConfig(ABC):
     """Scaling configuration for a predictor or transformer."""
 
-    @public
     def __init__(
         self,
         min_instances: int,
@@ -345,7 +344,6 @@ class PredictorScalingConfig(ComponentScalingConfig):
 
     SCALING_CONFIG_KEY = "predictor_scaling_config"
 
-    @public
     def __init__(self, **kwargs):
         """Initialize a PredictorScalingConfig instance.
 
@@ -387,7 +385,6 @@ class TransformerScalingConfig(ComponentScalingConfig):
 
     SCALING_CONFIG_KEY = "transformer_scaling_config"
 
-    @public
     def __init__(self, **kwargs):
         """Initialize a TransformerScalingConfig instance.
 

@@ -30,6 +30,10 @@ Any public-named symbol (no leading ``_``) that is none of these is a
 violation: it is an internal symbol that should be ``_``-prefixed, or a
 genuinely public one that is missing its ``@public`` annotation.
 
+The inverse also holds: a ``_``-prefixed symbol annotated ``@public`` or
+``@deprecated`` is a violation — the two signals contradict each other,
+typically a privatization rename that forgot to drop the annotation.
+
 The check parses the packages statically with griffe and never imports them.
 
 Run it with::
@@ -266,8 +270,15 @@ def _compliance(
     """Return None if compliant, else a short violation reason string."""
     name = func.name
 
-    # Rule 1: PEP-8 private (also covers dunders).
+    # Rule 1: PEP-8 private (also covers dunders) — but a private-named symbol
+    # must not carry @public/@deprecated: that is a contradictory state, usually
+    # a rename that forgot to drop the annotation (or an annotation that should
+    # have kept the symbol public-named).
     if name.startswith("_"):
+        if _has_public(func):
+            return "private-named (leading '_') but annotated @public"
+        if _has_deprecated(func):
+            return "private-named (leading '_') but annotated @deprecated"
         return None
 
     # Rule 2/3: @public / @deprecated.

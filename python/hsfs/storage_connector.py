@@ -1197,9 +1197,9 @@ class RedshiftConnector(StorageConnector):
         )
 
     @public
-    def _refetch(self) -> None:
+    def refetch(self) -> None:
         """Refetch storage connector in order to retrieve updated temporary credentials."""
-        self._storage_connector_api._refetch(self)
+        self._refetch()
 
 
 @public
