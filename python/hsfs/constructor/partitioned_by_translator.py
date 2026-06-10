@@ -228,31 +228,43 @@ def _grain_predicates_for_range(
 ) -> list[Filter]:
     """Compute partition predicates equivalent to [start, end_excl) on event_time.
 
-    Strategy: for the coarsest grain in `grains` (always "year" for a
-    hierarchical prefix), produce a `year >= START_Y AND year <= END_Y`
-    pair. Finer grains are only safe to bound when the range is narrow
-    enough that the lower-grain bound is also derivable; the translator
-    keeps things simple by emitting just the coarsest-grain bounds, which
-    is enough to drop entire partition trees.
+    The coarsest grain (always "year" for a hierarchical prefix) gets a
+    `year >= START_Y AND year <= END_Y` pair, including for one-sided
+    ranges. When both ends are known, finer grains get the same treatment
+    level by level for as long as every coarser grain value is equal at
+    both ends — `[2026-04-03, 2026-06-10)` also bounds `month` to [4, 6],
+    but `[2026-11-x, 2027-02-x)` stops at the year bounds because a
+    month-of-year interval cannot represent a range that crosses a year
+    boundary.
     """
     if not grains:
         return []
     if start is None and end_excl is None:
         return []
-    grain = grains[0]  # "year" for hierarchical prefixes
-    extractor = _grain_extractor(grain)
-    feat = fg.get_feature(grain)
+    # end_excl is exclusive; end_excl - epsilon is the last possibly-matching
+    # instant. For year, the last possibly-matching year is the year of
+    # (end_excl - microsecond), which handles both end_excl=2027-01-01
+    # (last year = 2026) and end_excl=2027-06-15 (last year = 2027).
+    boundary = (
+        end_excl - datetime.timedelta(microseconds=1) if end_excl is not None else None
+    )
+    extractors = [_grain_extractor(g) for g in grains]
     preds: list[Filter] = []
+    feat = fg.get_feature(grains[0])
     if start is not None:
-        preds.append(Filter(feat, Filter.GE, extractor(start)))
-    if end_excl is not None:
-        # end_excl is exclusive; end_excl - epsilon is the last possibly-
-        # matching value. For year, the last possibly-matching year is the
-        # year of (end_excl - microsecond). This handles both
-        # end_excl=2027-01-01 (last year = 2026) and end_excl=2027-06-15
-        # (last year = 2027).
-        boundary = end_excl - datetime.timedelta(microseconds=1)
-        preds.append(Filter(feat, Filter.LE, extractor(boundary)))
+        preds.append(Filter(feat, Filter.GE, extractors[0](start)))
+    if boundary is not None:
+        preds.append(Filter(feat, Filter.LE, extractors[0](boundary)))
+    if start is None or boundary is None:
+        return preds
+    for level in range(1, len(grains)):
+        # A finer-grain interval is only valid while every coarser grain
+        # value is identical at both ends of the range.
+        if any(extractors[i](start) != extractors[i](boundary) for i in range(level)):
+            break
+        feat = fg.get_feature(grains[level])
+        preds.append(Filter(feat, Filter.GE, extractors[level](start)))
+        preds.append(Filter(feat, Filter.LE, extractors[level](boundary)))
     return preds
 
 

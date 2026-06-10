@@ -129,6 +129,43 @@ class TestEventTimeToDerived:
         # last possibly-matching year is 2026).
         assert _has_predicate(out, "year", Filter.GE, 2026)
         assert _has_predicate(out, "year", Filter.LE, 2026)
+        # Same year at both ends, so month bounds are emitted too (the full
+        # [1, 12] interval for a whole-year range).
+        assert _has_predicate(out, "month", Filter.GE, 1)
+        assert _has_predicate(out, "month", Filter.LE, 12)
+
+    def test_same_year_range_bounds_month(self):
+        f = Logic._And(
+            left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-04-03"),
+            right_f=Filter(feature.Feature("ts"), Filter.LT, "2026-06-10"),
+        )
+        fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
+        out = augment_filter(f, fg)
+        assert _has_predicate(out, "year", Filter.GE, 2026)
+        assert _has_predicate(out, "year", Filter.LE, 2026)
+        assert _has_predicate(out, "month", Filter.GE, 4)
+        assert _has_predicate(out, "month", Filter.LE, 6)
+
+    def test_cross_year_range_stops_at_year_bounds(self):
+        # [2026-11, 2027-02) — a month-of-year interval cannot represent a
+        # range that crosses a year boundary, so only year bounds appear.
+        f = Logic._And(
+            left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-11-01"),
+            right_f=Filter(feature.Feature("ts"), Filter.LT, "2027-02-01"),
+        )
+        fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
+        out = augment_filter(f, fg)
+        assert _has_predicate(out, "year", Filter.GE, 2026)
+        assert _has_predicate(out, "year", Filter.LE, 2027)
+        assert not _has_predicate(out, "month", Filter.GE)
+        assert not _has_predicate(out, "month", Filter.LE)
+
+    def test_one_sided_range_bounds_year_only(self):
+        f = Filter(feature.Feature("ts"), Filter.GE, "2026-04-03")
+        fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
+        out = augment_filter(f, fg)
+        assert _has_predicate(out, "year", Filter.GE, 2026)
+        assert not _has_predicate(out, "month", Filter.GE)
 
     def test_event_time_equality(self):
         f = Filter(feature.Feature("ts"), Filter.EQ, "2026-04-12T00:00:00")
