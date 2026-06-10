@@ -732,10 +732,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def _columns_for_user_schema(feature_group):
         """Return the feature-group columns the user is expected to supply in their dataframe.
 
-        Excludes columns that the storage engine generates (`partitioned_by` grain
-        columns on Delta GENERATED tables / Hudi CustomKeyGenerator tables). The
-        backend appends one synthetic grain feature per grain to the FG schema so
-        they're queryable; on the write path the user dataframe must not carry them.
+        Excludes the `partitioned_by` grain columns: the backend appends one
+        synthetic grain feature per grain to the FG schema so they're queryable,
+        and the write path derives their values from event_time (client-side on
+        Delta, server-side on Hudi) — the user dataframe must not carry them.
         """
         grain_set = set(getattr(feature_group, "partitioned_by", None) or [])
         if not grain_set:

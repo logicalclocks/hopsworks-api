@@ -20,14 +20,14 @@ users keep writing `fg.filter(fg.event_time >= last_week)` (or
 `fg.filter(fg.year == 2026)`) like they would on any feature group, and
 partition pruning just works.
 
-That promise holds natively for Spark+Delta (the GENERATED expressions let
-Delta auto-derive partition predicates from event_time filters and vice
-versa), but the three other (engine, format) combinations need explicit
+The grain columns are ordinary materialized partition columns (no Delta
+GENERATED expressions), so no engine auto-derives partition predicates from
+event_time filters — every (engine, format) combination needs explicit
 predicate translation:
 
 | Engine | Format | Translation direction                        |
 |--------|--------|----------------------------------------------|
-| Spark  | Delta  | none (Delta auto-derives)                    |
+| Spark  | Delta  | event_time → derived                         |
 | Spark  | Hudi   | derived → event_time                         |
 | Trino  | Delta  | event_time → derived                         |
 | Trino  | Hudi   | event_time → derived                         |
@@ -39,7 +39,7 @@ pruning is off.
 
 Non-hierarchical specs (e.g. `["month"]` without year, or `["year","week"]`)
 limit what can be translated; the translator falls back to a row-level
-filter and emits a one-line warning rather than producing incorrect ranges.
+filter and emits a debug log line rather than producing incorrect ranges.
 """
 
 from __future__ import annotations
@@ -73,8 +73,8 @@ def augment_filter(
     Returns the input unchanged when:
       - `fg.partitioned_by` is None or empty, or
       - `fg.event_time` is None (no time anchor for the translation), or
-      - the combination of `engine_type` and `fg.time_travel_format` does
-        not need translation (Spark + Delta auto-derives natively), or
+      - the combination of `engine_type` and `fg.time_travel_format` has
+        no translation rule (e.g. python engine + Hudi grain filters), or
       - the partitioned_by spec is not a strict left-prefix of
         `("year","month","day","hour")` — non-hierarchical specs are
         documented as not partition-pruning-aware on the asymmetric paths.
@@ -382,12 +382,12 @@ def _and_all(parts: list[Filter | Logic | None]) -> Filter | Logic:
     for nxt in parts[1:]:
         if isinstance(result, Filter):
             if isinstance(nxt, Filter):
-                result = Logic.And(left_f=result, right_f=nxt)
+                result = Logic._And(left_f=result, right_f=nxt)
             else:
-                result = Logic.And(left_f=result, right_l=nxt)
+                result = Logic._And(left_f=result, right_l=nxt)
         else:  # Logic
             if isinstance(nxt, Filter):
-                result = Logic.And(left_l=result, right_f=nxt)
+                result = Logic._And(left_l=result, right_f=nxt)
             else:
-                result = Logic.And(left_l=result, right_l=nxt)
+                result = Logic._And(left_l=result, right_l=nxt)
     return result

@@ -341,16 +341,14 @@ class Query:
             )
         self.check_and_warn_ambiguous_features()
         # Augment the filter with engine-appropriate partition predicates
-        # when the left FG has partitioned_by set. Spark+Delta gets no
-        # augmentation (Delta auto-derives both directions); Spark+Hudi
-        # adds an event_time range derived from grain equality predicates;
-        # python-engine (Trino) reads add grain predicates derived from
-        # event_time range filters.
+        # when the left FG has partitioned_by set. Delta (any engine) adds
+        # grain predicates derived from event_time range filters; Spark+Hudi
+        # adds an event_time range derived from grain equality predicates.
         if not online:
             from hsfs.constructor.partitioned_by_translator import augment_filter
 
             self._filter = augment_filter(
-                self._filter, self._left_feature_group, engine.get_type()
+                self._filter, self._left_feature_group, engine._get_type()
             )
 
         if not read_options:

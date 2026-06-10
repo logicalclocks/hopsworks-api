@@ -108,7 +108,7 @@ class TestEventTimeToDerived:
         assert _has_predicate(out, "year", Filter.GE, 2026)
 
     def test_year_range(self):
-        f = Logic.And(
+        f = Logic._And(
             left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-01-01"),
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2027-01-01"),
         )
@@ -132,7 +132,7 @@ class TestEventTimeToDerived:
     def test_or_short_circuits(self):
         # OR'd filters can't be safely tightened without producing incorrect
         # ranges; translator must return the input unchanged.
-        f = Logic.Or(
+        f = Logic._Or(
             left_f=Filter(feature.Feature("ts"), Filter.GE, "2026-01-01"),
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2025-01-01"),
         )
@@ -163,7 +163,7 @@ class TestDerivedToEventTime:
         )
 
     def test_year_and_month_equality(self):
-        f = Logic.And(
+        f = Logic._And(
             left_f=Filter(feature.Feature("year"), Filter.EQ, 2026),
             right_f=Filter(feature.Feature("month"), Filter.EQ, 4),
         )
@@ -178,7 +178,7 @@ class TestDerivedToEventTime:
         )
 
     def test_year_month_december_rolls_over_year(self):
-        f = Logic.And(
+        f = Logic._And(
             left_f=Filter(feature.Feature("year"), Filter.EQ, 2026),
             right_f=Filter(feature.Feature("month"), Filter.EQ, 12),
         )
