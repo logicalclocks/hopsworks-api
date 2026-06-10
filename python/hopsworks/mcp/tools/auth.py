@@ -54,7 +54,7 @@ class AuthTools:
         project: str = None,
         api_key_value: str = None,
         api_key_file: str = None,
-        hostname_verification: bool = False,
+        hostname_verification: bool = True,
         trust_store_path: str = None,
         engine: str = "python",
         ctx: Context | None = None,

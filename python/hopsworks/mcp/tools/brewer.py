@@ -62,15 +62,24 @@ class BrewerTools:
     ) -> ExecutionResult:
         """Execute a Python script in a conda environment for a specific chat."""
         await ctx.info("Locking the chat environment for execution...\n")
-        chatdir = Path(f"/hopsfs/Brewer/{chat_id}")
+        if not isinstance(chat_id, int) or chat_id < 0:
+            raise ValueError("chat_id must be a non-negative integer.")
+        chatdir = Path(f"/hopsfs/Brewer/{chat_id}").resolve()
         async with AsyncFileLock(f"{chatdir}/.lock"):
             await extract_hopsworks_credentials(chatdir)
 
             envname = await get_chat_env(chat_id, chatdir)
 
             await ctx.info("Executing the script...\n")
-            if not script_path.is_absolute():
-                script_path = (chatdir / script_path).resolve()
+            # Confine the script to the chat directory: reject absolute paths
+            # and any ".." escape so a client cannot run an arbitrary file
+            # elsewhere on the server.
+            resolved = (chatdir / script_path).resolve()
+            if not _is_within(resolved, chatdir):
+                raise ValueError(
+                    "script_path must resolve to a file inside the chat directory."
+                )
+            script_path = resolved
 
             envcopy = os.environ.copy()
             envcopy["SECRETS_DIR"] = str(chatdir)
@@ -121,13 +130,31 @@ async def extract_hopsworks_credentials(chatdir: Path):
     if not auth:
         raise Exception("No authentication header found")
     if auth.startswith("Bearer"):
-        with open(chatdir / "token.jwt", "w") as f:
-            f.write(auth.removeprefix("Bearer").strip())
+        _write_secret(chatdir / "token.jwt", auth.removeprefix("Bearer").strip())
     elif auth.startswith("ApiKey"):
-        with open(chatdir / "api.key", "w") as f:
-            f.write(auth.removeprefix("ApiKey").strip())
+        _write_secret(chatdir / "api.key", auth.removeprefix("ApiKey").strip())
     else:
         raise Exception("Unknown auth type")
+
+
+def _is_within(path: Path, parent: Path) -> bool:
+    """Return True iff ``path`` is ``parent`` or nested under it."""
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _write_secret(path: Path, value: str) -> None:
+    """Write a credential to ``path`` with owner-only (0o600) permissions.
+
+    Opened O_CREAT|O_WRONLY|O_TRUNC at 0o600 so the secret is never
+    world-readable, even momentarily between create and chmod.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(value)
 
 
 async def get_chat_env(chat_id: int, chatdir: Path) -> str:
