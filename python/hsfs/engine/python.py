@@ -590,7 +590,7 @@ class Engine:
         dataframe_type = dataframe_type.lower()
         self._validate_dataframe_type(dataframe_type)
 
-        results = VectorDbClient.read_feature_group(feature_group, n, filter=filter)
+        results = VectorDbClient._read_feature_group(feature_group, n, filter=filter)
         feature_names = [f.name for f in feature_group.columns]
         if dataframe_type == "polars":
             if not HAS_POLARS:
