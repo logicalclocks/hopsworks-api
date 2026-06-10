@@ -634,6 +634,23 @@ class Engine:
                 "environment with Spark Engine."
             )
 
+    def _register_iceberg_temporary_table(
+        self,
+        iceberg_fg_alias: hsfs.constructor.hudi_feature_group_alias.HudiFeatureGroupAlias,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: dict[str, Any] | None,
+    ) -> None:
+        if iceberg_fg_alias and (
+            iceberg_fg_alias.left_feature_group_end_timestamp is not None
+            or iceberg_fg_alias.left_feature_group_start_timestamp is not None
+        ):
+            raise FeatureStoreException(
+                "Incremental queries are not supported in the python client."
+                " Read feature group without timestamp to retrieve latest snapshot or switch to "
+                "environment with Spark Engine."
+            )
+
     def _profile_by_spark(
         self,
         metadata_instance: FeatureGroup

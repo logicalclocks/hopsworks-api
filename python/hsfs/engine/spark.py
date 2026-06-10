@@ -115,6 +115,7 @@ from hsfs.core import (
     dataset_api,
     delta_engine,
     hudi_engine,
+    iceberg_engine,
     kafka_engine,
     transformation_function_engine,
 )
@@ -354,6 +355,26 @@ class Engine:
             delta_fg_alias=delta_fg_alias,
             read_options=read_options,
             is_cdc_query=is_cdc_query,
+        )
+
+    def _register_iceberg_temporary_table(
+        self,
+        iceberg_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: dict[str, Any] | None,
+    ):
+        iceberg_engine_instance = iceberg_engine.IcebergEngine(
+            feature_store_id,
+            feature_store_name,
+            iceberg_fg_alias.feature_group,
+            self._spark_session,
+            None if self._is_connect else self._spark_context,
+        )
+
+        iceberg_engine_instance._register_temporary_table(
+            iceberg_fg_alias,
+            read_options=read_options,
         )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
@@ -715,6 +736,17 @@ class Engine:
                 None if self._is_connect else self._spark_context,
             )
             delta_engine_instance._save_delta_fg(
+                dataframe, write_options, validation_id, operation=operation
+            )
+        elif feature_group.time_travel_format == "ICEBERG":
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                self._spark_session,
+                None if self._is_connect else self._spark_context,
+            )
+            iceberg_engine_instance._save_iceberg_fg(
                 dataframe, write_options, validation_id, operation=operation
             )
         else:
@@ -1338,7 +1370,14 @@ class Engine:
             raise FeatureStoreException("data_format is not specified")
 
         if isinstance(location, str):
-            if data_format.lower() in ["delta", "parquet", "hudi", "orc", "bigquery"]:
+            if data_format.lower() in [
+                "delta",
+                "parquet",
+                "hudi",
+                "iceberg",
+                "orc",
+                "bigquery",
+            ]:
                 # All the above data format readers can handle partitioning
                 # by their own, they don't need /**
                 # for bigquery, argument location can be a SQL query
@@ -1842,6 +1881,8 @@ class Engine:
     def _update_table_schema(self, feature_group):
         if feature_group.time_travel_format == "DELTA":
             self._add_cols_to_delta_table(feature_group)
+        elif feature_group.time_travel_format == "ICEBERG":
+            self._add_cols_to_iceberg_table(feature_group)
         else:
             self._save_empty_dataframe(feature_group)
 
@@ -1884,6 +1925,29 @@ class Engine:
         dataframe.limit(0).write.format("delta").mode("append").option(
             "mergeSchema", "true"
         ).option("spark.databricks.delta.schema.autoMerge.enabled", "true").save(
+            location
+        )
+
+    def _add_cols_to_iceberg_table(self, feature_group):
+        location = feature_group.prepare_spark_location()
+
+        dataframe = self._spark_session.read.format(
+            iceberg_engine.IcebergEngine.ICEBERG_SPARK_FORMAT
+        ).load(location)
+
+        for _feature in feature_group.columns:
+            if _feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(
+                    _feature.name, lit(None).cast(_feature.type)
+                )
+
+        # check-ordering is disabled because the appended columns put the
+        # input schema out of order with respect to the table schema
+        dataframe.limit(0).write.format(
+            iceberg_engine.IcebergEngine.ICEBERG_SPARK_FORMAT
+        ).mode("append").option(
+            iceberg_engine.IcebergEngine.ICEBERG_MERGE_SCHEMA, "true"
+        ).option(iceberg_engine.IcebergEngine.ICEBERG_CHECK_ORDERING, "false").save(
             location
         )
 

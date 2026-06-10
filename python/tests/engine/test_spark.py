@@ -1874,6 +1874,37 @@ class TestSpark:
         assert mock_df.write.format.call_count == 0
         assert mock_hudi_engine.return_value._save_hudi_fg.call_count == 1
 
+    def test_save_offline_dataframe_iceberg_time_travel_format(self, mocker):
+        # Arrange
+        mock_iceberg_engine = mocker.patch("hsfs.core.iceberg_engine.IcebergEngine")
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            time_travel_format="ICEBERG",
+        )
+
+        mock_df = mocker.Mock()
+
+        # Act
+        spark_engine._save_offline_dataframe(
+            feature_group=fg,
+            dataframe=mock_df,
+            operation="upsert",
+            write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_df.write.format.call_count == 0
+        assert mock_iceberg_engine.return_value._save_iceberg_fg.call_count == 1
+
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")

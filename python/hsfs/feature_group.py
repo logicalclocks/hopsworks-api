@@ -4278,7 +4278,7 @@ class FeatureGroup(FeatureGroupBase):
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If the feature group does not have `HUDI` time travel format.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group does not have a time travel enabled format (`HUDI`, `DELTA`, or `ICEBERG`).
         """
         return self._feature_group_engine._commit_details(self, wallclock_time, limit)
 
@@ -4290,7 +4290,7 @@ class FeatureGroup(FeatureGroupBase):
     ) -> None:
         """Drops records present in the provided DataFrame and commits it as update to this Feature group.
 
-        This method can only be used on feature groups stored as HUDI or DELTA.
+        This method can only be used on feature groups stored as HUDI, DELTA, or ICEBERG.
 
         Parameters:
             delete_df: dataFrame containing records to be deleted.
@@ -4299,11 +4299,12 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
-            "spark"
-        ):
+        if self.time_travel_format in [
+            "HUDI",
+            "ICEBERG",
+        ] and not engine._get_type().startswith("spark"):
             raise NotImplementedError(
-                "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+                f"commit_delete_record is only supported for {self.time_travel_format} feature groups when using the Spark engine."
             )
         self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
 
