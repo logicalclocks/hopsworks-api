@@ -15,6 +15,7 @@
 #
 
 import warnings
+from typing import Any
 
 from hopsworks_apigen import deprecated
 from hopsworks_common import util, version
@@ -22,7 +23,7 @@ from hopsworks_common.connection import Connection
 
 
 @deprecated("hopsworks.login", public_name="hsml.connection")
-def connection(*args, **kwargs) -> Connection:
+def connection(*args: Any, **kwargs: Any) -> Connection:
     """Create a connection to a Hopsworks instance.
 
     Deprecated, use [`hopsworks.login`][hopsworks.login] instead, which connects and returns a project handle directly.

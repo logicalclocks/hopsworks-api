@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from typing import Any
 
 
 # Setting polars skip cpu flag to suppress CPU false positive warning messages printed while importing hsfs
@@ -36,7 +37,7 @@ from hsfs.connection import (  # noqa: E402,  Module level import not at top of 
 __version__ = version.__version__
 
 @deprecated("hopsworks.login", public_name="hsfs.connection")
-def connection(*args, **kwargs) -> Connection:
+def connection(*args: Any, **kwargs: Any) -> Connection:
     """Create a connection to a Hopsworks instance.
 
     Deprecated, use [`hopsworks.login`][hopsworks.login] instead, which connects and returns a project handle directly.
