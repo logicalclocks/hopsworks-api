@@ -31,7 +31,10 @@ from hsfs import (
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import fs_query
 from hsfs.constructor.query import Query
-from hsfs.core import arrow_flight_client, feature_view_engine
+from hsfs.core import (
+    arrow_flight_client,
+    feature_view_engine,
+)
 from hsfs.core import data_source as ds
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.feature_logging import LoggingMetaData
@@ -1312,7 +1315,7 @@ class TestFeatureViewEngine:
         # Assert
         assert (
             str(e_info.value)
-            == "Incorrect `get` method is used. Use `feature_view.get_training_data` instead."
+            == "Incorrect `get` method is used. Use `feature_view._get_training_data` instead."
         )
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
@@ -2540,6 +2543,13 @@ class TestFeatureViewEngine:
             transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
+        # Build DAG before mocking TransformationFunctionEngine
+        from hsfs.core.transformation_execution_dag import (
+            TransformationExecutionDAG,
+        )
+
+        execution_graph = TransformationExecutionDAG([tf_value])
+
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch(
             "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
@@ -2562,15 +2572,17 @@ class TestFeatureViewEngine:
             start_time=None,
             end_time=None,
             training_dataset_version=None,
-            transformation_functions=[tf_value],
+            execution_graph=execution_graph,
             read_options=None,
         )
 
         # Assert
         assert (
             tf_engine_patch._apply_transformation_functions.call_args[1][
-                "transformation_functions"
-            ][0].hopsworks_udf.function_name
+                "execution_graph"
+            ]
+            .nodes[0]
+            .hopsworks_udf.function_name
             == tf_value.hopsworks_udf.function_name
         )
         assert tf_engine_patch._apply_transformation_functions.call_count == 1
@@ -2608,7 +2620,7 @@ class TestFeatureViewEngine:
             start_time=None,
             end_time=None,
             training_dataset_version=None,
-            transformation_functions=None,
+            execution_graph=None,
             read_options=None,
             extra_filter=extra_filter,
         )
@@ -2635,7 +2647,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_tags_api.return_value._add.call_count == 1
+        assert mock_tags_api.return_value.add.call_count == 1
 
     def test_delete_tag(self, mocker):
         # Arrange
@@ -2654,7 +2666,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_tags_api.return_value._delete.call_count == 1
+        assert mock_tags_api.return_value.delete.call_count == 1
 
     def test_get_tag(self, mocker):
         # Arrange
@@ -2673,7 +2685,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_tags_api.return_value._get.call_count == 1
+        assert mock_tags_api.return_value.get.call_count == 1
 
     def test_get_tags(self, mocker):
         # Arrange
@@ -2690,7 +2702,7 @@ class TestFeatureViewEngine:
         fv_engine._get_tags(feature_view_obj=None, training_dataset_version=None)
 
         # Assert
-        assert mock_tags_api.return_value._get.call_count == 1
+        assert mock_tags_api.return_value.get.call_count == 1
 
     def test_check_feature_group_accessibility(self, mocker):
         # Arrange
@@ -2834,6 +2846,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.engine._get_type", return_value="python")
 
         afc = arrow_flight_client._get_instance()
+        afc._disabled_for_session = False
         afc._enabled_on_cluster = True
 
         mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")

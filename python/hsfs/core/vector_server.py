@@ -46,6 +46,9 @@ from hsfs.core import (
     online_store_sql_engine,
 )
 from hsfs.core import (
+    transformation_execution_dag as tf_exec_dag_mod,
+)
+from hsfs.core import (
     transformation_function_engine as tf_engine_mod,
 )
 from hsfs.core.feature_logging import LoggingMetaData
@@ -156,6 +159,12 @@ class VectorServer:
         self._on_demand_transformation_functions: list[
             transformation_function.TransformationFunction
         ] = []
+        self._on_demand_transformation_functions_execution_graph: (
+            tf_exec_dag_mod.TransformationExecutionDAG | None
+        ) = None
+        self._model_dependent_transformation_functions_execution_graph: (
+            tf_exec_dag_mod.TransformationExecutionDAG | None
+        ) = None
         self._sql_client = None
 
         self._rest_client_engine = None
@@ -275,17 +284,11 @@ class VectorServer:
             if tf.hopsworks_udf.transformation_features[0] not in entity.labels
         ]
 
-        self._on_demand_transformation_functions = []
-
-        for feature in entity.features:
-            if (
-                feature.on_demand_transformation_function
-                and feature.on_demand_transformation_function
-                not in self._on_demand_transformation_functions
-            ):
-                self._on_demand_transformation_functions.append(
-                    feature.on_demand_transformation_function
-                )
+        # The feature view carries the complete on-demand chain, including the
+        # producers of dropped intermediates.
+        self._on_demand_transformation_functions = (
+            entity._on_demand_transformation_functions
+        )
 
         self._on_demand_feature_names = [
             feature.name
@@ -295,6 +298,18 @@ class VectorServer:
 
         self._fetch_inference_helpers_for_transformations = (
             self._requires_inference_helpers_for_transformations()
+        )
+        # Rebuild the transformation DAG for on-demand and model-dependent transformation functions.
+        # This is necessary because the transformation functions will be updated with required statistics.
+        self._on_demand_transformation_functions_execution_graph = (
+            tf_exec_dag_mod.TransformationExecutionDAG(
+                self._on_demand_transformation_functions
+            )
+        )
+        self._model_dependent_transformation_functions_execution_graph = (
+            tf_exec_dag_mod.TransformationExecutionDAG(
+                self._model_dependent_transformation_functions
+            )
         )
 
     def _requires_inference_helpers_for_transformations(self) -> bool:
@@ -363,7 +378,7 @@ class VectorServer:
         # This logic needs to move to the above engine init
         online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
-            reset_client=reset_rest_client,
+            _reset_client=reset_rest_client,
         )
 
     def _check_missing_request_parameters(
@@ -378,6 +393,13 @@ class VectorServer:
         request_parameters = request_parameters if request_parameters else {}
         available_parameters = set((features | request_parameters).keys())
         missing_request_parameters_features = {}
+
+        # Intermediate features: outputs of one TF that are inputs to another.
+        # These are computed by the transformation chain and should not be
+        # expected as request parameters.
+        all_output_cols: set[str] = set()
+        for tf in self._on_demand_transformation_functions:
+            all_output_cols.update(tf.hopsworks_udf.output_column_names)
 
         for on_demand_transformation in self._on_demand_transformation_functions:
             feature_name_prefix = (
@@ -402,8 +424,11 @@ class VectorServer:
             prefixed_missing_features = transformation_features - available_parameters
 
             # Get Missing request parameters: These are will include request parameters that are not provided in their unprefixed or prefixed form.
-            missing_request_parameter = prefixed_missing_features.intersection(
-                unprefixed_missing_features
+            # Exclude intermediate features that are outputs of other TFs —
+            # they will be computed by the transformation chain.
+            missing_request_parameter = (
+                prefixed_missing_features.intersection(unprefixed_missing_features)
+                - all_output_cols
             )
 
             if missing_request_parameter:
@@ -446,6 +471,7 @@ class VectorServer:
         request_parameters: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int | None = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | dict[str, Any]:
         """Assemble a single serving vector from the online feature store.
 
@@ -462,6 +488,7 @@ class VectorServer:
             request_parameters: Parameters required by on-demand transformation functions.
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vector in the requested format.
@@ -499,7 +526,7 @@ class VectorServer:
             serving_vector = {}  # updated below with vector_db_features and passed_features
         elif online_client_choice == self.DEFAULT_REST_CLIENT:
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("get_feature_vector Online REST client")
+                _logger.debug("_get_feature_vector Online REST client")
             serving_vector = self.rest_client_engine._get_single_feature_vector(
                 rondb_entry,
                 drop_missing=not allow_missing,
@@ -507,7 +534,7 @@ class VectorServer:
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("get_feature_vector Online SQL client")
+                _logger.debug("_get_feature_vector Online SQL client")
             serving_vector = self.sql_client._get_single_feature_vector(
                 rondb_entry,
                 logging_data=logging_data,
@@ -529,6 +556,7 @@ class VectorServer:
             request_parameters=request_parameters,
             transformation_context=transformation_context,
             logging_meta_data=logging_meta_data,
+            n_processes=n_processes,
         )
         if logging_meta_data is not None:
             logging_meta_data.serving_keys.append(entry)
@@ -571,6 +599,7 @@ class VectorServer:
         on_demand_features: bool | None = True,
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
+        n_processes: int | None = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
         """Assemble a batch of serving vectors from the online feature store.
 
@@ -587,6 +616,7 @@ class VectorServer:
             on_demand_features: Whether to compute on-demand features.
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vectors in the requested format.
@@ -684,7 +714,7 @@ class VectorServer:
         elif len(rondb_entries) > 0:
             # get result row
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("get_batch_feature_vectors through SQL client")
+                _logger.debug("_get_batch_feature_vectors through SQL client")
             batch_results, _ = self.sql_client._get_batch_feature_vectors(
                 rondb_entries,
                 logging_data=logging_data,
@@ -752,6 +782,7 @@ class VectorServer:
                 request_parameters=request_parameter,
                 transformation_context=transformation_context,
                 logging_meta_data=logging_meta_data,
+                n_processes=n_processes,
             )
 
             if logging_meta_data is not None:
@@ -794,6 +825,7 @@ class VectorServer:
         request_parameters: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         logging_meta_data: LoggingMetaData = None,
+        n_processes: int | None = None,
     ) -> list[Any] | None:
         """Assemble a single serving vector from fetched and passed feature values.
 
@@ -808,6 +840,7 @@ class VectorServer:
             request_parameters: Parameters required by on-demand transformation functions.
             transformation_context: Contextual objects passed to transformation functions.
             logging_meta_data: Metadata object for logging, if logging is enabled.
+            n_processes: Number of processes for parallel transformation execution.
 
         Returns:
             The assembled feature vector as a list, or None if the result was null.
@@ -867,6 +900,7 @@ class VectorServer:
                 transform=transform,
                 on_demand_features=on_demand_features,
                 logging_meta_data=logging_meta_data,
+                n_processes=n_processes,
             )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -985,6 +1019,7 @@ class VectorServer:
         feature_vectors: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
+        n_processes: int | None = None,
     ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Applies model dependent transformation on the provided feature vector.
 
@@ -993,6 +1028,9 @@ class VectorServer:
             transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: Defaults to the same type as the input feature vector.
+            n_processes: Number of worker processes for executing chained transformation functions.
+                Defaults to sequential; pass `2` or more to run independent transformations concurrently.
+                Ignored in the Spark engine.
 
         Returns:
             The transformed feature vector.
@@ -1013,12 +1051,16 @@ class VectorServer:
         return_type = return_type if return_type else default_return_type
 
         transformed_feature_vectors = []
+        # Per-row apply. With n_processes <= 1 (the default) this stays
+        # sequential; with n_processes > 1 independent transformations in the
+        # DAG run concurrently in the shared worker pool for each row.
         for feature_vector in feature_vectors:
             transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=self._model_dependent_transformation_functions_execution_graph,
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
-                transformation_functions=self.model_dependent_transformation_functions,
+                n_processes=n_processes,
                 expected_features=set(self.transformed_feature_vector_col_name),
             )
             transformed_feature_vectors.append(
@@ -1052,6 +1094,7 @@ class VectorServer:
         request_parameters: list[dict[str, Any]] | dict[str, Any] = None,
         transformation_context: dict[str, Any] = None,
         return_type: Literal["list", "numpy", "pandas", "polars"] = None,
+        n_processes: int | None = None,
     ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
         """Function computes on-demand features present in the feature view.
 
@@ -1062,6 +1105,9 @@ class VectorServer:
             transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: Defaults to the same type as the input feature vector.
+            n_processes: Number of worker processes for executing chained on-demand transformation functions.
+                Defaults to sequential; pass `2` or more to run independent transformations concurrently.
+                Ignored in the Spark engine.
 
         Returns:
             The feature vector that contains all on-demand features in the feature view.
@@ -1098,12 +1144,13 @@ class VectorServer:
             feature_vectors, request_parameters, strict=False
         ):
             on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=self._on_demand_transformation_functions_execution_graph,
                 data=feature_vector,
                 online=True,
                 transformation_context=transformation_context,
                 request_parameters=request_parameter,
-                transformation_functions=self.on_demand_transformation_functions,
                 expected_features=set(self._on_demand_feature_vector_col_name),
+                n_processes=n_processes,
             )
             on_demand_feature_vectors.append(
                 [
@@ -1203,14 +1250,29 @@ class VectorServer:
             elif batch:
                 feature_vector = pd.DataFrame(feature_vectorz, columns=column_names)
             else:
-                feature_vector = pd.DataFrame([feature_vectorz], columns=column_names)
+                # An empty online lookup makes _assemble_feature_vector return None
+                # (the batch path filters those out before this point, the single
+                # path does not). Emit a single all-missing row matching the column
+                # schema instead of letting pandas raise a cryptic shape error
+                # (None has width 1, the schema has width len(column_names)).
+                row = (
+                    [None] * len(column_names)
+                    if feature_vectorz is None
+                    else feature_vectorz
+                )
+                feature_vector = pd.DataFrame([row], columns=column_names)
         elif return_type.lower() == "polars":
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as polars dataframe")
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
+            # Same empty-lookup guard as the pandas single-vector path above.
+            if not batch and feature_vectorz is None:
+                rows = [[None] * len(column_names)]
+            else:
+                rows = feature_vectorz if batch else [feature_vectorz]
             feature_vector = pl.DataFrame(
-                feature_vectorz if batch else [feature_vectorz],
+                rows,
                 schema=column_names if not inference_helper else None,
                 orient="row",
             )
@@ -1348,18 +1410,18 @@ class VectorServer:
 
         if self._init_rest_client is False and self._init_sql_client is False:
             raise ValueError(
-                "No client is initialised. Call `init_serving` with initsql_client or init_rest_client set to True before using it."
+                "No client is initialised. Call `_init_serving` with initsql_client or init_rest_client set to True before using it."
             )
         if force_sql_client and (self._init_sql_client is False):
             raise ValueError(
-                "SQL Client is not initialised. Call `init_serving` with init_sql_client set to True before using it."
+                "SQL Client is not initialised. Call `_init_serving` with init_sql_client set to True before using it."
             )
         if force_sql_client:
             return self.DEFAULT_SQL_CLIENT
 
         if force_rest_client and (self._init_rest_client is False):
             raise ValueError(
-                "RonDB Rest Client is not initialised. Call `init_serving` with init_rest_client set to True before using it."
+                "RonDB Rest Client is not initialised. Call `_init_serving` with init_rest_client set to True before using it."
             )
         if force_rest_client:
             return self.DEFAULT_REST_CLIENT
@@ -1453,6 +1515,7 @@ class VectorServer:
         transform: bool = True,
         on_demand_features: bool = True,
         logging_meta_data: LoggingMetaData = None,
+        n_processes: int | None = None,
     ):
         """Apply both on-demand and model-dependent transformations to the input dictionary.
 
@@ -1463,6 +1526,7 @@ class VectorServer:
             transform: Whether to apply model-dependent transformations.
             on_demand_features: Whether to compute on-demand features.
             logging_meta_data: Metadata object for logging, if logging is enabled.
+            n_processes: Number of processes for parallel transformation execution.
         """
         feature_dict = row_dict
         encoded_feature_dict = None
@@ -1479,8 +1543,9 @@ class VectorServer:
                 online=True,
                 transformation_context=transformation_context,
                 request_parameters=request_parameter,
-                transformation_functions=self.on_demand_transformation_functions,
+                execution_graph=self._on_demand_transformation_functions_execution_graph,
                 expected_features=set(self._on_demand_feature_vector_col_name),
+                n_processes=n_processes,
             )
             if logging_meta_data:
                 logging_meta_data.untransformed_features.append(
@@ -1493,11 +1558,12 @@ class VectorServer:
         if transform or logging_meta_data:
             # Apply model dependent transformations
             encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=self._model_dependent_transformation_functions_execution_graph,
                 data=feature_dict,
                 online=True,
                 transformation_context=transformation_context,
-                transformation_functions=self.model_dependent_transformation_functions,
                 expected_features=set(self.transformed_feature_vector_col_name),
+                n_processes=n_processes,
             )
             if logging_meta_data:
                 logging_meta_data.transformed_features.append(
@@ -1605,7 +1671,7 @@ class VectorServer:
     def _set_return_feature_value_handlers(
         self, features: list[tdf_mod.TrainingDatasetFeature]
     ):
-        """Build a dictionary of functions to convert/deserialize/transform the feature values returned from RonDB Server.
+        """Build a dictionary of functions to _convert/deserialize/transform the feature values returned from RonDB Server.
 
         Re-using the current logic from the vector server means that we currently iterate over the feature vectors
         and values multiple times, as well as converting the feature values to a dictionary and then back to a list.
@@ -1970,7 +2036,7 @@ class VectorServer:
     @property
     def feature_to_handle_if_sql(self) -> set[str]:
         # Unlike REST client, SQL client does not deserialize complex features
-        # however, it does convert timestamp to datetime obj
+        # however, it does _convert timestamp to datetime obj
         if self._feature_to_handle_if_sql is None:
             self._feature_to_handle_if_sql = {
                 f.name
@@ -2012,12 +2078,12 @@ class VectorServer:
         ):
             raise ValueError(
                 f"Default Online Store Cient is set to {self.DEFAULT_REST_CLIENT} but REST client"
-                " is not initialised. Call `init_serving` with init_rest_client set to True before using it."
+                " is not initialised. Call `_init_serving` with init_rest_client set to True before using it."
             )
         if default_client == self.DEFAULT_SQL_CLIENT and self._init_sql_client is False:
             raise ValueError(
                 f"Default Online Store client is set to {self.DEFAULT_SQL_CLIENT} but Online Store SQL client"
-                " is not initialised. Call `init_serving` with init_sql_client set to True before using it."
+                " is not initialised. Call `_init_serving` with init_sql_client set to True before using it."
             )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Default Online Store Client is set to {default_client}.")

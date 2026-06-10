@@ -30,6 +30,7 @@ from hsfs import (
 )
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
 from hsfs.core.transformation_function_engine import TransformationFunctionEngine
 from hsfs.engine import python, spark
 from hsfs.hopsworks_udf import HopsworksUdf, udf
@@ -81,7 +82,7 @@ class TestPythonSparkTransformationFunctions:
         engine._set_instance(engine=python_engine, engine_type="python")
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=transformation_functions,
+            execution_graph=TransformationExecutionDAG(transformation_functions),
             data=df,
         )
         assert list(result.columns) == list(expected_df.columns)
@@ -102,7 +103,7 @@ class TestPythonSparkTransformationFunctions:
         engine._set_instance(engine=spark_engine, engine_type="spark")
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=transformation_functions,
+            execution_graph=TransformationExecutionDAG(transformation_functions),
             data=spark_df,
         )
 
@@ -1187,7 +1188,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1257,7 +1258,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1331,7 +1332,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1403,7 +1404,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1484,7 +1485,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1556,7 +1557,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1631,7 +1632,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1705,7 +1706,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1781,7 +1782,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1855,7 +1856,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -1926,7 +1927,7 @@ class TestPythonSparkTransformationFunctions:
                 "tf_fun_col_0_": [None, datetime.datetime.utcfromtimestamp(1640995202)],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[
@@ -2003,7 +2004,7 @@ class TestPythonSparkTransformationFunctions:
                 ],
             }
         )
-        # convert timestamps to current timezone
+        # _convert timestamps to current timezone
         local_tz = tzlocal.get_localzone()
         expected_df_localized = expected_df.copy(True)
         expected_df_localized["tf_fun_col_0_"] = expected_df_localized[

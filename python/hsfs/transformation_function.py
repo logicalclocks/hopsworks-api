@@ -25,6 +25,7 @@ from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
+from hopsworks_common.version import __version__ as current_version
 from hsfs import util
 from hsfs.core import transformation_function_engine
 from hsfs.decorators import typechecked
@@ -103,9 +104,12 @@ class TransformationFunction:
         )
 
         if self.__hopsworks_udf._generate_output_col_name:
-            # Reset output column names so that they would be regenerated.
-            # Handles the use case in which the same UDF is used to define both on-demand and model dependent transformations.
+            # Reset output column names so they are regenerated when the same UDF
+            # defines both an on-demand and a model-dependent transformation. The
+            # cached copy must be cleared too, otherwise property reads keep
+            # returning the previous names while the backing list is empty.
             self.__hopsworks_udf._output_column_names = []
+            self.__hopsworks_udf._cached_output_column_names = None
 
     @public
     def save(self) -> None:
@@ -242,7 +246,8 @@ class TransformationFunction:
         Returns:
             Dictionary that contains all data required to json serialize the object.
         """
-        backend_version = client._get_connection().backend_version
+        connection = client._get_connection()
+        backend_version = connection.backend_version if connection else current_version
 
         return {
             "id": self._id,
@@ -500,7 +505,7 @@ class TransformationFunction:
         )
 
     @public
-    def execute(self, *args: Any) -> Any:
+    def execute(self, *args) -> Any:
         """Execute the transformation function directly with the provided arguments.
 
         This is a convenience method for quick testing of simple transformations that don't

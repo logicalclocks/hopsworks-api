@@ -270,17 +270,44 @@ class StatisticsEngine:
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
         """
+        stats = self._compute_transformation_fn_statistics_no_save(
+            columns, label_encoder_features, feature_dataframe
+        )
+        return self._save_statistics(stats, td_metadata_instance, feature_view_obj)
+
+    def _compute_transformation_fn_statistics_no_save(
+        self,
+        columns: list[str],
+        label_encoder_features: list[str],
+        feature_dataframe: TypeVar("pyspark.sql.DataFrame")
+        | pd.DataFrame
+        | None = None,
+    ) -> statistics.Statistics:
+        """Compute transformation-function statistics without persisting them.
+
+        Used by the chained transformation fit, which profiles intermediate
+        features level by level and persists the full set in a single save at
+        the end (so serving retrieves one complete statistics entity rather than
+        the most recent partial one).
+
+        Parameters:
+            columns: Feature names to compute statistics on, excluding label encoded features.
+            label_encoder_features: Label encoded feature names.
+            feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
+
+        Returns:
+            Statistics metadata containing the single-feature descriptive statistics.
+        """
         computation_time = int(float(datetime.now().timestamp()) * 1000)
         stats_str = self._profile_transformation_fn_statistics(
             feature_dataframe, columns, label_encoder_features
         )
         desc_stats = self._parse_deequ_statistics(stats_str)
-        stats = statistics.Statistics(
+        return statistics.Statistics(
             computation_time=computation_time,
             feature_descriptive_statistics=desc_stats,
             before_transformation=True,
         )
-        return self._save_statistics(stats, td_metadata_instance, feature_view_obj)
 
     @decorators._catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def _get(

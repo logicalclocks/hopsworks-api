@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from types import SimpleNamespace
+
 import hopsworks_common
 import pandas as pd
 import pytest
@@ -27,7 +29,9 @@ from hsfs import (
     training_dataset,
     transformation_function,
 )
-from hsfs.core import transformation_function_engine
+from hsfs.builtin_transformations import impute_mean, min_max_scaler
+from hsfs.core import transformation_execution_dag, transformation_function_engine
+from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.engine import python, spark
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_function import TransformationType
@@ -277,10 +281,17 @@ class TestTransformationFunctionEngine:
             == 1
         )
 
-    def test_compute_and_set_feature_statistics_no_split(self, mocker):
+    def test_fit_and_transform_no_statistics_no_split(self, mocker):
+        # Transformations without statistics fit nothing: the frame gets one
+        # plain transform and the statistics engine is never touched.
         feature_store_id = 99
         mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
+        mock_apply = mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_apply_transformation_functions",
+            side_effect=lambda data, **kwargs: data,
+        )
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id
@@ -316,7 +327,6 @@ class TestTransformationFunctionEngine:
             id=10,
         )
 
-        # Act
         fv = feature_view.FeatureView(
             name="test",
             featurestore_id=feature_store_id,
@@ -327,20 +337,509 @@ class TestTransformationFunctionEngine:
         dataset = pd.DataFrame()
 
         # Act
-        tf_engine._compute_and_set_feature_statistics(
+        result = tf_engine._fit_and_transform(
             training_dataset=td, feature_view_obj=fv, dataset=dataset
         )
 
         # Assert
+        assert result is dataset
+        assert mock_apply.call_count == 1
         assert (
             mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 0
         )
 
-    def test_compute_and_set_feature_statistics_train_test_split(self, mocker):
+    def test_fit_and_transform_chained_intermediate(self, mocker):
+        # A downstream transformation that needs the statistics of an
+        # intermediate feature (impute-then-scale) must have those statistics
+        # fit on the materialized intermediate, not skipped because the
+        # intermediate is absent from the raw data. Verifies the DAG-interleaved
+        # fit: raw-feature statistics first, the producing transformation
+        # applied, then the intermediate's statistics fit on the now-materialized
+        # column.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        tf_impute = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=impute_mean("feature_1").alias("imputed_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf_scale = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=min_max_scaler("imputed_feature_1").alias("scaled_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("feature_1"), feature.Feature("other")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=[tf_impute, tf_scale],
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+            id=10,
+        )
+        dataset = pd.DataFrame(
+            {"feature_1": [1.0, None, 3.0, 5.0], "other": [10, 20, 30, 40]}
+        )
+
+        fit_calls = []
+
+        def fake_compute(
+            training_dataset,
+            columns,
+            label_encoder_features,
+            feature_dataframe,
+            feature_view_obj,
+        ):
+            fit_calls.append((list(columns), list(feature_dataframe.columns)))
+            descriptive = [
+                FeatureDescriptiveStatistics(
+                    feature_name=c,
+                    mean=float(feature_dataframe[c].mean()),
+                    min=float(feature_dataframe[c].min()),
+                    max=float(feature_dataframe[c].max()),
+                )
+                for c in columns
+            ]
+            return SimpleNamespace(feature_descriptive_statistics=descriptive)
+
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_compute_transformation_fn_statistics",
+            side_effect=fake_compute,
+        )
+
+        transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td, feature_view_obj=fv, dataset=dataset
+        )
+
+        # Statistics are persisted in a single save (one call) over the
+        # fully-materialized frame, so serving retrieves one complete entity.
+        assert len(fit_calls) == 1
+        persisted_columns, persisted_df_columns = fit_calls[0]
+        # The persist covers both the raw feature and the intermediate.
+        assert {"feature_1", "imputed_feature_1"} <= set(persisted_columns)
+        # The intermediate is a real column of the frame the statistics are
+        # computed on — its producing transformation was materialized first.
+        assert "imputed_feature_1" in persisted_df_columns
+
+    @staticmethod
+    def _fake_persisting_statistics(mocker):
+        # Replace the persisting statistics call with one that computes real
+        # descriptive statistics from the frame but skips the backend save.
+        def fake_compute(
+            training_dataset,
+            columns,
+            label_encoder_features,
+            feature_dataframe,
+            feature_view_obj,
+        ):
+            descriptive = [
+                FeatureDescriptiveStatistics(
+                    feature_name=c,
+                    mean=float(feature_dataframe[c].mean()),
+                    min=float(feature_dataframe[c].min()),
+                    max=float(feature_dataframe[c].max()),
+                )
+                for c in columns
+            ]
+            return SimpleNamespace(feature_descriptive_statistics=descriptive)
+
+        return mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_compute_transformation_fn_statistics",
+            side_effect=fake_compute,
+        )
+
+    def test_fit_and_transform_chained_fused(self, mocker):
+        # The chained fit returns the transformed train data (fused
+        # fit_transform): each transformation executes exactly once during
+        # fitting and the result is identical to applying the full DAG with the
+        # fitted statistics, so callers skip their own apply.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        tf_impute = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=impute_mean("feature_1").alias("imputed_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf_scale = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=min_max_scaler("imputed_feature_1").alias("scaled_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("feature_1"), feature.Feature("other")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=[tf_impute, tf_scale],
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+            id=10,
+        )
+        dataset = pd.DataFrame(
+            {"feature_1": [1.0, None, 3.0, 5.0], "other": [10, 20, 30, 40]}
+        )
+
+        self._fake_persisting_statistics(mocker)
+        execute_spy = mocker.spy(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_execute_udf",
+        )
+
+        transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td, feature_view_obj=fv, dataset=dataset
+        )
+
+        # The fused pass executed every transformation exactly once.
+        assert execute_spy.call_count == 2
+        assert transformed is not None
+
+        expected = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+            execution_graph=fv._model_dependent_transformation_execution_graph,
+            data=dataset,
+            online=False,
+        )
+        pd.testing.assert_frame_equal(transformed, expected)
+
+    def test_fit_and_transform_chained_fused_drop(self, mocker):
+        # Drops are deferred during the fused pass (later stages may still need
+        # the column) and applied once in the final projection, so the returned
+        # frame matches a plain DAG apply, including the dropped input.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        @udf(float, drop=["feature_1"])
+        def shift(feature_1):
+            return feature_1 + 1.0
+
+        tf_shift = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=shift("feature_1").alias("shifted"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf_scale = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=min_max_scaler("shifted").alias("scaled"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("feature_1"), feature.Feature("other")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=[tf_shift, tf_scale],
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+            id=10,
+        )
+        dataset = pd.DataFrame(
+            {"feature_1": [1.0, 2.0, 3.0, 5.0], "other": [10, 20, 30, 40]}
+        )
+
+        self._fake_persisting_statistics(mocker)
+
+        transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td, feature_view_obj=fv, dataset=dataset
+        )
+
+        assert "feature_1" not in transformed.columns
+        expected = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+            execution_graph=fv._model_dependent_transformation_execution_graph,
+            data=dataset,
+            online=False,
+        )
+        pd.testing.assert_frame_equal(transformed, expected)
+
+    def test_fit_and_transform_chained_context(self, mocker):
+        # The fused pass must execute transformations with the caller's
+        # transformation context, so statistics are fit on the same intermediate
+        # values the real transform produces.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        @udf(float)
+        def add_offset(feature_1, context):
+            return feature_1 + context["offset"]
+
+        tf_offset = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=add_offset("feature_1").alias("offset_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf_scale = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=min_max_scaler("offset_feature_1").alias("scaled_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("feature_1")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=[tf_offset, tf_scale],
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+            id=10,
+        )
+        dataset = pd.DataFrame({"feature_1": [1.0, 2.0, 3.0]})
+
+        fake_persist = self._fake_persisting_statistics(mocker)
+
+        transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td,
+            feature_view_obj=fv,
+            dataset=dataset,
+            transformation_context={"offset": 100.0},
+        )
+
+        # The statistics were fit on the intermediate as the context-aware
+        # transformation produced it (before this fix the fused fitting pass ran
+        # with no context, so a context UDF could not even execute).
+        persisted_frame = fake_persist.call_args[0][3]
+        assert persisted_frame["offset_feature_1"].tolist() == [101.0, 102.0, 103.0]
+        # min_max_scaler drops its input, so the final frame carries the scaled
+        # output computed from the context-shifted intermediate.
+        assert transformed["scaled_feature_1"].tolist() == [0.0, 0.5, 1.0]
+
+    def test_fit_and_transform_chained_fused_splits(self, mocker):
+        # With splits, statistics are fit on the train split only; the fused
+        # pass transforms it along the way (each transformation executes once
+        # on it) and the remaining splits get one plain apply each.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        tf_impute = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=impute_mean("feature_1").alias("imputed_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf_scale = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=min_max_scaler("imputed_feature_1").alias("scaled_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("feature_1"), feature.Feature("other")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=[tf_impute, tf_scale],
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            id=10,
+        )
+        train_df = pd.DataFrame(
+            {"feature_1": [1.0, None, 3.0, 5.0], "other": [10, 20, 30, 40]}
+        )
+        test_df = pd.DataFrame({"feature_1": [2.0, 4.0], "other": [50, 60]})
+
+        self._fake_persisting_statistics(mocker)
+        execute_spy = mocker.spy(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_execute_udf",
+        )
+
+        transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td,
+            feature_view_obj=fv,
+            dataset={"train": train_df, "test": test_df},
+        )
+
+        # 2 executions for the fused train pass + 2 for the test apply: the
+        # train split is never transformed twice.
+        assert execute_spy.call_count == 4
+        expected_test = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+            execution_graph=fv._model_dependent_transformation_execution_graph,
+            data=test_df,
+            online=False,
+        )
+        pd.testing.assert_frame_equal(transformed["test"], expected_test)
+        expected_train = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+            execution_graph=fv._model_dependent_transformation_execution_graph,
+            data=train_df,
+            online=False,
+        )
+        pd.testing.assert_frame_equal(transformed["train"], expected_train)
+
+    def test_apply_transformation_functions_defaults_to_sequential(self, mocker):
+        # Without an explicit n_processes the DAG runs sequentially, regardless
+        # of input size or DAG width: parallelism is strictly opt-in.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+        mock_parallel = mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_apply_to_dataframe_parallel",
+        )
+
+        @udf(float)
+        def plus_one(col1):
+            return col1 + 1.0
+
+        @udf(float)
+        def plus_two(col2):
+            return col2 + 2.0
+
+        tf1 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=plus_one("col1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=plus_two("col2"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        dag = transformation_execution_dag.TransformationExecutionDAG([tf1, tf2])
+        data = pd.DataFrame({"col1": [1.0] * 20_000, "col2": [2.0] * 20_000})
+
+        transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+            execution_graph=dag, data=data, online=False
+        )
+
+        mock_parallel.assert_not_called()
+
+    def test_apply_transformation_functions_caps_n_processes_with_warning(self, mocker):
+        # A worker count above the DAG's maximum parallelism cannot be used;
+        # it is capped and the caller is warned about the effective ceiling.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        def fake_parallel(
+            execution_graph, data, online, n_processes, engine_type, column_store, merge
+        ):
+            for tf in execution_graph.nodes:
+                for col in tf.hopsworks_udf.output_column_names:
+                    column_store[col] = data[data.columns[0]]
+
+        mock_parallel = mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_apply_to_dataframe_parallel",
+            side_effect=fake_parallel,
+        )
+
+        @udf(float)
+        def plus_one(col1):
+            return col1 + 1.0
+
+        @udf(float)
+        def plus_two(col2):
+            return col2 + 2.0
+
+        tf1 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=plus_one("col1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=plus_two("col2"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        dag = transformation_execution_dag.TransformationExecutionDAG([tf1, tf2])
+        data = pd.DataFrame({"col1": [1.0, 2.0], "col2": [2.0, 3.0]})
+
+        with pytest.warns(UserWarning, match="maximum parallelism"):
+            transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=dag, data=data, online=False, n_processes=8
+            )
+
+        # The parallel path runs with the capped worker count (the DAG width).
+        assert mock_parallel.call_args[0][3] == 2
+
+    def test_fit_and_transform_no_statistics_train_test_split(self, mocker):
+        # Splits without statistics: every split gets one plain transform and
+        # the statistics engine is never touched.
         feature_store_id = 99
         mocker.patch("hopsworks_common.client._get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
+        mock_apply = mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_apply_transformation_functions",
+            side_effect=lambda data, **kwargs: data,
+        )
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id
@@ -373,6 +872,7 @@ class TestTransformationFunctionEngine:
             data_format="CSV",
             featurestore_id=99,
             splits={"train": 0.8, "test": 0.2},
+            train_split="train",
             id=10,
         )
 
@@ -383,14 +883,17 @@ class TestTransformationFunctionEngine:
             transformation_functions=[tf1],
         )
 
-        dataset = pd.DataFrame()
+        dataset = {"train": pd.DataFrame(), "test": pd.DataFrame()}
 
         # Act
-        tf_engine._compute_and_set_feature_statistics(
+        result = tf_engine._fit_and_transform(
             training_dataset=td, feature_view_obj=fv, dataset=dataset
         )
 
         # Assert
+        assert result["train"] is dataset["train"]
+        assert result["test"] is dataset["test"]
+        assert mock_apply.call_count == 2
         assert (
             mock_s_engine.return_value._compute_transformation_fn_statistics.call_count
             == 0
@@ -448,7 +951,7 @@ class TestTransformationFunctionEngine:
         )
 
         # Assert
-        assert mock_s_engine.return_value._get.call_count == 0
+        assert mock_s_engine.return_value.get.call_count == 0
 
     def test_get_and_set_feature_statistics_statistics_required(self, mocker):
         feature_store_id = 99
@@ -505,41 +1008,42 @@ class TestTransformationFunctionEngine:
         )
 
         # Assert
-        assert mock_s_engine.return_value._get.call_count == 1
+        assert mock_s_engine.return_value.get.call_count == 1
 
-    def test_execute_udf_on_supported_dataframe(self, mocker):
+    def test_execute_udf_on_supported_dataframe(self, mocker, python_engine):
         # Arrange
         @udf(int)
         def add_one(col1):
             return col1 + 1
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
         )
 
+        add_one.output_column_names = ["col1"]
+
         # Act
-        tf_engine._execute_udf(
-            udf=add_one, data=pd.DataFrame(data={"col1": [1, 2, 3]}), online=False
+        result = tf_engine._execute_udf(
+            udf=add_one,
+            data=pd.DataFrame(data={"col1": [1, 2, 3]}),
+            online=False,
         )
 
         # Assert
-        assert mocker_engine._apply_udf_on_dataframe.call_count == 1
+        assert all(result == {"col1": [2, 3, 4]})
 
-    def test_execute_udf_on_unsupported_type(self, mocker):
+    def test_execute_udf_on_unsupported_type(self, mocker, python_engine):
         # Arrange
         @udf(int)
         def add_one(col1):
             return col1 + 1
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -554,9 +1058,8 @@ class TestTransformationFunctionEngine:
             str(e_info.value)
             == "Dataframe type <class 'int'> not supported in the engine."
         )
-        assert mocker_engine._apply_udf_on_dataframe.call_count == 0
 
-    def test_execute_udf_on_dict(self, mocker):
+    def test_execute_udf_on_dict(self, mocker, python_engine):
         # Arrange
         @udf(int)
         def add_one(col1):
@@ -564,16 +1067,10 @@ class TestTransformationFunctionEngine:
 
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine._get_type", return_value="python")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
-        )
-        mocker.patch.object(
-            transformation_function_engine.TransformationFunctionEngine,
-            "_apply_udf_on_dict",
         )
         add_one.output_column_names = [
             "col1"
@@ -582,14 +1079,14 @@ class TestTransformationFunctionEngine:
         data = {"col1": 1}
 
         # Act
-        tf_engine._execute_udf(udf=add_one, data=data, online=False)
+        result = tf_engine._execute_udf(
+            udf=add_one,
+            data=data,
+            online=False,
+        )
 
         # Assert
-        assert mocker_engine._apply_udf_on_dataframe.call_count == 0
-        assert (
-            transformation_function_engine.TransformationFunctionEngine._apply_udf_on_dict.call_count
-            == 1
-        )
+        assert result == {"col1": 2}
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
     def test_apply_udf_on_dict_batch(self, mocker, execution_mode):
@@ -643,7 +1140,7 @@ class TestTransformationFunctionEngine:
         assert isinstance(result, dict)
         assert result == {"col1": 2}
 
-    def test_apply_transformation_functions_dataframe(self, mocker):
+    def test_apply_transformation_functions_dataframe(self, mocker, python_engine):
         # Arrange
         @udf(int)
         def add_one(col1):
@@ -654,9 +1151,8 @@ class TestTransformationFunctionEngine:
             return col1 + 2
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -676,15 +1172,17 @@ class TestTransformationFunctionEngine:
 
         dataset = pd.DataFrame(data={"col1": [1, 2, 3]})
 
-        tf_engine._apply_transformation_functions(
-            transformation_functions=[tf1, tf2],
+        result = tf_engine._apply_transformation_functions(
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                [tf1, tf2]
+            ),
             data=dataset,
             online=False,
         )
 
-        assert mocker_engine._apply_udf_on_dataframe.call_count == 2
+        assert set(result.columns) == {"col1", "add_one_col1_", "add_two_col1_"}
 
-    def test_apply_transformation_functions_dict(self, mocker):
+    def test_apply_transformation_functions_dict(self, mocker, python_engine):
         # Arrange
         @udf(int)
         def add_one(col1):
@@ -695,19 +1193,11 @@ class TestTransformationFunctionEngine:
             return col1 + 2
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
         mocker.patch("hsfs.engine._get_type", return_value="python")
-        mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
-        )
-
-        mocker.patch.object(
-            transformation_function_engine.TransformationFunctionEngine,
-            "_execute_udf",
-            return_value={"col1": 2},
         )
 
         tf1 = transformation_function.TransformationFunction(
@@ -724,18 +1214,19 @@ class TestTransformationFunctionEngine:
 
         dataset = {"col1": 1}
 
-        tf_engine._apply_transformation_functions(
-            transformation_functions=[tf1, tf2],
+        result = tf_engine._apply_transformation_functions(
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                [tf1, tf2]
+            ),
             data=dataset,
             online=False,
         )
 
-        assert (
-            transformation_function_engine.TransformationFunctionEngine._execute_udf.call_count
-            == 2
-        )
+        assert set(result.keys()) == {"col1", "add_one_col1_", "add_two_col1_"}
 
-    def test_apply_transformation_functions_unsupported_dataframe(self, mocker):
+    def test_apply_transformation_functions_unsupported_dataframe(
+        self, mocker, python_engine
+    ):
         # Arrange
         @udf(int)
         def add_one(col1):
@@ -746,9 +1237,7 @@ class TestTransformationFunctionEngine:
             return col1 + 2
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
@@ -768,7 +1257,9 @@ class TestTransformationFunctionEngine:
 
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
             tf_engine._apply_transformation_functions(
-                transformation_functions=[tf1, tf2],
+                execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                    [tf1, tf2]
+                ),
                 data=1,
                 online=False,
             )
@@ -778,7 +1269,9 @@ class TestTransformationFunctionEngine:
             == "Dataframe type <class 'int'> not supported in the engine."
         )
 
-    def test_apply_transformation_functions_missing_features_dict(self, mocker):
+    def test_apply_transformation_functions_missing_features_dict(
+        self, mocker, python_engine
+    ):
         # Arrange
         @udf(int)
         def add_one(col1):
@@ -789,9 +1282,7 @@ class TestTransformationFunctionEngine:
             return col2 + 2
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
         mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -813,7 +1304,9 @@ class TestTransformationFunctionEngine:
         dataset = {"col1": 1}
         with pytest.raises(exceptions.TransformationFunctionException) as e_info:
             tf_engine._apply_transformation_functions(
-                transformation_functions=[tf1, tf2],
+                execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                    [tf1, tf2]
+                ),
                 data=dataset,
                 online=False,
             )
@@ -823,7 +1316,53 @@ class TestTransformationFunctionEngine:
             == "The following feature(s): `col2`, required for the transformation function 'add_two' are not available."
         )
 
-    def test_apply_transformation_functions_dropped_features_dataframe(self, mocker):
+    def test_transformed_column_layout(self, mocker):
+        """Drops a transformation's dropped features unless they are expected.
+
+        Expected features are kept (they are shared across feature groups), and
+        surviving original columns are ordered before the transformation outputs.
+        """
+
+        @udf(int, drop=["col1"])
+        def add_one(col1):
+            return col1 + 1
+
+        @udf(int, drop=["col2"])
+        def add_two(col2):
+            return col2 + 2
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        tf1 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_two,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        dag = transformation_execution_dag.TransformationExecutionDAG([tf1, tf2])
+        cls = transformation_function_engine.TransformationFunctionEngine
+
+        # col2 is expected, so it is kept even though add_two drops it.
+        dropped, order = cls._transformed_column_layout(
+            dag, ["col1", "col2", "passthrough"], expected_features={"col2"}
+        )
+        assert dropped == {"col1"}
+        # Surviving original columns first, in input order; then the outputs.
+        assert order[:3] == ["col1", "col2", "passthrough"]
+        assert set(order[3:]) == {"add_one_col1_", "add_two_col2_"}
+
+        # With no expected features both declared drops apply.
+        dropped_all, _ = cls._transformed_column_layout(
+            dag, ["col1", "col2"], expected_features=None
+        )
+        assert dropped_all == {"col1", "col2"}
+
+    def test_apply_transformation_functions_dropped_features_dataframe(
+        self, mocker, python_engine
+    ):
         # Arrange
         @udf(int, drop=["col1"])
         def add_one(col1):
@@ -834,21 +1373,12 @@ class TestTransformationFunctionEngine:
             return col2 + 2
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = True
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
         mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id=99
         )
-        mocker_return_df = mocker.Mock()
-        mocker.patch.object(
-            transformation_function_engine.TransformationFunctionEngine,
-            "_execute_udf",
-            return_value=mocker_return_df,
-        )
-
         tf1 = transformation_function.TransformationFunction(
             featurestore_id=99,
             hopsworks_udf=add_one,
@@ -863,19 +1393,19 @@ class TestTransformationFunctionEngine:
 
         dataset = pd.DataFrame(data={"col1": [1, 2, 3], "col2": [4, 5, 6]})
 
-        _ = tf_engine._apply_transformation_functions(
-            transformation_functions=[tf1, tf2],
+        result = tf_engine._apply_transformation_functions(
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                [tf1, tf2]
+            ),
             data=dataset,
             online=False,
         )
 
-        assert mocker_engine._drop_columns.call_count == 1
-        assert mocker_engine._drop_columns.call_args[0][0] is mocker_return_df
-        assert mocker_engine._drop_columns.call_args[0][1] == {"col1", "col2"}
+        assert set(result.columns) == {"add_one_col1_", "add_two_col2_"}
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
     def test_apply_transformation_functions_dropped_features_dict_batch(
-        self, mocker, execution_mode
+        self, mocker, python_engine, execution_mode
     ):
         # Arrange
         @udf(int, drop=["col1"], mode=execution_mode)
@@ -887,9 +1417,7 @@ class TestTransformationFunctionEngine:
             return col2 + 2
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
         mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -911,7 +1439,9 @@ class TestTransformationFunctionEngine:
         dataset = {"col1": 1, "col2": 4}
 
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=[tf1, tf2],
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                [tf1, tf2]
+            ),
             data=dataset,
             online=False,
         )
@@ -920,7 +1450,7 @@ class TestTransformationFunctionEngine:
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
     def test_apply_transformation_functions_dropped_features_dict_online(
-        self, mocker, execution_mode
+        self, mocker, execution_mode, python_engine
     ):
         # Arrange
         @udf(int, drop=["col1"], mode=execution_mode)
@@ -932,9 +1462,7 @@ class TestTransformationFunctionEngine:
             return col2 + 2
 
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker_engine = mocker.Mock()
-        mocker_engine._check_supported_dataframe.return_value = False
-        mocker.patch("hsfs.engine._get_instance", return_value=mocker_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
         mocker.patch("hsfs.engine._get_type", return_value="python")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -956,7 +1484,9 @@ class TestTransformationFunctionEngine:
         dataset = {"col1": 1, "col2": 4}
 
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=[tf1, tf2],
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                [tf1, tf2]
+            ),
             data=dataset,
             online=True,
         )
@@ -1012,7 +1542,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=df,
             online=online,
         )
@@ -1071,7 +1603,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=True,
         )
@@ -1128,7 +1662,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=df,
             online=online,
             transformation_context={"test": 10},
@@ -1188,7 +1724,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
             transformation_context={"test": 10},
@@ -1238,7 +1776,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -1290,7 +1832,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
         )
@@ -1349,7 +1893,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -1409,7 +1957,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
         )
@@ -1461,7 +2011,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -1521,7 +2075,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -1586,7 +2144,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -1654,7 +2216,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
         )
@@ -1721,7 +2285,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -1789,7 +2357,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
         )
@@ -1856,7 +2426,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -1917,7 +2491,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
         )
@@ -1977,7 +2553,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -2042,7 +2622,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
         )
@@ -2116,7 +2698,11 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions, data=df, online=online
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
+            data=df,
+            online=online,
         )
 
         # Assert
@@ -2178,7 +2764,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fv.transformation_functions
+            ),
             data=data,
             online=online,
         )
@@ -2219,7 +2807,10 @@ class TestTransformationFunctionEngine:
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
             tf_engine._apply_transformation_functions(
-                transformation_functions=fg.transformation_functions, data=df
+                execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                    fg.transformation_functions
+                ),
+                data=df,
             )
 
         assert (
@@ -2260,7 +2851,10 @@ class TestTransformationFunctionEngine:
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
             tf_engine._apply_transformation_functions(
-                transformation_functions=fg.transformation_functions, data=data
+                execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                    fg.transformation_functions
+                ),
+                data=data,
             )
 
         assert (
@@ -2307,7 +2901,10 @@ class TestTransformationFunctionEngine:
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
             tf_engine._apply_transformation_functions(
-                transformation_functions=fv.transformation_functions, data=df
+                execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                    fv.transformation_functions
+                ),
+                data=df,
             )
 
         assert (
@@ -2354,7 +2951,10 @@ class TestTransformationFunctionEngine:
         # Act
         with pytest.raises(exceptions.TransformationFunctionException) as exception:
             tf_engine._apply_transformation_functions(
-                transformation_functions=fv.transformation_functions, data=data
+                execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                    fv.transformation_functions
+                ),
+                data=data,
             )
 
         assert (
@@ -2405,7 +3005,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fg.transformation_functions
+            ),
             data=df,
             request_parameters={"tf_name": 10},
             online=online,
@@ -2457,7 +3059,9 @@ class TestTransformationFunctionEngine:
 
         # Act
         result = tf_engine._apply_transformation_functions(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=transformation_execution_dag.TransformationExecutionDAG(
+                fg.transformation_functions
+            ),
             data=data,
             request_parameters={"tf_name": 10},
             online=online,
@@ -2465,3 +3069,138 @@ class TestTransformationFunctionEngine:
 
         # Assert
         assert result["add_one"] == 11
+
+    def test_apply_transformation_functions_chained_dataframe(
+        self, mocker, python_engine
+    ):
+        """Test that chained transformations work end-to-end when dependent TF is listed first.
+
+        This reproduces the bug where topo_tfs was re-sorted by insertion order,
+        breaking topological ordering and causing validation to fail because
+        upstream outputs weren't yet registered.
+        """
+
+        @udf([float, float])
+        def add_one(feature):
+            return feature + 1, feature + 1
+
+        @udf([float, float])
+        def add_two(feature):
+            return feature + 2, feature + 2
+
+        @udf(float)
+        def add(feature1, feature2):
+            return feature1 + feature2
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        tf_engine = transformation_function_engine.TransformationFunctionEngine(
+            feature_store_id=99
+        )
+
+        tf1 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_two,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf3 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        tf1 = tf1("feature").alias("odt1_1", "odt1_2")
+        tf2 = tf2("feature").alias("odt2_1", "odt2_2")
+        # Dependent TF listed first — this is the scenario that triggered the bug
+        tf3 = tf3("odt1_1", "odt2_2")
+
+        dataset = pd.DataFrame({"feature": [0.25, 0.80, 0.42]})
+
+        execution_graph = transformation_execution_dag.TransformationExecutionDAG(
+            [tf3, tf1, tf2]
+        )
+
+        # Verify topological order: roots before dependents despite input order
+        assert execution_graph.nodes.index(tf3) > execution_graph.nodes.index(tf1)
+        assert execution_graph.nodes.index(tf3) > execution_graph.nodes.index(tf2)
+
+        result = tf_engine._apply_transformation_functions(
+            execution_graph=execution_graph,
+            data=dataset,
+            online=False,
+        )
+
+        assert "odt1_1" in result.columns
+        assert "odt1_2" in result.columns
+        assert "odt2_1" in result.columns
+        assert "odt2_2" in result.columns
+        assert "add" in result.columns
+        # odt1_1 = feature + 1, odt2_2 = feature + 2, add = odt1_1 + odt2_2
+        expected = (dataset["feature"] + 1) + (dataset["feature"] + 2)
+        pd.testing.assert_series_equal(result["add"], expected, check_names=False)
+
+    def test_apply_transformation_functions_chained_dict(self, mocker, python_engine):
+        """Test chained transformations with dict input (online inference path)."""
+
+        @udf([float, float])
+        def add_one(feature):
+            return feature + 1, feature + 1
+
+        @udf([float, float])
+        def add_two(feature):
+            return feature + 2, feature + 2
+
+        @udf(float)
+        def add(feature1, feature2):
+            return feature1 + feature2
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        tf_engine = transformation_function_engine.TransformationFunctionEngine(
+            feature_store_id=99
+        )
+
+        tf1 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf2 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add_two,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        tf3 = transformation_function.TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=add,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        tf1 = tf1("feature").alias("odt1_1", "odt1_2")
+        tf2 = tf2("feature").alias("odt2_1", "odt2_2")
+        tf3 = tf3("odt1_1", "odt2_2")
+
+        dataset = {"feature": 0.25}
+
+        execution_graph = transformation_execution_dag.TransformationExecutionDAG(
+            [tf3, tf1, tf2]
+        )
+
+        result = tf_engine._apply_transformation_functions(
+            execution_graph=execution_graph,
+            data=dataset,
+            online=False,
+        )
+
+        assert result["odt1_1"] == 1.25
+        assert result["odt2_2"] == 2.25
+        assert result["add"] == 3.5

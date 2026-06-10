@@ -45,6 +45,7 @@ class TestFeatureGroupWriter:
             validation_options={"fetch_expectation_suite": False},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         assert fg._multi_part_insert is False
 
