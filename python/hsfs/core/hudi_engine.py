@@ -165,17 +165,23 @@ class HudiEngine:
 
         # When `partitioned_by` is set, the grain columns are NOT in the source
         # dataframe — Hudi derives them from event_time via CustomKeyGenerator
-        # with a TIMESTAMP_DATE_BASED partition path. Mirror the same options
+        # with a `<field>:TIMESTAMP` partition path. Mirror the same options
         # the backend's DeltaStreamer path builds (see FsJobManagerController.
         # injectHudiPartitionedByOptions) so the layout on disk matches
         # year=YYYY/month=MM/... regardless of which writer produced it.
         partitioned_by = getattr(self._feature_group, "partitioned_by", None)
         if partitioned_by:
             event_time = self._feature_group.event_time
-            partition_key = event_time
-            partition_path = f"{event_time}:TIMESTAMP_DATE_BASED"
+            # Hive sync registers the grain columns (the path segments), not
+            # event_time, as the metastore partition columns — matching the
+            # Hive table the backend created.
+            partition_key = ",".join(partitioned_by)
+            partition_path = f"{event_time}:TIMESTAMP"
+            # Literal text in a joda/SimpleDateFormat pattern must be
+            # single-quoted; unquoted "year="/"month=" would be read as
+            # (partly invalid) pattern letters.
             date_format = "/".join(
-                f"{g}={self._HUDI_GRAIN_TOKENS[g]}" for g in partitioned_by
+                f"'{g}='{self._HUDI_GRAIN_TOKENS[g]}" for g in partitioned_by
             )
         else:
             partition_key = (

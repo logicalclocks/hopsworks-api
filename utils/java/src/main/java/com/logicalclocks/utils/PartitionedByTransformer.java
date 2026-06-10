@@ -27,8 +27,6 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.functions;
 
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Hudi DeltaStreamer Transformer that materialises {@code partitioned_by} grain columns
@@ -39,8 +37,8 @@ import java.util.Map;
  * paths via the {@code CustomKeyGenerator} but the records themselves would not carry the
  * grain columns. Reads would then see them only as strings parsed from the path layout.
  * With this Transformer, the grain columns are real {@code INT} columns in the records,
- * matching the Delta GENERATED ALWAYS AS path so reads on either format expose the same
- * schema.
+ * matching the Delta path (where the client materializes the same columns before the
+ * write) so reads on either format expose the same schema.
  *
  * <p>Configuration (set by {@code FsJobManagerController.setupDeltaStreamerJob} when a Hudi
  * feature group has {@code partitioned_by} set):
@@ -61,19 +59,6 @@ public class PartitionedByTransformer implements Transformer {
   public static final String CONF_GRAINS =
       "hoodie.deltastreamer.transformer.partitionedby.grains";
 
-  // Spark SQL function name per grain. Matches the Delta GENERATED expressions
-  // emitted by hsfs_utils.create_delta_table_fg so the two formats produce
-  // identical grain values for the same event_time input.
-  private static final Map<String, String> GRAIN_FNS = new HashMap<>();
-
-  static {
-    GRAIN_FNS.put("year", "YEAR");
-    GRAIN_FNS.put("month", "MONTH");
-    GRAIN_FNS.put("week", "WEEKOFYEAR");
-    GRAIN_FNS.put("day", "DAYOFMONTH");
-    GRAIN_FNS.put("hour", "HOUR");
-  }
-
   @Override
   public Dataset<Row> apply(JavaSparkContext jsc, SparkSession spark,
                             Dataset<Row> rowDataset, TypedProperties properties) {
@@ -90,23 +75,36 @@ public class PartitionedByTransformer implements Transformer {
     Dataset<Row> out = rowDataset;
     for (String grain : grains) {
       String trimmed = grain.trim();
-      String fn = GRAIN_FNS.get(trimmed);
-      if (fn == null) {
-        throw new IllegalArgumentException(
-            "PartitionedByTransformer: unsupported grain '" + trimmed
-                + "'. Supported grains: " + GRAIN_FNS.keySet());
-      }
-      String sqlExpr = fn + "(__pbt_ts_expr)";
-      out = out
-          .withColumn("__pbt_ts_expr", timestampExpr)
-          .withColumn(trimmed, functions.expr(sqlExpr).cast("int"))
-          .drop("__pbt_ts_expr");
+      out = out.withColumn(trimmed, grainColumn(trimmed, timestampExpr).cast("int"));
     }
     return out;
   }
 
-  // Build a Spark Column that yields a TIMESTAMP from event_time. Mirrors the
-  // Delta CREATE TABLE wrapper used in hsfs_utils.create_delta_table_fg:
+  // Map a grain name to its Spark grain function applied to the event_time
+  // timestamp. Matches the grain functions the Python client uses on the
+  // Delta path (pyspark year/month/weekofyear/dayofmonth/hour) so the two
+  // formats produce identical grain values for the same event_time input.
+  private Column grainColumn(String grain, Column ts) {
+    switch (grain) {
+      case "year":
+        return functions.year(ts);
+      case "month":
+        return functions.month(ts);
+      case "week":
+        return functions.weekofyear(ts);
+      case "day":
+        return functions.dayofmonth(ts);
+      case "hour":
+        return functions.hour(ts);
+      default:
+        throw new IllegalArgumentException(
+            "PartitionedByTransformer: unsupported grain '" + grain
+                + "'. Supported grains: [year, month, week, day, hour]");
+    }
+  }
+
+  // Build a Spark Column that yields a TIMESTAMP from event_time. Mirrors
+  // the event_time handling of the Python client's Delta write path:
   //   - timestamp / date pass through;
   //   - integer columns are decoded per-row via a CASE WHEN that picks
   //     between seconds and milliseconds based on absolute magnitude
