@@ -1136,13 +1136,13 @@ class FeatureView:
             return {}
         result_vectors = {}
         for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
-            complete, fg_entry = self._vector_db_client.filter_entry_by_join_index(
+            complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
                 entry, join_index
             )
             if not complete:
                 # Not retrieving from vector db if entry is not completed
                 continue
-            vector_db_features = self._vector_db_client.read(
+            vector_db_features = self._vector_db_client._read(
                 fg.id,
                 fg.columns,
                 keys=fg_entry,
@@ -1219,7 +1219,7 @@ class FeatureView:
         """
         if self._vector_db_client is None:
             self.init_serving(external=external)
-        results = self._vector_db_client.find_neighbors(
+        results = self._vector_db_client._find_neighbors(
             embedding,
             feature=(feature if feature else None),
             k=k,
@@ -3876,7 +3876,7 @@ class FeatureView:
                 "Only Feature Group registered with Hopsworks can fetch feature monitoring configurations."
             )
 
-        return self._feature_monitoring_config_engine.get_feature_monitoring_configs(
+        return self._feature_monitoring_config_engine._get_feature_monitoring_configs(
             name=name,
             feature_name=feature_name,
             config_id=config_id,
@@ -3937,7 +3937,7 @@ class FeatureView:
                 "Only Feature View registered with Hopsworks can fetch feature monitoring history."
             )
 
-        return self._feature_monitoring_result_engine.get_feature_monitoring_results(
+        return self._feature_monitoring_result_engine._get_feature_monitoring_results(
             config_name=config_name,
             config_id=config_id,
             start_time=start_time,
@@ -5398,7 +5398,7 @@ class FeatureView:
             or len(self._serving_keys) == 0
         ):
             self._serving_keys = util._build_serving_keys_from_prepared_statements(
-                self._feature_view_engine._feature_view_api.get_serving_prepared_statement(
+                self._feature_view_engine._feature_view_api._get_serving_prepared_statement(
                     name=self.name,
                     version=self.version,
                     batch=False,

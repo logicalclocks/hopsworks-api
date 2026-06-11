@@ -2647,7 +2647,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_tags_api.return_value.add.call_count == 1
+        assert mock_tags_api.return_value._add.call_count == 1
 
     def test_delete_tag(self, mocker):
         # Arrange
@@ -2666,7 +2666,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_tags_api.return_value.delete.call_count == 1
+        assert mock_tags_api.return_value._delete.call_count == 1
 
     def test_get_tag(self, mocker):
         # Arrange
@@ -2685,7 +2685,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_tags_api.return_value.get.call_count == 1
+        assert mock_tags_api.return_value._get.call_count == 1
 
     def test_get_tags(self, mocker):
         # Arrange
@@ -2702,7 +2702,7 @@ class TestFeatureViewEngine:
         fv_engine._get_tags(feature_view_obj=None, training_dataset_version=None)
 
         # Assert
-        assert mock_tags_api.return_value.get.call_count == 1
+        assert mock_tags_api.return_value._get.call_count == 1
 
     def test_check_feature_group_accessibility(self, mocker):
         # Arrange

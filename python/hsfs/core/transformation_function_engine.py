@@ -1203,7 +1203,7 @@ class TransformationFunctionEngine:
                     "or `feature_view._init_batch_scoring(version)` to pass the training dataset version."
                     "Training data can be created by `feature_view.create_training_data` or `feature_view.training_data`."
                 )
-            td_tffn_stats = feature_view._statistics_engine.get(
+            td_tffn_stats = feature_view._statistics_engine._get(
                 feature_view,
                 before_transformation=True,
                 training_dataset_version=training_dataset_version,
@@ -1637,7 +1637,7 @@ class TransformationFunctionEngine:
         )
 
         if is_stat_required:
-            td_tffn_stats = training_dataset._statistics_engine.get(
+            td_tffn_stats = training_dataset._statistics_engine._get(
                 feature_view_obj,
                 before_transformation=True,
                 training_dataset_version=training_dataset_version,
