@@ -556,6 +556,145 @@ class TestFeatureGroupEngineIceberg:
         )
 
 
+class TestIcebergCatalogWrites:
+    def test_get_catalog_write_config_disabled(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+
+        # Act & Assert
+        assert iceberg_engine._get_catalog_write_config(None) == (None, {}, None)
+        assert iceberg_engine._get_catalog_write_config({"other": "x"}) == (
+            None,
+            {},
+            None,
+        )
+
+    def test_get_catalog_write_config(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+
+        # Act
+        name, properties, identifier = iceberg_engine._get_catalog_write_config(
+            {
+                "iceberg.catalog": "hadoop_prod",
+                "iceberg.catalog.type": "hadoop",
+                "iceberg.catalog.warehouse": "hdfs://nn/warehouse",
+                "other": "ignored",
+            }
+        )
+
+        # Assert
+        assert name == "hadoop_prod"
+        assert properties == {"type": "hadoop", "warehouse": "hdfs://nn/warehouse"}
+        assert identifier == "fs.fg_1"
+
+    def test_get_catalog_write_config_identifier_override(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+
+        # Act
+        name, properties, identifier = iceberg_engine._get_catalog_write_config(
+            {
+                "iceberg.catalog": "prod",
+                "iceberg.catalog.table-identifier": "db.custom_table",
+            }
+        )
+
+        # Assert
+        assert name == "prod"
+        assert properties == {}
+        assert identifier == "db.custom_table"
+
+    def test_write_iceberg_dataset_catalog_spark_upsert_merges(self, mocker):
+        # Arrange
+        spark = mocker.MagicMock()
+        spark.catalog.tableExists.return_value = True
+        fg = _make_fg(primary_key=["pk"])
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
+        build_mock = mocker.patch.object(iceberg_engine, "_build_fg_commit")
+        dataset = mocker.MagicMock()
+
+        # Act
+        iceberg_engine._write_iceberg_dataset(
+            dataset,
+            {"iceberg.catalog": "hadoop_prod", "iceberg.catalog.type": "hadoop"},
+            operation="upsert",
+        )
+
+        # Assert
+        spark.conf.set.assert_any_call("spark.sql.catalog.hadoop_prod.type", "hadoop")
+        merge_sql = spark.sql.call_args_list[0].args[0]
+        assert merge_sql.startswith("MERGE INTO hadoop_prod.fs.fg_1 t USING")
+        assert "t.pk = u.pk" in merge_sql
+        dataset.createOrReplaceTempView.assert_called_once_with("fg_1_updates")
+        assert build_mock.call_count == 1
+        # path-based machinery must not be touched in catalog mode
+        fg.prepare_spark_location.assert_not_called()
+
+    def test_write_iceberg_dataset_catalog_spark_create(self, mocker):
+        # Arrange
+        spark = mocker.MagicMock()
+        spark.catalog.tableExists.return_value = False
+        fg = _make_fg(primary_key=["pk"])
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
+        mocker.patch.object(iceberg_engine, "_build_fg_commit")
+        dataset = mocker.MagicMock()
+
+        # Act
+        iceberg_engine._write_iceberg_dataset(
+            dataset, {"iceberg.catalog": "prod"}, operation="upsert"
+        )
+
+        # Assert
+        dataset.writeTo.assert_called_once_with("prod.fs.fg_1")
+        dataset.writeTo.return_value.using.assert_called_once_with("iceberg")
+        dataset.writeTo.return_value.using.return_value.create.assert_called_once()
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_write_pyiceberg_dataset_catalog_upsert(self, mocker):
+        # Arrange
+        fg = _make_fg(primary_key=["pk"])
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+        catalog = mocker.MagicMock()
+        catalog.table_exists.return_value = True
+        table = catalog.load_table.return_value
+        table.upsert.return_value = mocker.Mock(rows_inserted=1, rows_updated=2)
+        load_catalog_mock = mocker.patch(
+            "pyiceberg.catalog.load_catalog", return_value=catalog
+        )
+        arrow_table = mocker.Mock()
+        mocker.patch.object(
+            iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
+        )
+        setup_mock = mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
+        publish_mock = mocker.patch.object(iceberg_engine, "_publish_hadoop_metadata")
+        mocker.patch.object(iceberg_engine, "_pyiceberg_snapshots", return_value=[])
+        build_mock = mocker.patch.object(iceberg_engine, "_build_fg_commit")
+
+        # Act
+        iceberg_engine._write_pyiceberg_dataset(
+            mocker.Mock(),
+            write_options={
+                "iceberg.catalog": "prod",
+                "iceberg.catalog.uri": "http://rest:8181",
+            },
+            operation="upsert",
+        )
+
+        # Assert
+        load_catalog_mock.assert_called_once_with("prod", uri="http://rest:8181")
+        table.upsert.assert_called_once_with(arrow_table, join_cols=["pk"])
+        assert build_mock.call_args.kwargs == {
+            "rows_inserted": 1,
+            "rows_updated": 2,
+            "rows_deleted": 0,
+        }
+        # the catalog owns the pointer: no version-hint publishing,
+        # no HopsFS-specific setup
+        publish_mock.assert_not_called()
+        setup_mock.assert_not_called()
+
+
 class TestIcebergArrowFlight:
     def test_iceberg_query_supported_by_query_service(self, mocker):
         # Arrange

@@ -201,6 +201,12 @@ class IcebergEngine:
     the write commits through an ephemeral local catalog and is then published
     using the `HadoopTables` protocol (`metadata/vN.metadata.json` plus
     `version-hint.text`), so PyIceberg and Spark writers stay interoperable.
+
+    Alternatively, a write can commit through a user-provided catalog by
+    passing the `iceberg.catalog` write option (see
+    [`_get_catalog_write_config`][hsfs.core.iceberg_engine.IcebergEngine._get_catalog_write_config]).
+    In catalog mode the catalog owns the current-metadata pointer, so all
+    readers and writers of that table must use the same catalog.
     """
 
     ICEBERG_SPARK_FORMAT = "iceberg"
@@ -210,6 +216,9 @@ class IcebergEngine:
     ICEBERG_MERGE_SCHEMA = "merge-schema"
     ICEBERG_CHECK_ORDERING = "check-ordering"
     ICEBERG_DOT_PREFIX = "iceberg."
+    ICEBERG_CATALOG_OPTION = "iceberg.catalog"
+    ICEBERG_CATALOG_PROP_PREFIX = "iceberg.catalog."
+    ICEBERG_CATALOG_TABLE_IDENTIFIER_OPTION = "iceberg.catalog.table-identifier"
     SNAPSHOTS_METADATA_SUFFIX = "#snapshots"
     PYICEBERG_NAMESPACE = "hopsworks"
     APPEND = "append"
@@ -305,12 +314,68 @@ class IcebergEngine:
             self._spark_context._jsc.hadoopConfiguration()
         ).create(schema, spec_builder.build(), location)
 
+    def _get_catalog_write_config(
+        self, write_options: dict[str, Any] | None
+    ) -> tuple[str | None, dict[str, str], str | None]:
+        """Extract the user-provided catalog configuration from write options.
+
+        Catalog mode is enabled by the `iceberg.catalog` write option naming
+        the catalog to commit through.
+        Connection properties can be passed as `iceberg.catalog.<prop>`
+        options (e.g. `iceberg.catalog.type`, `iceberg.catalog.uri`,
+        `iceberg.catalog.warehouse`); with Spark they can equally be
+        configured on the session as `spark.sql.catalog.<name>.*`, and
+        without Spark in a `.pyiceberg.yaml` configuration file.
+        The table is addressed as `<feature store name>.<name>_<version>`
+        unless `iceberg.catalog.table-identifier` overrides it.
+
+        Warning: Single pointer authority
+            In catalog mode the catalog owns the current-metadata pointer
+            instead of the table location's `version-hint.text`, so all
+            readers and writers of that table must use the same catalog.
+
+        Parameters:
+            write_options: User provided write options.
+
+        Returns:
+            Tuple of catalog name, catalog properties, and table identifier; the name is None when no catalog was requested.
+        """
+        if not write_options or self.ICEBERG_CATALOG_OPTION not in write_options:
+            return None, {}, None
+        catalog_name = write_options[self.ICEBERG_CATALOG_OPTION]
+        properties = {}
+        identifier = f"{self._feature_store_name}.{self._feature_group.name}_{self._feature_group.version}"
+        for key, value in write_options.items():
+            if key == self.ICEBERG_CATALOG_TABLE_IDENTIFIER_OPTION:
+                identifier = value
+            elif key != self.ICEBERG_CATALOG_OPTION and key.startswith(
+                self.ICEBERG_CATALOG_PROP_PREFIX
+            ):
+                properties[key[len(self.ICEBERG_CATALOG_PROP_PREFIX) :]] = value
+        return catalog_name, properties, identifier
+
+    @staticmethod
+    def _append_requested(operation: str, write_options: dict[str, Any] | None) -> bool:
+        return operation == "insert" or (
+            isinstance(write_options, dict)
+            and str(write_options.get("mode", "")).lower() == IcebergEngine.APPEND
+        )
+
     def _write_iceberg_dataset(
         self, dataset, write_options: dict[str, Any] | None, operation: str = "upsert"
     ) -> feature_group_commit.FeatureGroupCommit:
-        location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
+
+        catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
+            write_options
+        )
+        if catalog_name:
+            return self._write_iceberg_dataset_catalog(
+                dataset, catalog_name, catalog_properties, identifier, operation
+            )
+
+        location = self._feature_group.prepare_spark_location()
 
         rows_inserted = rows_updated = rows_deleted = None
         if not self._is_iceberg_table_at(location):
@@ -332,6 +397,67 @@ class IcebergEngine:
             rows_updated=rows_updated,
             rows_deleted=rows_deleted,
         )
+
+    def _write_iceberg_dataset_catalog(
+        self,
+        dataset,
+        catalog_name: str,
+        catalog_properties: dict[str, str],
+        identifier: str,
+        operation: str,
+    ) -> feature_group_commit.FeatureGroupCommit | None:
+        """Write through a user-provided Spark catalog instead of the table path.
+
+        The catalog is configured on the session from the
+        `iceberg.catalog.<prop>` write options when given; otherwise the
+        session's existing `spark.sql.catalog.<name>.*` configuration is used.
+        Upserts run as a SQL `MERGE INTO`, which requires the Iceberg Spark
+        SQL extensions on the session.
+        """
+        spark = self._spark_session
+        base_key = f"spark.sql.catalog.{catalog_name}"
+        impl = catalog_properties.pop("impl", None)
+        if impl is not None:
+            spark.conf.set(base_key, impl)
+        elif spark.conf.get(base_key, None) is None:
+            spark.conf.set(base_key, "org.apache.iceberg.spark.SparkCatalog")
+        for prop, value in catalog_properties.items():
+            spark.conf.set(f"{base_key}.{prop}", value)
+
+        qualified = f"{catalog_name}.{identifier}"
+        _logger.debug(f"Writing Iceberg dataset through catalog table {qualified}")
+        if not spark.catalog.tableExists(qualified):
+            writer = dataset.writeTo(qualified).using(self.ICEBERG_SPARK_FORMAT)
+            if self._feature_group.partition_key:
+                from pyspark.sql.functions import col
+
+                writer = writer.partitionedBy(
+                    *[col(c) for c in self._feature_group.partition_key]
+                )
+            writer.create()
+        elif operation == "insert":
+            dataset.writeTo(qualified).append()
+        else:
+            updates_alias = (
+                f"{self._feature_group.name}_{self._feature_group.version}_updates"
+            )
+            dataset.createOrReplaceTempView(updates_alias)
+            merge_condition = " AND ".join(
+                f"t.{key} = u.{key}" for key in self._get_merge_keys()
+            )
+            spark.sql(
+                f"MERGE INTO {qualified} t USING {updates_alias} u ON {merge_condition} "
+                "WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *"
+            )
+
+        snapshots = [
+            row.asDict(recursive=True)
+            for row in spark.sql(
+                f"SELECT committed_at, snapshot_id, operation, summary FROM {qualified}.snapshots"
+            ).collect()
+        ]
+        snapshots.sort(key=lambda s: s["committed_at"])
+        return self._build_fg_commit(snapshots)
 
     def _append_iceberg_dataset(
         self, dataset, location: str, write_options: dict[str, Any]
@@ -891,17 +1017,28 @@ class IcebergEngine:
         Parameters:
             dataset: Dataset to write to the Iceberg table.
         """
+        arrow_table = self._prepare_arrow_table(dataset)
+
+        catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
+            write_options
+        )
+        if catalog_name:
+            return self._write_pyiceberg_dataset_catalog(
+                arrow_table,
+                catalog_name,
+                catalog_properties,
+                identifier,
+                operation,
+                write_options,
+            )
+
         self._setup_pyiceberg()
         location = self._get_pyiceberg_location()
-        arrow_table = self._prepare_arrow_table(dataset)
 
         catalog = self._make_pyiceberg_catalog()
         version, table = self._load_pyiceberg_table(catalog, location)
 
-        append_requested = operation == "insert" or (
-            isinstance(write_options, dict)
-            and str(write_options.get("mode", "")).lower() == self.APPEND
-        )
+        append_requested = self._append_requested(operation, write_options)
 
         rows_inserted = rows_updated = rows_deleted = None
         if table is None:
@@ -920,6 +1057,55 @@ class IcebergEngine:
             rows_deleted = 0
 
         self._publish_hadoop_metadata(table, location, (version or 0) + 1)
+        return self._build_fg_commit(
+            self._pyiceberg_snapshots(table),
+            rows_inserted=rows_inserted,
+            rows_updated=rows_updated,
+            rows_deleted=rows_deleted,
+        )
+
+    def _write_pyiceberg_dataset_catalog(
+        self,
+        arrow_table: pa.Table,
+        catalog_name: str,
+        catalog_properties: dict[str, str],
+        identifier: str,
+        operation: str,
+        write_options: dict[str, Any] | None,
+    ) -> feature_group_commit.FeatureGroupCommit | None:
+        """Write through a user-provided PyIceberg catalog instead of the table path.
+
+        The catalog is loaded with PyIceberg's standard resolution: the
+        `iceberg.catalog.<prop>` write options are passed as catalog
+        properties and merged with any `.pyiceberg.yaml` configuration for the
+        same catalog name.
+        """
+        import contextlib
+
+        from pyiceberg.catalog import Catalog, load_catalog
+        from pyiceberg.exceptions import NamespaceAlreadyExistsError
+
+        catalog = load_catalog(catalog_name, **catalog_properties)
+        _logger.debug(
+            f"Writing Iceberg dataset through catalog {catalog_name} table {identifier}"
+        )
+
+        rows_inserted = rows_updated = rows_deleted = None
+        if not catalog.table_exists(identifier):
+            with contextlib.suppress(NamespaceAlreadyExistsError):
+                catalog.create_namespace(Catalog.namespace_from(identifier))
+            table = catalog.create_table(identifier, schema=arrow_table.schema)
+            table.append(arrow_table)
+        elif self._append_requested(operation, write_options):
+            table = catalog.load_table(identifier)
+            table.append(arrow_table)
+        else:
+            table = catalog.load_table(identifier)
+            upsert_result = table.upsert(arrow_table, join_cols=self._get_merge_keys())
+            rows_inserted = upsert_result.rows_inserted
+            rows_updated = upsert_result.rows_updated
+            rows_deleted = 0
+
         return self._build_fg_commit(
             self._pyiceberg_snapshots(table),
             rows_inserted=rows_inserted,
