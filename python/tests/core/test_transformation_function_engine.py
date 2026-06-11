@@ -30,11 +30,16 @@ from hsfs import (
     transformation_function,
 )
 from hsfs.builtin_transformations import impute_mean, min_max_scaler
-from hsfs.core import transformation_execution_dag, transformation_function_engine
+from hsfs.core import (
+    statistics_engine,
+    transformation_execution_dag,
+    transformation_function_engine,
+)
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.engine import python, spark
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_function import TransformationType
+from hsfs.transformation_statistics import TransformationStatistics
 
 
 if HAS_POLARS:
@@ -399,8 +404,45 @@ class TestTransformationFunctionEngine:
             {"feature_1": [1.0, None, 3.0, 5.0], "other": [10, 20, 30, 40]}
         )
 
-        fit_calls = []
+        saved = []
 
+        def fake_save(
+            feature_descriptive_statistics, td_metadata_instance, feature_view_obj
+        ):
+            saved.append(list(feature_descriptive_statistics))
+            return SimpleNamespace(
+                feature_descriptive_statistics=feature_descriptive_statistics
+            )
+
+        mocker.patch.object(
+            statistics_engine.StatisticsEngine,
+            "_save_transformation_fn_statistics",
+            side_effect=fake_save,
+        )
+
+        transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td, feature_view_obj=fv, dataset=dataset
+        )
+
+        # Statistics are persisted in a single save (one call), so serving
+        # retrieves one complete entity covering both the raw feature and the
+        # intermediate.
+        assert len(saved) == 1
+        persisted = {fds.feature_name: fds for fds in saved[0]}
+        assert {"feature_1", "imputed_feature_1"} <= set(persisted)
+        # The intermediate was profiled on values its producing transformation
+        # materialized first (impute_mean fills the missing entry of
+        # [1, None, 3, 5] with 3), and the persisted statistics are exactly the
+        # fitted ones.
+        assert persisted["imputed_feature_1"].mean == 3.0
+
+    @staticmethod
+    def _fake_persisting_statistics(mocker):
+        # Skip the backend save in both persisting paths. The raw-feature fit
+        # profiles and persists through TransformationFunctionEngine
+        # ._compute_transformation_fn_statistics; the chained fit persists the
+        # provisional statistics it fitted with through StatisticsEngine
+        # ._save_transformation_fn_statistics.
         def fake_compute(
             training_dataset,
             columns,
@@ -408,7 +450,6 @@ class TestTransformationFunctionEngine:
             feature_dataframe,
             feature_view_obj,
         ):
-            fit_calls.append((list(columns), list(feature_dataframe.columns)))
             descriptive = [
                 FeatureDescriptiveStatistics(
                     feature_name=c,
@@ -426,46 +467,17 @@ class TestTransformationFunctionEngine:
             side_effect=fake_compute,
         )
 
-        transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
-            training_dataset=td, feature_view_obj=fv, dataset=dataset
-        )
-
-        # Statistics are persisted in a single save (one call) over the
-        # fully-materialized frame, so serving retrieves one complete entity.
-        assert len(fit_calls) == 1
-        persisted_columns, persisted_df_columns = fit_calls[0]
-        # The persist covers both the raw feature and the intermediate.
-        assert {"feature_1", "imputed_feature_1"} <= set(persisted_columns)
-        # The intermediate is a real column of the frame the statistics are
-        # computed on — its producing transformation was materialized first.
-        assert "imputed_feature_1" in persisted_df_columns
-
-    @staticmethod
-    def _fake_persisting_statistics(mocker):
-        # Replace the persisting statistics call with one that computes real
-        # descriptive statistics from the frame but skips the backend save.
-        def fake_compute(
-            training_dataset,
-            columns,
-            label_encoder_features,
-            feature_dataframe,
-            feature_view_obj,
+        def fake_save(
+            feature_descriptive_statistics, td_metadata_instance, feature_view_obj
         ):
-            descriptive = [
-                FeatureDescriptiveStatistics(
-                    feature_name=c,
-                    mean=float(feature_dataframe[c].mean()),
-                    min=float(feature_dataframe[c].min()),
-                    max=float(feature_dataframe[c].max()),
-                )
-                for c in columns
-            ]
-            return SimpleNamespace(feature_descriptive_statistics=descriptive)
+            return SimpleNamespace(
+                feature_descriptive_statistics=feature_descriptive_statistics
+            )
 
         return mocker.patch.object(
-            transformation_function_engine.TransformationFunctionEngine,
-            "_compute_transformation_fn_statistics",
-            side_effect=fake_compute,
+            statistics_engine.StatisticsEngine,
+            "_save_transformation_fn_statistics",
+            side_effect=fake_save,
         )
 
     def test_fit_and_transform_chained_fused(self, mocker):
@@ -659,9 +671,11 @@ class TestTransformationFunctionEngine:
 
         # The statistics were fit on the intermediate as the context-aware
         # transformation produced it (before this fix the fused fitting pass ran
-        # with no context, so a context UDF could not even execute).
-        persisted_frame = fake_persist.call_args[0][3]
-        assert persisted_frame["offset_feature_1"].tolist() == [101.0, 102.0, 103.0]
+        # with no context, so a context UDF could not even execute), and the
+        # persisted statistics are those fitted values.
+        persisted = {fds.feature_name: fds for fds in fake_persist.call_args[0][0]}
+        assert persisted["offset_feature_1"].min == 101.0
+        assert persisted["offset_feature_1"].max == 103.0
         # min_max_scaler drops its input, so the final frame carries the scaled
         # output computed from the context-shifted intermediate.
         assert transformed["scaled_feature_1"].tolist() == [0.0, 0.5, 1.0]
@@ -741,6 +755,88 @@ class TestTransformationFunctionEngine:
             online=False,
         )
         pd.testing.assert_frame_equal(transformed["train"], expected_train)
+
+    def test_fit_and_transform_overwrite_feature_fits_on_raw_values(self, mocker):
+        # A transformation that overwrites the feature it requires statistics
+        # on (output name == input name) consumes the raw feature, not a
+        # chained intermediate, so the fit must take the single-profile path
+        # and persist statistics of the raw values. Before this fix the name
+        # collision routed it through the chained fit, which re-profiled the
+        # frame after the overwrite and persisted mean(raw + mean) instead of
+        # mean(raw), breaking serving.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        @udf(float)
+        def feature_1(feature_1, statistics=TransformationStatistics("feature_1")):  # noqa: B008
+            return feature_1 + statistics.feature_1.mean
+
+        tf_overwrite = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=feature_1,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("feature_1")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=[tf_overwrite],
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+            id=10,
+        )
+        dataset = pd.DataFrame({"feature_1": [1.0, 2.0, 3.0]})
+
+        profiled_frames = []
+
+        def fake_compute(
+            training_dataset,
+            columns,
+            label_encoder_features,
+            feature_dataframe,
+            feature_view_obj,
+        ):
+            profiled_frames.append(feature_dataframe.copy())
+            descriptive = [
+                FeatureDescriptiveStatistics(
+                    feature_name=c, mean=float(feature_dataframe[c].mean())
+                )
+                for c in columns
+            ]
+            return SimpleNamespace(feature_descriptive_statistics=descriptive)
+
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_compute_transformation_fn_statistics",
+            side_effect=fake_compute,
+        )
+
+        transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td, feature_view_obj=fv, dataset=dataset
+        )
+
+        # One profiling pass, on the raw values (mean 2.0), before the
+        # transformation overwrites the column.
+        assert len(profiled_frames) == 1
+        assert profiled_frames[0]["feature_1"].tolist() == [1.0, 2.0, 3.0]
+        # The transformation applied the raw-fitted mean.
+        assert transformed["feature_1"].tolist() == [3.0, 4.0, 5.0]
 
     def test_apply_transformation_functions_defaults_to_sequential(self, mocker):
         # Without an explicit n_processes the DAG runs sequentially, regardless

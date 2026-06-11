@@ -309,6 +309,38 @@ class StatisticsEngine:
             before_transformation=True,
         )
 
+    def _save_transformation_fn_statistics(
+        self,
+        feature_descriptive_statistics: list[FeatureDescriptiveStatistics],
+        td_metadata_instance: training_dataset.TrainingDataset,
+        feature_view_obj: feature_view.FeatureView,
+    ) -> statistics.Statistics:
+        """Persist precomputed transformation-function statistics in a single save.
+
+        Used by the chained transformation fit: the statistics were profiled
+        stage by stage while the feature values were the fitted ones, so they
+        are persisted as computed instead of being re-profiled on the
+        transformed dataframe.
+
+        Parameters:
+            feature_descriptive_statistics: The single-feature descriptive statistics to persist.
+            td_metadata_instance: Training Dataset the statistics belong to.
+            feature_view_obj: Metadata of the feature view used to create the Training Dataset.
+
+        Returns:
+            Statistics metadata containing the persisted descriptive statistics.
+        """
+        computation_time = int(float(datetime.now().timestamp()) * 1000)
+        return self._save_statistics(
+            statistics.Statistics(
+                computation_time=computation_time,
+                feature_descriptive_statistics=feature_descriptive_statistics,
+                before_transformation=True,
+            ),
+            td_metadata_instance,
+            feature_view_obj,
+        )
+
     @decorators._catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def _get(
         self,

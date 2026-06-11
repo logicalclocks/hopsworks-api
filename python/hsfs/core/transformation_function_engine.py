@@ -1386,18 +1386,28 @@ class TransformationFunctionEngine:
         # A statistic required on a feature that is itself produced by another
         # transformation function (an intermediate of a chain, e.g. the imputed
         # column consumed by a scaler) does not exist in the raw data; fitting
-        # it requires executing the producing transformations first.
-        produced_features = {
-            output_feature
+        # it requires executing the producing transformations first. Mirrors
+        # the execution DAG's resolution rule: a transformation that overwrites
+        # its own input (output name == input name) consumes the raw feature,
+        # not a chained intermediate.
+        output_producer = {
+            output_feature: tf
             for tf in feature_view_obj.transformation_functions
             for output_feature in tf.hopsworks_udf.output_column_names
         }
-        if statistics_features & produced_features:
+        requires_chained_fit = any(
+            producer is not None and producer is not tf
+            for tf in feature_view_obj.transformation_functions
+            for producer in (
+                output_producer.get(stats_feature)
+                for stats_feature in tf.hopsworks_udf.statistics_features
+            )
+        )
+        if requires_chained_fit:
             return TransformationFunctionEngine._fit_transform_chained(
                 training_dataset,
                 feature_view_obj,
                 feature_dataframe,
-                statistics_features,
                 label_encoder_features,
                 transformation_context,
                 n_processes,
@@ -1427,7 +1437,6 @@ class TransformationFunctionEngine:
         feature_dataframe: pd.DataFrame
         | pl.DataFrame
         | TypeVar("pyspark.sql.DataFrame"),
-        statistics_features: set[str],
         label_encoder_features: set[str],
         transformation_context: dict[str, Any] | None,
         n_processes: int | None,
@@ -1446,8 +1455,7 @@ class TransformationFunctionEngine:
             training_dataset: The training dataset the statistics are persisted for.
             feature_view_obj: The feature view whose transformation functions are applied.
             feature_dataframe: The train data to fit on and transform.
-            statistics_features: All features the transformation functions require statistics on.
-            label_encoder_features: The subset of `statistics_features` consumed by encoders.
+            label_encoder_features: The statistics features consumed by encoders.
             transformation_context: Context variables passed to the transformation functions.
             n_processes: Number of worker processes for applying each stage.
 
@@ -1519,22 +1527,14 @@ class TransformationFunctionEngine:
                 )
             )
 
-        # Every required statistic feature (raw and intermediate) is now a
-        # column of working_dataframe. Compute and persist them in a single save
-        # so serving retrieves one complete statistics entity (not the most
-        # recent partial one).
-        if is_spark_dataframe:
-            working_dataframe = (
-                TransformationFunctionEngine._persist_statistics_barrier(
-                    working_dataframe, previous_barrier
-                )
-            )
-        stats = TransformationFunctionEngine._compute_transformation_fn_statistics(
-            training_dataset,
-            list(statistics_features),
-            list(label_encoder_features),
-            working_dataframe,
-            feature_view_obj,
+        # Persist the statistics the transformations were fitted with, in a
+        # single save so serving retrieves one complete statistics entity (not
+        # the most recent partial one). They cannot be re-profiled here: a
+        # transformation that overwrites a feature it requires statistics on
+        # (output name == input name) has already replaced the fitted values
+        # in working_dataframe.
+        stats = statistics_engine._save_transformation_fn_statistics(
+            provisional_statistics, training_dataset, feature_view_obj
         )
         for tf in feature_view_obj.transformation_functions:
             tf.transformation_statistics = stats.feature_descriptive_statistics
@@ -1596,8 +1596,8 @@ class TransformationFunctionEngine:
         the source read. Persisting at each barrier makes every later action
         read the checkpoint instead, so at most two checkpoints are alive and
         each action only computes the plan suffix since the last barrier. The
-        final barrier backs the training dataset write and is evicted by Spark
-        afterwards.
+        last barrier also backs the training dataset write and is evicted by
+        Spark afterwards.
 
         Parameters:
             dataframe: The frame to persist as the new barrier.
