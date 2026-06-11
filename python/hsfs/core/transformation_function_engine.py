@@ -623,9 +623,22 @@ class TransformationFunctionEngine:
         def task_inputs(tf):
             # Ship only this function's inputs for every row; a consumed
             # intermediate is present because its producer's outputs were merged
-            # before this function ran. _execute_udf maps over the list.
-            features = tf.hopsworks_udf.transformation_features
-            return [{f: row.get(f) for f in features} for row in rows]
+            # before this function ran. Values resolve like _execute_udf does:
+            # the prefixed name first, falling back to the unprefixed name, so
+            # a request parameter supplied unprefixed reaches a prefixed
+            # transformation instead of materializing as a None placeholder.
+            prefix = tf.hopsworks_udf.feature_name_prefix or ""
+            name_pairs = [
+                (prefix + feature, feature)
+                for feature in tf.hopsworks_udf.unprefixed_transformation_features
+            ]
+            return [
+                {
+                    prefixed: row[prefixed] if prefixed in row else row.get(unprefixed)
+                    for prefixed, unprefixed in name_pairs
+                }
+                for row in rows
+            ]
 
         def merge(tf, result):
             for row, output in zip(rows, result, strict=False):

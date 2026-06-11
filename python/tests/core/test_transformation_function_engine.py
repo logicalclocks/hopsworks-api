@@ -838,6 +838,39 @@ class TestTransformationFunctionEngine:
         # The transformation applied the raw-fitted mean.
         assert transformed["feature_1"].tolist() == [3.0, 4.0, 5.0]
 
+    def test_apply_to_dict_prefixed_udf_unprefixed_request_parameter(self, mocker):
+        # A request parameter supplied unprefixed must reach a prefixed
+        # transformation when the prefixed feature is absent from the row (the
+        # dropped raw input of an on-demand transformation at serving). Before
+        # this fix the per-function row snapshot materialized the missing
+        # prefixed name as a None placeholder, defeating _execute_udf's
+        # unprefixed fallback.
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+
+        @udf(int, drop=["col1"], mode="python")
+        def add_col1_col2(col1, col2):
+            return col1 + col2
+
+        prefixed_udf = add_col1_col2("col1", "col2")
+        prefixed_udf.feature_name_prefix = "fg2_"
+        tf_prefixed = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=prefixed_udf,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+        graph = transformation_execution_dag.TransformationExecutionDAG([tf_prefixed])
+
+        result = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+            execution_graph=graph,
+            data={"index": 1, "fg2_col2": 3},
+            online=True,
+            request_parameters={"col1": 10},
+        )
+
+        assert result["fg2_add_col1_col2"] == 13
+
     def test_apply_transformation_functions_defaults_to_sequential(self, mocker):
         # Without an explicit n_processes the DAG runs sequentially, regardless
         # of input size or DAG width: parallelism is strictly opt-in.
