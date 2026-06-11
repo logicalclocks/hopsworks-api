@@ -33,7 +33,7 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 from hopsworks_apigen import deprecation, public
-from hopsworks_common import job
+from hopsworks_common import client, job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -3115,6 +3115,7 @@ class FeatureGroup(FeatureGroupBase):
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
+                hopsfs_external=self._is_hopsfs_external(),
             )
 
     def _is_hopsfs_storage(self) -> bool:
@@ -3200,16 +3201,30 @@ class FeatureGroup(FeatureGroupBase):
         else:
             self._sink_enabled = requested_sink and supported_sink_connector
 
+    def _is_hopsfs_external(self) -> bool:
+        """Whether the offline storage is HopsFS accessed from an external client."""
+        try:
+            is_external = client._get_instance()._is_external()
+        except Exception:  # noqa: BLE001 - no client configured yet means not external
+            return False
+        return is_external and self._is_hopsfs_storage()
+
     @staticmethod
     def _resolve_stream_python(
         stream: bool,
         time_travel_format: str,
+        hopsfs_external: bool = False,
     ) -> bool | None:
         # If stream is explicitly set to True, use it.
         # Otherwise, formats with direct offline writes from the Python engine
         # (DELTA via delta-rs, ICEBERG via pyiceberg) disable stream by
         # default; everything else writes through the materialization job.
-        return stream or time_travel_format not in ["DELTA", "ICEBERG"]
+        direct_write_formats = ["DELTA", "ICEBERG"]
+        if hopsfs_external:
+            # PyIceberg reaches HopsFS through libhdfs, which external Python
+            # clients do not have; route through the materialization job.
+            direct_write_formats.remove("ICEBERG")
+        return stream or time_travel_format not in direct_write_formats
 
     @staticmethod
     def _resolve_time_travel_format(

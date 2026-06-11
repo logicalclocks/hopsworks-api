@@ -789,6 +789,13 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
+            if (
+                spark_session is None
+                and not iceberg_engine_instance._pyiceberg_write_supported()
+            ):
+                # PyIceberg cannot reach this storage from this client; the
+                # materialization job creates the table on first write instead.
+                return
             iceberg_engine_instance._save_empty_table(write_options=write_options)
 
     def _create_sink_job_if_needed(

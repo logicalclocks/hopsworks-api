@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -808,28 +807,27 @@ class IcebergEngine:
 
     # region PyIceberg (non-Spark) operations
 
-    def _setup_pyiceberg(self) -> None:
-        """Prepare the environment for PyIceberg access to HopsFS.
+    def _pyiceberg_write_supported(self) -> bool:
+        """Whether PyIceberg can reach this feature group's storage from this client.
 
-        PyIceberg reaches HopsFS through PyArrow's Hadoop filesystem, which
-        resolves the acting user from `HADOOP_USER_NAME`; external clients must
-        act as their project user.
+        PyIceberg accesses HopsFS through PyArrow's Hadoop filesystem
+        (libhdfs), which is only available inside the Hopsworks cluster;
+        external Python clients must ingest through the materialization job
+        instead.
         """
         if not self._feature_group._is_hopsfs_storage():
-            _logger.debug(
-                "Non-HopsFS storage connector detected, skipping HopsFS-specific pyiceberg setup"
+            return True
+        return not client._get_instance()._is_external()
+
+    def _setup_pyiceberg(self) -> None:
+        """Validate that PyIceberg can access the feature group's storage."""
+        if not self._pyiceberg_write_supported():
+            raise FeatureStoreException(
+                "Writing to a HopsFS-backed Iceberg feature group is not supported from external Python clients, "
+                "because PyIceberg requires the Hadoop native library (libhdfs) to access HopsFS. "
+                "Insert from a Spark application or a job/notebook running inside Hopsworks, "
+                "or create the feature group with stream=True to ingest through the materialization job."
             )
-            return
-        _client = client._get_instance()
-        if _client._is_external():
-            user_name = self._project_api._get_user_info().get("username", None)
-            if not user_name:
-                raise FeatureStoreException(
-                    "Failed to write to Iceberg table in external cluster. Cannot get user name for project."
-                )
-            project_username = f"{_client.project_name}__{user_name}"
-            _logger.debug(f"Setting HADOOP_USER_NAME to {project_username}")
-            os.environ["HADOOP_USER_NAME"] = project_username
 
     def _get_pyiceberg_location(self) -> str:
         if not self._feature_group._is_hopsfs_storage():

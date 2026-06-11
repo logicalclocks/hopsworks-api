@@ -805,6 +805,29 @@ class TestIcebergMaterialization:
         assert mock_python_engine_run_materialization_job.call_count == 1
         assert mock_python_engine_legacy_save_dataframe.call_count == 0
 
+    def test_python_engine_iceberg_fg_streams_for_external_hopsfs(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.feature_group.HAS_PYICEBERG", True)
+        client_mock = mocker.patch("hsfs.feature_group.client._get_instance")
+        client_mock.return_value._is_external.return_value = True
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="ICEBERG",
+        )
+
+        # Assert
+        # External clients cannot reach HopsFS with PyIceberg (no libhdfs), so
+        # inserts route through Kafka and the materialization job instead.
+        assert fg.stream is True
+
     def test_save_dataframe_iceberg_direct_write(self, mocker):
         # Arrange
         from hsfs.engine import python
@@ -855,6 +878,38 @@ class TestPyIcebergEngine:
         # Pretend pyiceberg is installed so the decorator gate passes.
         mocker.patch("hopsworks_common.decorators.HAS_PYICEBERG", True)
         return _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+
+    def test_pyiceberg_write_supported(self, mocker):
+        # Arrange
+        fg = _make_fg()
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+        client_mock = mocker.patch("hsfs.core.iceberg_engine.client._get_instance")
+
+        # Act & Assert: non-HopsFS storage is always writable
+        fg._is_hopsfs_storage.return_value = False
+        assert iceberg_engine._pyiceberg_write_supported() is True
+
+        # Act & Assert: HopsFS is writable only from inside the cluster
+        fg._is_hopsfs_storage.return_value = True
+        client_mock.return_value._is_external.return_value = False
+        assert iceberg_engine._pyiceberg_write_supported() is True
+        client_mock.return_value._is_external.return_value = True
+        assert iceberg_engine._pyiceberg_write_supported() is False
+
+    def test_setup_pyiceberg_raises_for_external_hopsfs(self, mocker):
+        # Arrange
+        fg = _make_fg()
+        fg._is_hopsfs_storage.return_value = True
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+        client_mock = mocker.patch("hsfs.core.iceberg_engine.client._get_instance")
+        client_mock.return_value._is_external.return_value = True
+
+        # Act
+        with pytest.raises(FeatureStoreException) as e_info:
+            iceberg_engine._setup_pyiceberg()
+
+        # Assert
+        assert "not supported from external Python clients" in str(e_info.value)
 
     def test_write_pyiceberg_dataset_requires_pyiceberg(self, mocker):
         # Arrange
