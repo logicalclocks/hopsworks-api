@@ -378,7 +378,7 @@ class VectorServer:
         # This logic needs to move to the above engine init
         online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
-            _reset_client=reset_rest_client,
+            reset_client=reset_rest_client,
         )
 
     def _check_missing_request_parameters(

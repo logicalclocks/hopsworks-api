@@ -95,3 +95,27 @@ class TestVectorServer:
         assert list(df.columns) == self.COLS
         assert len(df) == 1
         assert df.iloc[0]["add_two_data1_data2"] == 32
+
+    def test_setup_rest_client_binds_real_init_signature(self, mocker):
+        # Other tests mock _init_or_reset_online_store_rest_client, so a keyword
+        # mismatch at this call site (e.g. the over-renamed _reset_client= from the
+        # HWORKS-2849 privatization port) only surfaced on a live cluster. Run the
+        # real function with only the singleton class mocked.
+        import hopsworks_common.client.online_store_rest_client as rest_client_module
+
+        mocker.patch.object(rest_client_module, "_online_store_rest_client", None)
+        singleton = mocker.patch.object(
+            rest_client_module, "OnlineStoreRestClientSingleton"
+        )
+        mocker.patch("hsfs.core.vector_server.online_store_rest_client_engine")
+
+        server = VectorServer.__new__(VectorServer)
+        server._feature_store_name = "test_featurestore"
+        entity = mocker.Mock()
+        entity.name = "fv_test"
+        entity.version = 1
+        entity.features = []
+
+        server._setup_rest_client_and_engine(entity, reset_rest_client=True)
+
+        singleton.assert_called_once_with(transport=None, optional_config=None)
