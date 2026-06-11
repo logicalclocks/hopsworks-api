@@ -39,13 +39,22 @@ def _make_fg(
     return fg
 
 
+_NO_SPARK = object()
+
+
 def _make_engine(mocker, fg=None, spark_session=None, spark_context=None):
     mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+    mocker.patch("hsfs.core.variable_api.VariableApi")
+    mocker.patch("hopsworks_common.core.project_api.ProjectApi")
+    if spark_session is _NO_SPARK:
+        spark_session = None
+    elif spark_session is None:
+        spark_session = mocker.Mock()
     return IcebergEngine(
         feature_store_id=99,
         feature_store_name="fs",
         feature_group=fg if fg is not None else _make_fg(),
-        spark_session=spark_session if spark_session is not None else mocker.Mock(),
+        spark_session=spark_session,
         spark_context=spark_context,
     )
 
@@ -59,23 +68,6 @@ def _make_alias(start_timestamp=None, end_timestamp=None, alias="fg_1"):
 
 
 class TestIcebergEngine:
-    def test_init_requires_spark_session(self, mocker):
-        # Arrange
-        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-
-        # Act
-        with pytest.raises(FeatureStoreException) as e_info:
-            IcebergEngine(
-                feature_store_id=99,
-                feature_store_name="fs",
-                feature_group=_make_fg(),
-                spark_session=None,
-                spark_context=None,
-            )
-
-        # Assert
-        assert "only supported with the Spark engine" in str(e_info.value)
-
     def test_get_merge_keys_primary_key_only(self, mocker):
         # Arrange
         fg = _make_fg(primary_key=["pk1", "pk2"])
@@ -516,6 +508,7 @@ class TestFeatureGroupEngineIceberg:
             "_get_spark_session_and_context",
             return_value=(None, None),
         )
+        mocker.patch("hsfs.core.feature_group_engine.HAS_PYICEBERG", False)
         iceberg_engine_cls = mocker.patch(
             "hsfs.core.feature_group_engine.iceberg_engine.IcebergEngine"
         )
@@ -527,11 +520,46 @@ class TestFeatureGroupEngineIceberg:
         assert result is None
         iceberg_engine_cls.assert_not_called()
 
+    def test_save_empty_table_uses_pyiceberg_without_spark(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="ICEBERG",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=(None, None),
+        )
+        mocker.patch("hsfs.core.feature_group_engine.HAS_PYICEBERG", True)
+        iceberg_engine_mock = mocker.Mock()
+        mocker.patch(
+            "hsfs.core.feature_group_engine.iceberg_engine.IcebergEngine",
+            return_value=iceberg_engine_mock,
+        )
+
+        # Act
+        fg_engine._save_empty_table(fg)
+
+        # Assert
+        iceberg_engine_mock._save_empty_table.assert_called_once_with(
+            write_options=None
+        )
+
 
 class TestIcebergMaterialization:
     def test_python_engine_iceberg_fg_defaults_to_stream(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.feature_group.HAS_PYICEBERG", False)
 
         # Act
         fg = feature_group.FeatureGroup(
@@ -545,9 +573,30 @@ class TestIcebergMaterialization:
         )
 
         # Assert
-        # Iceberg writes are Spark-only, so in the Python engine inserts must
-        # route through Kafka and the offline materialization job.
+        # Without pyiceberg, Python engine inserts must route through Kafka
+        # and the offline materialization job.
         assert fg.stream is True
+
+    def test_python_engine_iceberg_fg_direct_writes_with_pyiceberg(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.feature_group.HAS_PYICEBERG", True)
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="ICEBERG",
+        )
+
+        # Assert
+        # With pyiceberg installed, offline writes happen directly from the
+        # Python engine, mirroring the delta-rs behavior.
+        assert fg.stream is False
 
     def test_save_dataframe_iceberg_stream_runs_materialization_job(self, mocker):
         # Arrange
@@ -589,3 +638,255 @@ class TestIcebergMaterialization:
         # Assert
         assert mock_python_engine_run_materialization_job.call_count == 1
         assert mock_python_engine_legacy_save_dataframe.call_count == 0
+
+    def test_save_dataframe_iceberg_direct_write(self, mocker):
+        # Arrange
+        from hsfs.engine import python
+
+        mock_write_dataframe_kafka = mocker.patch(
+            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        )
+        mock_legacy_save_dataframe = mocker.patch(
+            "hsfs.engine.python.Engine._legacy_save_dataframe"
+        )
+        mock_iceberg_engine = mocker.patch("hsfs.core.iceberg_engine.IcebergEngine")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="ICEBERG",
+        )
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=mocker.Mock(),
+            operation="upsert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_write_dataframe_kafka.call_count == 0
+        assert mock_legacy_save_dataframe.call_count == 0
+        assert mock_iceberg_engine.return_value._save_iceberg_fg.call_count == 1
+
+
+class TestPyIcebergEngine:
+    def _pyiceberg_engine(self, mocker, fg=None):
+        # Pretend pyiceberg is installed so the decorator gate passes.
+        mocker.patch("hopsworks_common.decorators.HAS_PYICEBERG", True)
+        return _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+
+    def test_write_pyiceberg_dataset_requires_pyiceberg(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.decorators.HAS_PYICEBERG", False)
+        iceberg_engine = _make_engine(mocker, spark_session=_NO_SPARK)
+
+        # Act
+        with pytest.raises(ModuleNotFoundError) as e_info:
+            iceberg_engine._write_pyiceberg_dataset(mocker.Mock())
+
+        # Assert
+        assert "pyiceberg" in str(e_info.value)
+
+    def test_save_iceberg_fg_dispatches_to_pyiceberg_without_spark(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_session=_NO_SPARK)
+        fg_commit = mocker.Mock()
+        spark_write_mock = mocker.patch.object(iceberg_engine, "_write_iceberg_dataset")
+        pyiceberg_write_mock = mocker.patch.object(
+            iceberg_engine, "_write_pyiceberg_dataset", return_value=fg_commit
+        )
+
+        # Act
+        iceberg_engine._save_iceberg_fg(mocker.Mock(), write_options=None)
+
+        # Assert
+        assert spark_write_mock.call_count == 0
+        assert pyiceberg_write_mock.call_count == 1
+        iceberg_engine._feature_group_api._commit.assert_called_once_with(
+            iceberg_engine._feature_group, fg_commit
+        )
+
+    def test_read_table_version(self, mocker):
+        # Arrange
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        io = mocker.MagicMock()
+        io.new_input.return_value.exists.return_value = True
+        io.new_input.return_value.open.return_value.__enter__.return_value.read.return_value = b"3\n"
+
+        # Act & Assert
+        assert iceberg_engine._read_table_version(io, "location") == 3
+        io.new_input.assert_called_with("location/metadata/version-hint.text")
+
+    def test_read_table_version_missing(self, mocker):
+        # Arrange
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        io = mocker.MagicMock()
+        io.new_input.return_value.exists.return_value = False
+
+        # Act & Assert
+        assert iceberg_engine._read_table_version(io, "location") is None
+
+    def test_publish_hadoop_metadata(self, mocker):
+        # Arrange
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        table = mocker.MagicMock()
+        table.metadata_location = "location/metadata/00002-uuid.metadata.json"
+        io = table.io
+        io.new_input.return_value.open.return_value.__enter__.return_value.read.return_value = b"metadata"
+
+        # Act
+        iceberg_engine._publish_hadoop_metadata(table, "location", 2)
+
+        # Assert
+        io.new_input.assert_called_once_with(
+            "location/metadata/00002-uuid.metadata.json"
+        )
+        output_paths = [call.args[0] for call in io.new_output.call_args_list]
+        assert output_paths == [
+            "location/metadata/v2.metadata.json",
+            "location/metadata/version-hint.text",
+        ]
+        versioned_create = io.new_output.return_value.create
+        assert versioned_create.call_args_list[0].kwargs == {"overwrite": False}
+        assert versioned_create.call_args_list[1].kwargs == {"overwrite": True}
+
+    def test_write_pyiceberg_dataset_creates_table_when_missing(self, mocker):
+        # Arrange
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        table = mocker.MagicMock()
+        mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
+        mocker.patch.object(
+            iceberg_engine, "_get_pyiceberg_location", return_value="location"
+        )
+        arrow_table = mocker.Mock()
+        mocker.patch.object(
+            iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
+        )
+        mocker.patch.object(iceberg_engine, "_make_pyiceberg_catalog")
+        mocker.patch.object(
+            iceberg_engine, "_load_pyiceberg_table", return_value=(None, None)
+        )
+        create_mock = mocker.patch.object(
+            iceberg_engine, "_create_pyiceberg_table", return_value=table
+        )
+        publish_mock = mocker.patch.object(iceberg_engine, "_publish_hadoop_metadata")
+        mocker.patch.object(iceberg_engine, "_pyiceberg_snapshots", return_value=[])
+        mocker.patch.object(iceberg_engine, "_build_fg_commit")
+
+        # Act
+        iceberg_engine._write_pyiceberg_dataset(mocker.Mock(), operation="upsert")
+
+        # Assert
+        assert create_mock.call_count == 1
+        table.append.assert_called_once_with(arrow_table)
+        table.upsert.assert_not_called()
+        publish_mock.assert_called_once_with(table, "location", 1)
+
+    def test_write_pyiceberg_dataset_insert_appends(self, mocker):
+        # Arrange
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        table = mocker.MagicMock()
+        mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
+        mocker.patch.object(
+            iceberg_engine, "_get_pyiceberg_location", return_value="location"
+        )
+        arrow_table = mocker.Mock()
+        mocker.patch.object(
+            iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
+        )
+        mocker.patch.object(iceberg_engine, "_make_pyiceberg_catalog")
+        mocker.patch.object(
+            iceberg_engine, "_load_pyiceberg_table", return_value=(2, table)
+        )
+        publish_mock = mocker.patch.object(iceberg_engine, "_publish_hadoop_metadata")
+        mocker.patch.object(iceberg_engine, "_pyiceberg_snapshots", return_value=[])
+        mocker.patch.object(iceberg_engine, "_build_fg_commit")
+
+        # Act
+        iceberg_engine._write_pyiceberg_dataset(mocker.Mock(), operation="insert")
+
+        # Assert
+        table.append.assert_called_once_with(arrow_table)
+        table.upsert.assert_not_called()
+        publish_mock.assert_called_once_with(table, "location", 3)
+
+    def test_write_pyiceberg_dataset_upsert_merges(self, mocker):
+        # Arrange
+        fg = _make_fg(primary_key=["pk"], event_time="et")
+        iceberg_engine = self._pyiceberg_engine(mocker, fg=fg)
+        table = mocker.MagicMock()
+        table.upsert.return_value = mocker.Mock(rows_inserted=2, rows_updated=3)
+        mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
+        mocker.patch.object(
+            iceberg_engine, "_get_pyiceberg_location", return_value="location"
+        )
+        arrow_table = mocker.Mock()
+        mocker.patch.object(
+            iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
+        )
+        mocker.patch.object(iceberg_engine, "_make_pyiceberg_catalog")
+        mocker.patch.object(
+            iceberg_engine, "_load_pyiceberg_table", return_value=(5, table)
+        )
+        publish_mock = mocker.patch.object(iceberg_engine, "_publish_hadoop_metadata")
+        mocker.patch.object(iceberg_engine, "_pyiceberg_snapshots", return_value=[])
+        build_mock = mocker.patch.object(iceberg_engine, "_build_fg_commit")
+
+        # Act
+        iceberg_engine._write_pyiceberg_dataset(mocker.Mock(), operation="upsert")
+
+        # Assert
+        table.append.assert_not_called()
+        table.upsert.assert_called_once_with(arrow_table, join_cols=["pk", "et"])
+        publish_mock.assert_called_once_with(table, "location", 6)
+        assert build_mock.call_args.kwargs == {
+            "rows_inserted": 2,
+            "rows_updated": 3,
+            "rows_deleted": 0,
+        }
+
+    def test_delete_pyiceberg_record_not_iceberg_table_raises(self, mocker):
+        # Arrange
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
+        mocker.patch.object(
+            iceberg_engine, "_get_pyiceberg_location", return_value="location"
+        )
+        mocker.patch.object(iceberg_engine, "_make_pyiceberg_catalog")
+        mocker.patch.object(
+            iceberg_engine, "_load_pyiceberg_table", return_value=(None, None)
+        )
+
+        # Act
+        with pytest.raises(FeatureStoreException) as e_info:
+            iceberg_engine._delete_pyiceberg_record(mocker.Mock())
+
+        # Assert
+        assert "is not ICEBERG enabled" in str(e_info.value)
+
+    def test_delete_record_dispatches_to_pyiceberg_without_spark(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_session=_NO_SPARK)
+        delete_mock = mocker.patch.object(iceberg_engine, "_delete_pyiceberg_record")
+        delete_df = mocker.Mock()
+
+        # Act
+        iceberg_engine._delete_record(delete_df)
+
+        # Assert
+        delete_mock.assert_called_once_with(delete_df)

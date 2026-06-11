@@ -16,28 +16,44 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core import project_api
+from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
+from hopsworks_common.decorators import _uses_pyiceberg
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api
+from hsfs.core import feature_group_api, variable_api
 
 
 if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
     from hsfs.constructor import hudi_feature_group_alias
 
+# Note: Avoid importing optional PyIceberg dependencies at module import time.
+# They are imported on-demand inside methods to provide friendly errors only
+# when the functionality is used.
 _logger = logging.getLogger(__name__)
 
 
 class IcebergEngine:
-    """Spark engine for feature groups stored as Apache Iceberg tables.
+    """Engine for feature groups stored as Apache Iceberg tables.
 
     Tables are addressed by their filesystem location (Iceberg `HadoopTables`),
     mirroring how the Delta engine operates, so no Spark catalog configuration
     is required on the session.
-    Iceberg operations are only available with the Spark engine; in the Python
-    engine Iceberg feature groups are written through the materialization job
-    running on the cluster.
+    With the Spark engine, reads and writes go through the Iceberg Spark source.
+    Without Spark, writes go through PyIceberg (the Iceberg analog of delta-rs):
+    the write commits through an ephemeral local catalog and is then published
+    using the `HadoopTables` protocol (`metadata/vN.metadata.json` plus
+    `version-hint.text`), so PyIceberg and Spark writers stay interoperable.
     """
 
     ICEBERG_SPARK_FORMAT = "iceberg"
@@ -48,6 +64,7 @@ class IcebergEngine:
     ICEBERG_CHECK_ORDERING = "check-ordering"
     ICEBERG_DOT_PREFIX = "iceberg."
     SNAPSHOTS_METADATA_SUFFIX = "#snapshots"
+    PYICEBERG_NAMESPACE = "hopsworks"
     APPEND = "append"
     # Snapshot operations that change data; metadata-only operations
     # (e.g. "replace" from compaction) are ignored for commit accounting.
@@ -64,12 +81,6 @@ class IcebergEngine:
         _logger.debug(
             f"Initializing IcebergEngine {feature_group.name} v{feature_group.version}"
         )
-        if spark_session is None:
-            raise FeatureStoreException(
-                "Iceberg time travel format operations are only supported with the Spark engine. "
-                "Insert into the feature group from a Spark application or rely on the "
-                "materialization job when using the Python engine."
-            )
         self._feature_group = feature_group
         self._spark_session = spark_session
         self._spark_context = spark_context
@@ -77,6 +88,8 @@ class IcebergEngine:
         self._feature_store_name = feature_store_name
 
         self._feature_group_api = feature_group_api.FeatureGroupApi()
+        self._variable_api = variable_api.VariableApi()
+        self._project_api = project_api.ProjectApi()
 
     def _save_iceberg_fg(
         self,
@@ -86,10 +99,21 @@ class IcebergEngine:
         operation: str = "upsert",
     ) -> feature_group_commit.FeatureGroupCommit:
         operation = operation.lower() if operation else "upsert"
-        _logger.debug(
-            f"Saving Iceberg dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
-        )
-        fg_commit = self._write_iceberg_dataset(dataset, write_options, operation)
+        if self._spark_session is not None:
+            _logger.debug(
+                f"Saving Iceberg dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
+            )
+            fg_commit = self._write_iceberg_dataset(dataset, write_options, operation)
+        else:
+            _logger.debug(
+                f"Saving Iceberg dataset using pyiceberg to feature group {self._feature_group.name} v{self._feature_group.version}"
+            )
+            fg_commit = self._write_pyiceberg_dataset(
+                dataset, write_options=write_options, operation=operation
+            )
+        if fg_commit is None:
+            # nothing was committed (e.g. schema-only table creation)
+            return None
         fg_commit.validation_id = validation_id
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
@@ -230,6 +254,8 @@ class IcebergEngine:
         return merge_keys
 
     def _delete_record(self, delete_df) -> feature_group_commit.FeatureGroupCommit:
+        if self._spark_session is None:
+            return self._delete_pyiceberg_record(delete_df)
         location = self._feature_group.prepare_spark_location()
         if not self._is_iceberg_table_at(location):
             raise FeatureStoreException(
@@ -380,6 +406,14 @@ class IcebergEngine:
         This makes the feature schema available at the table path so that the
         subsequent writes can refer to it.
         """
+        if self._spark_session is not None:
+            self._save_empty_iceberg_table_pyspark(write_options=write_options)
+        else:
+            self._save_empty_iceberg_table_python(write_options=write_options)
+
+    def _save_empty_iceberg_table_pyspark(
+        self, write_options: dict[str, Any] | None = None
+    ) -> None:
         ddl_fields = []
         for _feature in self._feature_group.columns:
             if _feature.type:
@@ -394,6 +428,42 @@ class IcebergEngine:
         empty_df = self._spark_session.createDataFrame([], ddl_schema)
 
         self._write_iceberg_dataset(empty_df, write_options or {})
+
+    def _save_empty_iceberg_table_python(
+        self, write_options: dict[str, Any] | None = None
+    ) -> None:
+        """Create an empty Iceberg table from the feature group schema using PyIceberg.
+
+        Converts feature types directly to PyArrow types without requiring Spark,
+        mirroring the delta-rs empty-table creation.
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "PyArrow is required to create empty Iceberg tables."
+            ) from e
+
+        pyarrow_fields = []
+        for _feature in self._feature_group.columns:
+            if not _feature.type:
+                raise FeatureStoreException(
+                    f"Feature '{_feature.name}' does not have a type defined. "
+                    "Cannot create Iceberg table schema."
+                )
+            try:
+                pyarrow_type = _convert_offline_type_to_pyarrow_type(_feature.type)
+                pyarrow_fields.append(
+                    pa.field(_feature.name, pyarrow_type, nullable=True)
+                )
+            except Exception as e:
+                raise FeatureStoreException(
+                    f"Failed to convert type '{_feature.type}' for feature '{_feature.name}': {str(e)}"
+                ) from e
+
+        empty_arrow_table = pa.schema(pyarrow_fields).empty_table()
+
+        self._write_pyiceberg_dataset(empty_arrow_table, write_options=write_options)
 
     def _get_last_commit_metadata(
         self,
@@ -411,11 +481,22 @@ class IcebergEngine:
         _logger.debug(
             f"Retrieving last commit metadata for Iceberg table at {base_path}"
         )
-        snapshots = [
-            s
-            for s in self._read_snapshots(base_path)
-            if s.get("operation") in self.DATA_OPERATIONS
-        ]
+        return self._build_fg_commit(
+            self._read_snapshots(base_path),
+            rows_inserted=rows_inserted,
+            rows_updated=rows_updated,
+            rows_deleted=rows_deleted,
+        )
+
+    def _build_fg_commit(
+        self,
+        snapshots: list[dict[str, Any]],
+        rows_inserted: int | None = None,
+        rows_updated: int | None = None,
+        rows_deleted: int | None = None,
+    ) -> feature_group_commit.FeatureGroupCommit | None:
+        """Build a FeatureGroupCommit from a snapshot log sorted oldest first."""
+        snapshots = [s for s in snapshots if s.get("operation") in self.DATA_OPERATIONS]
         if not snapshots:
             return None
 
@@ -451,3 +532,290 @@ class IcebergEngine:
             rows_deleted=rows_deleted,
             last_active_commit_time=oldest_commit_timestamp,
         )
+
+    # region PyIceberg (non-Spark) operations
+
+    def _setup_pyiceberg(self) -> None:
+        """Prepare the environment for PyIceberg access to HopsFS.
+
+        PyIceberg reaches HopsFS through PyArrow's Hadoop filesystem, which
+        resolves the acting user from `HADOOP_USER_NAME`; external clients must
+        act as their project user.
+        """
+        if not self._feature_group._is_hopsfs_storage():
+            _logger.debug(
+                "Non-HopsFS storage connector detected, skipping HopsFS-specific pyiceberg setup"
+            )
+            return
+        _client = client._get_instance()
+        if _client._is_external():
+            user_name = self._project_api._get_user_info().get("username", None)
+            if not user_name:
+                raise FeatureStoreException(
+                    "Failed to write to Iceberg table in external cluster. Cannot get user name for project."
+                )
+            project_username = f"{_client.project_name}__{user_name}"
+            _logger.debug(f"Setting HADOOP_USER_NAME to {project_username}")
+            os.environ["HADOOP_USER_NAME"] = project_username
+
+    def _get_pyiceberg_location(self) -> str:
+        if not self._feature_group._is_hopsfs_storage():
+            location = self._feature_group.location
+            _logger.debug(f"Non-HopsFS storage, using location as-is: {location}")
+            return location
+
+        _client = client._get_instance()
+        location = self._feature_group.location.replace(
+            "hopsfs:/", "hdfs:/"
+        )  # pyiceberg requires hdfs scheme
+
+        if _client._is_external():
+            parsed_url = urlparse(location)
+            try:
+                pyiceberg_loc = f"hdfs://{self._variable_api._get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
+                _logger.debug(
+                    f"External client, using namenode url + pyiceberg location: {pyiceberg_loc}"
+                )
+                return pyiceberg_loc
+            except FeatureStoreException as e:
+                raise FeatureStoreException(
+                    "Failed to write to Iceberg table. Make sure namenode load balancer has been setup on the cluster."
+                ) from e
+        else:
+            _logger.debug(f"Internal client, using pyiceberg location: {location}")
+            return location
+
+    def _get_pyiceberg_properties(self) -> dict[str, str]:
+        """Build PyIceberg FileIO properties from the feature group's storage connector.
+
+        Returns an empty dict for HopsFS (handled separately via env vars) and for
+        feature groups without a connector.
+        For S3 connectors the relevant credential keys are returned.
+        """
+        from hsfs import storage_connector as sc
+
+        connector = self._feature_group.storage_connector
+        if connector is None or connector.type == sc.StorageConnector.HOPSFS:
+            return {}
+        if connector.type == sc.StorageConnector.S3:
+            props = {}
+            if connector.access_key:
+                props["s3.access-key-id"] = connector.access_key
+            if connector.secret_key:
+                props["s3.secret-access-key"] = connector.secret_key
+            if connector.session_token:
+                props["s3.session-token"] = connector.session_token
+            if connector.region:
+                props["s3.region"] = connector.region
+            return props
+        return {}
+
+    def _pyiceberg_identifier(self) -> str:
+        return f"{self.PYICEBERG_NAMESPACE}.{self._feature_group.name}_{self._feature_group.version}"
+
+    def _make_pyiceberg_catalog(self):
+        """Create an ephemeral local catalog for the duration of one operation.
+
+        PyIceberg can only write through a catalog, while Hopsworks Iceberg
+        tables are path-based (`HadoopTables`).
+        The catalog therefore only hosts the commit mechanics in a throwaway
+        SQLite database; the durable table state is published back to the table
+        location by [`_publish_hadoop_metadata`][hsfs.core.iceberg_engine.IcebergEngine._publish_hadoop_metadata].
+        """
+        from pyiceberg.catalog.sql import SqlCatalog
+
+        tmpdir = tempfile.mkdtemp(prefix="hopsworks_pyiceberg_")
+        catalog = SqlCatalog(
+            "hopsworks_local",
+            uri=f"sqlite:///{os.path.join(tmpdir, 'catalog.db')}",
+            warehouse=f"file://{tmpdir}",
+            **self._get_pyiceberg_properties(),
+        )
+        catalog.create_namespace(self.PYICEBERG_NAMESPACE)
+        return catalog
+
+    def _read_table_version(self, io, location: str) -> int | None:
+        """Return the table version from `version-hint.text`, or None if absent."""
+        input_file = io.new_input(f"{location}/metadata/version-hint.text")
+        if not input_file.exists():
+            return None
+        with input_file.open() as f:
+            return int(f.read().decode("utf-8").strip())
+
+    def _load_pyiceberg_table(self, catalog, location: str):
+        """Register the table at *location* into *catalog* and return (version, table).
+
+        Returns (None, None) if no table exists at the location yet.
+        """
+        from pyiceberg.io import load_file_io
+
+        io = load_file_io(catalog.properties, location)
+        version = self._read_table_version(io, location)
+        if version is None:
+            return None, None
+        metadata_location = f"{location}/metadata/v{version}.metadata.json"
+        table = catalog.register_table(self._pyiceberg_identifier(), metadata_location)
+        return version, table
+
+    def _create_pyiceberg_table(self, catalog, location: str, arrow_schema):
+        table = catalog.create_table(
+            self._pyiceberg_identifier(), schema=arrow_schema, location=location
+        )
+        if self._feature_group.partition_key:
+            with table.update_spec() as update_spec:
+                for partition_col in self._feature_group.partition_key:
+                    update_spec.add_identity(partition_col)
+        return table
+
+    def _publish_hadoop_metadata(self, table, location: str, next_version: int) -> None:
+        """Publish the table's current metadata in the `HadoopTables` protocol.
+
+        Copies the catalog-committed metadata file to `metadata/v<N>.metadata.json`
+        and points `version-hint.text` at it, so Spark path-based readers and
+        writers observe the commit.
+        Creating the versioned file without overwrite doubles as conflict
+        detection against concurrent writers.
+        """
+        io = table.io
+        with io.new_input(table.metadata_location).open() as f:
+            metadata_bytes = f.read()
+        versioned_file = io.new_output(
+            f"{location}/metadata/v{next_version}.metadata.json"
+        )
+        with versioned_file.create(overwrite=False) as f:
+            f.write(metadata_bytes)
+        version_hint = io.new_output(f"{location}/metadata/version-hint.text")
+        with version_hint.create(overwrite=True) as f:
+            f.write(str(next_version).encode("utf-8"))
+        _logger.debug(
+            f"Published Iceberg metadata v{next_version} for table at {location}"
+        )
+
+    def _prepare_arrow_table(
+        self, dataset: pd.DataFrame | pa.Table | pl.DataFrame
+    ) -> pa.Table:
+        """Normalize *dataset* into a PyArrow Table for PyIceberg writes."""
+        import pyarrow as pa
+
+        if HAS_POLARS:
+            import polars as pl
+
+            if isinstance(dataset, pl.DataFrame):
+                _logger.debug("Converting DataFrame to Arrow Table for Iceberg write")
+                dataset = dataset.to_arrow()
+
+        # The Delta normalization (microsecond timestamps, float16 to float32,
+        # date64 to date32) is generic Arrow sanitation that applies to Iceberg
+        # V2 tables equally.
+        from hsfs.core.delta_engine import DeltaEngine
+
+        dataset = DeltaEngine._prepare_df_for_delta(dataset)
+        if not isinstance(dataset, pa.Table):
+            raise FeatureStoreException(
+                f"Cannot write dataset of type {type(dataset)} to an Iceberg table without Spark. "
+                "Provide a pandas, polars, or PyArrow dataset."
+            )
+        return dataset
+
+    def _pyiceberg_snapshots(self, table) -> list[dict[str, Any]]:
+        """Return the table's snapshot log, oldest first, as plain dicts."""
+        snapshots = []
+        for snapshot in table.metadata.snapshots:
+            summary = snapshot.summary
+            operation = None
+            properties = {}
+            if summary is not None:
+                operation = getattr(summary.operation, "value", None) or str(
+                    summary.operation
+                )
+                properties = dict(getattr(summary, "additional_properties", {}) or {})
+            snapshots.append(
+                {
+                    "committed_at": snapshot.timestamp_ms,
+                    "snapshot_id": snapshot.snapshot_id,
+                    "operation": operation,
+                    "summary": properties,
+                }
+            )
+        snapshots.sort(key=lambda s: s["committed_at"])
+        return snapshots
+
+    @_uses_pyiceberg
+    def _write_pyiceberg_dataset(
+        self,
+        dataset: pd.DataFrame | pa.Table | pl.DataFrame,
+        write_options: dict[str, Any] | None = None,
+        operation: str = "upsert",
+    ) -> feature_group_commit.FeatureGroupCommit | None:
+        """Write *dataset* to the Iceberg table using PyIceberg.
+
+        Parameters:
+            dataset: Dataset to write to the Iceberg table.
+        """
+        self._setup_pyiceberg()
+        location = self._get_pyiceberg_location()
+        arrow_table = self._prepare_arrow_table(dataset)
+
+        catalog = self._make_pyiceberg_catalog()
+        version, table = self._load_pyiceberg_table(catalog, location)
+
+        append_requested = operation == "insert" or (
+            isinstance(write_options, dict)
+            and str(write_options.get("mode", "")).lower() == self.APPEND
+        )
+
+        rows_inserted = rows_updated = rows_deleted = None
+        if table is None:
+            _logger.debug(
+                f"Iceberg table not found at {location}. A new Iceberg table will be created."
+            )
+            table = self._create_pyiceberg_table(catalog, location, arrow_table.schema)
+            table.append(arrow_table)
+        elif append_requested:
+            _logger.debug(f"Append requested for {location}. Skipping merge operation.")
+            table.append(arrow_table)
+        else:
+            upsert_result = table.upsert(arrow_table, join_cols=self._get_merge_keys())
+            rows_inserted = upsert_result.rows_inserted
+            rows_updated = upsert_result.rows_updated
+            rows_deleted = 0
+
+        self._publish_hadoop_metadata(table, location, (version or 0) + 1)
+        return self._build_fg_commit(
+            self._pyiceberg_snapshots(table),
+            rows_inserted=rows_inserted,
+            rows_updated=rows_updated,
+            rows_deleted=rows_deleted,
+        )
+
+    @_uses_pyiceberg
+    def _delete_pyiceberg_record(
+        self, delete_df
+    ) -> feature_group_commit.FeatureGroupCommit:
+        self._setup_pyiceberg()
+        location = self._get_pyiceberg_location()
+
+        catalog = self._make_pyiceberg_catalog()
+        version, table = self._load_pyiceberg_table(catalog, location)
+        if table is None:
+            raise FeatureStoreException(
+                f"Feature group {self._feature_group.name} is not ICEBERG enabled "
+            )
+
+        merge_keys = self._get_merge_keys()
+        deletes = self._prepare_arrow_table(delete_df).select(merge_keys)
+        existing = table.scan().to_arrow()
+        remaining = existing.join(deletes, keys=merge_keys, join_type="left anti")
+
+        table.overwrite(remaining.select(existing.column_names))
+        self._publish_hadoop_metadata(table, location, (version or 0) + 1)
+
+        fg_commit = self._build_fg_commit(
+            self._pyiceberg_snapshots(table),
+            rows_inserted=0,
+            rows_updated=0,
+            rows_deleted=max(existing.num_rows - remaining.num_rows, 0),
+        )
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
+
+    # endregion

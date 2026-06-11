@@ -41,6 +41,7 @@ from hopsworks_common.core.constants import (
     HAS_DELTALAKE_SPARK,
     HAS_NUMPY,
     HAS_POLARS,
+    HAS_PYICEBERG,
 )
 from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 from hsfs import (
@@ -3205,8 +3206,14 @@ class FeatureGroup(FeatureGroupBase):
         time_travel_format: str,
     ) -> bool | None:
         # If stream is explicitly set to True, use it.
-        # Otherwise, only DELTA format disables stream by default.
-        return stream or time_travel_format != "DELTA"
+        # Otherwise, formats with direct offline writes from the Python engine
+        # (DELTA via delta-rs, ICEBERG via pyiceberg when installed) disable
+        # stream by default; everything else writes through the
+        # materialization job.
+        direct_write_formats = ["DELTA"]
+        if HAS_PYICEBERG:
+            direct_write_formats.append("ICEBERG")
+        return stream or time_travel_format not in direct_write_formats
 
     @staticmethod
     def _resolve_time_travel_format(
@@ -4299,12 +4306,20 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        if self.time_travel_format in [
-            "HUDI",
-            "ICEBERG",
-        ] and not engine._get_type().startswith("spark"):
+        if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
+            "spark"
+        ):
             raise NotImplementedError(
-                f"commit_delete_record is only supported for {self.time_travel_format} feature groups when using the Spark engine."
+                "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+            )
+        if (
+            self.time_travel_format == "ICEBERG"
+            and not engine._get_type().startswith("spark")
+            and not HAS_PYICEBERG
+        ):
+            raise NotImplementedError(
+                "commit_delete_record on ICEBERG feature groups without Spark requires pyiceberg. "
+                'Install the corresponding extra via `pip install "hopsworks[iceberg]"`.'
             )
         self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
 

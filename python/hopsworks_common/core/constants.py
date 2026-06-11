@@ -111,6 +111,15 @@ deltalake_spark_not_installed_message = (
     "Install 'delta-spark' to enable Delta Spark features."
 )
 
+# Apache Iceberg
+HAS_PYICEBERG: bool = importlib.util.find_spec("pyiceberg") is not None
+pyiceberg_not_installed_message = (
+    "PyIceberg (pyiceberg) and its dependencies are required for non-Spark Iceberg operations. "
+    "Install the corresponding extra via "
+    '`pip install "hopsworks[iceberg]"` to enable them. '
+    "You will need to restart your kernel if applicable."
+)
+
 HAS_TRINO: bool = importlib.util.find_spec("trino") is not None
 trino_not_installed_message = (
     "Trino package not found. "

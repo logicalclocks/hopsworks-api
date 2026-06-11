@@ -18,6 +18,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client import exceptions
+from hopsworks_common.core.constants import HAS_PYICEBERG
 from hopsworks_common.core.sink_job_configuration import (
     FeatureColumnMapping,
     SinkJobConfiguration,
@@ -775,10 +776,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             spark_session, spark_context = (
                 FeatureGroupEngine._get_spark_session_and_context()
             )
-            if spark_session is None:
-                # Iceberg tables can only be created through Spark; with the
-                # Python engine the table is created by the materialization job
-                # running on the cluster.
+            if spark_session is None and not HAS_PYICEBERG:
+                # Without Spark and without pyiceberg the table cannot be
+                # created client-side; the materialization job running on the
+                # cluster creates it on first write instead.
                 return
 
             iceberg_engine_instance = iceberg_engine.IcebergEngine(
