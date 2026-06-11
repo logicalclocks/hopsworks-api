@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -41,6 +40,154 @@ if TYPE_CHECKING:
 # They are imported on-demand inside methods to provide friendly errors only
 # when the functionality is used.
 _logger = logging.getLogger(__name__)
+
+
+def _make_ephemeral_catalog(name: str, properties: dict[str, str]):
+    """Build a dict-backed PyIceberg catalog living for one operation in-process.
+
+    PyIceberg can only commit through a catalog, but a catalog is nothing more
+    than a pointer store from table identifier to current metadata location.
+    For Hopsworks path-based tables that pointer is owned by the
+    `HadoopTables` `version-hint.text` protocol, so the catalog only has to
+    host the commit mechanics for a single operation.
+    A plain dict suffices and avoids the SQLAlchemy dependency of PyIceberg's
+    `SqlCatalog`.
+    """
+    from pyiceberg.catalog import Catalog, MetastoreCatalog
+    from pyiceberg.exceptions import (
+        CommitFailedException,
+        NoSuchTableError,
+        TableAlreadyExistsError,
+    )
+    from pyiceberg.io import load_file_io
+    from pyiceberg.partitioning import UNPARTITIONED_PARTITION_SPEC
+    from pyiceberg.serializers import FromInputFile
+    from pyiceberg.table import CommitTableResponse, Table
+    from pyiceberg.table.sorting import UNSORTED_SORT_ORDER
+    from pyiceberg.typedef import EMPTY_DICT
+
+    class _EphemeralCatalog(MetastoreCatalog):
+        """In-memory pointer store hosting PyIceberg commit mechanics."""
+
+        def __init__(self, name, **props):
+            super().__init__(name, **props)
+            self._tables = {}
+
+        @staticmethod
+        def _key(identifier):
+            return Catalog.identifier_to_tuple(identifier)
+
+        def create_table(
+            self,
+            identifier,
+            schema,
+            location=None,
+            partition_spec=UNPARTITIONED_PARTITION_SPEC,
+            sort_order=UNSORTED_SORT_ORDER,
+            properties=EMPTY_DICT,
+        ):
+            key = self._key(identifier)
+            if key in self._tables:
+                raise TableAlreadyExistsError(f"Table {key} already exists")
+            staged_table = self._create_staged_table(
+                identifier=identifier,
+                schema=schema,
+                location=location,
+                partition_spec=partition_spec,
+                sort_order=sort_order,
+                properties=properties,
+            )
+            self._write_metadata(
+                staged_table.metadata, staged_table.io, staged_table.metadata_location
+            )
+            self._tables[key] = staged_table.metadata_location
+            return self.load_table(identifier)
+
+        def register_table(self, identifier, metadata_location):
+            key = self._key(identifier)
+            if key in self._tables:
+                raise TableAlreadyExistsError(f"Table {key} already exists")
+            self._tables[key] = metadata_location
+            return self.load_table(identifier)
+
+        def load_table(self, identifier):
+            key = self._key(identifier)
+            metadata_location = self._tables.get(key)
+            if metadata_location is None:
+                raise NoSuchTableError(f"Table does not exist: {key}")
+            io = load_file_io(properties=self.properties, location=metadata_location)
+            metadata = FromInputFile.table_metadata(io.new_input(metadata_location))
+            return Table(
+                identifier=key,
+                metadata=metadata,
+                metadata_location=metadata_location,
+                io=self._load_file_io(metadata.properties, metadata_location),
+                catalog=self,
+            )
+
+        def commit_table(self, table, requirements, updates):
+            key = self._key(table.name())
+            try:
+                current_table = self.load_table(key)
+            except NoSuchTableError:
+                current_table = None
+            updated_staged_table = self._update_and_stage_table(
+                current_table, table.name(), requirements, updates
+            )
+            if (
+                current_table
+                and updated_staged_table.metadata == current_table.metadata
+            ):
+                # no changes, do nothing
+                return CommitTableResponse(
+                    metadata=current_table.metadata,
+                    metadata_location=current_table.metadata_location,
+                )
+            self._write_metadata(
+                metadata=updated_staged_table.metadata,
+                io=updated_staged_table.io,
+                metadata_path=updated_staged_table.metadata_location,
+            )
+            if (
+                current_table
+                and self._tables.get(key) != current_table.metadata_location
+            ):
+                raise CommitFailedException(
+                    f"Table {key} has been updated concurrently"
+                )
+            self._tables[key] = updated_staged_table.metadata_location
+            return CommitTableResponse(
+                metadata=updated_staged_table.metadata,
+                metadata_location=updated_staged_table.metadata_location,
+            )
+
+        def table_exists(self, identifier):
+            return self._key(identifier) in self._tables
+
+        def create_namespace(self, namespace, properties=EMPTY_DICT):
+            # namespaces are irrelevant for a single-table pointer store
+            pass
+
+        def _unsupported(self, *_args, **_kwargs):
+            raise NotImplementedError(
+                "Not supported by the ephemeral Hopsworks catalog."
+            )
+
+        # the remaining catalog surface is not needed for single-table commits
+        create_table_transaction = _unsupported
+        drop_table = _unsupported
+        purge_table = _unsupported
+        rename_table = _unsupported
+        drop_namespace = _unsupported
+        list_tables = _unsupported
+        list_namespaces = _unsupported
+        load_namespace_properties = _unsupported
+        update_namespace_properties = _unsupported
+        list_views = _unsupported
+        drop_view = _unsupported
+        view_exists = _unsupported
+
+    return _EphemeralCatalog(name, **properties)
 
 
 class IcebergEngine:
@@ -614,25 +761,17 @@ class IcebergEngine:
         return f"{self.PYICEBERG_NAMESPACE}.{self._feature_group.name}_{self._feature_group.version}"
 
     def _make_pyiceberg_catalog(self):
-        """Create an ephemeral local catalog for the duration of one operation.
+        """Create an ephemeral in-memory catalog for the duration of one operation.
 
         PyIceberg can only write through a catalog, while Hopsworks Iceberg
         tables are path-based (`HadoopTables`).
-        The catalog therefore only hosts the commit mechanics in a throwaway
-        SQLite database; the durable table state is published back to the table
-        location by [`_publish_hadoop_metadata`][hsfs.core.iceberg_engine.IcebergEngine._publish_hadoop_metadata].
+        The catalog therefore only hosts the commit mechanics in memory; the
+        durable table state is published back to the table location by
+        [`_publish_hadoop_metadata`][hsfs.core.iceberg_engine.IcebergEngine._publish_hadoop_metadata].
         """
-        from pyiceberg.catalog.sql import SqlCatalog
-
-        tmpdir = tempfile.mkdtemp(prefix="hopsworks_pyiceberg_")
-        catalog = SqlCatalog(
-            "hopsworks_local",
-            uri=f"sqlite:///{os.path.join(tmpdir, 'catalog.db')}",
-            warehouse=f"file://{tmpdir}",
-            **self._get_pyiceberg_properties(),
+        return _make_ephemeral_catalog(
+            "hopsworks_local", self._get_pyiceberg_properties()
         )
-        catalog.create_namespace(self.PYICEBERG_NAMESPACE)
-        return catalog
 
     def _read_table_version(self, io, location: str) -> int | None:
         """Return the table version from `version-hint.text`, or None if absent."""

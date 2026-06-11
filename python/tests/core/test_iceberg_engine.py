@@ -17,6 +17,7 @@ from unittest import mock
 
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_PYICEBERG
 from hsfs import feature_group
 from hsfs.core import feature_group_engine
 from hsfs.core.iceberg_engine import IcebergEngine
@@ -555,13 +556,11 @@ class TestFeatureGroupEngineIceberg:
         )
 
 
-class TestIcebergMaterialization:
-    def test_python_engine_iceberg_fg_defaults_to_stream(self, mocker):
+class TestIcebergArrowFlight:
+    def test_iceberg_query_supported_by_query_service(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine._get_type", return_value="python")
-        mocker.patch("hsfs.feature_group.HAS_PYICEBERG", False)
+        from hsfs.core import arrow_flight_client
 
-        # Act
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
@@ -569,13 +568,41 @@ class TestIcebergMaterialization:
             primary_key=[],
             foreign_key=[],
             partition_key=[],
+            id=10,
             time_travel_format="ICEBERG",
         )
+        query = mocker.Mock()
+        query._left_feature_group = fg
+        query._left_feature_group_start_time = None
+        query._left_feature_group_end_time = None
+        query._joins = []
+
+        # Act & Assert
+        assert arrow_flight_client._is_query_supported_rec(query)
+
+
+class TestIcebergMaterialization:
+    def test_python_engine_iceberg_fg_requires_pyiceberg(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.feature_group.HAS_PYICEBERG", False)
+
+        # Act
+        with pytest.raises(FeatureStoreException) as e_info:
+            feature_group.FeatureGroup(
+                name="test",
+                version=1,
+                featurestore_id=99,
+                primary_key=[],
+                foreign_key=[],
+                partition_key=[],
+                time_travel_format="ICEBERG",
+            )
 
         # Assert
-        # Without pyiceberg, Python engine inserts must route through Kafka
-        # and the offline materialization job.
-        assert fg.stream is True
+        # Mirrors the DELTA behavior: fail loudly instead of silently routing
+        # writes through Kafka and the materialization job.
+        assert "pyiceberg library is not installed" in str(e_info.value)
 
     def test_python_engine_iceberg_fg_direct_writes_with_pyiceberg(self, mocker):
         # Arrange
@@ -890,3 +917,52 @@ class TestPyIcebergEngine:
 
         # Assert
         delete_mock.assert_called_once_with(delete_df)
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_pyiceberg_round_trip(self, mocker, tmp_path):
+        # End-to-end against a real local Iceberg table: create, upsert,
+        # HadoopTables publish, reload from version-hint, and delete.
+        import pyarrow as pa
+
+        fg = _make_fg(primary_key=["id"])
+        fg.location = str(tmp_path / "fg_1")
+        fg._is_hopsfs_storage.return_value = False
+        fg.storage_connector = None
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+
+        # Act 1: first write creates the table
+        commit1 = iceberg_engine._write_pyiceberg_dataset(
+            pa.table({"id": [1, 2], "value": ["a", "b"]}), operation="insert"
+        )
+
+        # Act 2: upsert updates id=2 and inserts id=3
+        commit2 = iceberg_engine._write_pyiceberg_dataset(
+            pa.table({"id": [2, 3], "value": ["B", "c"]}), operation="upsert"
+        )
+
+        # Assert: commits and HadoopTables protocol files
+        assert commit1.rows_inserted == 2
+        assert commit2.rows_updated == 1
+        assert commit2.rows_inserted == 1
+        metadata_dir = tmp_path / "fg_1" / "metadata"
+        assert (metadata_dir / "version-hint.text").read_text() == "2"
+        assert (metadata_dir / "v1.metadata.json").exists()
+        assert (metadata_dir / "v2.metadata.json").exists()
+
+        # Assert: a fresh catalog resolves the published version and the data
+        catalog = iceberg_engine._make_pyiceberg_catalog()
+        version, table = iceberg_engine._load_pyiceberg_table(catalog, fg.location)
+        assert version == 2
+        rows = table.scan().to_arrow().sort_by("id").to_pydict()
+        assert rows["id"] == [1, 2, 3]
+        assert rows["value"] == ["a", "B", "c"]
+
+        # Act 3: delete id=1
+        iceberg_engine._delete_pyiceberg_record(pa.table({"id": [1]}))
+
+        # Assert: row gone, version bumped
+        catalog = iceberg_engine._make_pyiceberg_catalog()
+        version, table = iceberg_engine._load_pyiceberg_table(catalog, fg.location)
+        assert version == 3
+        rows = table.scan().to_arrow().sort_by("id").to_pydict()
+        assert rows["id"] == [2, 3]

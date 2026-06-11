@@ -132,7 +132,7 @@ def _is_data_format_supported(data_format: str, read_options: dict[str, Any] | N
 def _is_query_supported_rec(query: query.Query):
     hudi_no_time_travel = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
-        and query._left_feature_group.time_travel_format in ["HUDI", "DELTA"]
+        and query._left_feature_group.time_travel_format in ["HUDI", "DELTA", "ICEBERG"]
         and (
             query._left_feature_group_start_time is None
             or query._left_feature_group_start_time == 0

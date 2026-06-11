@@ -3207,13 +3207,9 @@ class FeatureGroup(FeatureGroupBase):
     ) -> bool | None:
         # If stream is explicitly set to True, use it.
         # Otherwise, formats with direct offline writes from the Python engine
-        # (DELTA via delta-rs, ICEBERG via pyiceberg when installed) disable
-        # stream by default; everything else writes through the
-        # materialization job.
-        direct_write_formats = ["DELTA"]
-        if HAS_PYICEBERG:
-            direct_write_formats.append("ICEBERG")
-        return stream or time_travel_format not in direct_write_formats
+        # (DELTA via delta-rs, ICEBERG via pyiceberg) disable stream by
+        # default; everything else writes through the materialization job.
+        return stream or time_travel_format not in ["DELTA", "ICEBERG"]
 
     @staticmethod
     def _resolve_time_travel_format(
@@ -3227,6 +3223,10 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 "Cannot use time_travel_format='DELTA': delta library is not installed."
             )
+        if fmt == "ICEBERG" and not FeatureGroup._has_pyiceberg():
+            raise FeatureStoreException(
+                "Cannot use time_travel_format='ICEBERG': pyiceberg library is not installed."
+            )
         return fmt
 
     @staticmethod
@@ -3234,6 +3234,14 @@ class FeatureGroup(FeatureGroupBase):
         if engine._get_type() == "python":
             return HAS_DELTALAKE_PYTHON
         return HAS_DELTALAKE_SPARK
+
+    @staticmethod
+    def _has_pyiceberg():
+        # The Spark engine talks to Iceberg through the JVM and does not need
+        # the pyiceberg package.
+        if engine._get_type() == "python":
+            return HAS_PYICEBERG
+        return True
 
     @staticmethod
     def _sort_transformation_functions(
@@ -4319,7 +4327,7 @@ class FeatureGroup(FeatureGroupBase):
         ):
             raise NotImplementedError(
                 "commit_delete_record on ICEBERG feature groups without Spark requires pyiceberg. "
-                'Install the corresponding extra via `pip install "hopsworks[iceberg]"`.'
+                "Install 'pyiceberg' to enable it."
             )
         self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
 

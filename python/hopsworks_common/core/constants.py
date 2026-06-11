@@ -115,8 +115,7 @@ deltalake_spark_not_installed_message = (
 HAS_PYICEBERG: bool = importlib.util.find_spec("pyiceberg") is not None
 pyiceberg_not_installed_message = (
     "PyIceberg (pyiceberg) and its dependencies are required for non-Spark Iceberg operations. "
-    "Install the corresponding extra via "
-    '`pip install "hopsworks[iceberg]"` to enable them. '
+    "Install 'pyiceberg' to enable them. "
     "You will need to restart your kernel if applicable."
 )
 

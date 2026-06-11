@@ -74,6 +74,7 @@ python = [
     "fastavro>=1.4.11,<=1.12.0",
     "tqdm",
     "hops-deltalake==1.4.0-post121; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    "pyiceberg>=0.9.0,<0.10.0",
     "httpx<=0.28.1",
 ]
 sqlalchemy-1 = [
@@ -112,10 +113,6 @@ dev-pandas1 = [
 dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
 polars = [
     "polars>=0.20.31,<=1.40.1",
-    "pyarrow>=17.0",
-]
-iceberg = [
-    "pyiceberg[sql-sqlite]>=0.9.0,<0.10.0",
     "pyarrow>=17.0",
 ]
 mcp = [
