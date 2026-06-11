@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -861,7 +862,11 @@ class IcebergEngine:
 
         Returns an empty dict for HopsFS (handled separately via env vars) and for
         feature groups without a connector.
-        For S3 connectors the relevant credential keys are returned.
+        For S3 and ADLS connectors the relevant credential keys are returned.
+        For GCS connectors the service account key is downloaded and exposed
+        through `GOOGLE_APPLICATION_CREDENTIALS`, because without explicit
+        credentials the GCS filesystem stalls probing the GCP metadata server
+        for application-default credentials.
         """
         from hsfs import storage_connector as sc
 
@@ -879,6 +884,28 @@ class IcebergEngine:
             if connector.region:
                 props["s3.region"] = connector.region
             return props
+        if connector.type == sc.StorageConnector.ADLS:
+            props = {}
+            if connector.account_name:
+                props["adls.account-name"] = connector.account_name
+            if connector.application_id:
+                props["adls.client-id"] = connector.application_id
+            if connector.service_credential:
+                props["adls.client-secret"] = connector.service_credential
+            if connector.directory_id:
+                props["adls.tenant-id"] = connector.directory_id
+            return props
+        if connector.type == sc.StorageConnector.GCS:
+            if connector.key_path:
+                # key_path is a HopsFS path; download it locally
+                from hsfs import engine
+
+                local_key_path = engine._get_instance()._add_file(connector.key_path)
+                _logger.debug(
+                    f"Setting GOOGLE_APPLICATION_CREDENTIALS to {local_key_path}"
+                )
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = local_key_path
+            return {}
         return {}
 
     def _pyiceberg_identifier(self) -> str:

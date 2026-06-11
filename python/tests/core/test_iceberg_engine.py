@@ -879,6 +879,58 @@ class TestPyIcebergEngine:
         mocker.patch("hopsworks_common.decorators.HAS_PYICEBERG", True)
         return _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
 
+    def test_get_pyiceberg_properties_gcs_sets_credentials_env(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        from hsfs import storage_connector as sc
+
+        monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+        fg = _make_fg()
+        connector = mocker.Mock()
+        connector.type = sc.StorageConnector.GCS
+        connector.key_path = "/Projects/test/Resources/key.json"
+        fg.storage_connector = connector
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+        engine_instance = mocker.patch("hsfs.engine._get_instance")
+        engine_instance.return_value._add_file.return_value = "/tmp/key.json"
+
+        # Act
+        props = iceberg_engine._get_pyiceberg_properties()
+
+        # Assert
+        # GCS auth goes through the application-default chain; without this
+        # env var the client stalls probing the GCP metadata server
+        import os
+
+        assert props == {}
+        assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/tmp/key.json"
+
+    def test_get_pyiceberg_properties_adls(self, mocker):
+        # Arrange
+        from hsfs import storage_connector as sc
+
+        fg = _make_fg()
+        connector = mocker.Mock()
+        connector.type = sc.StorageConnector.ADLS
+        connector.account_name = "account"
+        connector.application_id = "client-id"
+        connector.service_credential = "secret"
+        connector.directory_id = "tenant"
+        fg.storage_connector = connector
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+
+        # Act
+        props = iceberg_engine._get_pyiceberg_properties()
+
+        # Assert
+        assert props == {
+            "adls.account-name": "account",
+            "adls.client-id": "client-id",
+            "adls.client-secret": "secret",
+            "adls.tenant-id": "tenant",
+        }
+
     def test_pyiceberg_write_supported(self, mocker):
         # Arrange
         fg = _make_fg()
