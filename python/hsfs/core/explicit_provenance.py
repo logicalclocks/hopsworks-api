@@ -183,6 +183,7 @@ class Links:
         """
         return self._faulty
 
+    @public
     def is_empty(self):
         return (
             len(self.accessible) == 0

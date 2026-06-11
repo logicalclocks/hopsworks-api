@@ -61,7 +61,7 @@ class ProjectTools:
         self, conn, name: str = None, description: str = None
     ) -> dict:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, conn.create_project, name, description)
+        return await loop.run_in_executor(None, conn._create_project, name, description)
 
     async def use_project(self, name: str, ctx: Context | None = None) -> Project:
         """Use a specific project.
@@ -76,7 +76,7 @@ class ProjectTools:
         if ctx:
             await ctx.info(f"Changing to project {name}...")
 
-        conn = client.get_connection()
+        conn = client._get_connection()
         if conn is None:
             raise ConnectionError("Not connected to Hopsworks.")
 
@@ -115,7 +115,7 @@ class ProjectTools:
             await ctx.info(f"Creating project {name}...")
 
         progress = 0
-        conn = client.get_connection()
+        conn = client._get_connection()
         task = asyncio.create_task(
             self._create_project(conn, name=name, description=description)
         )
@@ -151,8 +151,8 @@ class ProjectTools:
         if ctx:
             await ctx.info("Listing all projects...")
 
-        conn = client.get_connection()
-        projects = conn.get_projects()
+        conn = client._get_connection()
+        projects = conn._get_projects()
 
         return Projects(
             projects=[
@@ -203,8 +203,8 @@ class ProjectTools:
         if ctx:
             await ctx.info(f"Retrieving project details for {name}...")
 
-        conn = client.get_connection()
-        project = conn.get_project(name)
+        conn = client._get_connection()
+        project = conn._get_project(name)
         return Project(
             name=project.name,
             id=project.id,

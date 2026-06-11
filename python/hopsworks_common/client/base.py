@@ -35,7 +35,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
-from hopsworks_common.decorators import connected
+from hopsworks_common.decorators import _connected
 
 
 _logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ class Client:
         with open(path, "w") as f:
             f.write(content)
 
-    @connected
+    @_connected
     def _send_request(
         self,
         method: str,

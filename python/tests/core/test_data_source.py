@@ -241,10 +241,10 @@ class TestDataSourceApiInferMetadata:
 
         # Act
         with patch(
-            "hsfs.core.data_source_api.client.get_instance",
+            "hsfs.core.data_source_api.client._get_instance",
             return_value=_StubClient(),
         ):
-            result = api.infer_metadata(sc, preview_data)
+            result = api._infer_metadata(sc, preview_data)
 
         # Assert — endpoint shape and per-column samples are correct
         assert captured["method"] == "POST"
@@ -287,7 +287,7 @@ class TestDataSourceApiInferMetadata:
         # Act / Assert
         with (
             patch(
-                "hsfs.core.data_source_api.client.get_instance",
+                "hsfs.core.data_source_api.client._get_instance",
                 return_value=MagicMock(
                     _project_id=1,
                     _send_request=MagicMock(
@@ -297,7 +297,7 @@ class TestDataSourceApiInferMetadata:
             ),
             pytest.raises(PlatformIntelligenceException) as excinfo,
         ):
-            api.infer_metadata(sc_mock, preview_data)
+            api._infer_metadata(sc_mock, preview_data)
 
         assert excinfo.value.reason == PlatformIntelligenceException.NOT_CONFIGURED
         assert "not enabled" in str(excinfo.value).lower()
@@ -314,7 +314,7 @@ class TestDataSourceApiInferMetadata:
 
         with (
             patch(
-                "hsfs.core.data_source_api.client.get_instance",
+                "hsfs.core.data_source_api.client._get_instance",
                 return_value=MagicMock(
                     _project_id=1,
                     _send_request=MagicMock(
@@ -324,7 +324,7 @@ class TestDataSourceApiInferMetadata:
             ),
             pytest.raises(PlatformIntelligenceException) as excinfo,
         ):
-            api.infer_metadata(sc_mock, preview_data)
+            api._infer_metadata(sc_mock, preview_data)
 
         assert excinfo.value.reason == PlatformIntelligenceException.INFERENCE_FAILED
 
@@ -340,7 +340,7 @@ class TestDataSourceApiInferMetadata:
 
         with (
             patch(
-                "hsfs.core.data_source_api.client.get_instance",
+                "hsfs.core.data_source_api.client._get_instance",
                 return_value=MagicMock(
                     _project_id=1,
                     _send_request=MagicMock(
@@ -350,4 +350,4 @@ class TestDataSourceApiInferMetadata:
             ),
             pytest.raises(RestAPIError),
         ):
-            api.infer_metadata(sc_mock, preview_data)
+            api._infer_metadata(sc_mock, preview_data)

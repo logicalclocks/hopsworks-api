@@ -24,18 +24,18 @@ class TestOnlineStoreRestClient:
         online_store_rest_client._online_store_rest_client = None
 
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_loadbalancer_external_domain",
+            "hopsworks_common.core.variable_api.VariableApi._get_loadbalancer_external_domain",
             return_value="eu-west.cloud.hopsworks.ai",
         )
         ping_rdrs_mock = mocker.patch(
-            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton._is_connected",
         )
 
         # Act
-        online_store_rest_client.init_or_reset_online_store_rest_client()
-        online_store_rest_client_instance = online_store_rest_client.get_instance()
+        online_store_rest_client._init_or_reset_online_store_rest_client()
+        online_store_rest_client_instance = online_store_rest_client._get_instance()
 
         # Assert
         variable_api_mock.assert_called_once()
@@ -55,23 +55,23 @@ class TestOnlineStoreRestClient:
         online_store_rest_client._online_store_rest_client = None
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_service_discovery_domain",
+            "hopsworks_common.core.variable_api.VariableApi._get_service_discovery_domain",
             return_value="consul",
         )
         optional_config = {"api_key": "provided_api_key"}
         ping_rdrs_mock = mocker.patch(
-            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton._is_connected",
         )
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException):
-            online_store_rest_client.init_or_reset_online_store_rest_client()
-        online_store_rest_client.init_or_reset_online_store_rest_client(
+            online_store_rest_client._init_or_reset_online_store_rest_client()
+        online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=optional_config
         )
-        online_store_rest_client_instance = online_store_rest_client.get_instance()
+        online_store_rest_client_instance = online_store_rest_client._get_instance()
 
         # Assert
         assert variable_api_mock.call_count == 2

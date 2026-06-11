@@ -16,7 +16,7 @@
 """Stable internal REST helper for SDK consumers (CLI and ``core/<entity>_api`` modules).
 
 The Hopsworks Python SDK already has an authenticated HTTP client at
-``hopsworks_common.client.get_instance()``, but its surface
+``hopsworks_common.client._get_instance()``, but its surface
 (``_send_request``, ``_project_id``) is private — the underscore prefix means
 callers shouldn't depend on it. Multiple call sites (the ``hops`` CLI's
 ``fv list``, ``connector list``, ``model list``, …) reach through anyway
@@ -24,12 +24,12 @@ because the SDK's per-entity wrappers don't yet cover every endpoint.
 
 This module exposes the bare minimum stable surface for those call sites:
 
-* :func:`send_request` — perform a request against ``/hopsworks-api/api/...``
+* :func:`_send_request` — perform a request against ``/hopsworks-api/api/...``
   with shared host/auth/TLS configuration.
-* :func:`project_path` — build a ``project/<id>/...`` path tuple so callers
+* :func:`_project_path` — build a ``project/<id>/...`` path tuple so callers
   don't reach into ``_project_id`` directly.
 
-Internal SDK consumers should import from here rather than ``client.get_instance()``
+Internal SDK consumers should import from here rather than ``client._get_instance()``
 directly so the underlying HTTP machinery can change shape without breaking
 external callers.
 """
@@ -39,27 +39,25 @@ from __future__ import annotations
 import json as _json
 from typing import Any
 
-from hopsworks_apigen import public
 from hopsworks_common import client
 
 
-@public
-def project_path(*tail: Any) -> list[Any]:
+def _project_path(*tail: Any) -> list[Any]:
     """Build a ``["project", <project_id>, *tail]`` path list.
 
     Args:
         *tail: Path components to append after ``project/<id>``. Numeric IDs
-            are accepted alongside strings — :func:`send_request` URL-encodes
+            are accepted alongside strings — :func:`_send_request` URL-encodes
             them.
 
     Returns:
-        A list ready to pass as ``path_params`` to :func:`send_request`.
+        A list ready to pass as ``path_params`` to :func:`_send_request`.
 
     Raises:
         RuntimeError: When the SDK is not connected (``hopsworks.login``
             has not been called yet).
     """
-    instance = client.get_instance()
+    instance = client._get_instance()
     project_id = getattr(instance, "_project_id", None)
     if project_id is None:
         raise RuntimeError(
@@ -69,8 +67,7 @@ def project_path(*tail: Any) -> list[Any]:
     return ["project", project_id, *tail]
 
 
-@public
-def send_request(
+def _send_request(
     method: str,
     path_params: list[Any],
     query_params: dict[str, Any] | None = None,
@@ -81,7 +78,7 @@ def send_request(
     Wraps the SDK's internal client so per-call sites don't reach into
     ``_send_request`` directly. Auth, host normalization, TLS verification
     and base URL construction are all inherited from the active
-    :func:`hopsworks_common.client.get_instance` instance — the same one
+    :func:`hopsworks_common.client._get_instance` instance — the same one
     the rest of the SDK uses.
 
     Args:
@@ -100,7 +97,7 @@ def send_request(
         hopsworks_common.client.exceptions.RestAPIError: When the backend
             returns a non-2xx response.
     """
-    instance = client.get_instance()
+    instance = client._get_instance()
     headers = None
     data = None
     if json_body is not None:

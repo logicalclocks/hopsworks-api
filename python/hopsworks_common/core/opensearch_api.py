@@ -60,11 +60,11 @@ class OpenSearchApi:
 
     def _get_opensearch_url(self) -> str:
         if client._is_external():
-            external_domain = self._variable_api.get_loadbalancer_external_domain(
+            external_domain = self._variable_api._get_loadbalancer_external_domain(
                 "opensearch"
             )
             return f"https://{external_domain}:9200"
-        service_discovery_domain = self._variable_api.get_service_discovery_domain()
+        service_discovery_domain = self._variable_api._get_service_discovery_domain()
         if service_discovery_domain == "":
             raise FeatureStoreException(
                 "Client could not locate service_discovery_domain "
@@ -73,7 +73,7 @@ class OpenSearchApi:
         return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_project_index(self, index: str) -> str:
         """This helper method prefixes the supplied index name with the project name to avoid index name clashes.
 
@@ -83,11 +83,11 @@ class OpenSearchApi:
         Returns:
             A valid opensearch index name.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         return (_client._project_name + "_" + index).lower()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_default_py_config(
         self, feature_store_id: int | None = None
     ) -> dict[str, Any]:
@@ -120,7 +120,7 @@ class OpenSearchApi:
             OPENSEARCH_CONFIG.USE_SSL: True,
             OPENSEARCH_CONFIG.VERIFY_CERTS: True,
             OPENSEARCH_CONFIG.SSL_ASSERT_HOSTNAME: False,
-            OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(),
+            OPENSEARCH_CONFIG.CA_CERTS: client._get_instance()._get_ca_chain_path(),
         }
 
     def _get_authorization_token(self, feature_store_id: int | None = None) -> str:
@@ -132,7 +132,7 @@ class OpenSearchApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         # Do not use feature store id for now since the backend is not yet updated to use it.
         path_params = ["elastic", "jwt", _client._project_id]
 

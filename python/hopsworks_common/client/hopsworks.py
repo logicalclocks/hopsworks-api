@@ -163,7 +163,7 @@ class Client(base.Client):
         with pwd_path.open() as f:
             return f.read()
 
-    def replace_public_host(self, url: ParseResult) -> ParseResult:
+    def _replace_public_host(self, url: ParseResult) -> ParseResult:
         """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST.
 
         Parameters:

@@ -45,6 +45,7 @@ _AGENT_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 if TYPE_CHECKING:
+    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_endpoint import InferenceEndpoint
     from hsml.inference_logger import InferenceLogger
@@ -69,7 +70,7 @@ class ModelServing:
         self._serving_api = serving_api.ServingApi()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment_by_id(self, id: int) -> Deployment | None:
         """Get a deployment by id from Model Serving.
 
@@ -92,10 +93,10 @@ class ModelServing:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
         """
-        return self._serving_api.get_by_id(id)
+        return self._serving_api._get_by_id(id)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment(self, name: str = None) -> Deployment | None:
         """Get a deployment by name from Model Serving.
 
@@ -121,10 +122,10 @@ class ModelServing:
         """
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
-        return self._serving_api.get(name)
+        return self._serving_api._get(name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployments(
         self, model: Model = None, status: str = None
     ) -> list[Deployment]:
@@ -163,10 +164,10 @@ class ModelServing:
         if status is not None:
             self._validate_deployment_status(status)
 
-        return self._serving_api.get_all(model_name, status)
+        return self._serving_api._get_all(model_name, status)
 
     def _validate_deployment_status(self, status):
-        statuses = list(util.get_members(PREDICTOR_STATE, prefix="STATUS"))
+        statuses = list(util._get_members(PREDICTOR_STATE, prefix="STATUS"))
         status = status.upper()
         if status not in statuses:
             raise ValueError(
@@ -183,10 +184,10 @@ class ModelServing:
         Returns:
             Inference endpoints for model inference
         """
-        return self._serving_api.get_inference_endpoints()
+        return self._serving_api._get_inference_endpoints()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_predictor(
         self,
         model: Model,
@@ -206,6 +207,7 @@ class ModelServing:
         env_vars: dict | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -250,6 +252,7 @@ class ModelServing:
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            tracing: Tracing configuration for the predictor.
 
         Returns:
             The predictor metadata object.
@@ -273,10 +276,11 @@ class ModelServing:
             env_vars=env_vars,
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
+            tracing=tracing,
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_transformer(
         self,
         script_file: str | None = None,
@@ -353,7 +357,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_endpoint(
         self,
         name: str,
@@ -366,6 +370,7 @@ class ModelServing:
         environment: str | None = None,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         env_vars: dict | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -396,6 +401,7 @@ class ModelServing:
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
+            tracing: Tracing configuration for the endpoint.
 
         Returns:
             The predictor metadata object.
@@ -411,10 +417,11 @@ class ModelServing:
             environment=environment,
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
+            tracing=tracing,
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def deploy_agent(
         self,
         entry: str,
@@ -428,6 +435,7 @@ class ModelServing:
         inference_batcher: InferenceBatcher | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -469,6 +477,7 @@ class ModelServing:
             inference_batcher: Inference batcher configuration.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             scaling_configuration: Scaling configuration for the predictor.
+            tracing: Tracing configuration for the deployment.
 
         Returns:
             The deployment metadata object.
@@ -513,7 +522,7 @@ class ModelServing:
         else:
             script_file = _build_and_install_package(ds_api, env, entry_abs, agent_dir)
         # The serving backend expects the script path under /Projects/<proj>/...
-        script_file = util.convert_to_abs(script_file, self._project_name)
+        script_file = util._convert_to_abs(script_file, self._project_name)
 
         if requirements is not None:
             requirements_abs = os.path.abspath(requirements)
@@ -535,6 +544,7 @@ class ModelServing:
             api_protocol=api_protocol,
             environment=env_name,
             scaling_configuration=scaling_configuration,
+            tracing=tracing,
         )
 
         existing = self.get_deployment(name)
@@ -551,7 +561,7 @@ class ModelServing:
         return predictor.deploy()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_deployment(
         self,
         predictor: Predictor,

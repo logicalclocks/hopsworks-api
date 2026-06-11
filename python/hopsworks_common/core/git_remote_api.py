@@ -25,7 +25,7 @@ class GitRemoteApi:
         self._git_engine = git_engine.GitEngine()
 
     def _get(self, repo_id, name: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -43,7 +43,7 @@ class GitRemoteApi:
         return remote
 
     def _get_remotes(self, repo_id):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -61,7 +61,7 @@ class GitRemoteApi:
         return remotes
 
     def _add(self, repo_id, name: str, url: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -84,11 +84,11 @@ class GitRemoteApi:
                 "POST", path_params, headers=headers, query_params=query_params
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, "ADD_REMOTE")
+        _ = self._git_engine._execute_op_blocking(git_op, "ADD_REMOTE")
         return self._get(repo_id, name)
 
     def _delete(self, repo_id, name: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -110,4 +110,4 @@ class GitRemoteApi:
                 "POST", path_params, headers=headers, query_params=query_params
             )
         )
-        _ = self._git_engine.execute_op_blocking(git_op, "DELETE_REMOTE")
+        _ = self._git_engine._execute_op_blocking(git_op, "DELETE_REMOTE")

@@ -115,11 +115,13 @@ class Highlights:
         """Highlighted source feature groups with the matched parts enwrapped in `<em>` tags."""
         return self._source_feature_groups
 
+    @public
     @property
     def raw_data(self) -> dict:
         """Raw highlights data."""
         return self._raw_data
 
+    @public
     def has_highlights(self) -> bool:
         """Check if there are any highlights.
 
@@ -226,6 +228,7 @@ class SearchResultItem:
         """Parent project of this resource."""
         return self._project
 
+    @public
     @property
     def raw_data(self):
         """Raw data from the search result."""
@@ -278,7 +281,7 @@ class FeatureGroupSearchResult(SearchResultItem):
             Exception: If the connection to the feature store fails or the
                 Feature Group cannot be retrieved.
         """
-        fs = client.get_connection().get_feature_store(self.project.name)
+        fs = client._get_connection()._get_feature_store(self.project.name)
         return fs.get_feature_group(self.name, version=self.version)
 
 
@@ -301,7 +304,7 @@ class FeatureViewSearchResult(SearchResultItem):
             Exception: If the connection to the feature store fails or the
                 Feature View cannot be retrieved.
         """
-        fs = client.get_connection().get_feature_store(self.project.name)
+        fs = client._get_connection()._get_feature_store(self.project.name)
         return fs.get_feature_view(self.name, version=self.version)
 
 
@@ -324,7 +327,7 @@ class TrainingDatasetSearchResult(SearchResultItem):
             Exception: If the connection to the feature store fails or the
                 Training Dataset cannot be retrieved.
         """
-        fs = client.get_connection().get_feature_store(self.project.name)
+        fs = client._get_connection()._get_feature_store(self.project.name)
         return fs.get_training_dataset(self.name, version=self.version)
 
 

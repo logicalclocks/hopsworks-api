@@ -55,15 +55,15 @@ def _patch_apis(
             return lb_domain
         raise FeatureStoreException("no lb")
 
-    var_api.get_loadbalancer_external_domain.side_effect = _lb_side_effect
+    var_api._get_loadbalancer_external_domain.side_effect = _lb_side_effect
     mocker.patch("hsfs.core.variable_api.VariableApi", return_value=var_api)
 
     # project_api mock
     proj_api = mocker.Mock()
     if username is not None:
-        proj_api.get_user_info.return_value = {"username": username}
+        proj_api._get_user_info.return_value = {"username": username}
     else:
-        proj_api.get_user_info.return_value = {}
+        proj_api._get_user_info.return_value = {}
     mocker.patch("hopsworks_common.core.project_api.ProjectApi", return_value=proj_api)
 
     return var_api, proj_api
@@ -75,8 +75,8 @@ def _patch_client(
     client = mocker.Mock()
     client._is_external.return_value = is_external
     client.project_name = project_name
-    client.get_certs_folder.return_value = certs
-    mocker.patch("hopsworks_common.client.get_instance", return_value=client)
+    client._get_certs_folder.return_value = certs
+    mocker.patch("hopsworks_common.client._get_instance", return_value=client)
     return client
 
 
@@ -149,8 +149,8 @@ class TestDeltaEngine:
 
         # Assert
         # internal -> no LB lookups performed during setup
-        var_api.get_loadbalancer_external_domain.assert_not_called()
-        proj_api.get_user_info.assert_not_called()
+        var_api._get_loadbalancer_external_domain.assert_not_called()
+        proj_api._get_user_info.assert_not_called()
 
     def test_setup_delta_rs_external_success(self, mocker, monkeypatch):
         # Arrange
@@ -276,7 +276,7 @@ class TestDeltaEngine:
         alias = mock.Mock()
         alias.left_feature_group_end_timestamp = 1234567890
         alias.left_feature_group_start_timestamp = None
-        mocker.patch("hsfs.util.get_delta_datestr_from_timestamp", return_value="t")
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
 
         # Act
         result = engine._setup_delta_read_opts(alias, None)
@@ -292,7 +292,7 @@ class TestDeltaEngine:
         alias = mock.Mock()
         alias.left_feature_group_end_timestamp = 1234567890
         alias.left_feature_group_start_timestamp = None
-        mocker.patch("hsfs.util.get_delta_datestr_from_timestamp", return_value="t")
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
 
         # Act
         opts = engine._setup_delta_read_opts(alias, {"k": "v"})
@@ -410,7 +410,7 @@ class TestDeltaEngine:
         alias.alias = "tmp"
 
         # Act
-        engine.register_temporary_table(alias, {"b": 2})
+        engine._register_temporary_table(alias, {"b": 2})
 
         # Assert
         spark.read.format.assert_called_once_with(engine.DELTA_SPARK_FORMAT)
@@ -421,11 +421,13 @@ class TestDeltaEngine:
         spark = mock.Mock()
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, spark, None)
-        mock_commit = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mock_commit = mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._commit"
+        )
         mocker.patch.object(engine, "_write_delta_dataset", return_value=mock.Mock())
 
         # Act
-        result = engine.save_delta_fg(
+        result = engine._save_delta_fg(
             dataset=mock.Mock(), write_options={"x": 1}, validation_id="vid"
         )
 
@@ -438,11 +440,13 @@ class TestDeltaEngine:
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
-        mock_commit = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mock_commit = mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._commit"
+        )
         mocker.patch.object(engine, "_write_delta_rs_dataset", return_value=mock.Mock())
 
         # Act
-        result = engine.save_delta_fg(
+        result = engine._save_delta_fg(
             dataset=mock.Mock(), write_options=None, validation_id=None
         )
 
@@ -462,7 +466,7 @@ class TestDeltaEngine:
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
-            engine.delete_record(delete_df=mock.Mock())
+            engine._delete_record(delete_df=mock.Mock())
         assert "delta-spark" in str(e.value)
 
     def test_save_empty_table_uses_pyspark_path(self, mocker):
@@ -471,11 +475,11 @@ class TestDeltaEngine:
         spark = mock.Mock()
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, spark, mock.Mock())
-        pyspark_mock = mocker.patch.object(engine, "save_empty_delta_table_pyspark")
-        python_mock = mocker.patch.object(engine, "save_empty_delta_table_python")
+        pyspark_mock = mocker.patch.object(engine, "_save_empty_delta_table_pyspark")
+        python_mock = mocker.patch.object(engine, "_save_empty_delta_table_python")
 
         # Act
-        engine.save_empty_table()
+        engine._save_empty_table()
 
         # Assert
         pyspark_mock.assert_called_once_with(write_options=None)
@@ -486,11 +490,11 @@ class TestDeltaEngine:
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
-        pyspark_mock = mocker.patch.object(engine, "save_empty_delta_table_pyspark")
-        python_mock = mocker.patch.object(engine, "save_empty_delta_table_python")
+        pyspark_mock = mocker.patch.object(engine, "_save_empty_delta_table_pyspark")
+        python_mock = mocker.patch.object(engine, "_save_empty_delta_table_python")
 
         # Act
-        engine.save_empty_table()
+        engine._save_empty_table()
 
         # Assert
         python_mock.assert_called_once_with(write_options=None)
@@ -506,7 +510,7 @@ class TestDeltaEngine:
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
-            engine.delete_record(delete_df=mock.Mock())
+            engine._delete_record(delete_df=mock.Mock())
         assert "hops-deltalake" in str(e.value)
 
     def test_write_delta_dataset_importerror_missing_delta_spark(
@@ -755,7 +759,7 @@ class TestDeltaEngine:
         fg.prepare_spark_location.return_value = "/loc"
 
         # Act
-        engine.vacuum(24)
+        engine._vacuum(24)
 
         # Assert
         spark.sql.assert_called_once()
@@ -766,7 +770,7 @@ class TestDeltaEngine:
         # delta-spark; the engine should raise a clear ImportError.
         _force_missing_delta_spark(monkeypatch)
         mocker.patch(
-            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=False,
         )
 
@@ -789,7 +793,7 @@ class TestDeltaEngine:
     def test_get_last_commit_metadata_spark(self, mocker):
         # Arrange — classic Spark path uses ``DeltaTable.forPath(...).history()``.
         mocker.patch(
-            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=False,
         )
         mock_history_data = [
@@ -838,7 +842,7 @@ class TestDeltaEngine:
     def test_get_last_commit_metadata_spark_connect(self, mocker):
         # Arrange — Connect path bypasses Hive by reading ``_delta_log/*.json``.
         mocker.patch(
-            "hopsworks_common.spark_connect_utils.is_spark_connect_session",
+            "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=True,
         )
         mock_history_data = [
@@ -1024,11 +1028,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1058,11 +1062,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1092,11 +1096,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1130,11 +1134,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1164,11 +1168,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1198,11 +1202,11 @@ class TestDeltaEngine:
         }
 
         mocker.patch(
-            "hsfs.core.delta_engine.util.convert_event_time_to_timestamp",
+            "hsfs.core.delta_engine.util._convert_event_time_to_timestamp",
             side_effect=lambda ts: ts,
         )
         mocker.patch(
-            "hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp",
+            "hsfs.core.delta_engine.util._get_hudi_datestr_from_timestamp",
             side_effect=lambda ts: f"date-{ts}",
         )
 
@@ -1467,13 +1471,13 @@ class TestDeltaEngine:
         spark = mock.Mock()
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, spark, None)
-        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi._commit")
         write_mock = mocker.patch.object(
             engine, "_write_delta_dataset", return_value=mock.Mock()
         )
 
         # Act
-        engine.save_delta_fg(
+        engine._save_delta_fg(
             dataset=mock.Mock(),
             write_options={},
             validation_id=None,
@@ -1489,13 +1493,13 @@ class TestDeltaEngine:
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
-        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.commit")
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi._commit")
         write_mock = mocker.patch.object(
             engine, "_write_delta_rs_dataset", return_value=mock.Mock()
         )
 
         # Act
-        engine.save_delta_fg(
+        engine._save_delta_fg(
             dataset=mock.Mock(),
             write_options=None,
             validation_id=None,

@@ -19,8 +19,8 @@ from hsfs import training_dataset_feature
 from hsfs.core import online_store_rest_client_engine
 
 
-ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS = "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi.get_batch_raw_feature_vectors"
-ONLINE_STORE_REST_CLIENT_API_GET_SINGLE_RAW_FEATURE_VECTOR = "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi.get_single_raw_feature_vector"
+ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS = "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi._get_batch_raw_feature_vectors"
+ONLINE_STORE_REST_CLIENT_API_GET_SINGLE_RAW_FEATURE_VECTOR = "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi._get_single_raw_feature_vector"
 
 
 class TestOnlineRestClientEngine:
@@ -155,7 +155,7 @@ class TestOnlineRestClientEngine:
         self, rest_client_engine_base, backend_fixtures
     ):
         # Act
-        payload = rest_client_engine_base.build_base_payload()
+        payload = rest_client_engine_base._build_base_payload()
 
         # Assert
         for key, value in payload.items():
@@ -177,7 +177,7 @@ class TestOnlineRestClientEngine:
         rest_client_engine_base,
     ):
         # Act
-        payload = rest_client_engine_base.build_base_payload(
+        payload = rest_client_engine_base._build_base_payload(
             metadata_options={"featureName": True, "featureType": False},
             validate_passed_features=True,  # not default
             include_detailed_status=True,  # not default
@@ -198,12 +198,12 @@ class TestOnlineRestClientEngine:
         drop_missing: bool,
     ):
         # Act
-        feature_vector_dict = rest_client_engine_ticker.convert_rdrs_response_to_feature_value_row(
+        feature_vector_dict = rest_client_engine_ticker._convert_rdrs_response_to_feature_value_row(
             row_feature_values=None,
             return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_FEATURE_VALUE_DICT,
             drop_missing=drop_missing,
         )
-        feature_vector_list = rest_client_engine_ticker.convert_rdrs_response_to_feature_value_row(
+        feature_vector_list = rest_client_engine_ticker._convert_rdrs_response_to_feature_value_row(
             row_feature_values=None,
             return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_FEATURE_VALUE_LIST,
             drop_missing=drop_missing,
@@ -245,7 +245,7 @@ class TestOnlineRestClientEngine:
         }
 
         # Act
-        feature_vector_dict = rest_client_engine_ticker.convert_rdrs_response_to_feature_value_row(
+        feature_vector_dict = rest_client_engine_ticker._convert_rdrs_response_to_feature_value_row(
             row_feature_values=response["features"],
             return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_FEATURE_VALUE_DICT,
             drop_missing=False,
@@ -275,7 +275,7 @@ class TestOnlineRestClientEngine:
         )
 
         # Act
-        response_json = rest_client_engine_ticker.get_batch_feature_vectors(
+        response_json = rest_client_engine_ticker._get_batch_feature_vectors(
             entries=payload["entries"],
             return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_RESPONSE_JSON,
             drop_missing=False,
@@ -332,7 +332,7 @@ class TestOnlineRestClientEngine:
         ]
 
         # Act
-        feature_vector_dict = rest_client_engine_ticker.get_batch_feature_vectors(
+        feature_vector_dict = rest_client_engine_ticker._get_batch_feature_vectors(
             entries=payload["entries"],
             return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_FEATURE_VALUE_DICT,
             drop_missing=False,
@@ -371,7 +371,7 @@ class TestOnlineRestClientEngine:
         ]
 
         # Act
-        feature_vector_dict = rest_client_engine_ticker.get_batch_feature_vectors(
+        feature_vector_dict = rest_client_engine_ticker._get_batch_feature_vectors(
             entries=payload["entries"],
             return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_FEATURE_VALUE_DICT,
             drop_missing=True,
@@ -411,7 +411,7 @@ class TestOnlineRestClientEngine:
         ]
 
         # Act
-        batch_vectors = rest_client_engine_ticker.get_batch_feature_vectors(
+        batch_vectors = rest_client_engine_ticker._get_batch_feature_vectors(
             entries=payload["entries"],
             return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_FEATURE_VALUE_DICT,
             drop_missing=True,

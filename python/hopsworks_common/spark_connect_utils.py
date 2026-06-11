@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 
 
-def is_spark_connect_env() -> bool:
+def _is_spark_connect_env() -> bool:
     """Detect Spark Connect mode before a SparkSession is available.
 
     Checks the ``SPARK_CONNECT_MODE_ENABLED`` environment variable that PySpark
@@ -40,10 +40,10 @@ def is_spark_connect_env() -> bool:
         return False
 
 
-def is_spark_connect_session(spark_session) -> bool:
+def _is_spark_connect_session(spark_session) -> bool:
     """Detect whether *spark_session* is a Spark Connect session.
 
-    Uses :func:`is_spark_connect_env` first. If that's inconclusive, prefer a
+    Uses :func:`_is_spark_connect_env` first. If that's inconclusive, prefer a
     direct module-class check (Connect's ``SparkSession`` lives in
     ``pyspark.sql.connect.session``) before falling back to probing
     ``spark_session.sparkContext`` — which raises various PySpark exception
@@ -57,7 +57,7 @@ def is_spark_connect_session(spark_session) -> bool:
     Returns:
         `True` if the session is a Spark Connect session, `False` otherwise.
     """
-    if is_spark_connect_env():
+    if _is_spark_connect_env():
         return True
     # Direct check: Connect's SparkSession lives in a different module.
     try:
@@ -77,7 +77,7 @@ def is_spark_connect_session(spark_session) -> bool:
         return True
 
 
-def is_spark_dataframe(obj) -> bool:
+def _is_spark_dataframe(obj) -> bool:
     """Return True for both classic and Spark Connect DataFrames.
 
     The classic ``pyspark.sql.DataFrame`` and the Spark Connect

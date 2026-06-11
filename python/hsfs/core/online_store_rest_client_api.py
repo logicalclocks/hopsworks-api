@@ -58,7 +58,7 @@ class OnlineStoreRestClientApi:
     BATCH_VECTOR_ENDPOINT = "batch_feature_store"
     PING_ENDPOINT = "ping"
 
-    def get_single_raw_feature_vector(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _get_single_raw_feature_vector(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Get a single feature vector from the feature store.
 
         Check the RonDB Rest Server documentation for more details:
@@ -98,8 +98,8 @@ class OnlineStoreRestClientApi:
             _logger.debug(
                 f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=NpDatetimeEncoder)}"
             )
-        return self.handle_rdrs_feature_store_response(
-            online_store_rest_client.get_instance().send_request(
+        return self._handle_rdrs_feature_store_response(
+            online_store_rest_client._get_instance()._send_request(
                 method="POST",
                 path_params=[self.SINGLE_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
@@ -107,7 +107,7 @@ class OnlineStoreRestClientApi:
             ),
         )
 
-    def get_batch_raw_feature_vectors(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _get_batch_raw_feature_vectors(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Get a list of feature vectors from the feature store.
 
         Check the RonDB Rest Server documentation for more details:
@@ -143,8 +143,8 @@ class OnlineStoreRestClientApi:
             _logger.debug(
                 f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=NpDatetimeEncoder)}"
             )
-        return self.handle_rdrs_feature_store_response(
-            online_store_rest_client.get_instance().send_request(
+        return self._handle_rdrs_feature_store_response(
+            online_store_rest_client._get_instance()._send_request(
                 method="POST",
                 path_params=[self.BATCH_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
@@ -152,7 +152,7 @@ class OnlineStoreRestClientApi:
             ),
         )
 
-    def ping_rondb_rest_server(self) -> int:
+    def _ping_rondb_rest_server(self) -> int:
         """Ping the RonDB Rest Server to check if it is alive.
 
         Returns:
@@ -160,14 +160,14 @@ class OnlineStoreRestClientApi:
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Pinging RonDB Rest Server")
-        ping_response = online_store_rest_client.get_instance().send_request(
+        ping_response = online_store_rest_client._get_instance()._send_request(
             method="GET", path_params=[self.PING_ENDPOINT]
         )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Received response from RonDB Rest Server: {ping_response}")
         return ping_response
 
-    def handle_rdrs_feature_store_response(self, response: Response) -> dict[str, Any]:
+    def _handle_rdrs_feature_store_response(self, response: Response) -> dict[str, Any]:
         """Raise RestAPIError or serialize the response from the RonDB Rest Server to json.
 
         Parameters:

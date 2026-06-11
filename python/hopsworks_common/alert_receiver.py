@@ -346,26 +346,31 @@ class AlertReceiver:
             return []
         return cls(**json_decamelized)
 
+    @public
     @property
     def name(self) -> str | None:
         """Return the name of the alert receiver."""
         return self._name
 
+    @public
     @property
     def email_configs(self) -> list | None:
         """Return the email configs of the alert receiver."""
         return self._email_configs
 
+    @public
     @property
     def slack_configs(self) -> list | None:
         """Return the slack configs of the alert receiver."""
         return self._slack_configs
 
+    @public
     @property
     def pager_duty_configs(self) -> list | None:
         """Return the pager duty configs of the alert receiver."""
         return self._pager_duty_configs
 
+    @public
     @property
     def webhook_configs(self) -> list | None:
         """Return the webhook configs of the alert receiver."""

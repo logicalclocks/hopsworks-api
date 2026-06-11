@@ -85,8 +85,8 @@ def _list_connectors(fs: Any) -> list[dict[str, Any]]:
     if fs_id is None:
         return []
     try:
-        payload = rest.send_request(
-            "GET", rest.project_path("featurestores", fs_id, "storageconnectors")
+        payload = rest._send_request(
+            "GET", rest._project_path("featurestores", fs_id, "storageconnectors")
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list connectors: {exc}") from exc
@@ -397,9 +397,9 @@ def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
     from hopsworks_common.core import rest
 
     try:
-        rest.send_request(
+        rest._send_request(
             "DELETE",
-            rest.project_path(
+            rest._project_path(
                 "featurestores", getattr(fs, "id", None), "storageconnectors", name
             ),
         )
@@ -549,9 +549,9 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
     from hopsworks_common.core import rest
 
     try:
-        rest.send_request(
+        rest._send_request(
             "POST",
-            rest.project_path(
+            rest._project_path(
                 "featurestores", getattr(fs, "id", None), "storageconnectors"
             ),
             json_body=body,

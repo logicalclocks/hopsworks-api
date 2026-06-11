@@ -20,7 +20,7 @@ from hopsworks_common import client
 
 
 class FeatureStoreApi:
-    def get(self, identifier: int | str) -> hsfs.feature_store.FeatureStore:
+    def _get(self, identifier: int | str) -> hsfs.feature_store.FeatureStore:
         """Get feature store with specific id or name.
 
         Parameters:
@@ -29,13 +29,13 @@ class FeatureStoreApi:
         Returns:
             the featurestore metadata
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "featurestores", identifier]
         return hsfs.feature_store.FeatureStore.from_response_json(
             _client._send_request("GET", path_params)
         )
 
-    def get_all(self) -> list[hsfs.feature_store.FeatureStore]:
+    def _get_all(self) -> list[hsfs.feature_store.FeatureStore]:
         """Get every feature store accessible from the current project.
 
         Includes the project's own feature store and any feature stores
@@ -47,7 +47,7 @@ class FeatureStoreApi:
         Returns:
             a list of featurestore metadata objects
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "featurestores"]
         return [
             hsfs.feature_store.FeatureStore.from_response_json(fs)

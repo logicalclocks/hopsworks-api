@@ -33,7 +33,7 @@ class HdfsApi:
 
     DEFAULT_BUFFER_SIZE = 0
 
-    def upload(
+    def _upload(
         self,
         local_path: str,
         upload_path: str,
@@ -75,7 +75,7 @@ class HdfsApi:
 
         return upload_path + "/" + os.path.basename(local_path)
 
-    def download(
+    def _download(
         self, path: str, local_path: str, buffer_size: int = DEFAULT_BUFFER_SIZE
     ):
         """Download file/directory on a path in datasets.

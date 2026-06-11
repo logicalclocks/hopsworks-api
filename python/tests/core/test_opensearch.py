@@ -107,12 +107,12 @@ class TestOpenSearchClientSingleton:
 
         # Act: get default client (no feature_store_id)
         default_wrapper = OpenSearchClientSingleton()
-        default_client = default_wrapper.get_opensearch_client()
+        default_client = default_wrapper._get_opensearch_client()
 
         # Act: get client for a specific feature store with no federated connector
         fs_id = 123
         fs_wrapper = OpenSearchClientSingleton(feature_store_id=fs_id)
-        fs_client = fs_wrapper.get_opensearch_client()
+        fs_client = fs_wrapper._get_opensearch_client()
 
         # Assert: the feature-store-specific client is the same as the default one
         assert default_client is fs_client, (
@@ -155,12 +155,12 @@ class TestOpenSearchClientSingleton:
 
         # Act: get default client (no feature_store_id)
         default_wrapper = OpenSearchClientSingleton()
-        default_client_from_wrapper = default_wrapper.get_opensearch_client()
+        default_client_from_wrapper = default_wrapper._get_opensearch_client()
 
         # Act: get client for a specific feature store with federated connector
         fs_id = 456
         fs_wrapper = OpenSearchClientSingleton(feature_store_id=fs_id)
-        fs_client_from_wrapper = fs_wrapper.get_opensearch_client()
+        fs_client_from_wrapper = fs_wrapper._get_opensearch_client()
 
         # Assert: the feature-store-specific client is NOT the same as the default one
         assert default_client_from_wrapper is not fs_client_from_wrapper, (
@@ -212,17 +212,17 @@ class TestOpenSearchClientSingleton:
 
         # Act: create client
         wrapper1 = OpenSearchClientSingleton(feature_store_id=create_fs_id)
-        client1 = wrapper1.get_opensearch_client()
+        client1 = wrapper1._get_opensearch_client()
 
         # Invalidate cache
-        OpenSearchClientSingleton.invalidate_cache(
+        OpenSearchClientSingleton._invalidate_cache(
             feature_store_id=create_fs_id,
             close_opensearch_client=close_opensearch_client,
         )
 
         # Get client again - should create a new one
         wrapper2 = OpenSearchClientSingleton(feature_store_id=create_fs_id)
-        client2 = wrapper2.get_opensearch_client()
+        client2 = wrapper2._get_opensearch_client()
 
         assert first_client.close.call_count == expect_close_calls
         # Expect a new client when close_opensearch_client=True; otherwise reuse.
@@ -237,8 +237,8 @@ class TestOpenSearchClientSingleton:
         OpenSearchClientSingleton._instance = None
 
         # Should not raise any exception
-        OpenSearchClientSingleton.invalidate_cache()
-        OpenSearchClientSingleton.invalidate_cache(feature_store_id=123)
+        OpenSearchClientSingleton._invalidate_cache()
+        OpenSearchClientSingleton._invalidate_cache(feature_store_id=123)
 
     def test_invalidate_cache_closes_federated_client_and_recreates(self, mocker):
         """invalidate_cache should close federated client, clear caches, and recreate."""
@@ -271,16 +271,16 @@ class TestOpenSearchClientSingleton:
 
         # Act: create initial federated client
         wrapper1 = OpenSearchClientSingleton(feature_store_id=fs_id)
-        client1 = wrapper1.get_opensearch_client()
+        client1 = wrapper1._get_opensearch_client()
 
         # Invalidate cache with close_opensearch_client=True
-        OpenSearchClientSingleton.invalidate_cache(
+        OpenSearchClientSingleton._invalidate_cache(
             feature_store_id=fs_id, close_opensearch_client=True
         )
 
         # Act: fetch client again; should be recreated with fresh config
         wrapper2 = OpenSearchClientSingleton(feature_store_id=fs_id)
-        client2 = wrapper2.get_opensearch_client()
+        client2 = wrapper2._get_opensearch_client()
 
         # Assert: old client closed, caches cleared (federated config refetched), new client created
         assert federated_client_v1.close.call_count == 1

@@ -69,7 +69,7 @@ class Tag:
         return json.dumps(self, cls=util.Encoder)
 
     @staticmethod
-    def normalize(
+    def _normalize(
         tags: Tag | dict[str, Any] | list[Tag | dict[str, Any]] | None,
     ) -> list[Tag]:
         """Normalize tags input to a list of Tag objects.
@@ -95,7 +95,7 @@ class Tag:
         return normalized_tags
 
     @staticmethod
-    def tags_to_dict(tags: list[Tag] | None) -> dict[str, Any] | None:
+    def _tags_to_dict(tags: list[Tag] | None) -> dict[str, Any] | None:
         """Convert a list of tags to API format with count and items.
 
         Parameters:

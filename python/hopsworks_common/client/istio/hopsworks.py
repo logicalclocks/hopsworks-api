@@ -91,7 +91,7 @@ class Client(istio.Client):
             raise exceptions.InternalClientError("Serving API key not found")
         return os.environ[self.SERVING_API_KEY]
 
-    def replace_public_host(self, url: ParseResult) -> ParseResult:
+    def _replace_public_host(self, url: ParseResult) -> ParseResult:
         """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST.
 
         Parameters:

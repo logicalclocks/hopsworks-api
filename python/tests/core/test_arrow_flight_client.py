@@ -29,22 +29,22 @@ from hsfs.storage_connector import HopsFSConnector, StorageConnector
 class TestArrowFlightClient:
     @pytest.fixture(autouse=True)
     def run_around_tests(self, mocker):
-        mocker.patch("hopsworks_common.client.get_instance")
-        arrow_flight_client.get_instance()._enabled_on_cluster = True
-        arrow_flight_client.get_instance()._disabled_for_session = False
+        mocker.patch("hopsworks_common.client._get_instance")
+        arrow_flight_client._get_instance()._enabled_on_cluster = True
+        arrow_flight_client._get_instance()._disabled_for_session = False
         yield
-        arrow_flight_client.get_instance()._enabled_on_cluster = False
-        arrow_flight_client.get_instance()._disabled_for_session = True
+        arrow_flight_client._get_instance()._enabled_on_cluster = False
+        arrow_flight_client._get_instance()._disabled_for_session = True
 
     def _arrange_engine_mocks(self, mocker, backend_fixtures):
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=python_engine)
+        mocker.patch("hsfs.engine._get_instance", return_value=python_engine)
         json_query = backend_fixtures["fs_query"]["get_basic_info"]["response"]
         q = fs_query.FsQuery.from_response_json(json_query)
         mocker.patch(
-            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
             return_value=q,
         )
 
@@ -60,7 +60,7 @@ class TestArrowFlightClient:
             "project_id",
             return_value=99,
         )
-        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi.get")
+        mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi._get")
         fv = feature_view.FeatureView.from_response_json(json_fv)
         json_td = backend_fixtures["training_dataset"]["get_basic_info"]["response"]
         td = training_dataset.TrainingDataset.from_response_json(json_td)[0]
@@ -70,17 +70,17 @@ class TestArrowFlightClient:
             return_value=td,
         )
         mocker.patch(
-            "hsfs.core.feature_view_api.FeatureViewApi.get_training_dataset_by_version",
+            "hsfs.core.feature_view_api.FeatureViewApi._get_training_dataset_by_version",
             return_value=td,
         )
 
         fg = self._arrange_featuregroup_mocks(backend_fixtures)
         mocker.patch(
-            "hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query",
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query",
             return_value=fg.select_all(),
         )
         mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions"
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
         )
 
         # required for batch query
@@ -105,21 +105,21 @@ class TestArrowFlightClient:
             "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata",
             return_value=td_hopsfs,
         )
-        mocker.patch("hsfs.storage_connector.StorageConnector.refetch")
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
         inode_path = mocker.MagicMock()
         inode_path.path = "/path/test.parquet"
         mocker.patch(
             "hsfs.core.dataset_api.DatasetApi._list_dataset_path",
             return_value=(1, [inode_path]),
         )
-        mocker.patch("hsfs.engine.python.Engine.split_labels", return_value=None)
+        mocker.patch("hsfs.engine.python.Engine._split_labels", return_value=None)
 
     def test_read_feature_group(self, mocker, backend_fixtures):
         # Arrange
         self._arrange_engine_mocks(mocker, backend_fixtures)
         fg = self._arrange_featuregroup_mocks(backend_fixtures)
         mock_read_query = mocker.patch(
-            "hsfs.core.arrow_flight_client.ArrowFlightClient.read_query"
+            "hsfs.core.arrow_flight_client.ArrowFlightClient._read_query"
         )
 
         # Act
@@ -133,7 +133,7 @@ class TestArrowFlightClient:
         self._arrange_engine_mocks(mocker, backend_fixtures)
         fg = self._arrange_featuregroup_mocks(backend_fixtures)
         mock_read_query = mocker.patch(
-            "hsfs.core.arrow_flight_client.ArrowFlightClient.read_query"
+            "hsfs.core.arrow_flight_client.ArrowFlightClient._read_query"
         )
         query = fg.select_all()
 
@@ -148,7 +148,7 @@ class TestArrowFlightClient:
         self._arrange_engine_mocks(mocker, backend_fixtures)
         fv = self._arrange_featureview_mocks(mocker, backend_fixtures)
         mock_read_query = mocker.patch(
-            "hsfs.core.arrow_flight_client.ArrowFlightClient.read_query"
+            "hsfs.core.arrow_flight_client.ArrowFlightClient._read_query"
         )
 
         # Act
@@ -162,7 +162,7 @@ class TestArrowFlightClient:
         self._arrange_engine_mocks(mocker, backend_fixtures)
         fv = self._arrange_featureview_mocks(mocker, backend_fixtures)
         mock_read_query = mocker.patch(
-            "hsfs.core.arrow_flight_client.ArrowFlightClient.read_query"
+            "hsfs.core.arrow_flight_client.ArrowFlightClient._read_query"
         )
 
         # Act
@@ -177,7 +177,7 @@ class TestArrowFlightClient:
         fv = self._arrange_featureview_mocks(mocker, backend_fixtures)
         self._arrange_dataset_reads(mocker, backend_fixtures, "parquet")
         mock_read_path = mocker.patch(
-            "hsfs.core.arrow_flight_client.ArrowFlightClient.read_path",
+            "hsfs.core.arrow_flight_client.ArrowFlightClient._read_path",
             return_value=pd.DataFrame(),
         )
 
@@ -195,7 +195,7 @@ class TestArrowFlightClient:
         )
 
         # Act
-        supported = arrow_flight_client.supports([external_feature_group])
+        supported = arrow_flight_client._supports([external_feature_group])
 
         # Assert
         assert supported
@@ -215,7 +215,7 @@ class TestArrowFlightClient:
         )
 
         # Act
-        supported = arrow_flight_client.supports([external_feature_group])
+        supported = arrow_flight_client._supports([external_feature_group])
 
         # Assert
         assert supported
@@ -228,7 +228,7 @@ class TestArrowFlightClient:
         )
 
         # Act
-        supported = arrow_flight_client.supports([external_feature_group])
+        supported = arrow_flight_client._supports([external_feature_group])
 
         # Assert
         assert supported
@@ -241,7 +241,7 @@ class TestArrowFlightClient:
         )
 
         # Act
-        supported = arrow_flight_client.supports([external_feature_group])
+        supported = arrow_flight_client._supports([external_feature_group])
 
         # Assert
         assert not supported
@@ -255,7 +255,7 @@ class TestArrowFlightClient:
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
 
         # Act
-        supported = arrow_flight_client.supports(
+        supported = arrow_flight_client._supports(
             [external_feature_group, mock_feature_group]
         )
 
@@ -271,7 +271,7 @@ class TestArrowFlightClient:
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
 
         # Act
-        supported = arrow_flight_client.supports(
+        supported = arrow_flight_client._supports(
             [external_feature_group, mock_feature_group]
         )
 
@@ -284,7 +284,7 @@ class TestArrowFlightClient:
         mock_sping = MagicMock(spec=feature_group.SpineGroup)
 
         # Act
-        supported = arrow_flight_client.supports([mock_feature_group, mock_sping])
+        supported = arrow_flight_client._supports([mock_feature_group, mock_sping])
 
         # Assert
         assert not supported

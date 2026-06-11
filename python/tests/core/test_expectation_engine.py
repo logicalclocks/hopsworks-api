@@ -25,7 +25,7 @@ class TestExpectationEngine:
         feature_group_id = 10
         expectation_suite_id = 21
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(
@@ -35,10 +35,10 @@ class TestExpectationEngine:
         )
 
         # Act
-        ge_expectation_engine.create(expectation=None)
+        ge_expectation_engine._create(expectation=None)
 
         # Assert
-        assert mock_expectation_api.return_value.create.call_count == 1
+        assert mock_expectation_api.return_value._create.call_count == 1
 
     def test_update(self, mocker):
         # Arrange
@@ -46,7 +46,7 @@ class TestExpectationEngine:
         feature_group_id = 10
         expectation_suite_id = 21
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(
@@ -56,10 +56,10 @@ class TestExpectationEngine:
         )
 
         # Act
-        ge_expectation_engine.update(expectation=None)
+        ge_expectation_engine._update(expectation=None)
 
         # Assert
-        assert mock_expectation_api.return_value.update.call_count == 1
+        assert mock_expectation_api.return_value._update.call_count == 1
 
     def test_get(self, mocker):
         # Arrange
@@ -68,7 +68,7 @@ class TestExpectationEngine:
         expectation_suite_id = 21
         expectation_id = 32
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(
@@ -78,10 +78,10 @@ class TestExpectationEngine:
         )
 
         # Act
-        ge_expectation_engine.get(expectation_id=expectation_id)
+        ge_expectation_engine._get(expectation_id=expectation_id)
 
         # Assert
-        assert mock_expectation_api.return_value.get.call_count == 1
+        assert mock_expectation_api.return_value._get.call_count == 1
 
     def test_delete(self, mocker):
         # Arrange
@@ -90,7 +90,7 @@ class TestExpectationEngine:
         expectation_suite_id = 21
         expectation_id = 32
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_expectation_api = mocker.patch("hsfs.core.expectation_api.ExpectationApi")
 
         ge_expectation_engine = expectation_engine.ExpectationEngine(
@@ -100,10 +100,10 @@ class TestExpectationEngine:
         )
 
         # Act
-        ge_expectation_engine.delete(expectation_id)
+        ge_expectation_engine._delete(expectation_id)
 
         # Assert
-        assert mock_expectation_api.return_value.delete.call_count == 1
+        assert mock_expectation_api.return_value._delete.call_count == 1
 
     def test_check_for_id(self):
         # Arrange
@@ -135,7 +135,7 @@ class TestExpectationEngine:
         )
 
         # Act
-        ge_expectation_engine.check_for_id(ge_expectation_meta_id)
-        ge_expectation_engine.check_for_id(ge_expectation_set_id)
+        ge_expectation_engine._check_for_id(ge_expectation_meta_id)
+        ge_expectation_engine._check_for_id(ge_expectation_set_id)
         with pytest.raises(ValueError):
-            ge_expectation_engine.check_for_id(ge_expectation_no_id)
+            ge_expectation_engine._check_for_id(ge_expectation_no_id)

@@ -25,7 +25,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_url = "test_url"
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -41,10 +41,10 @@ class TestExpectationSuiteEngine:
         mock_es_engine_get_expectation_suite_url.return_value = expectation_suite_url
 
         # Act
-        es_engine.create(expectation_suite=None)
+        es_engine._create(expectation_suite=None)
 
         # Assert
-        assert mock_es_api.return_value.create.call_count == 1
+        assert mock_es_api.return_value._create.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -57,7 +57,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_url = "test_url"
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -73,10 +73,10 @@ class TestExpectationSuiteEngine:
         mock_es_engine_get_expectation_suite_url.return_value = expectation_suite_url
 
         # Act
-        es_engine.update(expectation_suite=None)
+        es_engine._update(expectation_suite=None)
 
         # Assert
-        assert mock_es_api.return_value.update.call_count == 1
+        assert mock_es_api.return_value._update.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -89,7 +89,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_url = "test_url"
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -105,12 +105,12 @@ class TestExpectationSuiteEngine:
         mock_es_engine_get_expectation_suite_url.return_value = expectation_suite_url
 
         # Act
-        es_engine.save(
+        es_engine._save(
             expectation_suite=es.ExpectationSuite("test_fake", expectations=[], meta={})
         )
 
         # Assert
-        assert mock_es_api.return_value.create.call_count == 1
+        assert mock_es_api.return_value._create.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -122,7 +122,7 @@ class TestExpectationSuiteEngine:
         feature_store_id = 99
         feature_group_id = 10
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -132,10 +132,10 @@ class TestExpectationSuiteEngine:
         )
 
         # Act
-        es_engine.get()
+        es_engine._get()
 
         # Assert
-        assert mock_es_api.return_value.get.call_count == 1
+        assert mock_es_api.return_value._get.call_count == 1
 
     def test_delete(self, mocker):
         # Arrange
@@ -143,7 +143,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
         expectation_suite_id = 21
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mock_es_api = mocker.patch(
             "hsfs.core.expectation_suite_api.ExpectationSuiteApi"
         )
@@ -153,20 +153,20 @@ class TestExpectationSuiteEngine:
         )
 
         # Act
-        es_engine.delete(expectation_suite_id=expectation_suite_id)
+        es_engine._delete(expectation_suite_id=expectation_suite_id)
 
         # Assert
-        assert mock_es_api.return_value.delete.call_count == 1
+        assert mock_es_api.return_value._delete.call_count == 1
 
     def test_get_expectation_suite_url(self, mocker):
         # Arrange
         feature_store_id = 99
         feature_group_id = 10
 
-        mocker.patch("hsfs.engine.get_type")
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hsfs.util.get_hostname_replaced_url"
+            "hsfs.util._get_hostname_replaced_url"
         )
 
         es_engine = expectation_suite_engine.ExpectationSuiteEngine(

@@ -131,7 +131,7 @@ class TransformationFunction:
             plus_one_meta.save()
             ```
         """
-        self._transformation_function_engine.save(self)
+        self._transformation_function_engine._save(self)
 
     @public
     def delete(self) -> None:
@@ -162,7 +162,7 @@ class TransformationFunction:
             plus_one_fn.delete()
             ```
         """
-        self._transformation_function_engine.delete(self)
+        self._transformation_function_engine._delete(self)
 
     def __call__(self, *features: list[str]) -> TransformationFunction:
         """Update the feature to be using in the transformation function.
@@ -242,7 +242,7 @@ class TransformationFunction:
         Returns:
             Dictionary that contains all data required to json serialize the object.
         """
-        backend_version = client.get_connection().backend_version
+        backend_version = client._get_connection().backend_version
 
         return {
             "id": self._id,
@@ -330,6 +330,7 @@ class TransformationFunction:
 
         return output_col_names
 
+    @public
     def executor(
         self,
         statistics: TransformationStatistics
@@ -498,7 +499,8 @@ class TransformationFunction:
             statistics=statistics, context=context, online=online
         )
 
-    def execute(self, *args) -> Any:
+    @public
+    def execute(self, *args: Any) -> Any:
         """Execute the transformation function directly with the provided arguments.
 
         This is a convenience method for quick testing of simple transformations that don't
