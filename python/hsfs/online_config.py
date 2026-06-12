@@ -92,7 +92,7 @@ class OnlineConfig:
                 # case, spaces to underscores) so the index targets the real online
                 # table column. Do not strip first: a padded name like " user " must
                 # map to "_user_" to match the created column, not "user".
-                normalized = util.autofix_feature_name(col, warn=True)
+                normalized = util._autofix_feature_name(col, warn=True)
                 if normalized in seen_columns:
                     raise ValueError(
                         f"secondary_indexes[{i}] contains duplicate column name: {normalized!r}."
