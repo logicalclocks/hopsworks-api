@@ -301,14 +301,14 @@ class TransformationFunctionEngine:
         OpenMP, Arrow) can deadlock the child. It is only safe enough to default
         to on Linux; macOS and Windows default to `spawn`.
 
-        The `HSFS_TF_POOL_START_METHOD` environment variable overrides the
+        The `HOPSWORKS_TF_POOL_START_METHOD` environment variable overrides the
         default with `fork`, `forkserver`, or `spawn` (except on Windows, where
         `fork` is unavailable).
         """
         if sys.platform == "win32":
             return "spawn"
         default = "fork" if sys.platform.startswith("linux") else "spawn"
-        override = os.environ.get("HSFS_TF_POOL_START_METHOD")
+        override = os.environ.get("HOPSWORKS_TF_POOL_START_METHOD")
         if override is None:
             return default
         if override in TransformationFunctionEngine._VALID_START_METHODS:
@@ -318,7 +318,7 @@ class TransformationFunctionEngine:
         # would flood the log of a long-running process.
         if not TransformationFunctionEngine._start_method_warned:
             _logger.warning(
-                "HSFS_TF_POOL_START_METHOD=%r is not one of %s; defaulting to %r.",
+                "HOPSWORKS_TF_POOL_START_METHOD=%r is not one of %s; defaulting to %r.",
                 override,
                 sorted(TransformationFunctionEngine._VALID_START_METHODS),
                 default,

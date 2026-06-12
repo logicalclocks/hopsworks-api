@@ -556,7 +556,7 @@ class HopsworksUdf:
 
         Note: under `fork` the worker inherits the user's interactive
         `__main__` so notebook globals are visible. Under `forkserver` or
-        `spawn` (configurable via `HSFS_TF_POOL_START_METHOD`) the worker's
+        `spawn` (configurable via `HOPSWORKS_TF_POOL_START_METHOD`) the worker's
         `__main__` is the bootstrap module, not the user's notebook session,
         and UDFs referencing notebook globals will NameError there. This is a
         known limitation of non-fork start methods and applies regardless of

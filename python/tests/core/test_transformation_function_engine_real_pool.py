@@ -113,7 +113,7 @@ class TestRealPoolExecution:
 
         # Pre-spawn the pool so the parallel measurement captures scheduler
         # overlap, not worker startup — spawn cost (Windows, or POSIX with
-        # HSFS_TF_POOL_START_METHOD=spawn) would otherwise mask the signal.
+        # HOPSWORKS_TF_POOL_START_METHOD=spawn) would otherwise mask the signal.
         cls._warmup_online_workers(n_processes=2)
 
         t0 = time.perf_counter()
