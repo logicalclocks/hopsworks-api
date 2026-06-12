@@ -213,8 +213,6 @@ class IcebergEngine:
     ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP = "as-of-timestamp"
     ICEBERG_START_SNAPSHOT_ID = "start-snapshot-id"
     ICEBERG_END_SNAPSHOT_ID = "end-snapshot-id"
-    ICEBERG_MERGE_SCHEMA = "merge-schema"
-    ICEBERG_CHECK_ORDERING = "check-ordering"
     ICEBERG_DOT_PREFIX = "iceberg."
     ICEBERG_CATALOG_OPTION = "iceberg.catalog"
     ICEBERG_CATALOG_PROP_PREFIX = "iceberg.catalog."

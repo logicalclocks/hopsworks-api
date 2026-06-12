@@ -1929,27 +1929,53 @@ class Engine:
         )
 
     def _add_cols_to_iceberg_table(self, feature_group):
+        if self._is_connect:
+            raise FeatureStoreException(
+                "Updating the schema of an Iceberg feature group is not supported "
+                "in Spark Connect mode because it requires JVM bridge access."
+            )
         location = feature_group.prepare_spark_location()
 
-        dataframe = self._spark_session.read.format(
-            iceberg_engine.IcebergEngine.ICEBERG_SPARK_FORMAT
+        # Evolve the schema through the Iceberg API as a metadata-only commit.
+        # Writing an empty dataframe with a merge-schema option does not work
+        # here: Spark's analyzer rejects the extra columns before the Iceberg
+        # writer gets to merge them.
+        # Only the missing columns are added; existing columns are never
+        # altered, so type-mapping differences between writers (for example
+        # timestamp vs timestamptz) cannot conflict.
+        table = self._jvm.org.apache.iceberg.hadoop.HadoopTables(
+            self._spark_context._jsc.hadoopConfiguration()
         ).load(location)
+        existing_columns = {field.name() for field in table.schema().columns()}
+        new_features = [
+            _feature
+            for _feature in feature_group.columns
+            if _feature.name not in existing_columns
+        ]
+        if not new_features:
+            return
 
-        for _feature in feature_group.columns:
-            if _feature.name not in dataframe.columns:
-                dataframe = dataframe.withColumn(
-                    _feature.name, lit(None).cast(_feature.type)
-                )
-
-        # check-ordering is disabled because the appended columns put the
-        # input schema out of order with respect to the table schema
-        dataframe.limit(0).write.format(
-            iceberg_engine.IcebergEngine.ICEBERG_SPARK_FORMAT
-        ).mode("append").option(
-            iceberg_engine.IcebergEngine.ICEBERG_MERGE_SCHEMA, "true"
-        ).option(iceberg_engine.IcebergEngine.ICEBERG_CHECK_ORDERING, "false").save(
-            location
-        )
+        update_schema = table.updateSchema()
+        for _feature in new_features:
+            # Spark's TimestampType converts to Iceberg timestamptz, while
+            # Hopsworks stores Hive-style timestamps without a zone, so map
+            # the type through Spark's timestamp_ntz instead.
+            # The lookahead keeps struct field names (which precede ':')
+            # untouched.
+            feature_type = re.sub(
+                r"(?<![\w])timestamp(?![\w:])", "timestamp_ntz", _feature.type
+            )
+            spark_schema = self._jvm.org.apache.spark.sql.types.StructType.fromDDL(
+                f"{_feature.name} {feature_type}"
+            )
+            iceberg_type = (
+                self._jvm.org.apache.iceberg.spark.SparkSchemaUtil.convert(spark_schema)
+                .columns()
+                .get(0)
+                .type()
+            )
+            update_schema.addColumn(_feature.name, iceberg_type)
+        update_schema.commit()
 
     def _shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
         return dataframe.copy(deep=False)

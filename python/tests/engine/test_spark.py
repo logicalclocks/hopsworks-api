@@ -1905,6 +1905,67 @@ class TestSpark:
         assert mock_df.write.format.call_count == 0
         assert mock_iceberg_engine.return_value._save_iceberg_fg.call_count == 1
 
+    def test_add_cols_to_iceberg_table(self, mocker):
+        # Arrange
+        spark_engine = spark.Engine()
+        jvm_mock = mocker.MagicMock()
+        mocker.patch.object(spark_engine, "_jvm", jvm_mock)
+        mocker.patch.object(spark_engine, "_spark_context", mocker.MagicMock())
+        mocker.patch.object(spark_engine, "_is_connect", False)
+
+        table_mock = jvm_mock.org.apache.iceberg.hadoop.HadoopTables.return_value.load.return_value
+        existing_field = mocker.Mock()
+        existing_field.name.return_value = "f"
+        table_mock.schema.return_value.columns.return_value = [existing_field]
+
+        fg = mocker.MagicMock()
+        fg.prepare_spark_location.return_value = "hopsfs://nn/fs.db/fg_1"
+        f = feature.Feature(name="f", type="int")
+        f1 = feature.Feature(name="col_1", type="string")
+        f2 = feature.Feature(name="col_2", type="timestamp")
+        fg.columns = [f, f1, f2]
+
+        # Act
+        spark_engine._add_cols_to_iceberg_table(fg)
+
+        # Assert
+        # only the missing columns are added, through a metadata-only commit;
+        # timestamps map to timestamp_ntz to stay zone-less like Hive
+        from_ddl_calls = [
+            call.args[0]
+            for call in jvm_mock.org.apache.spark.sql.types.StructType.fromDDL.call_args_list
+        ]
+        assert from_ddl_calls == ["col_1 string", "col_2 timestamp_ntz"]
+        update_schema_mock = table_mock.updateSchema.return_value
+        added_columns = [
+            call.args[0] for call in update_schema_mock.addColumn.call_args_list
+        ]
+        assert added_columns == ["col_1", "col_2"]
+        update_schema_mock.commit.assert_called_once()
+
+    def test_add_cols_to_iceberg_table_no_new_columns(self, mocker):
+        # Arrange
+        spark_engine = spark.Engine()
+        jvm_mock = mocker.MagicMock()
+        mocker.patch.object(spark_engine, "_jvm", jvm_mock)
+        mocker.patch.object(spark_engine, "_spark_context", mocker.MagicMock())
+        mocker.patch.object(spark_engine, "_is_connect", False)
+
+        table_mock = jvm_mock.org.apache.iceberg.hadoop.HadoopTables.return_value.load.return_value
+        existing_field = mocker.Mock()
+        existing_field.name.return_value = "f"
+        table_mock.schema.return_value.columns.return_value = [existing_field]
+
+        fg = mocker.MagicMock()
+        fg.prepare_spark_location.return_value = "hopsfs://nn/fs.db/fg_1"
+        fg.columns = [feature.Feature(name="f", type="int")]
+
+        # Act
+        spark_engine._add_cols_to_iceberg_table(fg)
+
+        # Assert
+        table_mock.updateSchema.assert_not_called()
+
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
