@@ -104,3 +104,111 @@ class TestOnlineConfig:
 
     def test_from_response_json_none(self):
         assert OnlineConfig.from_response_json(None) is None
+
+    # secondary_indexes
+
+    def test_secondary_indexes_default(self):
+        assert OnlineConfig().secondary_indexes is None
+
+    def test_secondary_indexes_single(self):
+        config = OnlineConfig(secondary_indexes=[["user_id"]])
+
+        assert config.secondary_indexes == [["user_id"]]
+
+    def test_secondary_indexes_composite(self):
+        config = OnlineConfig(secondary_indexes=[["country", "city"]])
+
+        assert config.secondary_indexes == [["country", "city"]]
+
+    def test_secondary_indexes_multiple(self):
+        config = OnlineConfig(secondary_indexes=[["user_id"], ["country", "city"]])
+
+        assert config.secondary_indexes == [["user_id"], ["country", "city"]]
+
+    def test_secondary_indexes_not_list_rejected(self):
+        with pytest.raises(TypeError, match="secondary_indexes must be a list"):
+            OnlineConfig(secondary_indexes="user_id")
+
+    def test_secondary_indexes_empty_inner_list_rejected(self):
+        with pytest.raises(
+            ValueError, match=r"secondary_indexes\[0\] must be a non-empty list"
+        ):
+            OnlineConfig(secondary_indexes=[[]])
+
+    def test_secondary_indexes_empty_column_name_rejected(self):
+        with pytest.raises(ValueError, match="invalid column name"):
+            OnlineConfig(secondary_indexes=[["user_id", ""]])
+
+    def test_secondary_indexes_non_string_column_rejected(self):
+        with pytest.raises(ValueError, match="invalid column name"):
+            OnlineConfig(secondary_indexes=[[42]])
+
+    def test_secondary_indexes_uppercase_normalized(self):
+        config = OnlineConfig(secondary_indexes=[["Country"]])
+
+        assert config.secondary_indexes == [["country"]]
+
+    def test_secondary_indexes_spaces_normalized(self):
+        config = OnlineConfig(secondary_indexes=[["User Country", "City Name"]])
+
+        assert config.secondary_indexes == [["user_country", "city_name"]]
+
+    def test_secondary_indexes_padded_name_matches_feature_path(self):
+        # The feature-creation path maps " User " -> "_user_" (spaces become
+        # underscores, no strip); the index column must normalize identically.
+        config = OnlineConfig(secondary_indexes=[[" User "]])
+
+        assert config.secondary_indexes == [["_user_"]]
+
+    def test_secondary_indexes_whitespace_only_rejected(self):
+        with pytest.raises(ValueError, match="invalid column name"):
+            OnlineConfig(secondary_indexes=[["   "]])
+
+    def test_secondary_indexes_duplicate_column_after_normalization_rejected(self):
+        with pytest.raises(ValueError, match="duplicate column name"):
+            OnlineConfig(secondary_indexes=[["country", "Country"]])
+
+    def test_secondary_indexes_duplicate_index_after_normalization_rejected(self):
+        with pytest.raises(ValueError, match="duplicate index definition"):
+            OnlineConfig(secondary_indexes=[["country"], ["Country"]])
+
+    def test_to_dict_secondary_indexes_normalized(self):
+        config = OnlineConfig(secondary_indexes=[["User Country"]])
+
+        assert config.to_dict()["secondaryIndexes"] == [["user_country"]]
+
+    def test_secondary_indexes_setter_validates(self):
+        config = OnlineConfig()
+
+        config.secondary_indexes = [["user_id"]]
+        assert config.secondary_indexes == [["user_id"]]
+
+        with pytest.raises(TypeError):
+            config.secondary_indexes = "user_id"
+
+    def test_to_dict_includes_secondary_indexes(self):
+        config = OnlineConfig(secondary_indexes=[["user_id"], ["country", "city"]])
+
+        d = config.to_dict()
+
+        assert d["secondaryIndexes"] == [["user_id"], ["country", "city"]]
+
+    def test_to_dict_secondary_indexes_unset(self):
+        assert "secondaryIndexes" not in OnlineConfig().to_dict()
+
+    def test_from_response_json_secondary_indexes_round_trip(self):
+        payload = {
+            "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
+            "tableSpace": "ts_1",
+            "primaryKeyIndexType": "ORDERED",
+            "secondaryIndexes": [["user_id"], ["country", "city"]],
+        }
+
+        config = OnlineConfig.from_response_json(payload)
+
+        assert config.secondary_indexes == [["user_id"], ["country", "city"]]
+
+    def test_from_response_json_missing_secondary_indexes(self):
+        config = OnlineConfig.from_response_json({"onlineComments": ["x"]})
+
+        assert config.secondary_indexes is None
