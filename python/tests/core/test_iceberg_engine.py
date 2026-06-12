@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import sys
 from unittest import mock
 
 import pytest
@@ -1165,6 +1166,12 @@ class TestPyIcebergEngine:
         delete_mock.assert_called_once_with(delete_df)
 
     @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="pyiceberg's PyArrowFileIO mishandles local Windows paths "
+        "(file:///C:/... resolves to /C:/...); production locations are "
+        "always remote URIs",
+    )
     def test_pyiceberg_round_trip(self, mocker, tmp_path):
         # End-to-end against a real local Iceberg table: create, upsert,
         # HadoopTables publish, reload from version-hint, and delete.
